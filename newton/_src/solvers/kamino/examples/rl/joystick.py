@@ -244,7 +244,7 @@ class JoystickController:
             _axis("k", "i"),  # forward:    I = forward(+), K = backward(-)
             _axis("l", "j"),  # lateral:    J = left(+),    L = right(-)
             _axis("o", "u"),  # angular:    U = left(+),    O = right(-)
-            _axis("g", "t"),  # head pitch: T = up(+),      G = down(-)
+            _axis("t", "g"),  # head pitch: T = up(+),      G = down(-)
             _axis("h", "f"),  # head yaw:   F = left(+),    H = right(-)
         )
 

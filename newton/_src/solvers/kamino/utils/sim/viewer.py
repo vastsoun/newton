@@ -636,13 +636,11 @@ class ViewerKamino(ViewerGL):
         """
         # Try to import imageio-ffmpeg (optional dependency)
         try:
-            # Thirdparty
             import imageio_ffmpeg as ffmpeg  # noqa: PLC0415
         except ImportError:
             msg.warning("imageio-ffmpeg not installed. Frames saved but video not generated.")
             msg.info("Install with: pip install imageio-ffmpeg")
             return False
-        # Thirdparty
         import numpy as np  # noqa: PLC0415
 
         # Check if we have frames to process

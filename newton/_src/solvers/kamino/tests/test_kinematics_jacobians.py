@@ -24,6 +24,7 @@ import warp as wp
 
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
+from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info
 from newton._src.solvers.kamino.kinematics.jacobians import (
     ColMajorSparseConstraintJacobians,
     DenseSystemJacobians,
@@ -277,6 +278,9 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
             print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
 
+        # Build model info
+        make_unilateral_constraints_info(model, model.data(), limits, contacts)
+
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=contacts, device=self.default_device)
         if self.verbose:
@@ -350,6 +354,9 @@ class TestKinematicsDenseSystemJacobians(unittest.TestCase):
             print("contacts.default_max_world_contacts: ", contacts.default_max_world_contacts)
             print("contacts.model_max_contacts_host: ", contacts.model_max_contacts_host)
             print("contacts.world_max_contacts_host: ", contacts.world_max_contacts_host)
+
+        # Build model info
+        make_unilateral_constraints_info(model, model.data(), limits, contacts)
 
         # Create the Jacobians container
         jacobians = DenseSystemJacobians(model=model, limits=limits, contacts=contacts)
@@ -742,7 +749,7 @@ class TestKinematicsSparseSystemJacobians(unittest.TestCase):
             ).all()
         )
         self.assertTrue(
-            (jacobians._J_cts.bsm.max_nzb.numpy() == [2 * num_total_cts[w] for w in range(model.size.num_worlds)]).all()
+            (jacobians._J_cts.bsm.max_nzb.numpy() == [2 * max_total_cts[w] for w in range(model.size.num_worlds)]).all()
         )
 
     def test_06_allocate_heterogeneous_sparse_system_jacobians(self):

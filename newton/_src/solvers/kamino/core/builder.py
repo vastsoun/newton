@@ -1412,7 +1412,6 @@ class ModelBuilderKamino:
             _device=device,
             _requires_grad=requires_grad,
             size=model_size,
-            worlds=self._worlds,
             info=model_info,
             time=model_time,
             gravity=model_gravity,

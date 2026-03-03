@@ -674,12 +674,6 @@ class ModelKamino:
     This is used for memory allocations and kernel thread dimensions.
     """
 
-    worlds: list[WorldDescriptor] | None = None
-    """
-    Host-side cache of the world descriptors.\n
-    This is used to construct the model and for memory allocations.
-    """
-
     info: ModelKaminoInfo | None = None
     """The model info container holding the information and meta-data of the model."""
 
@@ -1612,7 +1606,6 @@ class ModelKamino:
             _device=model.device,
             _requires_grad=model.requires_grad,
             size=model_size,
-            worlds=model_worlds,
             info=model_info,
             time=model_time,
             gravity=model_gravity,

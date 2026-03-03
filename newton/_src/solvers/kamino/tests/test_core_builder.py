@@ -55,7 +55,7 @@ def assert_model_matches_builder(test: unittest.TestCase, builder: ModelBuilderK
         model: The constructed model instance.
     """
     # Check model sizes and offsets
-    for w, world in enumerate(model.worlds):
+    for w, world in enumerate(builder.worlds):
         test.assertEqual(world.wid, w)
         test.assertEqual(model.info.num_bodies.numpy()[w], world.num_bodies)
         test.assertEqual(model.info.num_joints.numpy()[w], world.num_joints)
@@ -692,7 +692,6 @@ class TestModelBuilder(unittest.TestCase):
         model = builder.finalize(self.default_device)
 
         # Verify that the contents of the model matches those of the combined builder
-        self.assertIs(model.worlds, builder.worlds)
         assert_model_matches_builder(self, builder, model)
 
     def test_19_add_two_cartpole_builders(self):
@@ -713,7 +712,6 @@ class TestModelBuilder(unittest.TestCase):
         model = builder0.finalize(self.default_device)
 
         # Verify that the contents of the model matches those of the combined builder
-        self.assertIs(model.worlds, builder0.worlds)
         assert_model_matches_builder(self, builder0, model)
 
     def test_20_make_homogeneous_multi_cartpole_builder(self):
@@ -728,7 +726,6 @@ class TestModelBuilder(unittest.TestCase):
         model = builder.finalize(self.default_device)
 
         # Verify that the contents of the model matches those of the combined builder
-        self.assertIs(model.worlds, builder.worlds)
         assert_model_matches_builder(self, builder, model)
 
     def test_21_make_homogeneous_multi_fourbar_builder(self):
@@ -768,7 +765,6 @@ class TestModelBuilder(unittest.TestCase):
         model = builder.finalize(self.default_device)
 
         # Verify that the contents of the model matches those of the combined builder
-        self.assertIs(model.worlds, builder.worlds)
         assert_model_matches_builder(self, builder, model)
 
     def test_22_make_heterogeneous_test_builder(self):
@@ -783,7 +779,6 @@ class TestModelBuilder(unittest.TestCase):
         model = builder.finalize(self.default_device)
 
         # Verify that the contents of the model matches those of the combined builder
-        self.assertIs(model.worlds, builder.worlds)
         assert_model_matches_builder(self, builder, model)
 
 

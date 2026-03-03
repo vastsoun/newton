@@ -1736,11 +1736,11 @@ class ForwardKinematicsSolver:
         base_q_default = np.zeros(7 * self.num_worlds, dtype=np.float32)  # Default base pose
         bodies_q_0 = self.model.bodies.q_i_0.numpy()
         base_joint_ids = self.num_worlds * [-1]  # Base joint id per world
+        base_joint_ids_input = self.model.info.base_joint_index.numpy().tolist()
+        base_body_ids_input = self.model.info.base_body_index.numpy().tolist()
         for wd_id in range(self.num_worlds):
-            # Retrieve base joint id if set
-            base_joint_id = -1
-            if self.model.worlds[wd_id].has_base_joint:
-                base_joint_id = first_joint_id_prev[wd_id] + self.model.worlds[wd_id].base_joint_idx
+            # Retrieve base joint id
+            base_joint_id = base_joint_ids_input[wd_id]
 
             # Copy data for all kept joints
             world_joint_ids = [
@@ -1793,8 +1793,8 @@ class ForwardKinematicsSolver:
                 dof_offset = -6 * wd_id - 1  # We encode offsets in base_u negatively with i -> -i - 1
                 actuated_dofs_map.extend(range(dof_offset, dof_offset - 6, -1))
                 base_joint_ids[wd_id] = len(joints_dof_type) - 1
-            elif self.model.worlds[wd_id].has_base_body:  # Add an actuated free joint to the base body
-                base_body_id = first_body_id[wd_id] + self.model.worlds[wd_id].base_body_idx
+            elif base_body_ids_input[wd_id] >= 0:  # Add an actuated free joint to the base body
+                base_body_id = base_body_ids_input[wd_id]
                 joints_dof_type.append(JointDoFType.FREE)
                 joints_act_type.append(JointActuationType.FORCE)
                 joints_bid_B.append(-1)

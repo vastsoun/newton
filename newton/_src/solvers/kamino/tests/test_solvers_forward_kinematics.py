@@ -186,10 +186,11 @@ def compute_constraint_residual_mask(model: ModelKamino):
     mask = np.array(model.size.sum_of_num_joint_cts * [True])
 
     # Exclude base joints
+    base_joint_index = model.info.base_joint_index.numpy().tolist()
     for wd_id in range(model.size.num_worlds):
-        if not model.worlds[wd_id].has_base_joint:
+        if base_joint_index[wd_id] < 0:
             continue
-        base_jt_id = first_joint_id[wd_id] + model.worlds[wd_id].base_joint_idx
+        base_jt_id = base_joint_index[wd_id]
         ct_offset = first_joint_ct_id[base_jt_id]
         mask[ct_offset : ct_offset + num_joint_cts[base_jt_id]] = False
 

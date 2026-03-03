@@ -1288,9 +1288,9 @@ class DenseSystemJacobians:
 
         # Extract the constraint and DoF sizes of each world
         nw = model.info.num_worlds
-        nbd = [model.worlds[w].num_body_dofs for w in range(nw)]
-        njc = [model.worlds[w].num_joint_cts for w in range(nw)]
-        njd = [model.worlds[w].num_joint_dofs for w in range(nw)]
+        nbd = model.info.num_body_dofs.numpy().tolist()
+        njc = model.info.num_joint_cts.numpy().tolist()
+        njd = model.info.num_joint_dofs.numpy().tolist()
         maxnl = limits.world_max_limits_host if limits and limits.model_max_limits_host > 0 else [0] * nw
         maxnc = contacts.world_max_contacts_host if contacts and contacts.model_max_contacts_host > 0 else [0] * nw
         maxncts = [njc[w] + maxnl[w] + 3 * maxnc[w] for w in range(nw)]
@@ -1529,9 +1529,9 @@ class SparseSystemJacobians:
 
         # Extract the constraint and DoF sizes of each world
         num_worlds = model.info.num_worlds
-        num_body_dofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
-        num_joint_cts = [model.worlds[w].num_joint_cts for w in range(num_worlds)]
-        num_joint_dofs = [model.worlds[w].num_joint_dofs for w in range(num_worlds)]
+        num_body_dofs = model.info.num_body_dofs.numpy().tolist()
+        num_joint_cts = model.info.num_joint_cts.numpy().tolist()
+        num_joint_dofs = model.info.num_joint_dofs.numpy().tolist()
         max_num_limits = (
             limits.world_max_limits_host if limits and limits.model_max_limits_host > 0 else [0] * num_worlds
         )
@@ -1904,8 +1904,8 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
         """
         # Extract the constraint and DoF sizes of each world
         num_worlds = model.info.num_worlds
-        num_body_dofs = [model.worlds[w].num_body_dofs for w in range(num_worlds)]
-        num_joint_cts = [model.worlds[w].num_joint_cts for w in range(num_worlds)]
+        num_body_dofs = model.info.num_body_dofs.numpy().tolist()
+        num_joint_cts = model.info.num_joint_cts.numpy().tolist()
         max_num_limits = (
             limits.world_max_limits_host if limits and limits.model_max_limits_host > 0 else [0] * num_worlds
         )

@@ -84,7 +84,7 @@ def get_max_constraints_per_world(
 
     # Compute the maximum number of constraints per world
     nw = model.info.num_worlds
-    njc = [model.worlds[i].num_joint_cts for i in range(nw)]
+    njc = model.info.num_joint_cts.numpy()
     maxnl = limits.world_max_limits_host if limits and limits.model_max_limits_host > 0 else [0] * nw
     maxnc = contacts.world_max_contacts_host if contacts and contacts.model_max_contacts_host > 0 else [0] * nw
     maxncts = [njc[i] + maxnl[i] + 3 * maxnc[i] for i in range(nw)]
@@ -201,9 +201,18 @@ def make_unilateral_constraints_info(
     # Compute the maximum number of constraints per world: limits, contacts, and total
     world_maxnlc: list[int] = list(world_maxnl)
     world_maxncc: list[int] = [3 * maxnc for maxnc in world_maxnc]
-    world_njc = [world.num_joint_cts for world in model.worlds]
-    world_njdc = [world.num_dynamic_joint_cts for world in model.worlds]
-    world_njkc = [world.num_kinematic_joint_cts for world in model.worlds]
+    world_njc = [0] * num_worlds
+    world_njdc = [0] * num_worlds
+    world_njkc = [0] * num_worlds
+    joints_world = model.joints.wid.numpy().tolist()
+    joints_num_cts = model.joints.num_cts.numpy().tolist()
+    joints_num_dynamic_cts = model.joints.num_dynamic_cts.numpy().tolist()
+    joints_num_kinematic_cts = model.joints.num_kinematic_cts.numpy().tolist()
+    for jid in range(model.size.sum_of_num_joints):
+        wid_j = joints_world[jid]
+        world_njc[wid_j] += joints_num_cts[jid]
+        world_njdc[wid_j] += joints_num_dynamic_cts[jid]
+        world_njkc[wid_j] += joints_num_kinematic_cts[jid]
     world_maxncts = [
         njc + maxnl + maxnc for njc, maxnl, maxnc in zip(world_njc, world_maxnlc, world_maxncc, strict=False)
     ]

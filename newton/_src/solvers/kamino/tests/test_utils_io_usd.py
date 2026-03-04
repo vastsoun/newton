@@ -19,8 +19,11 @@ import math
 import os
 import unittest
 
+import numpy as np
 import warp as wp
 
+from newton import Model, ModelBuilder
+from newton._src.solvers.kamino import SolverKamino, SolverKaminoConfig
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.joints import JOINT_QMAX, JOINT_QMIN, JointActuationType, JointDoFType
 from newton._src.solvers.kamino.core.shapes import ShapeType
@@ -34,6 +37,7 @@ from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.checks import assert_builders_equal
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
+from newton.tests.unittest_utils import USD_AVAILABLE
 
 ###
 # Tests
@@ -1131,6 +1135,289 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
         self.assertEqual(builder_usd.num_geoms, 34)
+
+
+class TestUSDKaminoSceneAPIImport(unittest.TestCase):
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose  # Set to True for verbose output
+
+        # Set the paths to the assets provided by the kamino package
+        self.TEST_USD_ASSETS_PATH = get_testing_usd_assets_path()
+        self.BASICS_USD_ASSETS_PATH = get_basics_usd_assets_path()
+        self.EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.reset_log_level()
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
+    def generate_single_body_usd_import(self, scene: str = "") -> Model:
+        from pxr import Usd
+
+        usd_text = (
+            "#usda 1.0\n\n"
+            + scene
+            + """def Xform "box"
+{
+    def Scope "RigidBodies"
+    {
+        def Xform "box_body" (
+            prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+        )
+        {
+            # Body Frame
+            quatf xformOp:orient = (1, 0, 0, 0)
+            double3 xformOp:translate = (0.0, 0.0, 0.1)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+
+            # Body Velocities
+            vector3f physics:linearVelocity = (0, 0, 0)
+            vector3f physics:angularVelocity = (0, 0, 0)
+
+            # Mass Properties
+            float physics:mass = 1.0
+            float3 physics:diagonalInertia = (0.01, 0.01, 0.01)
+            point3f physics:centerOfMass = (0, 0, 0)
+            quatf physics:principalAxes = (1, 0, 0, 0)
+
+            def Scope "Geometry"
+            {
+                def Cube "box_geom" (
+                    prepend apiSchemas = ["PhysicsCollisionAPI"]
+                )
+                {
+                    float3[] extent = [(-1, -1, -1), (1, 1, 1)]
+
+                    float3 xformOp:scale = (0.1, 0.1, 0.1)
+                    quatf xformOp:orient = (1, 0, 0, 0)
+                    double3 xformOp:translate = (0, 0, 0)
+                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                }
+            }
+        }
+    }
+}
+"""
+        )
+
+        stage = Usd.Stage.CreateInMemory()
+        stage.GetRootLayer().ImportFromString(usd_text)
+
+        builder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder)
+
+        builder.add_usd(stage)
+
+        model = builder.finalize()
+        return model
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_01_kamino_scene_api_import_no_scene(self):
+        """Check that custom attributes are set with the right type."""
+
+        model = self.generate_single_body_usd_import()
+
+        self.assertTrue(hasattr(model, "kamino"))
+        kamino_attr = model.kamino
+
+        # Check existence and type of attributes
+        self.assertTrue(
+            hasattr(kamino_attr, "padmm_warmstarting") and isinstance(kamino_attr.padmm_warmstarting[0], str)
+        )
+        self.assertTrue(
+            hasattr(kamino_attr, "padmm_use_acceleration")
+            and isinstance(kamino_attr.padmm_use_acceleration.numpy()[0], np.bool)
+        )
+        self.assertTrue(hasattr(kamino_attr, "joint_correction") and isinstance(kamino_attr.joint_correction[0], str))
+
+        self.assertTrue(
+            hasattr(kamino_attr, "constraints_use_preconditioning")
+            and isinstance(kamino_attr.constraints_use_preconditioning.numpy()[0], np.bool)
+        )
+        self.assertTrue(
+            hasattr(kamino_attr, "constraints_alpha")
+            and isinstance(kamino_attr.constraints_alpha.numpy()[0], np.floating)
+        )
+        self.assertTrue(
+            hasattr(kamino_attr, "constraints_beta")
+            and isinstance(kamino_attr.constraints_beta.numpy()[0], np.floating)
+        )
+        self.assertTrue(
+            hasattr(kamino_attr, "constraints_gamma")
+            and isinstance(kamino_attr.constraints_gamma.numpy()[0], np.floating)
+        )
+
+        self.assertTrue(
+            hasattr(kamino_attr, "padmm_primal_tolerance")
+            and isinstance(kamino_attr.padmm_primal_tolerance.numpy()[0], np.floating)
+        )
+        self.assertTrue(
+            hasattr(kamino_attr, "padmm_dual_tolerance")
+            and isinstance(kamino_attr.padmm_dual_tolerance.numpy()[0], np.floating)
+        )
+        self.assertTrue(
+            hasattr(kamino_attr, "padmm_complementarity_tolerance")
+            and isinstance(kamino_attr.padmm_complementarity_tolerance.numpy()[0], np.floating)
+        )
+
+        # Compare attribute values to KaminoSceneAPI defaults
+        self.assertEqual(kamino_attr.padmm_warmstarting[0], "containers")
+        self.assertEqual(bool(kamino_attr.padmm_use_acceleration.numpy()[0]), True)
+        self.assertEqual(kamino_attr.joint_correction[0], "twopi")
+
+        self.assertEqual(bool(kamino_attr.constraints_use_preconditioning.numpy()[0]), True)
+        self.assertAlmostEqual(kamino_attr.constraints_alpha.numpy()[0], 0.01)
+        self.assertAlmostEqual(kamino_attr.constraints_beta.numpy()[0], 0.01)
+        self.assertAlmostEqual(kamino_attr.constraints_gamma.numpy()[0], 0.01)
+
+        self.assertAlmostEqual(kamino_attr.padmm_primal_tolerance.numpy()[0], 1e-6)
+        self.assertAlmostEqual(kamino_attr.padmm_dual_tolerance.numpy()[0], 1e-6)
+        self.assertAlmostEqual(kamino_attr.padmm_complementarity_tolerance.numpy()[0], 1e-6)
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_02_kamino_scene_api_import_full_scene(self):
+        """Check that values defined in USD are properly imported."""
+
+        model = self.generate_single_body_usd_import("""
+def PhysicsScene "PhysicsScene" (
+    prepend apiSchemas = ["NewtonKaminoSceneAPI"]
+)
+{
+    uniform float newton:kamino:padmm:primalTolerance = 0.1
+    uniform float newton:kamino:padmm:dualTolerance = 0.2
+    uniform float newton:kamino:padmm:complementarityTolerance = 0.3
+    uniform token newton:kamino:padmm:warmstarting = "none"
+    uniform bool newton:kamino:padmm:useAcceleration = false
+    uniform bool newton:kamino:constraints:usePreconditioning = false
+    uniform float newton:kamino:constraints:alpha = 0.4
+    uniform float newton:kamino:constraints:beta = 0.5
+    uniform float newton:kamino:constraints:gamma = 0.6
+    uniform token newton:kamino:jointCorrection = "continuous"
+}
+""")
+
+        self.assertTrue(hasattr(model, "kamino"))
+        kamino_attr = model.kamino
+        self.assertEqual(kamino_attr.padmm_warmstarting[0], "none")
+        self.assertEqual(bool(kamino_attr.padmm_use_acceleration.numpy()[0]), False)
+        self.assertEqual(kamino_attr.joint_correction[0], "continuous")
+
+        self.assertEqual(bool(kamino_attr.constraints_use_preconditioning.numpy()[0]), False)
+        self.assertAlmostEqual(kamino_attr.constraints_alpha.numpy()[0], 0.4)
+        self.assertAlmostEqual(kamino_attr.constraints_beta.numpy()[0], 0.5)
+        self.assertAlmostEqual(kamino_attr.constraints_gamma.numpy()[0], 0.6)
+
+        self.assertAlmostEqual(kamino_attr.padmm_primal_tolerance.numpy()[0], 0.1)
+        self.assertAlmostEqual(kamino_attr.padmm_dual_tolerance.numpy()[0], 0.2)
+        self.assertAlmostEqual(kamino_attr.padmm_complementarity_tolerance.numpy()[0], 0.3)
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_03_kamino_scene_api_import_faulty_scenes(self):
+        """Check that faulty string attributes raise an error."""
+
+        with self.assertRaises(ValueError):
+            self.generate_single_body_usd_import("""
+def PhysicsScene "PhysicsScene" (
+    prepend apiSchemas = ["NewtonKaminoSceneAPI"]
+)
+{
+    uniform token newton:kamino:padmm:warmstarting = "non"
+}
+""")
+
+        with self.assertRaises(ValueError):
+            self.generate_single_body_usd_import("""
+def PhysicsScene "PhysicsScene" (
+    prepend apiSchemas = ["NewtonKaminoSceneAPI"]
+)
+{
+    uniform token newton:kamino:jointCorrection = "discrete"
+}
+""")
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_04_kamino_scene_api_import_full_scene_config(self):
+        """Check that values defined in USD are properly imported."""
+
+        model = self.generate_single_body_usd_import("""
+def PhysicsScene "PhysicsScene" (
+    prepend apiSchemas = ["NewtonKaminoSceneAPI"]
+)
+{
+    uniform float newton:kamino:padmm:primalTolerance = 0.1
+    uniform float newton:kamino:padmm:dualTolerance = 0.2
+    uniform float newton:kamino:padmm:complementarityTolerance = 0.3
+    uniform token newton:kamino:padmm:warmstarting = "none"
+    uniform bool newton:kamino:padmm:useAcceleration = false
+    uniform bool newton:kamino:constraints:usePreconditioning = false
+    uniform float newton:kamino:constraints:alpha = 0.4
+    uniform float newton:kamino:constraints:beta = 0.5
+    uniform float newton:kamino:constraints:gamma = 0.6
+    uniform token newton:kamino:jointCorrection = "continuous"
+}
+""")
+        config = SolverKaminoConfig.from_model(model)
+
+        self.assertEqual(config.warmstart_mode, "none")
+        self.assertEqual(config.use_solver_acceleration, False)
+        self.assertEqual(config.rotation_correction, "continuous")
+
+        self.assertEqual(config.problem.preconditioning, False)
+        self.assertAlmostEqual(config.problem.alpha, 0.4)
+        self.assertAlmostEqual(config.problem.beta, 0.5)
+        self.assertAlmostEqual(config.problem.gamma, 0.6)
+
+        self.assertAlmostEqual(config.padmm.primal_tolerance, 0.1)
+        self.assertAlmostEqual(config.padmm.dual_tolerance, 0.2)
+        self.assertAlmostEqual(config.padmm.compl_tolerance, 0.3)
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_05_kamino_scene_api_import_full_scene_solver(self):
+        """Check that values defined in USD are properly imported."""
+
+        model = self.generate_single_body_usd_import("""
+def PhysicsScene "PhysicsScene" (
+    prepend apiSchemas = ["NewtonKaminoSceneAPI"]
+)
+{
+    uniform float newton:kamino:padmm:primalTolerance = 0.1
+    uniform float newton:kamino:padmm:dualTolerance = 0.2
+    uniform float newton:kamino:padmm:complementarityTolerance = 0.3
+    uniform token newton:kamino:padmm:warmstarting = "none"
+    uniform bool newton:kamino:padmm:useAcceleration = false
+    uniform bool newton:kamino:constraints:usePreconditioning = false
+    uniform float newton:kamino:constraints:alpha = 0.4
+    uniform float newton:kamino:constraints:beta = 0.5
+    uniform float newton:kamino:constraints:gamma = 0.6
+    uniform token newton:kamino:jointCorrection = "continuous"
+}
+""")
+
+        solver = SolverKamino(model)
+        config = solver._solver_kamino.config
+
+        self.assertEqual(config.warmstart_mode, "none")
+        self.assertEqual(config.use_solver_acceleration, False)
+        self.assertEqual(config.rotation_correction, "continuous")
+
+        self.assertEqual(config.problem.preconditioning, False)
+        self.assertAlmostEqual(config.problem.alpha, 0.4)
+        self.assertAlmostEqual(config.problem.beta, 0.5)
+        self.assertAlmostEqual(config.problem.gamma, 0.6)
+
+        self.assertAlmostEqual(config.padmm.primal_tolerance, 0.1)
+        self.assertAlmostEqual(config.padmm.dual_tolerance, 0.2)
+        self.assertAlmostEqual(config.padmm.compl_tolerance, 0.3)
 
 
 ###

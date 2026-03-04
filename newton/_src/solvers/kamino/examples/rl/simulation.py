@@ -27,7 +27,7 @@ from __future__ import annotations
 # Thirdparty
 import torch
 import warp as wp
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino as ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.types import transformf, vec6f
 from newton._src.solvers.kamino.geometry.aggregation import ContactAggregation
 from newton._src.solvers.kamino.models.builders.utils import (
@@ -97,7 +97,7 @@ class RigidBodySim:
 
         # ----- Model builder from USD -----
         msg.notif("Constructing builder from imported USD ...")
-        self.builder: ModelBuilder = make_homogeneous_builder(
+        self.builder: ModelBuilderKamino = make_homogeneous_builder(
             num_worlds=num_worlds,
             build_fn=build_usd,
             source=usd_model_path,
@@ -164,18 +164,17 @@ class RigidBodySim:
     def _make_rl_interface(self):
         """Create zero-copy PyTorch views of simulator state, control and contact arrays."""
         nw = self.sim.model.size.num_worlds
-        njc = self.sim.model.size.max_of_num_joint_coords
         njd = self.sim.model.size.max_of_num_joint_dofs
         nb = self.sim.model.size.max_of_num_bodies
 
         # State tensors (read-only views into simulator)
-        self._q_j = wp.to_torch(self.sim.state.q_j).reshape(nw, njc)
+        self._q_j = wp.to_torch(self.sim.state.q_j).reshape(nw, njd)
         self._dq_j = wp.to_torch(self.sim.state.dq_j).reshape(nw, njd)
         self._q_i = wp.to_torch(self.sim.state.q_i).reshape(nw, nb, 7)
         self._u_i = wp.to_torch(self.sim.state.u_i).reshape(nw, nb, 6)
 
         # Control tensors (writable views)
-        self._q_j_ref = wp.to_torch(self.sim.control.q_j_ref).reshape(nw, njc)
+        self._q_j_ref = wp.to_torch(self.sim.control.q_j_ref).reshape(nw, njd)
         self._dq_j_ref = wp.to_torch(self.sim.control.dq_j_ref).reshape(nw, njd)
         self._tau_j_ref = wp.to_torch(self.sim.control.tau_j_ref).reshape(nw, njd)
 
@@ -198,7 +197,8 @@ class RigidBodySim:
         self._update_base_u = False
 
         # Contact aggregation
-        ground_geom_ids = [self.sim.model.size.max_of_num_collision_geoms - 1]
+        ground_geom_ids = [self.builder.worlds[0].geom_names.index("ground")]
+
         self._contact_aggregation = ContactAggregation(
             model=self.sim.model,
             contacts=self.sim.contacts,

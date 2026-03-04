@@ -425,7 +425,7 @@ class PerformanceProfile:
 
         # Attempt to import matplotlib
         try:
-            import matplotlib.pyplot as plt  # noqa: PLC0415
+            import matplotlib.pyplot as plt
             from cycler import cycler  # noqa: PLC0415
         except Exception as exc:  # pragma: no cover - optional dependency
             msg.error(f"`matplotlib` is required to plot profiles: {exc}")

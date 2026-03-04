@@ -31,7 +31,7 @@ from newton._src.solvers.kamino.core.control import ControlKamino
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.state import StateKamino
 from newton._src.solvers.kamino.models import basics as basics_kamino
-from newton._src.solvers.kamino.models import basics_newton, get_basics_usd_assets_path, get_examples_usd_assets_path
+from newton._src.solvers.kamino.models import basics_newton, get_basics_usd_assets_path
 from newton._src.solvers.kamino.models.builders import utils as model_utils
 from newton._src.solvers.kamino.solver_kamino import SolverKamino
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -245,7 +245,7 @@ class TestModelConversions(unittest.TestCase):
         on a simple fourbar model loaded from USD.
         """
         # Define the path to the USD file for the fourbar model
-        USD_MODEL_PATH = os.path.join(get_basics_usd_assets_path(), "boxes_fourbar.usda")
+        asset_file = os.path.join(get_basics_usd_assets_path(), "boxes_fourbar.usda")
 
         # Create a fourbar using Newton's ModelBuilder and
         # register Kamino-specific custom attributes
@@ -257,7 +257,7 @@ class TestModelConversions(unittest.TestCase):
         # Create a fourbar using Newton's ModelBuilder
         builder_0.begin_world()
         builder_0.add_usd(
-            source=USD_MODEL_PATH,
+            source=asset_file,
             joint_ordering=None,
             force_show_colliders=True,
             force_position_velocity_actuation=True,
@@ -267,7 +267,7 @@ class TestModelConversions(unittest.TestCase):
         # Import the same fourbar using Kamino's USDImporter and ModelBuilderKamino
         importer = USDImporter()
         builder_1: ModelBuilderKamino = importer.import_from(
-            source=USD_MODEL_PATH,
+            source=asset_file,
             load_drive_dynamics=True,
             load_static_geometry=True,
             force_show_colliders=True,
@@ -295,7 +295,8 @@ class TestModelConversions(unittest.TestCase):
         on the DR testmechanism model loaded from USD.
         """
         # Define the path to the USD file for the DR testmechanism model
-        USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "dr_testmech/usd/dr_testmech.usda")
+        asset_path = newton.utils.download_asset("disneyresearch")
+        asset_file = str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda")
 
         # Create a fourbar using Newton's ModelBuilder and
         # register Kamino-specific custom attributes
@@ -307,7 +308,7 @@ class TestModelConversions(unittest.TestCase):
         # Create a fourbar using Newton's ModelBuilder
         builder_0.begin_world()
         builder_0.add_usd(
-            source=USD_MODEL_PATH,
+            source=asset_file,
             joint_ordering=None,
             force_show_colliders=True,
         )
@@ -316,7 +317,7 @@ class TestModelConversions(unittest.TestCase):
         # Import the same fourbar using Kamino's USDImporter and ModelBuilderKamino
         importer = USDImporter()
         builder_1: ModelBuilderKamino = importer.import_from(
-            source=USD_MODEL_PATH,
+            source=asset_file,
             load_static_geometry=True,
             retain_joint_ordering=False,
             meshes_are_collidable=True,
@@ -338,7 +339,8 @@ class TestModelConversions(unittest.TestCase):
         on the DR legs model loaded from USD.
         """
         # Define the path to the USD file for the DR legs model
-        USD_MODEL_PATH = os.path.join(get_examples_usd_assets_path(), "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
+        asset_path = newton.utils.download_asset("disneyresearch")
+        asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_meshes_and_boxes.usda")
 
         # Create a fourbar using Newton's ModelBuilder and
         # register Kamino-specific custom attributes
@@ -350,7 +352,7 @@ class TestModelConversions(unittest.TestCase):
         # Create a fourbar using Newton's ModelBuilder
         builder_0.begin_world()
         builder_0.add_usd(
-            source=USD_MODEL_PATH,
+            source=asset_file,
             joint_ordering=None,
             force_show_colliders=True,
             force_position_velocity_actuation=True,
@@ -360,7 +362,7 @@ class TestModelConversions(unittest.TestCase):
         # Import the same fourbar using Kamino's USDImporter and ModelBuilderKamino
         importer = USDImporter()
         builder_1: ModelBuilderKamino = importer.import_from(
-            source=USD_MODEL_PATH,
+            source=asset_file,
             load_drive_dynamics=True,
             force_show_colliders=True,
             use_prim_path_names=True,

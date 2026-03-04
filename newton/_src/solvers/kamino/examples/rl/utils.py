@@ -94,6 +94,84 @@ def yaw_apply_2d(yaw: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
     return out.view(-1, 2)
 
 
+def yaw_to_quat(yaw: torch.Tensor) -> torch.Tensor:
+    """Build quaternion (xyzw) from yaw angle.  Returns shape ``(-1, 4)``."""
+    yaw = yaw.reshape(-1, 1)
+    half = yaw * 0.5
+    zeros = torch.zeros_like(half)
+    return torch.cat([zeros, zeros, torch.sin(half), torch.cos(half)], dim=-1)
+
+
+def quat_inv_mul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """Compute ``inv(a) * b`` for quaternions (xyzw convention).
+
+    Returns shape ``(-1, 4)``.
+    """
+    a = a.reshape(-1, 4)
+    b = b.reshape(-1, 4)
+    # inv(a) = conjugate(a) for unit quaternions (negate xyz)
+    ax, ay, az, aw = -a[:, 0], -a[:, 1], -a[:, 2], a[:, 3]
+    bx, by, bz, bw = b[:, 0], b[:, 1], b[:, 2], b[:, 3]
+    return torch.stack(
+        [
+            aw * bx + ax * bw + ay * bz - az * by,
+            aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw,
+            aw * bw - ax * bx - ay * by - az * bz,
+        ],
+        dim=-1,
+    )
+
+
+def quat_rotate_inv(q: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+    """Rotate 3-D vector by the inverse of quaternion ``q`` (xyzw).
+
+    Returns shape ``(-1, 3)``.
+    """
+    q = q.reshape(-1, 4)
+    v = v.reshape(-1, 3)
+    qx, qy, qz, qw = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+    # t = 2 * cross(q_xyz, v)  — but for inverse we negate q_xyz
+    nqx, nqy, nqz = -qx, -qy, -qz
+    tx = 2.0 * (nqy * v[:, 2] - nqz * v[:, 1])
+    ty = 2.0 * (nqz * v[:, 0] - nqx * v[:, 2])
+    tz = 2.0 * (nqx * v[:, 1] - nqy * v[:, 0])
+    return torch.stack(
+        [
+            v[:, 0] + qw * tx + nqy * tz - nqz * ty,
+            v[:, 1] + qw * ty + nqz * tx - nqx * tz,
+            v[:, 2] + qw * tz + nqx * ty - nqy * tx,
+        ],
+        dim=-1,
+    )
+
+
+def quat_to_rotation9d(q: torch.Tensor) -> torch.Tensor:
+    """Convert quaternion (xyzw) to a flattened 3x3 rotation matrix (9D).
+
+    Returns shape ``(-1, 9)`` with row-major layout.
+    """
+    q = q.reshape(-1, 4)
+    x, y, z, w = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+    xx, yy, zz = x * x, y * y, z * z
+    xy, xz, yz = x * y, x * z, y * z
+    wx, wy, wz = w * x, w * y, w * z
+    return torch.stack(
+        [
+            1.0 - 2.0 * (yy + zz),
+            2.0 * (xy - wz),
+            2.0 * (xz + wy),
+            2.0 * (xy + wz),
+            1.0 - 2.0 * (xx + zz),
+            2.0 * (yz - wx),
+            2.0 * (xz - wy),
+            2.0 * (yz + wx),
+            1.0 - 2.0 * (xx + yy),
+        ],
+        dim=-1,
+    )
+
+
 # ---------------------------------------------------------------------------
 # StackedIndices — lightweight named-range bookkeeping
 # ---------------------------------------------------------------------------

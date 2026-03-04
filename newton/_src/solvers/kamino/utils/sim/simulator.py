@@ -207,6 +207,10 @@ class Simulator:
         # Cache the target device use for the simulation
         self._device: wp.DeviceLike = device
 
+        # Pass collision detector config to builder before finalization
+        if self._config.collision_detector.max_contacts_per_pair is not None:
+            builder.max_contacts_per_pair = self._config.collision_detector.max_contacts_per_pair
+
         # Finalize the model from the builder on the specified
         # device, allocating all necessary model data structures
         self._model = builder.finalize(device=self._device)

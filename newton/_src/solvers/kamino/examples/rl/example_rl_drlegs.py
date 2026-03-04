@@ -20,8 +20,11 @@
 # solver with implicit PD joint control.  Velocity commands come from an
 # Xbox gamepad or keyboard via the 3-D viewer.
 #
-# The policy expects 72D observations:
-#   base (63D) + phase encoding (4D) + cmd_vel (2D) + root_lin_vel (3D)
+# The policy expects 92D observations with path-frame integration:
+#   ori_root_to_path (9D) + path_deviation (2D) + path_dev_heading (2D)
+#   + path_cmd (3D) + cmd_linvel_in_root (3D) + cmd_angvel_in_root (3D)
+#   + phase_encoding (4D) + root_linvel_in_root (3D) + root_angvel_in_root (3D)
+#   + joint_positions (36D) + action_history (24D)
 #
 # Usage:
 #   python example_rl_drlegs.py --policy path/to/model.pt
@@ -43,7 +46,16 @@ from newton._src.solvers.kamino.examples.rl.joystick import JoystickConfig, Joys
 from newton._src.solvers.kamino.examples.rl.observations import DrlegsBaseObservation
 from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
 from newton._src.solvers.kamino.examples.rl.simulation_runner import SimulationRunner
-from newton._src.solvers.kamino.examples.rl.utils import _load_policy_checkpoint, periodic_encoding
+from newton._src.solvers.kamino.examples.rl.utils import (
+    _load_policy_checkpoint,
+    periodic_encoding,
+    quat_inv_mul,
+    quat_rotate_inv,
+    quat_to_projected_yaw,
+    quat_to_rotation9d,
+    yaw_apply_2d,
+    yaw_to_quat,
+)
 from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -61,9 +73,12 @@ _CONTACT_DURATION = 0.35  # seconds per foot contact phase
 _PHASE_RATE = 1.0 / (2.0 * _CONTACT_DURATION)  # ~1.4286 Hz gait frequency
 _PHASE_EMBEDDING_K = 2  # periodic encoding order -> 4D embedding
 _VEL_CMD_MAX = 0.3  # m/s max velocity command
+_YAW_CMD_MAX = 1.0  # rad/s max yaw rate command
 _PD_KP = 15.0  # proportional gain (N·m/rad) for actuated joints
 _PD_KD = 0.6  # derivative gain (N·m·s/rad) for actuated joints
 _PD_ARMATURE = 0.01  # rotor inertia (kg·m²) for actuated joints
+_PATH_DEVIATION_SCALE = 0.1  # scaling for path deviation observations
+_LINEAR_PATH_ERROR_LIMIT = 0.1  # max path-to-root deviation before clipping (m)
 
 
 ###
@@ -119,7 +134,9 @@ class Example:
         k_d[~actuated_mask] = 0.0
         b_j.fill_(0.0)
 
-        # Observation builder (63D base)
+        # Observation builder (63D base: root_pos(3) + joints(36) + action_hist(24))
+        # action_scale=_ACTION_SCALE so that history stores scale*actions = 0.4*output,
+        # matching training where action_scale=1.0 but setpoints are already 0.4*output.
         self.obs_builder = DrlegsBaseObservation(
             body_sim=self.sim_wrapper,
             action_scale=_ACTION_SCALE,
@@ -132,11 +149,21 @@ class Example:
         self._offset = torch.from_numpy(offset).float().to(self.torch_device)
         self._phase_enc = torch.zeros(num_worlds, _PHASE_EMBEDDING_K * 2, device=self.torch_device, dtype=torch.float32)
 
+        # Path frame state
+        self._path_heading = torch.zeros(num_worlds, device=self.torch_device, dtype=torch.float32)
+        self._path_position = torch.zeros(num_worlds, 2, device=self.torch_device, dtype=torch.float32)
+
         # Command velocity buffer (filled by joystick each step)
         self._cmd_vel = torch.zeros(num_worlds, 2, device=self.torch_device, dtype=torch.float32)
+        # Command yaw rate buffer (filled by joystick each step)
+        self._cmd_yaw_rate = torch.zeros(num_worlds, 1, device=self.torch_device, dtype=torch.float32)
 
-        # Full observation buffer (72D = 63 + 4 + 2 + 3)
-        obs_dim = self.obs_builder.num_observations + _PHASE_EMBEDDING_K * 2 + 2 + 3
+        # Zero column for 2D->3D padding
+        self._zeros = torch.zeros(num_worlds, 1, device=self.torch_device, dtype=torch.float32)
+
+        # Full observation buffer (92D)
+        # 9 + 2 + 2 + 3 + 3 + 3 + 4 + 3 + 3 + 36 + 24 = 92
+        obs_dim = 92
         self._obs_buffer = torch.zeros(num_worlds, obs_dim, device=self.torch_device, dtype=torch.float32)
         msg.info(f"Observation dim: {obs_dim}")
 
@@ -158,7 +185,7 @@ class Example:
                 forward_velocity_turbo=0.0,
                 lateral_velocity_base=_VEL_CMD_MAX,
                 lateral_velocity_turbo=0.0,
-                angular_velocity_base=0.0,
+                angular_velocity_base=_YAW_CMD_MAX,
                 angular_velocity_turbo=0.0,
             ),
         )
@@ -183,6 +210,25 @@ class Example:
         self.sim_wrapper.q_j_ref[:, self.sim_wrapper.actuated_dof_indices_tensor] = _ACTION_SCALE * self.actions
         self.sim_wrapper.dq_j_ref.zero_()
 
+    def _advance_path(self):
+        """Integrate path heading and position from velocity commands.
+        Uses mid-point heading integration.
+        """
+        cmd_yaw = self._cmd_yaw_rate.squeeze(-1)  # (N,)
+
+        # Mid-point heading for numerical accuracy
+        mid_heading = self._path_heading + 0.5 * self.env_dt * cmd_yaw
+        self._path_position += yaw_apply_2d(mid_heading, self._cmd_vel) * self.env_dt
+
+        # Heading integration
+        self._path_heading += cmd_yaw * self.env_dt
+
+        # Clip path position to stay near robot (prevent drift)
+        root_pos_2d = self.sim_wrapper.q_i[:, 0, :2]
+        diff = self._path_position - root_pos_2d
+        clipped = diff.renorm(p=2, dim=0, maxnorm=_LINEAR_PATH_ERROR_LIMIT)
+        self._path_position[:] = root_pos_2d + clipped
+
     def reset(self):
         """Reset the simulation and internal state."""
         self.sim_wrapper.reset()
@@ -190,6 +236,9 @@ class Example:
         self.obs_builder.reset()
         self._phase.zero_()
         self._cmd_vel.zero_()
+        self._cmd_yaw_rate.zero_()
+        self._path_heading.zero_()
+        self._path_position[:] = self.sim_wrapper.q_i[:, 0, :2]
         self.sim_wrapper.q_j_ref.zero_()
         self.sim_wrapper.dq_j_ref.zero_()
         self.joystick.reset()
@@ -202,28 +251,89 @@ class Example:
         """Transfer joystick velocity commands to the command buffer."""
         self._cmd_vel[0, 0] = self.joystick.forward_velocity
         self._cmd_vel[0, 1] = self.joystick.lateral_velocity
+        self._cmd_yaw_rate[0, 0] = self.joystick.angular_velocity
 
     def sim_step(self):
-        """Observations -> policy inference -> actions -> physics step."""
+        """Observations -> policy inference -> actions -> physics step.
+
+        Builds 92D path-frame observations matching DrlegsWalkObserver:
+            ori_root_to_path(9) + path_dev(2) + path_dev_heading(2)
+            + path_cmd(3) + cmd_linvel_root(3) + cmd_angvel_root(3)
+            + phase_enc(4) + root_linvel_root(3) + root_angvel_root(3)
+            + joints(36) + action_hist(24)
+        """
         # Advance phase clock
         self._phase.add_(self.env_dt * _PHASE_RATE).remainder_(1.0)
 
-        # Base observation (63D)
-        base_obs = self.obs_builder.compute(actions=self.actions)
+        # Advance path frame
+        self._advance_path()
 
-        # Phase encoding (4D): sin(phase * freq_2pi + offset)
+        # Base observation (63D: root_pos(3) + joints(36) + action_hist(24))
+        base_obs = self.obs_builder.compute(actions=self.actions)
+        base_no_root = base_obs[:, 3:]  # 60D (joints + action_history)
+
+        # --- Path quaternion from heading ---
+        path_quat = yaw_to_quat(self._path_heading)  # (N, 4)
+
+        # --- Root orientation relative to path frame (9D) ---
+        root_quat = self.sim_wrapper.q_i[:, 0, 3:]  # (N, 4)
+        root_in_path = quat_inv_mul(path_quat, root_quat)  # (N, 4)
+        ori_9d = quat_to_rotation9d(root_in_path)  # (N, 9)
+
+        # --- Path deviation in path frame (2D, scaled) ---
+        diff_xy = self.sim_wrapper.q_i[:, 0, :2] - self._path_position  # (N, 2)
+        diff_3d = torch.cat([diff_xy, self._zeros], dim=-1)  # (N, 3)
+        dev_in_path = quat_rotate_inv(path_quat, diff_3d)[:, :2]  # (N, 2)
+        inv_scale = 1.0 / _PATH_DEVIATION_SCALE
+        path_dev = dev_in_path * inv_scale
+
+        # --- Path deviation in heading frame (2D, scaled) ---
+        root_heading = quat_to_projected_yaw(root_in_path)  # (N, 1)
+        heading_quat = yaw_to_quat(root_heading)  # (N, 4)
+        neg_dev = torch.cat([-dev_in_path, self._zeros], dim=-1)  # (N, 3)
+        dev_in_heading = quat_rotate_inv(heading_quat, neg_dev)[:, :2]  # (N, 2)
+        path_dev_h = dev_in_heading * inv_scale
+
+        # --- Path command (3D, local frame) ---
+        path_cmd = torch.cat([self._cmd_vel, self._cmd_yaw_rate], dim=-1)  # (N, 3)
+
+        # --- Command velocities in root frame (3D + 3D) ---
+        cmd_vel_3d = torch.cat([self._cmd_vel, self._zeros], dim=-1)  # (N, 3)
+        cmd_linvel_root = quat_rotate_inv(root_in_path, cmd_vel_3d)  # (N, 3)
+        cmd_angvel_3d = torch.cat([self._zeros, self._zeros, self._cmd_yaw_rate], dim=-1)  # (N, 3)
+        cmd_angvel_root = quat_rotate_inv(root_in_path, cmd_angvel_3d)  # (N, 3)
+
+        # --- Phase encoding (4D) ---
         torch.sin(torch.outer(self._phase, self._freq_2pi).add_(self._offset), out=self._phase_enc)
 
-        # Root linear velocity (3D, world frame)
-        root_lin_vel = self.sim_wrapper.u_i[:, 0, :3]
+        # --- Actual velocities in root frame (3D + 3D) ---
+        world_linvel = self.sim_wrapper.u_i[:, 0, :3]
+        world_angvel = self.sim_wrapper.u_i[:, 0, 3:]
+        root_linvel = quat_rotate_inv(root_quat, world_linvel)  # (N, 3)
+        root_angvel = quat_rotate_inv(root_quat, world_angvel)  # (N, 3)
 
-        # Build full 72D observation
-        d_base = base_obs.shape[1]
-        d_phase = self._phase_enc.shape[1]
-        self._obs_buffer[:, :d_base] = base_obs
-        self._obs_buffer[:, d_base : d_base + d_phase] = self._phase_enc
-        self._obs_buffer[:, d_base + d_phase : d_base + d_phase + 2] = self._cmd_vel
-        self._obs_buffer[:, d_base + d_phase + 2 :] = root_lin_vel
+        # --- Build full 92D observation ---
+        i = 0
+        self._obs_buffer[:, i : i + 9] = ori_9d
+        i += 9
+        self._obs_buffer[:, i : i + 2] = path_dev
+        i += 2
+        self._obs_buffer[:, i : i + 2] = path_dev_h
+        i += 2
+        self._obs_buffer[:, i : i + 3] = path_cmd
+        i += 3
+        self._obs_buffer[:, i : i + 3] = cmd_linvel_root
+        i += 3
+        self._obs_buffer[:, i : i + 3] = cmd_angvel_root
+        i += 3
+        self._obs_buffer[:, i : i + 4] = self._phase_enc
+        i += 4
+        self._obs_buffer[:, i : i + 3] = root_linvel
+        i += 3
+        self._obs_buffer[:, i : i + 3] = root_angvel
+        i += 3
+        self._obs_buffer[:, i : i + 60] = base_no_root
+        # i += 60 → total = 92
 
         # Policy inference
         with torch.no_grad():

@@ -98,6 +98,9 @@ class ModelBuilderKamino:
         self._num_joint_kinematic_cts: int = 0
         self._num_joint_dynamic_cts: int = 0
 
+        # Contact capacity settings
+        self._max_contacts_per_pair: int | None = None
+
         # Declare per-world model descriptor sets
         self._up_axes: list[Axis] = []
         self._worlds: list[WorldDescriptor] = []
@@ -113,6 +116,16 @@ class ModelBuilderKamino:
         # Create a default world if requested
         if default_world:
             self.add_world()
+
+    @property
+    def max_contacts_per_pair(self) -> int | None:
+        """Maximum contacts per geometry pair override. When set, caps the per-pair contact count
+        in `compute_required_contact_capacity()`, reducing the Delassus matrix size."""
+        return self._max_contacts_per_pair
+
+    @max_contacts_per_pair.setter
+    def max_contacts_per_pair(self, value: int | None):
+        self._max_contacts_per_pair = value
 
     @property
     def num_worlds(self) -> int:
@@ -1255,7 +1268,8 @@ class ModelBuilderKamino:
         # Compute the maximum number of contacts required for the model and each world
         # NOTE: This is a conservative estimate based on the maximum per-world geom-pairs
         model_required_contacts, world_required_contacts = self.compute_required_contact_capacity(
-            collidable_geom_pairs=model_collidable_pairs
+            collidable_geom_pairs=model_collidable_pairs,
+            max_contacts_per_pair=self._max_contacts_per_pair,
         )
 
         ###
@@ -1684,7 +1698,7 @@ class ModelBuilderKamino:
             )
             num_contacts = num_contacts_a + num_contacts_b
             if max_contacts_per_pair is not None:
-                world_max_contacts[geom1.wid] += max(num_contacts, max_contacts_per_pair)
+                world_max_contacts[geom1.wid] += min(num_contacts, max_contacts_per_pair)  # todo find a better fix
             else:
                 world_max_contacts[geom1.wid] += num_contacts
 

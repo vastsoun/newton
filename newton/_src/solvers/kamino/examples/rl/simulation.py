@@ -27,6 +27,8 @@ from __future__ import annotations
 # Thirdparty
 import torch
 import warp as wp
+from warp.context import Devicelike
+
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.types import transformf, vec6f
 from newton._src.solvers.kamino.geometry.aggregation import ContactAggregation
@@ -39,7 +41,6 @@ from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.sim import Simulator, SimulatorConfig, ViewerKamino
-from warp.context import Devicelike
 
 
 class RigidBodySim:
@@ -88,6 +89,7 @@ class RigidBodySim:
         record_video: bool = False,
         video_folder: str | None = None,
         async_save: bool = True,
+        max_contacts_per_pair: int | None = None,
     ):
         # ----- Device setup -----
         self._device = wp.get_device(device)
@@ -105,6 +107,10 @@ class RigidBodySim:
             load_drive_dynamics=load_drive_dynamics,
             ground=add_ground,
         )
+
+        # Cap per-pair contact count to limit Delassus matrix size
+        if max_contacts_per_pair is not None:
+            self.builder.max_contacts_per_pair = max_contacts_per_pair
 
         # Apply body pose offset if provided
         if body_pose_offset is not None:

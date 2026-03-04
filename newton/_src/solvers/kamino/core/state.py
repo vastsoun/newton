@@ -300,6 +300,7 @@ class StateKamino:
         wp.copy(self.q_i, other.q_i)
         wp.copy(self.u_i, other.u_i)
         wp.copy(self.w_i, other.w_i)
+        wp.copy(self.w_i_e, other.w_i_e)
         wp.copy(self.q_j, other.q_j)
         wp.copy(self.q_j_p, other.q_j_p)
         wp.copy(self.dq_j, other.dq_j)

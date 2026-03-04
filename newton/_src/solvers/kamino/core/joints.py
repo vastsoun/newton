@@ -220,8 +220,10 @@ class JointCorrectionMode(IntEnum):
             raise ValueError(f"Unknown joint correction mode: {self.value}")
 
     @classmethod
-    def from_string(cls, s: str) -> JointCorrectionMode:
+    def from_string(cls, s: str | JointCorrectionMode) -> JointCorrectionMode:
         """Converts a string to a JointCorrectionMode enum value."""
+        if isinstance(s, cls):
+            return s
         try:
             return cls[s.upper()]
         except KeyError as e:

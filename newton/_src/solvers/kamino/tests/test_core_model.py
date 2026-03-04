@@ -21,6 +21,7 @@ import copy
 import os
 import unittest
 
+import numpy as np
 import warp as wp
 
 import newton
@@ -331,7 +332,9 @@ class TestModelConversions(unittest.TestCase):
         model_2: ModelKamino = ModelKamino.from_newton(model_0)
         # NOTE: We don't check:
         # - mesh geometry pointers since they have been loaded separately
-        test_util_checks.assert_model_equal(self, model_2, model_1, excluded=["ptr"])
+        # Inversion of the inertia matrix amplifies small floating-point differences,
+        # so inv_i_I_i needs a somewhat higher tolerance.
+        test_util_checks.assert_model_equal(self, model_2, model_1, excluded=["ptr"], rtol={"inv_i_I_i": 1e-5})
 
     def test_03_model_conversions_dr_legs_from_usd(self):
         """
@@ -451,6 +454,166 @@ class TestModelConversions(unittest.TestCase):
             "excluded_pairs",  # TODO: newton.ModelBuilder preemptively adding geom-pairs to shape_collision_filter_pairs
         ]
         test_util_checks.assert_model_equal(self, model_2, model_1, excluded=excluded)
+
+    def test_05_model_conversions_arbitrary_axis(self):
+        """
+        Test that Newton→Kamino conversion succeeds for a revolute joint
+        with an arbitrary (non-canonical) axis, e.g. ``(1, 1, 0)``.
+        """
+        builder: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder)
+        builder.default_shape_cfg.margin = 0.0
+        builder.default_shape_cfg.gap = 0.0
+
+        builder.begin_world()
+
+        # Parent body at origin
+        bid0 = builder.add_link(
+            label="base",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(0.0, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(label="box_base", body=bid0, hx=0.05, hy=0.05, hz=0.05)
+
+        # Child body offset along z
+        bid1 = builder.add_link(
+            label="pendulum",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(0.0, 0.0, 0.5), wp.quat_identity(dtype=wp.float32)),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(label="box_pend", body=bid1, hx=0.05, hy=0.05, hz=0.25)
+
+        # Fix the base to the world
+        builder.add_joint_fixed(
+            label="world_to_base",
+            parent=-1,
+            child=bid0,
+            parent_xform=wp.transform_identity(dtype=wp.float32),
+            child_xform=wp.transform_identity(dtype=wp.float32),
+        )
+
+        # Diagonal revolute axis (non-canonical)
+        axis_vec = wp.vec3(1.0, 1.0, 0.0)
+        builder.add_joint_revolute(
+            label="base_to_pendulum",
+            parent=bid0,
+            child=bid1,
+            axis=axis_vec,
+            parent_xform=wp.transformf(wp.vec3f(0.0, 0.0, 0.25), wp.quat_identity(dtype=wp.float32)),
+            child_xform=wp.transformf(wp.vec3f(0.0, 0.0, -0.25), wp.quat_identity(dtype=wp.float32)),
+        )
+
+        builder.end_world()
+
+        model: Model = builder.finalize(skip_validation_joints=True)
+
+        # Conversion must succeed (previously raised ValueError)
+        kamino_model: ModelKamino = ModelKamino.from_newton(model)
+
+        # Verify X_j first column is aligned with the expected axis direction
+        X_j = kamino_model.joints.X_j.numpy()
+        # X_j has shape (num_joints, 3, 3); the revolute joint is the second one (index 1)
+        R = X_j[1]  # 3x3 rotation matrix
+        ax_col = R[:, 0]  # first column = joint axis direction
+        expected_ax = np.array([1.0, 1.0, 0.0])
+        expected_ax = expected_ax / np.linalg.norm(expected_ax)
+        np.testing.assert_allclose(ax_col, expected_ax, atol=1e-6)
+
+    def test_06_model_conversions_q_i_0_com_frame(self):
+        """
+        Test that ``q_i_0`` stores COM world poses (not body-origin poses)
+        after Newton→Kamino conversion for bodies with non-zero COM offsets.
+        """
+        builder: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder)
+        builder.default_shape_cfg.margin = 0.0
+        builder.default_shape_cfg.gap = 0.0
+
+        builder.begin_world()
+
+        # Body 0: at origin, identity rotation, COM offset along x
+        bid0 = builder.add_link(
+            label="body0",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(0.0, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+            com=wp.vec3f(0.1, 0.0, 0.0),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(label="box0", body=bid0, hx=0.05, hy=0.05, hz=0.05)
+
+        # Body 1: at (0,0,1), rotated 90° about z-axis, single-axis COM offset
+        rot_90z = wp.quat_from_axis_angle(wp.vec3f(0.0, 0.0, 1.0), np.pi / 2.0)
+        bid1 = builder.add_link(
+            label="body1",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(0.0, 0.0, 1.0), rot_90z),
+            com=wp.vec3f(0.1, 0.0, 0.0),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(label="box1", body=bid1, hx=0.05, hy=0.05, hz=0.05)
+
+        # Body 2: at (1,0,0), rotated 90° about x-axis, 3D COM offset
+        rot_90x = wp.quat_from_axis_angle(wp.vec3f(1.0, 0.0, 0.0), np.pi / 2.0)
+        bid2 = builder.add_link(
+            label="body2",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(1.0, 0.0, 0.0), rot_90x),
+            com=wp.vec3f(0.1, 0.2, 0.3),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(label="box2", body=bid2, hx=0.05, hy=0.05, hz=0.05)
+
+        # Fix body 0 to world
+        builder.add_joint_fixed(
+            label="world_to_body0",
+            parent=-1,
+            child=bid0,
+            parent_xform=wp.transform_identity(dtype=wp.float32),
+            child_xform=wp.transform_identity(dtype=wp.float32),
+        )
+
+        # Revolute joint: body 0 → body 1
+        builder.add_joint_revolute(
+            label="body0_to_body1",
+            parent=bid0,
+            child=bid1,
+            axis=wp.vec3(0.0, 1.0, 0.0),
+            parent_xform=wp.transformf(wp.vec3f(0.0, 0.0, 0.5), wp.quat_identity(dtype=wp.float32)),
+            child_xform=wp.transformf(wp.vec3f(0.0, 0.0, -0.5), wp.quat_identity(dtype=wp.float32)),
+        )
+
+        # Revolute joint: body 1 → body 2
+        builder.add_joint_revolute(
+            label="body1_to_body2",
+            parent=bid1,
+            child=bid2,
+            axis=wp.vec3(0.0, 1.0, 0.0),
+            parent_xform=wp.transformf(wp.vec3f(0.5, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+            child_xform=wp.transformf(wp.vec3f(-0.5, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+        )
+
+        builder.end_world()
+
+        model: Model = builder.finalize(skip_validation_joints=True)
+        kamino_model: ModelKamino = ModelKamino.from_newton(model)
+
+        q_i_0_np = kamino_model.bodies.q_i_0.numpy()  # shape (N, 7)
+        body_q_np = model.body_q.numpy()
+
+        # Body 0: identity rotation, origin (0,0,0), COM (0.1,0,0) → world (0.1, 0, 0)
+        np.testing.assert_allclose(q_i_0_np[0, :3], [0.1, 0.0, 0.0], atol=1e-6)
+        np.testing.assert_allclose(q_i_0_np[0, 3:7], body_q_np[0, 3:7], atol=1e-6)
+
+        # Body 1: 90° z-rotation maps local (0.1,0,0) → world (0, 0.1, 0), plus origin (0,0,1)
+        np.testing.assert_allclose(q_i_0_np[1, :3], [0.0, 0.1, 1.0], atol=1e-6)
+        np.testing.assert_allclose(q_i_0_np[1, 3:7], body_q_np[1, 3:7], atol=1e-6)
+
+        # Body 2: 90° x-rotation maps local (0.1, 0.2, 0.3) → world (0.1, -0.3, 0.2),
+        # plus origin (1,0,0) → (1.1, -0.3, 0.2)
+        np.testing.assert_allclose(q_i_0_np[2, :3], [1.1, -0.3, 0.2], atol=1e-6)
+        np.testing.assert_allclose(q_i_0_np[2, 3:7], body_q_np[2, 3:7], atol=1e-6)
 
     def test_10_state_conversions(self):
         """

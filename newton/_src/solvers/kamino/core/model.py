@@ -1234,7 +1234,18 @@ class ModelKamino:
             # Per-world gravity
             model_gravity = GravityModel.from_newton(model)
 
-            # Rigid bodies
+            # model.body_q stores body-origin world poses, but Kamino expects
+            # COM world poses (joint attachment vectors are COM-relative).
+            body_q_np = model.body_q.numpy()
+            body_com_np = model.body_com.numpy()
+            q_i_0_np = np.empty((model.body_count, 7), dtype=np.float32)
+            for i in range(model.body_count):
+                pos = body_q_np[i, :3]
+                rot = wp.quatf(*body_q_np[i, 3:7])
+                com_world = pos + np.array(wp.quat_rotate(rot, wp.vec3f(*body_com_np[i])))
+                q_i_0_np[i, :3] = com_world
+                q_i_0_np[i, 3:7] = body_q_np[i, 3:7]
+
             model_bodies = RigidBodiesModel(
                 num_bodies=model.body_count,
                 label=model.body_label,
@@ -1245,7 +1256,7 @@ class ModelKamino:
                 inv_m_i=model.body_inv_mass,
                 i_I_i=model.body_inertia,
                 inv_i_I_i=model.body_inv_inertia,
-                q_i_0=model.body_q,
+                q_i_0=wp.array(q_i_0_np, dtype=wp.transformf),
                 u_i_0=model.body_qd,
             )
 

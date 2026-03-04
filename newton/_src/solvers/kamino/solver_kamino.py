@@ -204,9 +204,9 @@ class SolverKaminoConfig:
     Defaults to `0.0` (i.e. no damping).
     """
 
-    sparse: bool = False
+    sparse_dynamics: bool = False
     """
-    Flag to indicate whether the solver should use sparse data representations.
+    Flag to indicate whether the solver should use sparse data representations for the dynamics.
     """
 
     sparse_jacobian: bool = False
@@ -227,9 +227,9 @@ class SolverKaminoConfig:
         WarmstarterContacts.Method.from_string(self.contact_warmstart_method)
         # Conversion to JointCorrectionMode will raise an error if the input string is invalid.
         JointCorrectionMode.from_string(self.rotation_correction)
-        if self.sparse and not self.sparse_jacobian:
+        if self.sparse_dynamics and not self.sparse_jacobian:
             raise ValueError(
-                "Sparsity setting mismatch: `sparse` solver option requires that `sparse_jacobian` is set to `True`."
+                "Sparsity setting mismatch: `sparse_dynamics` solver option requires that `sparse_jacobian` is set to `True`."
             )
         self.problem.check()
         self.padmm.check()
@@ -338,7 +338,7 @@ class SolverKaminoImpl(SolverBase):
         # TODO: Also consider raising an error here instead of a warning
         # Override the linear solver type to an iterative solver if
         # sparsity is enabled but the provided solver is not iterative
-        if self._config.sparse and not issubclass(self._config.linear_solver_type, IterativeSolver):
+        if self._config.sparse_dynamics and not issubclass(self._config.linear_solver_type, IterativeSolver):
             msg.warning(
                 f"Sparse dynamics requires an iterative solver, but got '{self._config.linear_solver_type.__name__}'."
                 " Defaulting to 'ConjugateResidualSolver' as the PADMM linear solver."
@@ -383,7 +383,7 @@ class SolverKaminoImpl(SolverBase):
             solver_kwargs=linear_solver_kwargs,
             config=self._config.problem,
             device=self._model.device,
-            sparse=self._config.sparse,
+            sparse=self._config.sparse_dynamics,
         )
 
         # Allocate the forward dynamics solver on the device

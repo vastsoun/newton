@@ -247,8 +247,8 @@ class Example:
         # Set solver config
         config = SimulatorConfig()
         config.dt = self.sim_dt
-        config.solver.sparse = False
         config.solver.sparse_jacobian = True
+        config.solver.sparse_dynamics = False
         config.solver.integrator = "euler"  # Select from {"euler", "moreau"}
         config.solver.problem.preconditioning = True
         config.solver.padmm.primal_tolerance = 1e-4

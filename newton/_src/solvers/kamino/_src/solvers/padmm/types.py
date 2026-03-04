@@ -163,8 +163,10 @@ class PADMMWarmStartMode(IntEnum):
     """
 
     @classmethod
-    def from_string(cls, s: str) -> PADMMWarmStartMode:
+    def from_string(cls, s: str | PADMMWarmStartMode) -> PADMMWarmStartMode:
         """Converts a string to a PADMMWarmStartMode enum value."""
+        if isinstance(s, cls):
+            return s
         try:
             return cls[s.upper()]
         except KeyError as e:

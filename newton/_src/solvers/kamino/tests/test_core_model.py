@@ -332,7 +332,9 @@ class TestModelConversions(unittest.TestCase):
         model_2: ModelKamino = ModelKamino.from_newton(model_0)
         # NOTE: We don't check:
         # - mesh geometry pointers since they have been loaded separately
-        test_util_checks.assert_model_equal(self, model_2, model_1, excluded=["ptr"])
+        # Inversion of the inertia matrix amplifies small floating-point differences,
+        # so inv_i_I_i needs a somewhat higher tolerance.
+        test_util_checks.assert_model_equal(self, model_2, model_1, excluded=["ptr"], rtol={"inv_i_I_i": 1e-5})
 
     def test_03_model_conversions_dr_legs_from_usd(self):
         """

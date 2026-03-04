@@ -108,7 +108,9 @@ def assert_scalar_attributes_equal(test: unittest.TestCase, obj0: Any, obj1: Any
         )
 
 
-def assert_array_attributes_equal(test: unittest.TestCase, obj0: Any, obj1: Any, attributes: list[str]) -> None:
+def assert_array_attributes_equal(
+    test: unittest.TestCase, obj0: Any, obj1: Any, attributes: list[str], rtol: dict[str, float] | None = None
+) -> None:
     for attr in attributes:
         # Check if attribute exists in both objects
         obj_name = obj0.__class__.__name__
@@ -151,7 +153,7 @@ def assert_array_attributes_equal(test: unittest.TestCase, obj0: Any, obj1: Any,
             actual=attr0.numpy(),
             desired=attr1.numpy(),
             err_msg=f"{obj_name}.{attr} are not equal.",
-            rtol=1e-6,
+            rtol=rtol.get(attr, 1e-6) if rtol else 1e-6,
         )
 
 
@@ -415,7 +417,11 @@ def assert_model_info_equal(
 
 
 def assert_model_bodies_equal(
-    test: unittest.TestCase, bodies0: RigidBodiesModel, bodies1: RigidBodiesModel, excluded: list[str] | None = None
+    test: unittest.TestCase,
+    bodies0: RigidBodiesModel,
+    bodies1: RigidBodiesModel,
+    excluded: list[str] | None = None,
+    rtol: dict[str, float] | None = None,
 ) -> None:
     assert_scalar_attributes_equal(test, bodies0, bodies1, ["num_bodies", "label"])
     array_attributes = [
@@ -431,7 +437,7 @@ def assert_model_bodies_equal(
     ]
     if excluded:
         array_attributes = [attr for attr in array_attributes if attr not in excluded]
-    assert_array_attributes_equal(test, bodies0, bodies1, array_attributes)
+    assert_array_attributes_equal(test, bodies0, bodies1, array_attributes, rtol=rtol)
 
 
 def assert_model_joints_equal(
@@ -556,10 +562,11 @@ def assert_model_equal(
     skip_geom_group_and_collides: bool = False,
     skip_geom_margin_and_gap: bool = False,
     excluded: list[str] | None = None,
+    rtol: dict[str, float] | None = None,
 ) -> None:
     assert_model_size_equal(test, model0.size, model1.size, excluded)
     assert_model_info_equal(test, model0.info, model1.info, excluded)
-    assert_model_bodies_equal(test, model0.bodies, model1.bodies, excluded)
+    assert_model_bodies_equal(test, model0.bodies, model1.bodies, excluded, rtol=rtol)
     assert_model_joints_equal(test, model0.joints, model1.joints, excluded)
     geom_excluded = excluded
     if skip_geom_source_ptr or skip_geom_group_and_collides or skip_geom_margin_and_gap:

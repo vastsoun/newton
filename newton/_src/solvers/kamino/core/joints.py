@@ -30,7 +30,6 @@ from ....sim.joints import JointTargetMode, JointType
 from .math import FLOAT32_MAX, FLOAT32_MIN, PI, TWO_PI
 from .types import (
     ArrayLike,
-    Axis,
     Descriptor,
     mat33f,
     override,
@@ -807,25 +806,18 @@ class JointDoFType(IntEnum):
         # Initialize the joint axes rotation matrix to identity by default
         R_axis_j = wp.quat_to_matrix(wp.quat_identity())
 
-        def _is_pos_x_axis(axis: np.ndarray) -> bool:
-            return np.allclose(axis, np.array([1.0, 0.0, 0.0]))
-
-        def _is_pos_y_axis(axis: np.ndarray) -> bool:
-            return np.allclose(axis, np.array([0.0, 1.0, 0.0]))
-
-        def _is_pos_z_axis(axis: np.ndarray) -> bool:
-            return np.allclose(axis, np.array([0.0, 0.0, 1.0]))
-
-        # TODO: REDO THIS TO PROPERLY HANDLE ARBITRARY AXES OR ORIENTATIONS, INSTEAD OF JUST MATCHING TO THE WORLD AXES
         def _axis_rotmatn_from_vec3f(vec: np.ndarray) -> wp.mat33f:
-            if _is_pos_x_axis(vec):
-                return Axis.X.to_mat33()
-            elif _is_pos_y_axis(vec):
-                return Axis.Y.to_mat33()
-            elif _is_pos_z_axis(vec):
-                return Axis.Z.to_mat33()
-            else:
-                raise ValueError(f"Unsupported joint axis vector: {vec}")
+            n = np.linalg.norm(vec)
+            if n < 1e-12:
+                raise ValueError(f"Joint axis vector has near-zero length: {vec}")
+            ax = vec / n
+            dominant = np.argmax(np.abs(ax))
+            ref = np.zeros(3)
+            ref[(dominant + 2) % 3] = 1.0
+            ay = np.cross(ref, ax)
+            ay /= np.linalg.norm(ay)
+            az = np.cross(ax, ay)
+            return wp.matrix_from_cols(wp.vec3f(ax), wp.vec3f(ay), wp.vec3f(az))
 
         # Ensure that dof_axes has the correct shape based on the number of DoFs
         if dof_axes.shape != (dof_dim[0] + dof_dim[1], 3):

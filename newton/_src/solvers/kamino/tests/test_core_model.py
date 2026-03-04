@@ -21,6 +21,7 @@ import copy
 import os
 import unittest
 
+import numpy as np
 import warp as wp
 
 import newton
@@ -451,6 +452,72 @@ class TestModelConversions(unittest.TestCase):
             "excluded_pairs",  # TODO: newton.ModelBuilder preemptively adding geom-pairs to shape_collision_filter_pairs
         ]
         test_util_checks.assert_model_equal(self, model_2, model_1, excluded=excluded)
+
+    def test_05_model_conversions_arbitrary_axis(self):
+        """
+        Test that Newton→Kamino conversion succeeds for a revolute joint
+        with an arbitrary (non-canonical) axis, e.g. ``(1, 1, 0)``.
+        """
+        builder: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder)
+        builder.default_shape_cfg.margin = 0.0
+        builder.default_shape_cfg.gap = 0.0
+
+        builder.begin_world()
+
+        # Parent body at origin
+        bid0 = builder.add_link(
+            label="base",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(0.0, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(label="box_base", body=bid0, hx=0.05, hy=0.05, hz=0.05)
+
+        # Child body offset along z
+        bid1 = builder.add_link(
+            label="pendulum",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(0.0, 0.0, 0.5), wp.quat_identity(dtype=wp.float32)),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(label="box_pend", body=bid1, hx=0.05, hy=0.05, hz=0.25)
+
+        # Fix the base to the world
+        builder.add_joint_fixed(
+            label="world_to_base",
+            parent=-1,
+            child=bid0,
+            parent_xform=wp.transform_identity(dtype=wp.float32),
+            child_xform=wp.transform_identity(dtype=wp.float32),
+        )
+
+        # Diagonal revolute axis (non-canonical)
+        axis_vec = wp.vec3(1.0, 1.0, 0.0)
+        builder.add_joint_revolute(
+            label="base_to_pendulum",
+            parent=bid0,
+            child=bid1,
+            axis=axis_vec,
+            parent_xform=wp.transformf(wp.vec3f(0.0, 0.0, 0.25), wp.quat_identity(dtype=wp.float32)),
+            child_xform=wp.transformf(wp.vec3f(0.0, 0.0, -0.25), wp.quat_identity(dtype=wp.float32)),
+        )
+
+        builder.end_world()
+
+        model: Model = builder.finalize(skip_validation_joints=True)
+
+        # Conversion must succeed (previously raised ValueError)
+        kamino_model: ModelKamino = ModelKamino.from_newton(model)
+
+        # Verify X_j first column is aligned with the expected axis direction
+        X_j = kamino_model.joints.X_j.numpy()
+        # X_j has shape (num_joints, 3, 3); the revolute joint is the second one (index 1)
+        R = X_j[1]  # 3x3 rotation matrix
+        ax_col = R[:, 0]  # first column = joint axis direction
+        expected_ax = np.array([1.0, 1.0, 0.0])
+        expected_ax = expected_ax / np.linalg.norm(expected_ax)
+        np.testing.assert_allclose(ax_col, expected_ax, atol=1e-6)
 
     def test_10_state_conversions(self):
         """

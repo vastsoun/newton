@@ -27,7 +27,7 @@ from __future__ import annotations
 # Thirdparty
 import torch
 import warp as wp
-from newton._src.solvers.kamino.core.builder import ModelBuilder
+from newton._src.solvers.kamino.core.builder import ModelBuilderKamino as ModelBuilder
 from newton._src.solvers.kamino.core.types import transformf, vec6f
 from newton._src.solvers.kamino.geometry.aggregation import ContactAggregation
 from newton._src.solvers.kamino.models.builders.utils import (
@@ -38,7 +38,7 @@ from newton._src.solvers.kamino.models.builders.utils import (
 from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.sim import Simulator, SimulatorSettings, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import Simulator, SimulatorConfig, ViewerKamino
 from warp.context import Devicelike
 
 
@@ -83,7 +83,7 @@ class RigidBodySim:
         body_pose_offset: tuple | None = None,
         add_ground: bool = True,
         enable_gravity: bool = True,
-        settings: SimulatorSettings | None = None,
+        settings: SimulatorConfig | None = None,
         use_cuda_graph: bool = False,
         record_video: bool = False,
         video_folder: str | None = None,
@@ -124,7 +124,7 @@ class RigidBodySim:
 
         # ----- Create simulator -----
         msg.notif("Building Kamino simulator ...")
-        self.sim = Simulator(builder=self.builder, settings=settings, device=self._device)
+        self.sim = Simulator(builder=self.builder, config=settings, device=self._device)
 
         # Empty control callback (torques applied directly via control arrays)
         self.sim.set_control_callback(lambda _: None)
@@ -596,9 +596,9 @@ class RigidBodySim:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def default_settings(sim_dt: float = 0.01) -> SimulatorSettings:
+    def default_settings(sim_dt: float = 0.01) -> SimulatorConfig:
         """Return sensible default solver settings for RL."""
-        settings = SimulatorSettings()
+        settings = SimulatorConfig()
         settings.dt = sim_dt
         settings.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
         settings.solver.problem.alpha = 0.1

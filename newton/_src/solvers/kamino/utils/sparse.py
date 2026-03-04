@@ -17,17 +17,16 @@
 KAMINO: Utilities
 """
 
-import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.cm import ScalarMappable
-from matplotlib.colors import Normalize
+
+from . import logger as msg
 
 ###
 # Matrix Sparsity
 ###
 
 
-def sparseview(
+def sparseplot(
     matrix: np.ndarray,
     title: str = "Matrix Sparsity",
     tick_fontsize: int = 5,
@@ -35,6 +34,15 @@ def sparseview(
     grid: bool = False,
     path: str | None = None,
 ):
+    # Attempt to import matplotlib
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib.cm import ScalarMappable
+        from matplotlib.colors import Normalize
+    except Exception as exc:  # pragma: no cover - optional dependency
+        msg.error(f"`matplotlib` is required to plot profiles: {exc}")
+        return
+
     """
     Visualize the sparsity pattern of a matrix.
     Zero entries are shown in red.

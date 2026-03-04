@@ -390,7 +390,7 @@ def render_solver_configs_table(
     if "cts" in groups:
         _add_table_column_group(table, "Constraints", ["alpha", "beta", "gamma", "delta", "precond"], color="green")
     if "sparse" in groups:
-        _add_table_column_group(table, "Representation", ["sparse", "sparse_jacobian"], color="yellow")
+        _add_table_column_group(table, "Representation", ["sparse_jacobian", "sparse_dynamics"], color="yellow")
     if "linear" in groups:
         _add_table_column_group(table, "Linear Solver", ["type", "kwargs"], color="magenta")
     if "padmm" in groups:
@@ -429,7 +429,7 @@ def render_solver_configs_table(
                 ]
             )
         if "sparse" in groups:
-            cfg_row.extend([str(cfg.sparse), str(cfg.sparse_jacobian)])
+            cfg_row.extend([str(cfg.sparse_jacobian), str(cfg.sparse_dynamics)])
         if "linear" in groups:
             cfg_row.extend([str(LinearSolverTypeToName[cfg.linear_solver_type]), str(cfg.linear_solver_kwargs)])
         if "padmm" in groups:

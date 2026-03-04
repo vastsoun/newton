@@ -44,8 +44,8 @@ def make_solver_config_default() -> tuple[str, SolverKaminoConfig]:
     config.problem.alpha = 0.1
     # ------------------------------------------------------------------------------
     # Jacobian representation
-    config.sparse = False
     config.sparse_jacobian = False
+    config.sparse_dynamics = False
     # ------------------------------------------------------------------------------
     # Linear system solver
     config.linear_solver_type = LinearSolverNameToType["LLTB"]
@@ -82,8 +82,8 @@ def make_solver_config_dense_lltb_fast_dr_legs() -> tuple[str, SolverKaminoConfi
     config.problem.alpha = 0.1
     # ------------------------------------------------------------------------------
     # Jacobian representation
-    config.sparse = False
     config.sparse_jacobian = False
+    config.sparse_dynamics = False
     # ------------------------------------------------------------------------------
     # Linear system solver
     config.linear_solver_type = LinearSolverNameToType["LLTB"]
@@ -121,8 +121,8 @@ def make_solver_config_sparse_cr_fast_dr_legs() -> tuple[str, SolverKaminoConfig
     config.problem.alpha = 0.1
     # ------------------------------------------------------------------------------
     # Jacobian representation
-    config.sparse = True
     config.sparse_jacobian = True
+    config.sparse_dynamics = True
     # ------------------------------------------------------------------------------
     # Linear system solver
     config.linear_solver_type = LinearSolverNameToType["CR"]
@@ -159,8 +159,8 @@ def make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs() -> tuple[str, So
     config.problem.alpha = 0.1
     # ------------------------------------------------------------------------------
     # Jacobian representation
-    config.sparse = True
     config.sparse_jacobian = True
+    config.sparse_dynamics = True
     # ------------------------------------------------------------------------------
     # Linear system solver
     config.linear_solver_type = LinearSolverNameToType["CR"]
@@ -221,8 +221,8 @@ def save_solver_configs_to_hdf5(configs: dict[str, SolverKaminoConfig], datafile
         datafile[f"{scope}/constraints/delta"] = config.problem.delta
         datafile[f"{scope}/constraints/preconditioning"] = config.problem.preconditioning
         # ------------------------------------------------------------------------------
-        datafile[f"{scope}/sparse_solver"] = config.sparse
         datafile[f"{scope}/sparse_jacobian"] = config.sparse_jacobian
+        datafile[f"{scope}/sparse_dynamics"] = config.sparse_dynamics
         # ------------------------------------------------------------------------------
         datafile[f"{scope}/linear_solver/type"] = str(LinearSolverTypeToName[config.linear_solver_type])
         datafile[f"{scope}/linear_solver/args"] = f"{config.linear_solver_kwargs}"
@@ -260,8 +260,8 @@ def load_solver_configs_to_hdf5(datafile) -> dict[str, SolverKaminoConfig]:
         config.problem.delta = float(datafile[f"Solver/{config_name}/constraints/delta"][()])
         config.problem.preconditioning = bool(datafile[f"Solver/{config_name}/constraints/preconditioning"][()])
         # ------------------------------------------------------------------------------
-        config.sparse = bool(datafile[f"Solver/{config_name}/sparse_solver"][()])
         config.sparse_jacobian = bool(datafile[f"Solver/{config_name}/sparse_jacobian"][()])
+        config.sparse_dynamics = bool(datafile[f"Solver/{config_name}/sparse_dynamics"][()])
         # ------------------------------------------------------------------------------
         config.linear_solver_type = LinearSolverNameToType[
             datafile[f"Solver/{config_name}/linear_solver/type"][()].decode("utf-8")

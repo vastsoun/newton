@@ -26,7 +26,6 @@ from newton._src.solvers.kamino.core.joints import JointActuationType
 from newton._src.solvers.kamino.core.types import float32, int32
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 from newton._src.solvers.kamino.linalg.linear import LinearSolverTypeToName as LinearSolverShorthand
-from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders.utils import (
     add_ground_box,
     make_homogeneous_builder,
@@ -202,11 +201,9 @@ class Example:
         self.logging: bool = logging
         self.implicit_pd: bool = implicit_pd
 
-        # Set the path to the external USD assets
-        EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
-        if EXAMPLE_ASSETS_PATH is None:
-            raise FileNotFoundError("Failed to find USD assets path for examples: ensure `newton-assets` is installed.")
-        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
+        # Load the DR Legs USD and add it to the builder
+        asset_path = newton.utils.download_asset("disneyresearch")
+        asset_file = str(asset_path / "dr_legs/usd" / "dr_legs_with_meshes_and_boxes.usda")
 
         # Create a model builder from the imported USD
         msg.notif("Constructing builder from imported USD ...")
@@ -216,7 +213,8 @@ class Example:
             build_fn=importer.import_from,
             load_drive_dynamics=implicit_pd,
             load_static_geometry=True,
-            source=USD_MODEL_PATH,
+            source=asset_file,
+            use_angular_drive_scaling=False,
         )
         msg.info("total mass: %f", self.builder.worlds[0].mass_total)
         msg.info("total diag inertia: %f", self.builder.worlds[0].inertia_total)
@@ -249,6 +247,8 @@ class Example:
         config.solver.sparse_dynamics = False
         config.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
         config.solver.problem.alpha = 0.1
+        config.solver.problem.beta = 0.011
+        config.solver.problem.gamma = 0.05
         config.solver.padmm.primal_tolerance = 1e-4
         config.solver.padmm.dual_tolerance = 1e-4
         config.solver.padmm.compl_tolerance = 1e-4
@@ -273,8 +273,8 @@ class Example:
         self.sim = Simulator(builder=self.builder, config=config, device=device)
 
         # Load animation data for dr_legs
-        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/animation/dr_legs_animation_100fps.npy")
-        animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
+        animation_asset = str(asset_path / "dr_legs/animation" / "dr_legs_animation_100fps.npy")
+        animation_np = np.load(animation_asset, allow_pickle=True)
         msg.debug("animation_np (shape={%s}):\n{%s}\n", animation_np.shape, animation_np)
 
         # Compute animation time step and rate

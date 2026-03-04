@@ -47,8 +47,8 @@ wp.set_module_options({"enable_backward": False})
 def _control_callback(
     model_body_wid: wp.array(dtype=int32),
     contact_world_num_active: wp.array(dtype=int32),
-    state_t: wp.array(dtype=float32),
-    state_w_e_i: wp.array(dtype=vec6f),
+    data_t: wp.array(dtype=float32),
+    state_w_i_e: wp.array(dtype=vec6f),
 ):
     """
     An example control callback kernel.
@@ -67,7 +67,7 @@ def _control_callback(
     t_end = float32(6.0)
 
     # Get the current time
-    t = state_t[wid]
+    t = data_t[wid]
 
     # Apply a time-dependent external force
     if t > t_start and t < t_end and wnc > 0:
@@ -75,9 +75,9 @@ def _control_callback(
         g = float32(9.8067)  # Gravitational acceleration
         mu = float32(0.9)  # Friction coefficient
         f_ext = 1.1 * m * g * mu  # Magnitude of the external force
-        state_w_e_i[bid] = vec6f(f_ext, 0.0, 0.0, 0.0, 0.0, 0.0)
+        state_w_i_e[bid] = vec6f(f_ext, 0.0, 0.0, 0.0, 0.0, 0.0)
     else:
-        state_w_e_i[bid] = vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        state_w_i_e[bid] = vec6f(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
 
 ###
@@ -96,7 +96,7 @@ def control_callback(sim: Simulator):
             sim.model.bodies.bid,
             sim.contacts.data.world_active_contacts,
             sim.solver.data.time.time,
-            sim.solver.data.bodies.w_e_i,
+            sim.state.w_i_e,
         ],
     )
 

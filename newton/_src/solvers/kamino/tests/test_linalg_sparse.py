@@ -24,7 +24,7 @@ from newton._src.solvers.kamino.linalg.sparse_matrix import BlockDType, BlockSpa
 from newton._src.solvers.kamino.linalg.sparse_operator import BlockSparseLinearOperators
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.sparse import sparseview
+from newton._src.solvers.kamino.utils.sparse import sparseplot
 
 ###
 # Tests
@@ -371,7 +371,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
         for i in range(bsm.num_matrices):
             msg.info("bsm_np[%d]:\n%s", i, bsm_np[i])
             if self.plot:
-                sparseview(bsm_np[i], title=f"bsm_np[{i}]")
+                sparseplot(bsm_np[i], title=f"bsm_np[{i}]")
 
         # Assign new values to the dense numpy arrays and set them back to the block-sparse matrices
         for i in range(bsm.num_matrices):
@@ -383,7 +383,7 @@ class TestBlockSparseMatrices(unittest.TestCase):
         for i in range(bsm.num_matrices):
             msg.info("bsm_np[%d]:\n%s", i, bsm_np[i])
             if self.plot:
-                sparseview(bsm_np[i], title=f"bsm_np[{i}]")
+                sparseplot(bsm_np[i], title=f"bsm_np[{i}]")
 
 
 class TestBlockSparseMatrixOperations(unittest.TestCase):
@@ -656,7 +656,7 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
             if self.plot:
                 matrices = bsm.numpy()
                 for i in range(num_matrices):
-                    sparseview(matrices[i], title=f"Matrix {i}")
+                    sparseplot(matrices[i], title=f"Matrix {i}")
 
     def test_02_sparse_matrix_vector_product_jacobian(self):
         """

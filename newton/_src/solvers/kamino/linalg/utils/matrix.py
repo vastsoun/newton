@@ -460,13 +460,13 @@ class MatrixComparison:
         """Save error visualizations to the specified path."""
         import os  # noqa: PLC0415
 
-        from newton._src.solvers.kamino.utils.sparse import sparseview  # noqa: PLC0415
+        from newton._src.solvers.kamino.utils.sparse import sparseplot  # noqa: PLC0415
 
         os.makedirs(path, exist_ok=True)
-        sparseview(self.A, title=f"{title} {name_A}", path=os.path.join(path, f"{symbol_A}.png"))
-        sparseview(self.B, title=f"{title} {name_B}", path=os.path.join(path, f"{symbol_B}.png"))
-        sparseview(self.E, title=f"{title} Error", path=os.path.join(path, f"{symbol_A}_err.png"))
-        sparseview(self.E_clip, title=f"{title} Error (Clipped)", path=os.path.join(path, f"{symbol_A}_err_clip.png"))
+        sparseplot(self.A, title=f"{title} {name_A}", path=os.path.join(path, f"{symbol_A}.png"))
+        sparseplot(self.B, title=f"{title} {name_B}", path=os.path.join(path, f"{symbol_B}.png"))
+        sparseplot(self.E, title=f"{title} Error", path=os.path.join(path, f"{symbol_A}_err.png"))
+        sparseplot(self.E_clip, title=f"{title} Error (Clipped)", path=os.path.join(path, f"{symbol_A}_err_clip.png"))
 
     def _error_clipped(self, tol: float = 0.0):
         """Clip small errors to zero for visualization."""

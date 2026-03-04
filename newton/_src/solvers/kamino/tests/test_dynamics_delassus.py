@@ -33,10 +33,7 @@ from newton._src.solvers.kamino.models.builders.basics import (
     build_boxes_nunchaku,
     make_basics_heterogeneous_builder,
 )
-from newton._src.solvers.kamino.models.utils import (
-    make_heterogeneous_builder,
-    make_homogeneous_builder,
-)
+from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_active_constraint_dims,

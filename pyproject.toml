@@ -89,11 +89,6 @@ torch-cu13 = [
     "torch>=2.10.0",    # CUDA 13 PyTorch
 ]
 
-# Data IO dependencies
-data = [
-    "h5py>=3.13.0", # for saving/loading HDF5 data
-]
-
 # Development and Testing
 # Contains all w/o torch, plus development debugging dependencies
 dev = [

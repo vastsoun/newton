@@ -21,10 +21,7 @@ import unittest
 
 import numpy as np
 
-# Module to be tested
 import newton._src.solvers.kamino.tests.utils.rand as rand
-
-# Test utilities
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 
 ###

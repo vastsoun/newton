@@ -28,11 +28,12 @@ from newton._src.solvers.kamino.core.types import int32, mat33f, vec3f
 from newton._src.solvers.kamino.geometry.contacts import (
     ContactMode,
     ContactsKamino,
-    convert_contacts_kamino_to_newton,
-    convert_contacts_newton_to_kamino,
+    # TODO: convert_contacts_kamino_to_newton,
+    # TODO: convert_contacts_newton_to_kamino,
     make_contact_frame_xnorm,
     make_contact_frame_znorm,
 )
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -362,13 +363,8 @@ class TestGeometryContacts(unittest.TestCase):
 ###
 
 if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=10000, threshold=10000, precision=10, suppress=True)
-
-    # Global warp configurations
-    wp.config.verbose = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

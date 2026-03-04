@@ -26,6 +26,7 @@ from newton._src.solvers.kamino.geometry import (
 )
 from newton._src.solvers.kamino.models.builders import basics
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.test_geometry_primitive import check_contacts
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -36,8 +37,10 @@ from newton._src.solvers.kamino.utils import logger as msg
 
 class TestCollisionDetectorConfig(unittest.TestCase):
     def setUp(self):
-        self.default_device = wp.get_device()
-        self.verbose = False  # Set to True for detailed output
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.verbose = test_context.verbose  # Set to True for detailed output
+        self.default_device = wp.get_device(test_context.device)
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -176,16 +179,10 @@ class TestGeometryCollisionDetector(unittest.TestCase):
 # Test execution
 ###
 
-if __name__ == "__main__":
-    # Global numpy configurations
-    np.set_printoptions(linewidth=20000, threshold=20000, precision=10, suppress=True)
 
-    # Global warp configurations
-    wp.config.verbose = False
-    wp.config.verify_fp = False
-    wp.config.verify_cuda = False
-    wp.clear_kernel_cache()
-    wp.clear_lto_cache()
+if __name__ == "__main__":
+    # Test setup
+    setup_tests()
 
     # Run all tests
     unittest.main(verbosity=2)

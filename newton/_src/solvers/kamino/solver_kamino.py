@@ -40,14 +40,19 @@ from ..flags import SolverNotifyFlags
 from ..solver import SolverBase
 
 # Kamino imports
-from .core.bodies import update_body_inertias, update_body_wrenches
+from .core.bodies import (
+    convert_base_origin_to_com,
+    convert_body_com_to_origin,
+    convert_body_origin_to_com,
+    update_body_inertias,
+    update_body_wrenches,
+)
 from .core.control import ControlKamino
 from .core.conversions import convert_model_joint_transforms
 from .core.data import DataKamino
 from .core.gravity import convert_model_gravity
 from .core.joints import JointCorrectionMode
 from .core.model import ModelKamino
-from .core.bodies import convert_body_origin_to_com, convert_body_com_to_origin
 from .core.state import StateKamino
 from .core.time import advance_time
 from .core.types import float32, int32, transformf, vec6f
@@ -633,7 +638,6 @@ class SolverKaminoImpl(SolverBase):
 
         # If only base targets are provided, uniformly reset all bodies to the given base states
         elif base_reset and not joint_reset and not bodies_reset:
-            # TODO: transform base_q from body origin to body com frame
             self._reset_to_base_state(
                 state_out=state_out,
                 world_mask=_world_mask,
@@ -1354,6 +1358,18 @@ class SolverKamino(SolverBase):
                 Optional array of target base body twists.\n
                 Shape of `(num_worlds,)` and type :class:`wp.spatial_vectorf`
         """
+        # Convert base pose from body-origin to COM frame
+        if base_q is not None:
+            base_q = wp.clone(base_q)
+            if base_u is not None:
+                base_u = wp.clone(base_u)
+            convert_base_origin_to_com(
+                base_body_index=self._model_kamino.info.base_body_index,
+                body_com=self._model_kamino.bodies.i_r_com_i,
+                base_q=base_q,
+                base_u=base_u,
+            )
+
         # TODO: fix brittle in-place update of arrays after conversion
         state_out_kamino = StateKamino.from_newton(self._model_kamino.size, self.model, state_out)
         self._solver_kamino.reset(

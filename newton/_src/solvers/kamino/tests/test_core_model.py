@@ -615,12 +615,8 @@ class TestModelConversions(unittest.TestCase):
         np.testing.assert_allclose(q_i_0_np[2, :3], [1.1, -0.3, 0.2], atol=1e-6)
         np.testing.assert_allclose(q_i_0_np[2, 3:7], body_q_np[2, 3:7], atol=1e-6)
 
-    def test_07_reset_produces_body_origin_frame(self):
-        """
-        Test that ``SolverKamino.reset()`` writes body-origin frame poses
-        into ``state.body_q``, not COM-frame poses, for bodies with non-zero
-        COM offsets.
-        """
+    def _build_com_offset_model(self):
+        """Build a 3-body chain with non-zero COM offsets for reset tests."""
         builder: ModelBuilder = ModelBuilder()
         SolverKamino.register_custom_attributes(builder)
         builder.default_shape_cfg.margin = 0.0
@@ -691,13 +687,20 @@ class TestModelConversions(unittest.TestCase):
 
         builder.end_world()
 
-        model: Model = builder.finalize(skip_validation_joints=True)
+        return builder.finalize(skip_validation_joints=True)
+
+    def test_07_reset_produces_body_origin_frame(self):
+        """
+        Test that ``SolverKamino.reset()`` writes body-origin frame poses
+        into ``state.body_q``, not COM-frame poses, for bodies with non-zero
+        COM offsets.
+        """
+        model = self._build_com_offset_model()
         body_q_expected = model.body_q.numpy().copy()
 
-        # Create the wrapper solver
         solver = SolverKamino(model)
 
-        # --- Default reset (no args) should restore body-origin poses ---
+        # Default reset (no args) should restore body-origin poses
         state_out: State = model.state()
         solver.reset(state_out=state_out)
         body_q_after = state_out.body_q.numpy()
@@ -708,6 +711,76 @@ class TestModelConversions(unittest.TestCase):
                 body_q_expected[i],
                 atol=1e-6,
                 err_msg=f"Default reset: body {i} pose is not in body-origin frame",
+            )
+
+        # Velocities should be zero after default reset
+        body_qd_after = state_out.body_qd.numpy()
+        np.testing.assert_allclose(
+            body_qd_after,
+            0.0,
+            atol=1e-6,
+            err_msg="Default reset: body velocities should be zero",
+        )
+
+    def test_08_base_reset_produces_body_origin_frame(self):
+        """
+        Test that ``SolverKamino.reset(base_q=..., base_u=...)`` writes
+        body-origin frame poses and velocities into ``state.body_q`` and
+        ``state.body_qd`` for bodies with non-zero COM offsets.
+        """
+        model = self._build_com_offset_model()
+        body_q_expected = model.body_q.numpy().copy()
+
+        solver = SolverKamino(model)
+
+        # --- Base reset with identity base pose should restore body-origin poses ---
+        state_out: State = model.state()
+        base_q = wp.array(
+            [wp.transformf(wp.vec3f(0.0, 0.0, 0.0), wp.quat_identity(dtype=wp.float32))],
+            dtype=wp.transformf,
+        )
+        base_u = wp.zeros(1, dtype=wp.spatial_vectorf)
+        solver.reset(state_out=state_out, base_q=base_q, base_u=base_u)
+        body_q_after = state_out.body_q.numpy()
+
+        for i in range(model.body_count):
+            np.testing.assert_allclose(
+                body_q_after[i],
+                body_q_expected[i],
+                atol=1e-6,
+                err_msg=f"Base reset (identity): body {i} pose is not in body-origin frame",
+            )
+
+        # Velocities should be zero with zero base twist
+        body_qd_after = state_out.body_qd.numpy()
+        np.testing.assert_allclose(
+            body_qd_after,
+            0.0,
+            atol=1e-6,
+            err_msg="Base reset (identity): body velocities should be zero",
+        )
+
+        # --- Base reset with a translated base pose ---
+        offset = np.array([2.0, 3.0, 5.0])
+        base_q_shifted = wp.array(
+            [wp.transformf(wp.vec3f(*offset), wp.quat_identity(dtype=wp.float32))],
+            dtype=wp.transformf,
+        )
+        solver.reset(state_out=state_out, base_q=base_q_shifted, base_u=base_u)
+        body_q_shifted = state_out.body_q.numpy()
+
+        for i in range(model.body_count):
+            np.testing.assert_allclose(
+                body_q_shifted[i, :3],
+                body_q_expected[i, :3] + offset,
+                atol=1e-6,
+                err_msg=f"Base reset (translated): body {i} position mismatch",
+            )
+            np.testing.assert_allclose(
+                body_q_shifted[i, 3:7],
+                body_q_expected[i, 3:7],
+                atol=1e-6,
+                err_msg=f"Base reset (translated): body {i} rotation mismatch",
             )
 
     def test_10_state_conversions(self):

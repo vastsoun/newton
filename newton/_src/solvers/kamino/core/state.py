@@ -23,7 +23,7 @@ import warp as wp
 
 from ....sim.model import Model
 from ....sim.state import State
-from .bodies import convert_body_origin_to_com, convert_body_com_to_origin
+from .bodies import convert_body_com_to_origin, convert_body_origin_to_com
 from .size import SizeKamino
 from .types import vec6f
 

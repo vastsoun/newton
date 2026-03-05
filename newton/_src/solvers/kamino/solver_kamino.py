@@ -81,7 +81,7 @@ from .kinematics.resets import (
 from .linalg import ConjugateResidualSolver, IterativeSolver, LinearSolverType, LLTBlockedSolver
 from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverConfig
 from .solvers.metrics import SolutionMetrics
-from .solvers.padmm import PADMMConfig, PADMMSolver, PADMMWarmStartMode
+from .solvers.padmm import PADMMSolver, PADMMWarmStartMode
 from .solvers.warmstart import WarmstarterContacts, WarmstarterLimits
 from .utils import logger as msg
 
@@ -1147,10 +1147,10 @@ class SolverKamino(SolverBase):
         See :class:`DualProblem.Config` for more details.
         """
 
-        padmm: PADMMConfig = field(default_factory=PADMMConfig)
+        padmm: PADMMSolver.Config = field(default_factory=PADMMSolver.Config)
         """
         Config for the dynamics solver.\n
-        See :class:`PADMMConfig` for more details.
+        See :class:`PADMMSolver.Config` for more details.
         """
 
         fk: ForwardKinematicsSolverConfig = field(default_factory=ForwardKinematicsSolverConfig)
@@ -1313,7 +1313,7 @@ class SolverKamino(SolverBase):
             )
 
             DualProblem.Config.register_custom_attributes(builder)
-            PADMMConfig.register_custom_attributes(builder)
+            PADMMSolver.Config.register_custom_attributes(builder)
 
         @staticmethod
         def from_model(model: Model, **kwargs: dict[str, Any]) -> SolverKamino.Config:
@@ -1343,7 +1343,7 @@ class SolverKamino(SolverBase):
             padmm_kwargs = {}
             if "padmm" in kwargs.keys():
                 problem_kwargs = kwargs["padmm"].__dict__
-            config.padmm = PADMMConfig.from_model(model, **padmm_kwargs)
+            config.padmm = PADMMSolver.Config.from_model(model, **padmm_kwargs)
 
             return config
 

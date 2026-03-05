@@ -28,7 +28,7 @@ from newton._src.solvers.kamino.geometry.primitive.broadphase import PRIMITIVE_B
 from newton._src.solvers.kamino.geometry.primitive.narrowphase import PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS
 from newton._src.solvers.kamino.models.builders import testing
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, ViewerKamino
 
 ###
 # Example class
@@ -108,7 +108,7 @@ class Example:
         )
 
         # Set solver config
-        config = SimulatorConfig()
+        config = Simulator.Config()
         config.dt = 0.001
         config.solver.padmm.rho_0 = 0.1
         config.collision_detector.pipeline = pipeline_name

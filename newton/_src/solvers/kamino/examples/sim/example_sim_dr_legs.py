@@ -34,7 +34,7 @@ from newton._src.solvers.kamino.models.builders.utils import (
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.control import AnimationJointReference, JointSpacePIDController
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, ViewerKamino
 
 ###
 # Module configs
@@ -241,7 +241,7 @@ class Example:
                 msg.info(f"Joint '{joint.name}':\n{joint}\n")
 
         # Set solver config
-        config = SimulatorConfig()
+        config = Simulator.Config()
         config.dt = self.sim_dt
         config.solver.sparse_jacobian = False
         config.solver.sparse_dynamics = False

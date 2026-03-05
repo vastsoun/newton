@@ -50,7 +50,7 @@ wp.set_module_options({"enable_backward": False})
 @dataclass
 class TimeModel:
     """
-    A container to hold the time-invariant gravity model data.
+    A container to hold heterogeneous model time-step.
 
     Attributes:
         dt (wp.array | None): The discrete time-step size of each world.\n
@@ -119,7 +119,7 @@ class TimeModel:
 @dataclass
 class TimeData:
     """
-    A container to hold the time-invariant gravity model data.
+    A container to hold heterogeneous model time-keeping data.
 
     Attributes:
         steps (wp.array | None): The current number of simulation steps of each world.\n
@@ -162,7 +162,11 @@ def _advance_time(
     time: wp.array(dtype=float32),
 ):
     """
-    Reset the current state to the initial state defined in the model.
+    Advances the time-keeping state of each world by one time-step.
+
+    For each world index ``wid``, this kernel increments the step counter
+    ``steps[wid]`` by 1 and increases the simulation time ``time[wid]``
+    by the corresponding time increment ``dt[wid]``.
     """
     # Retrieve the thread index as the world index
     wid = wp.tid()
@@ -178,30 +182,39 @@ def _advance_time(
 
 
 def advance_time(model: TimeModel, data: TimeData):
+    """
+    Advances the time-keeping state of each world by one time-step.
+
+    For each world index ``wid``, this kernel increments the step counter
+    ``steps[wid]`` by 1 and increases the simulation time ``time[wid]``
+    by the corresponding time increment ``dt[wid]``.
+
+    Args:
+        model (TimeModel):
+            The time model containing the time-step information.
+        data (TimeData):
+            The time data containing the current time-keeping state.
+    """
     # Ensure the model is valid
     if model is None:
         raise ValueError("'model' must be initialized, is None.")
     elif not isinstance(model, TimeModel):
         raise TypeError("'model' must be an instance of TimeModel.")
     if model.dt is None:
-        raise ValueError("'model' must has a `model.dt` array, is None.")
+        raise ValueError("'model' must contain a `model.dt` array, is None.")
 
     # Ensure the state is valid
     if data.steps is None:
-        raise ValueError("'data' must has a `data.steps` array, is None.")
+        raise ValueError("'data' must contain a `data.steps` array, is None.")
     elif not isinstance(data, TimeData):
         raise TypeError("'data' must be an instance of TimeData.")
     if data.time is None:
-        raise ValueError("'data' must has a `data.time` array, is None.")
+        raise ValueError("'data' must contain a `data.time` array, is None.")
 
-    # Retrieve the number of worlds from an array size
-    # NOTE: It is assumed that all arrays are of the same size.
-    num_worlds = model.dt.size
-
-    #
+    # Launch the kernel to advance the time state of each world by one step
     wp.launch(
         _advance_time,
-        dim=num_worlds,
+        dim=model.dt.size,
         inputs=[
             # Inputs:
             model.dt,

@@ -632,6 +632,7 @@ class SolverKaminoImpl(SolverBase):
 
         # If only base targets are provided, uniformly reset all bodies to the given base states
         elif base_reset and not joint_reset and not bodies_reset:
+            # TODO: transform base_q from body origin to body com frame
             self._reset_to_base_state(
                 state_out=state_out,
                 world_mask=_world_mask,
@@ -1352,8 +1353,10 @@ class SolverKamino(SolverBase):
                 Optional array of target base body twists.\n
                 Shape of `(num_worlds,)` and type :class:`wp.spatial_vectorf`
         """
+        # TODO: fix brittle in-place update of arrays after conversion
+        state_out_kamino = StateKamino.from_newton(self._model_kamino.size, self.model, state_out)
         self._solver_kamino.reset(
-            state_out=StateKamino.from_newton(self._model_kamino.size, self.model, state_out),
+            state_out=state_out_kamino,
             world_mask=world_mask,
             actuator_q=actuator_q,
             actuator_u=actuator_u,
@@ -1361,6 +1364,15 @@ class SolverKamino(SolverBase):
             joint_u=joint_u,
             base_q=base_q,
             base_u=base_u,
+        )
+
+        # Convert com-frame poses from Kamino reset to body-origin frame
+        compute_body_frame_state(
+            body_com=self._model_kamino.bodies.i_r_com_i,
+            body_q_com=state_out_kamino.q_i,
+            body_q=state_out_kamino.q_i,
+            world_mask=world_mask,
+            body_wid=self._model_kamino.bodies.wid,
         )
 
     @override

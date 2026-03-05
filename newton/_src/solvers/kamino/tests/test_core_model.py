@@ -615,6 +615,101 @@ class TestModelConversions(unittest.TestCase):
         np.testing.assert_allclose(q_i_0_np[2, :3], [1.1, -0.3, 0.2], atol=1e-6)
         np.testing.assert_allclose(q_i_0_np[2, 3:7], body_q_np[2, 3:7], atol=1e-6)
 
+    def test_07_reset_produces_body_origin_frame(self):
+        """
+        Test that ``SolverKamino.reset()`` writes body-origin frame poses
+        into ``state.body_q``, not COM-frame poses, for bodies with non-zero
+        COM offsets.
+        """
+        builder: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder)
+        builder.default_shape_cfg.margin = 0.0
+        builder.default_shape_cfg.gap = 0.0
+
+        builder.begin_world()
+
+        # Body 0: at origin, identity rotation, COM offset along x
+        bid0 = builder.add_link(
+            label="body0",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(0.0, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+            com=wp.vec3f(0.1, 0.0, 0.0),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(label="box0", body=bid0, hx=0.05, hy=0.05, hz=0.05)
+
+        # Body 1: at (0,0,1), rotated 90° about z-axis, single-axis COM offset
+        rot_90z = wp.quat_from_axis_angle(wp.vec3f(0.0, 0.0, 1.0), np.pi / 2.0)
+        bid1 = builder.add_link(
+            label="body1",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(0.0, 0.0, 1.0), rot_90z),
+            com=wp.vec3f(0.1, 0.0, 0.0),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(label="box1", body=bid1, hx=0.05, hy=0.05, hz=0.05)
+
+        # Body 2: at (1,0,0), rotated 90° about x-axis, 3D COM offset
+        rot_90x = wp.quat_from_axis_angle(wp.vec3f(1.0, 0.0, 0.0), np.pi / 2.0)
+        bid2 = builder.add_link(
+            label="body2",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(1.0, 0.0, 0.0), rot_90x),
+            com=wp.vec3f(0.1, 0.2, 0.3),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(label="box2", body=bid2, hx=0.05, hy=0.05, hz=0.05)
+
+        # Fix body 0 to world
+        builder.add_joint_fixed(
+            label="world_to_body0",
+            parent=-1,
+            child=bid0,
+            parent_xform=wp.transform_identity(dtype=wp.float32),
+            child_xform=wp.transform_identity(dtype=wp.float32),
+        )
+
+        # Revolute joint: body 0 -> body 1
+        builder.add_joint_revolute(
+            label="body0_to_body1",
+            parent=bid0,
+            child=bid1,
+            axis=wp.vec3(0.0, 1.0, 0.0),
+            parent_xform=wp.transformf(wp.vec3f(0.0, 0.0, 0.5), wp.quat_identity(dtype=wp.float32)),
+            child_xform=wp.transformf(wp.vec3f(0.0, 0.0, -0.5), wp.quat_identity(dtype=wp.float32)),
+        )
+
+        # Revolute joint: body 1 -> body 2
+        builder.add_joint_revolute(
+            label="body1_to_body2",
+            parent=bid1,
+            child=bid2,
+            axis=wp.vec3(0.0, 1.0, 0.0),
+            parent_xform=wp.transformf(wp.vec3f(0.5, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+            child_xform=wp.transformf(wp.vec3f(-0.5, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+        )
+
+        builder.end_world()
+
+        model: Model = builder.finalize(skip_validation_joints=True)
+        body_q_expected = model.body_q.numpy().copy()
+
+        # Create the wrapper solver
+        solver = SolverKamino(model)
+
+        # --- Default reset (no args) should restore body-origin poses ---
+        state_out: State = model.state()
+        solver.reset(state_out=state_out)
+        body_q_after = state_out.body_q.numpy()
+
+        for i in range(model.body_count):
+            np.testing.assert_allclose(
+                body_q_after[i],
+                body_q_expected[i],
+                atol=1e-6,
+                err_msg=f"Default reset: body {i} pose is not in body-origin frame",
+            )
+
     def test_10_state_conversions(self):
         """
         Test the conversion operations between newton.State and kamino.StateKamino.

@@ -88,6 +88,8 @@ def _compute_body_frame_state(
     # Inputs:
     body_com: wp.array(dtype=wp.vec3f),
     body_q_com: wp.array(dtype=wp.transformf),
+    world_mask: wp.array(dtype=wp.int32),
+    body_wid: wp.array(dtype=wp.int32),
     # Outputs:
     body_q: wp.array(dtype=wp.transformf),
 ):
@@ -99,6 +101,10 @@ def _compute_body_frame_state(
             Array of body center-of-mass offsets in body frame.
         body_q_com (`wp.array(dtype=wp.transformf)`):
             Array of body CoM poses in world frame.
+        world_mask (`wp.array(dtype=wp.int32)`):
+            Optional per-world mask; when non-null, only bodies in marked worlds are processed.
+        body_wid (`wp.array(dtype=wp.int32)`):
+            Optional body-to-world index mapping; required when ``world_mask`` is non-null.
 
     Outputs:
         body_q (`wp.array(dtype=wp.transformf)`):
@@ -106,6 +112,13 @@ def _compute_body_frame_state(
     """
     # Retrieve the body index from the thread grid
     bid = wp.tid()
+
+    # Skip masked-out worlds when a mask is provided
+    if world_mask:
+        assert body_wid
+        wid = body_wid[bid]
+        if world_mask[wid] == 0:
+            return
 
     # Load body CoM pose and local CoM offset
     q_com_i = body_q_com[bid]
@@ -149,6 +162,8 @@ def compute_body_frame_state(
     body_com: wp.array,
     body_q_com: wp.array,
     body_q: wp.array,
+    world_mask: wp.array | None = None,
+    body_wid: wp.array | None = None,
 ):
     """
     Computes body-frame state from body center-of-mass (CoM) state.
@@ -160,11 +175,13 @@ def compute_body_frame_state(
             Array of body CoM poses in world frame.
         body_q (`wp.array`):
             Array of body-frame poses in world frame.
+        world_mask: optional per-world mask selecting which worlds to process.
+        body_wid: body-to-world index mapping, required when ``world_mask`` is given.
     """
     wp.launch(
         kernel=_compute_body_frame_state,
         dim=body_com.shape[0],
-        inputs=[body_com, body_q_com],
+        inputs=[body_com, body_q_com, world_mask, body_wid],
         outputs=[body_q],
         device=body_com.device,
     )

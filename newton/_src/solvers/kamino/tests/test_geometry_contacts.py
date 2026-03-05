@@ -36,6 +36,7 @@ from newton._src.solvers.kamino.geometry.contacts import (
     make_contact_frame_xnorm,
     make_contact_frame_znorm,
 )
+from newton._src.solvers.kamino.models.builders.basics_newton import build_boxes_nunchaku
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -385,56 +386,16 @@ class TestGeometryContactConversions(unittest.TestCase):
 
     @staticmethod
     def _build_nunchaku_newton() -> ModelBuilder:
-        """Build a nunchaku scene using Newton's ModelBuilder.
-
-        Three bodies (two boxes + one sphere) connected by spherical joints,
-        resting on a ground plane.  Matches the Kamino ``build_boxes_nunchaku``
-        geometry so that Newton's collision pipeline produces the same 9
-        contacts (4 per box + 1 sphere on ground).
-        """
-        builder = ModelBuilder()
-
-        d, w, h, r = 0.5, 0.1, 0.1, 0.05
-
-        b0 = builder.add_link()
-        builder.add_shape_box(b0, hx=d / 2, hy=w / 2, hz=h / 2)
-
-        b1 = builder.add_link()
-        builder.add_shape_sphere(b1, radius=r)
-
-        b2 = builder.add_link()
-        builder.add_shape_box(b2, hx=d / 2, hy=w / 2, hz=h / 2)
-
-        j0 = builder.add_joint_ball(
-            parent=-1,
-            child=b0,
-            parent_xform=wp.transform(p=wp.vec3(d / 2, 0.0, h / 2), q=wp.quat_identity()),
-            child_xform=wp.transform(p=wp.vec3(0.0, 0.0, 0.0), q=wp.quat_identity()),
-        )
-        j1 = builder.add_joint_ball(
-            parent=b0,
-            child=b1,
-            parent_xform=wp.transform(p=wp.vec3(d / 2, 0.0, 0.0), q=wp.quat_identity()),
-            child_xform=wp.transform(p=wp.vec3(-r, 0.0, 0.0), q=wp.quat_identity()),
-        )
-        j2 = builder.add_joint_ball(
-            parent=b1,
-            child=b2,
-            parent_xform=wp.transform(p=wp.vec3(r, 0.0, 0.0), q=wp.quat_identity()),
-            child_xform=wp.transform(p=wp.vec3(-d / 2, 0.0, 0.0), q=wp.quat_identity()),
-        )
-        builder.add_articulation([j0, j1, j2])
-        builder.add_ground_plane()
-
-        return builder
+        """Build a nunchaku scene using the shared builder in basics_newton."""
+        return build_boxes_nunchaku()
 
     def _setup_newton_scene(self):
         """Finalize the nunchaku model and return (newton_model, newton_state, newton_contacts).
 
         For single-world models, Newton assigns ``shape_world = -1`` (global)
         to all shapes.  The conversion kernels require world-0 assignment, so
-        we normalize both ``shape_world`` and ``shape_world_start`` to match
-        what ``ModelKamino.from_newton`` does internally.
+        we normalize ``shape_world`` to match what ``ModelKamino.from_newton``
+        does internally.
         """
         builder = self._build_nunchaku_newton()
         model = builder.finalize()
@@ -444,9 +405,6 @@ class TestGeometryContactConversions(unittest.TestCase):
             if np.any(sw < 0):
                 sw[sw < 0] = 0
                 model.shape_world.assign(sw)
-                sws = model.shape_world_start.numpy()
-                sws[0] = 0
-                model.shape_world_start.assign(sws)
 
         state = model.state()
         newton.eval_fk(model, model.joint_q, model.joint_qd, state)
@@ -732,16 +690,39 @@ class TestGeometryContactConversions(unittest.TestCase):
             msg.debug("Nunchaku pipeline: %d -> %d -> %d contacts", nc_newton, nc_kamino, nc_newton_2)
 
     def test_05_multi_world_roundtrip(self):
-        """N->K->N round-trip with two worlds exercises nonzero shape_world_start offsets."""
-        blueprint = self._build_nunchaku_newton()
+        """N->K->N round-trip with heterogeneous worlds and a shared ground plane.
+
+        Scene layout (ground plane added first, shared across all worlds):
+          - World 0: nunchaku (2 boxes + 1 sphere) -> 9 contacts (4+4+1)
+          - World 1: nunchaku (2 boxes + 1 sphere) -> 9 contacts (4+4+1)
+          - World 2: single box                    -> 4 contacts
+
+        The ground plane is global (shape_world == -1) and precedes all
+        per-world shapes, exercising the plane-first ordering path.
+        Expected total: 22 contacts.
+        """
+        nunchaku_blueprint = build_boxes_nunchaku(ground=False)
+
+        box_blueprint = ModelBuilder()
+        b = box_blueprint.add_link()
+        no_gap = ModelBuilder.ShapeConfig(gap=0.0)
+        box_blueprint.add_shape_box(b, hx=0.25, hy=0.25, hz=0.25, cfg=no_gap)
+        j = box_blueprint.add_joint_free(
+            parent=-1,
+            child=b,
+            parent_xform=wp.transform(p=wp.vec3(0.0, 0.0, 0.25), q=wp.quat_identity()),
+            child_xform=wp.transform_identity(),
+        )
+        box_blueprint.add_articulation([j])
 
         scene = ModelBuilder()
         scene.add_ground_plane()
-        scene.add_world(blueprint, xform=wp.transform(p=wp.vec3(0.0, 0.0, 0.0)))
-        scene.add_world(blueprint, xform=wp.transform(p=wp.vec3(5.0, 0.0, 0.0)))
+        scene.add_world(nunchaku_blueprint, xform=wp.transform(p=wp.vec3(0.0, 0.0, 0.0)))
+        scene.add_world(nunchaku_blueprint, xform=wp.transform(p=wp.vec3(5.0, 0.0, 0.0)))
+        scene.add_world(box_blueprint, xform=wp.transform(p=wp.vec3(10.0, 0.0, 0.0)))
         model = scene.finalize()
 
-        self.assertEqual(model.world_count, 2)
+        self.assertEqual(model.world_count, 3)
         sws = model.shape_world_start.numpy()
         self.assertGreater(int(sws[1]), 0, "World 1 must have nonzero shape_world_start")
 
@@ -751,13 +732,23 @@ class TestGeometryContactConversions(unittest.TestCase):
         nc_orig = int(contacts.rigid_contact_count.numpy()[0])
         self.assertGreater(nc_orig, 0)
 
+        expected_contacts = 9 + 9 + 4
+        self.assertEqual(
+            nc_orig, expected_contacts,
+            f"Expected {expected_contacts} contacts (9+9+4), got {nc_orig}",
+        )
+
         kamino_out = ContactsKamino(capacity=nc_orig + 32, device=self.default_device)
         convert_contacts_newton_to_kamino(model, state, contacts, kamino_out)
         wp.synchronize()
         nc_kamino = int(kamino_out.model_active_contacts.numpy()[0])
         self.assertGreater(nc_kamino, 0)
 
-        newton_rt = Contacts(rigid_contact_max=kamino_out.model_max_contacts_host, soft_contact_max=0, device=self.default_device)
+        newton_rt = Contacts(
+            rigid_contact_max=kamino_out.model_max_contacts_host,
+            soft_contact_max=0,
+            device=self.default_device,
+        )
         convert_contacts_kamino_to_newton(model, state, kamino_out, newton_rt)
         wp.synchronize()
         nc_rt = int(newton_rt.rigid_contact_count.numpy()[0])
@@ -787,7 +778,10 @@ class TestGeometryContactConversions(unittest.TestCase):
             np.testing.assert_allclose(p1w, kamino_pos_B[i], atol=1e-4, err_msg=f"Contact {i}: pos_B mismatch")
 
         if self.verbose:
-            msg.debug("Multi-world round-trip: %d -> %d -> %d contacts", nc_orig, nc_kamino, nc_rt)
+            msg.debug(
+                "Multi-world round-trip: %d -> %d -> %d contacts (3 worlds: nunchaku, nunchaku, box)",
+                nc_orig, nc_kamino, nc_rt,
+            )
 
 
 ###

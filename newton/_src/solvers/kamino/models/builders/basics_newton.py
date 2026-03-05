@@ -41,6 +41,7 @@ from ...core.joints import JOINT_QMAX, JOINT_QMIN
 
 __all__ = [
     "build_boxes_fourbar",
+    "build_boxes_nunchaku",
 ]
 
 
@@ -363,3 +364,63 @@ def build_boxes_fourbar(
 
     # Return the lists of element indices
     return _builder
+
+
+def build_boxes_nunchaku(
+    builder: ModelBuilder | None = None,
+    ground: bool = True,
+) -> ModelBuilder:
+    """
+    Constructs a nunchaku model: two boxes connected by a sphere via ball joints.
+
+    Three bodies (two boxes + one sphere) connected by spherical joints,
+    optionally resting on a ground plane.  Produces 9 contacts with the
+    ground (4 per box + 1 sphere).
+
+    Args:
+        builder: An optional existing model builder to populate.
+            If ``None``, a new builder is created.
+        ground: Whether to add a static ground plane.
+
+    Returns:
+        The populated :class:`ModelBuilder`.
+    """
+    if builder is None:
+        builder = ModelBuilder()
+
+    d, w, h, r = 0.5, 0.1, 0.1, 0.05
+    no_gap = ModelBuilder.ShapeConfig(gap=0.01)
+
+    b0 = builder.add_link()
+    builder.add_shape_box(b0, hx=d / 2, hy=w / 2, hz=h / 2, cfg=no_gap)
+
+    b1 = builder.add_link()
+    builder.add_shape_sphere(b1, radius=r, cfg=no_gap)
+
+    b2 = builder.add_link()
+    builder.add_shape_box(b2, hx=d / 2, hy=w / 2, hz=h / 2, cfg=no_gap)
+
+    j0 = builder.add_joint_ball(
+        parent=-1,
+        child=b0,
+        parent_xform=wp.transform(p=wp.vec3(d / 2, 0.0, h / 2), q=wp.quat_identity()),
+        child_xform=wp.transform(p=wp.vec3(0.0, 0.0, 0.0), q=wp.quat_identity()),
+    )
+    j1 = builder.add_joint_ball(
+        parent=b0,
+        child=b1,
+        parent_xform=wp.transform(p=wp.vec3(d / 2, 0.0, 0.0), q=wp.quat_identity()),
+        child_xform=wp.transform(p=wp.vec3(-r, 0.0, 0.0), q=wp.quat_identity()),
+    )
+    j2 = builder.add_joint_ball(
+        parent=b1,
+        child=b2,
+        parent_xform=wp.transform(p=wp.vec3(r, 0.0, 0.0), q=wp.quat_identity()),
+        child_xform=wp.transform(p=wp.vec3(-d / 2, 0.0, 0.0), q=wp.quat_identity()),
+    )
+    builder.add_articulation([j0, j1, j2])
+
+    if ground:
+        builder.add_ground_plane()
+
+    return builder

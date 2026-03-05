@@ -15,7 +15,6 @@
 
 """Unit tests for the Proximal-ADMM Solver."""
 
-import os
 import unittest
 
 import numpy as np
@@ -329,14 +328,14 @@ class TestPADMMSolver(unittest.TestCase):
     def setUp(self):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
-        self.verbose = test_context.verbose  # Set to True for detailed output
-        self.savefig = False  # Set to True to generate solver info plots
+        self.verbose = True  # Set to True for detailed output
+        self.savefig = True  # Set to True to generate solver info plots
         self.default_device = wp.get_device(test_context.device)
-        self.output_dir = os.path.dirname(os.path.realpath(__file__)) + "/output/test_solvers_padmm"
+        self.output_path = test_context.output_path / "test_solvers_padmm"
 
         # Create output directory if saving figures
         if self.savefig:
-            os.makedirs(self.output_dir, exist_ok=True)
+            self.output_path.mkdir(parents=True, exist_ok=True)
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -427,8 +426,8 @@ class TestPADMMSolver(unittest.TestCase):
         # Extract solver info
         if self.savefig:
             msg.notif("Generating solver info plots...")
-            path = self.output_dir + "/test_02_padmm_solve.pdf"
-            save_solver_info(solver=solver, path=path)
+            path = self.output_path / "test_02_padmm_solve.pdf"
+            save_solver_info(solver=solver, path=str(path))
 
         # Check solution
         check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
@@ -472,8 +471,8 @@ class TestPADMMSolver(unittest.TestCase):
         # Extract solver info
         if self.savefig:
             msg.notif("Generating solver info plots...")
-            path = self.output_dir + "/test_03_padmm_solve_with_acceleration.pdf"
-            save_solver_info(solver=solver, path=path)
+            path = self.output_path / "test_03_padmm_solve_with_acceleration.pdf"
+            save_solver_info(solver=solver, path=str(path))
 
         # Check solution
         check_padmm_solution(self, test.model, test.problem, solver, verbose=self.verbose)
@@ -522,8 +521,8 @@ class TestPADMMSolver(unittest.TestCase):
         # Extract solver info
         if self.savefig:
             msg.notif("Generating solver info plots...")
-            path = self.output_dir + "/test_04_padmm_solve_with_internal_warmstart.pdf"
-            save_solver_info(solver=solver, path=path)
+            path = self.output_path / "test_04_padmm_solve_with_internal_warmstart.pdf"
+            save_solver_info(solver=solver, path=str(path))
 
     def test_05_padmm_solve_with_container_warmstart(self):
         """
@@ -570,8 +569,8 @@ class TestPADMMSolver(unittest.TestCase):
         # Extract solver info
         if self.savefig:
             msg.notif("Generating solver info plots...")
-            path = self.output_dir + "/test_05_padmm_solve_with_container_warmstart.pdf"
-            save_solver_info(solver=solver, path=path)
+            path = self.output_path / "test_05_padmm_solve_with_container_warmstart.pdf"
+            save_solver_info(solver=solver, path=str(path))
 
     def test_06_padmm_solve_with_acceleration_and_internal_warmstart(self):
         """
@@ -618,8 +617,8 @@ class TestPADMMSolver(unittest.TestCase):
         # Extract solver info
         if self.savefig:
             msg.notif("Generating solver info plots...")
-            path = self.output_dir + "/test_06_padmm_solve_with_acceleration_and_internal_warmstart.pdf"
-            save_solver_info(solver=solver, path=path)
+            path = self.output_path / "test_06_padmm_solve_with_acceleration_and_internal_warmstart.pdf"
+            save_solver_info(solver=solver, path=str(path))
 
     def test_07_padmm_solve_with_acceleration_and_container_warmstart(self):
         """
@@ -667,8 +666,8 @@ class TestPADMMSolver(unittest.TestCase):
         # Extract solver info
         if self.savefig:
             msg.notif("Generating solver info plots...")
-            path = self.output_dir + "/test_07_padmm_solve_with_acceleration_and_container_warmstart.pdf"
-            save_solver_info(solver=solver, path=path)
+            path = self.output_path / "test_07_padmm_solve_with_acceleration_and_container_warmstart.pdf"
+            save_solver_info(solver=solver, path=str(path))
 
 
 ###

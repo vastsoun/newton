@@ -14,11 +14,17 @@
 # limitations under the License.
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import warp as wp
 
+###
+# Module interface
+###
+
 __all__ = ["setup_tests", "test_context"]
+
 
 ###
 # Global test context
@@ -28,13 +34,16 @@ __all__ = ["setup_tests", "test_context"]
 @dataclass
 class TestContext:
     setup_done: bool = False
-    """ Whether the global test setup has already run """
+    """Whether the global test setup has already run """
 
     verbose: bool = False
-    """ Global default verbosity flag to be used by unit tests """
+    """Global default verbosity flag to be used by unit tests """
 
     device: wp.DeviceLike | None = None
-    """ Global default device to be used by unit tests """
+    """Global default device to be used by unit tests """
+
+    output_path: Path | None = None
+    """Global cache directory for tests to use, if any."""
 
 
 test_context = TestContext()
@@ -69,3 +78,8 @@ def setup_tests(verbose: bool = False, device: wp.DeviceLike | str | None = None
     test_context.verbose = verbose
     test_context.device = wp.get_device(device)
     test_context.setup_done = True
+
+    # Set the cache directory for optional test output, if any
+    # Data directory (contains perfprof.csv)
+    test_context.output_path = Path(__file__).parent / "output"
+    test_context.output_path.mkdir(parents=True, exist_ok=True)

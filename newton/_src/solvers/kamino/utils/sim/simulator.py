@@ -27,7 +27,7 @@ from ...core.control import ControlKamino
 from ...core.model import ModelKamino
 from ...core.state import StateKamino
 from ...core.types import FloatArrayLike
-from ...geometry import CollisionDetector, CollisionDetectorConfig
+from ...geometry import CollisionDetector
 from ...solver_kamino import SolverKamino, SolverKaminoImpl
 
 ###
@@ -65,10 +65,10 @@ class SimulatorConfig:
     Defaults to `0.001` seconds.
     """
 
-    collision_detector: CollisionDetectorConfig = field(default_factory=CollisionDetectorConfig)
+    collision_detector: CollisionDetector.Config = field(default_factory=CollisionDetector.Config)
     """
     The config for the collision detector.
-    See :class:`CollisionDetectorConfig` for more details.
+    See :class:`CollisionDetector.Config` for more details.
     """
 
     solver: SolverKamino.Config = field(default_factory=SolverKamino.Config)
@@ -98,7 +98,7 @@ class SimulatorConfig:
             raise TypeError("Invalid time-step: must be a `float` or a `FloatArrayLike`.`")
 
         # Ensure nested configs are properly created
-        if not isinstance(self.collision_detector, CollisionDetectorConfig):
+        if not isinstance(self.collision_detector, CollisionDetector.Config):
             raise TypeError(f"Invalid type for collision_detector config: {type(self.collision_detector)}")
         if not isinstance(self.solver, SolverKamino.Config):
             raise TypeError(f"Invalid type for solver config: {type(self.solver)}")

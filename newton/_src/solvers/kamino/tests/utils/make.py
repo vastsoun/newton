@@ -31,7 +31,7 @@ from ...core.model import ModelKamino
 from ...core.state import StateKamino
 from ...core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from ...geometry.contacts import ContactsKamino
-from ...geometry.detector import CollisionDetector, CollisionDetectorConfig
+from ...geometry.detector import CollisionDetector
 from ...kinematics.constraints import make_unilateral_constraints_info, update_constraints_info
 from ...kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians, SystemJacobiansType
 from ...kinematics.joints import compute_joints_data
@@ -148,7 +148,7 @@ def make_containers(
     limits = LimitsKamino(model=model)
 
     # Create the collision detector
-    config = CollisionDetectorConfig(max_contacts_per_world=max_world_contacts, pipeline="primitive")
+    config = CollisionDetector.Config(max_contacts_per_world=max_world_contacts, pipeline="primitive")
     detector = CollisionDetector(model=model, config=config)
 
     # Construct the unilateral constraints members in the model info
@@ -231,7 +231,7 @@ def make_test_problem(
     # Create the collision detector
     contacts = None
     if with_contacts:
-        config = CollisionDetectorConfig(max_contacts_per_world=max_world_contacts, pipeline="primitive")
+        config = CollisionDetector.Config(max_contacts_per_world=max_world_contacts, pipeline="primitive")
         detector = CollisionDetector(model=model, config=config, device=device)
         contacts = detector.contacts
 

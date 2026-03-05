@@ -56,7 +56,7 @@ from .dynamics.wrenches import (
     compute_joint_dof_body_wrenches,
 )
 from .geometry.contacts import ContactsKamino, convert_contacts_kamino_to_newton, convert_contacts_newton_to_kamino
-from .geometry.detector import CollisionDetector, CollisionDetectorConfig
+from .geometry.detector import CollisionDetector
 from .integrators import IntegratorEuler, IntegratorMoreauJean
 from .kinematics.constraints import (
     make_unilateral_constraints_info,
@@ -1351,7 +1351,7 @@ class SolverKamino(SolverBase):
         self,
         model: Model,
         solver_config: SolverKamino.Config | None = None,
-        collision_detector_config: CollisionDetectorConfig | None = None,
+        collision_detector_config: CollisionDetector.Config | None = None,
     ):
         """
         TODO

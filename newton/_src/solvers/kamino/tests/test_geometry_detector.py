@@ -22,7 +22,6 @@ import warp as wp
 
 from newton._src.solvers.kamino.geometry import (
     CollisionDetector,
-    CollisionDetectorConfig,
 )
 from newton._src.solvers.kamino.models.builders import basics
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
@@ -56,14 +55,14 @@ class TestCollisionDetectorConfig(unittest.TestCase):
 
     def test_00_make_default(self):
         """Test making default collision detector config."""
-        config = CollisionDetectorConfig()
+        config = CollisionDetector.Config()
         self.assertEqual(config.pipeline, "unified")
         self.assertEqual(config.broadphase, "explicit")
         self.assertEqual(config.bvtype, "aabb")
 
     def test_01_make_with_string_args(self):
         """Test making collision detector config with string arguments."""
-        config = CollisionDetectorConfig(pipeline="primitive", broadphase="explicit", bvtype="aabb")
+        config = CollisionDetector.Config(pipeline="primitive", broadphase="explicit", bvtype="aabb")
         self.assertEqual(config.pipeline, "primitive")
         self.assertEqual(config.broadphase, "explicit")
         self.assertEqual(config.bvtype, "aabb")
@@ -104,7 +103,7 @@ class TestGeometryCollisionDetector(unittest.TestCase):
         state = model.state()
 
         # Create a collision detector with primitive pipeline
-        config = CollisionDetectorConfig(
+        config = CollisionDetector.Config(
             pipeline="primitive",
             broadphase="explicit",
             bvtype="aabb",
@@ -145,7 +144,7 @@ class TestGeometryCollisionDetector(unittest.TestCase):
         state = model.state()
 
         # Create a collision detector with unified pipeline
-        config = CollisionDetectorConfig(
+        config = CollisionDetector.Config(
             pipeline="unified",
             broadphase="explicit",
             bvtype="aabb",

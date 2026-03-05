@@ -13,14 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
 
 import warp as wp
 
+import newton.utils
+
 from ...core.builder import ModelBuilderKamino
-from ...models import basics, get_examples_usd_assets_path
+from ...models import basics
 from ...models.builders.utils import (
     add_ground_box,
     make_homogeneous_builder,
@@ -114,7 +115,7 @@ def make_benchmark_problem_fourbar(
             builder.gravity[w].enabled = gravity
         return builder
 
-    control = ControlConfig(decimation=20, scale=20.0)
+    control = ControlConfig(decimation=20, scale=10.0)
     camera = CameraConfig(
         position=(-0.2, -0.5, 0.1),
         pitch=-5.0,
@@ -129,17 +130,20 @@ def make_benchmark_problem_dr_legs(
     ground: bool = True,
 ) -> ProblemConfig:
     # Set the path to the external USD assets
-    EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
-    if EXAMPLE_ASSETS_PATH is None:
-        raise FileNotFoundError("Failed to find USD assets path for examples: ensure `newton-assets` is installed.")
-    USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
+    asset_path = newton.utils.download_asset("disneyresearch")
+    asset_file = str(asset_path / "dr_legs/usd" / "dr_legs_with_meshes_and_boxes.usda")
 
     def builder_fn():
         # Create a model builder from the imported USD
         msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
         builder: ModelBuilderKamino = make_homogeneous_builder(
-            num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=USD_MODEL_PATH
+            num_worlds=num_worlds,
+            build_fn=importer.import_from,
+            load_static_geometry=True,
+            source=asset_file,
+            load_drive_dynamics=True,
+            use_angular_drive_scaling=True,
         )
         # Offset the model to place it above the ground
         # NOTE: The USD model is centered at the origin
@@ -155,7 +159,7 @@ def make_benchmark_problem_dr_legs(
         return builder
 
     # Set control configurations
-    control = ControlConfig(decimation=20, scale=0.25)
+    control = ControlConfig(decimation=20, scale=5.0)
     # Set the camera configuration for better visualization of the system
     camera = CameraConfig(
         position=(0.6, 0.6, 0.3),

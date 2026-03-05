@@ -160,7 +160,7 @@ def _generate_random_control_inputs(
         rng_j_dof = wp.rand_init(controller_seed, (step + 1) * (num_joints * jid + dof))
 
         # Generate a random control input for the joint DoF
-        tau_j_c = scale_j * wp.randf(rng_j_dof, -tau_j_max, tau_j_max)
+        tau_j_c = scale_j * wp.randf(rng_j_dof, -1.0, 1.0)
 
         # Clamp the control input to the maximum limits of the actuator
         tau_j_c = wp.clamp(tau_j_c, -tau_j_max, tau_j_max)

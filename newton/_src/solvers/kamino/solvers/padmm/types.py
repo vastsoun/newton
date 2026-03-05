@@ -751,6 +751,20 @@ class PADMMConfig:
             )
         )
 
+        # Separately register `newton:maxSolverIterations` from `KaminoSceneAPI` so we have access
+        # to it through the model.
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="max_solver_iterations",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.int32,
+                default=-1,
+                namespace="kamino",
+                usd_attribute_name="newton:maxSolverIterations",
+            )
+        )
+
     @staticmethod
     def from_model(model: Model, **kwargs: dict[str, Any]) -> PADMMConfig:
         """Creates a config based on a model, using any config parameters that might be stored in
@@ -770,6 +784,10 @@ class PADMMConfig:
                 config.dual_tolerance = float(kamino_attrs.padmm_dual_tolerance.numpy()[0])
             if hasattr(kamino_attrs, "padmm_complementarity_tolerance"):
                 config.compl_tolerance = float(kamino_attrs.padmm_complementarity_tolerance.numpy()[0])
+            if hasattr(kamino_attrs, "max_solver_iterations"):
+                max_iterations = kamino_attrs.max_solver_iterations.numpy()[0]
+                if max_iterations >= 0:
+                    config.max_iterations = max_iterations
 
         return config
 

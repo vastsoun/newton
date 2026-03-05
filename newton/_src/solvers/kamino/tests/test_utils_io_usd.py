@@ -1269,6 +1269,10 @@ class TestUSDKaminoSceneAPIImport(unittest.TestCase):
             hasattr(kamino_attr, "padmm_complementarity_tolerance")
             and isinstance(kamino_attr.padmm_complementarity_tolerance.numpy()[0], np.floating)
         )
+        self.assertTrue(
+            hasattr(kamino_attr, "max_solver_iterations")
+            and isinstance(kamino_attr.max_solver_iterations.numpy()[0], np.integer)
+        )
 
         # Compare attribute values to KaminoSceneAPI defaults
         self.assertEqual(kamino_attr.padmm_warmstarting[0], "containers")
@@ -1283,6 +1287,7 @@ class TestUSDKaminoSceneAPIImport(unittest.TestCase):
         self.assertAlmostEqual(kamino_attr.padmm_primal_tolerance.numpy()[0], 1e-6)
         self.assertAlmostEqual(kamino_attr.padmm_dual_tolerance.numpy()[0], 1e-6)
         self.assertAlmostEqual(kamino_attr.padmm_complementarity_tolerance.numpy()[0], 1e-6)
+        self.assertEqual(kamino_attr.max_solver_iterations.numpy()[0], -1)
 
     @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
     def test_02_kamino_scene_api_import_full_scene(self):
@@ -1293,6 +1298,7 @@ def PhysicsScene "PhysicsScene" (
     prepend apiSchemas = ["NewtonKaminoSceneAPI"]
 )
 {
+    uniform int newton:maxSolverIterations = 10
     uniform float newton:kamino:padmm:primalTolerance = 0.1
     uniform float newton:kamino:padmm:dualTolerance = 0.2
     uniform float newton:kamino:padmm:complementarityTolerance = 0.3
@@ -1320,6 +1326,7 @@ def PhysicsScene "PhysicsScene" (
         self.assertAlmostEqual(kamino_attr.padmm_primal_tolerance.numpy()[0], 0.1)
         self.assertAlmostEqual(kamino_attr.padmm_dual_tolerance.numpy()[0], 0.2)
         self.assertAlmostEqual(kamino_attr.padmm_complementarity_tolerance.numpy()[0], 0.3)
+        self.assertEqual(kamino_attr.max_solver_iterations.numpy()[0], 10)
 
     @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
     def test_03_kamino_scene_api_import_faulty_scenes(self):
@@ -1354,6 +1361,7 @@ def PhysicsScene "PhysicsScene" (
     prepend apiSchemas = ["NewtonKaminoSceneAPI"]
 )
 {
+    uniform int newton:maxSolverIterations = 10
     uniform float newton:kamino:padmm:primalTolerance = 0.1
     uniform float newton:kamino:padmm:dualTolerance = 0.2
     uniform float newton:kamino:padmm:complementarityTolerance = 0.3
@@ -1380,6 +1388,7 @@ def PhysicsScene "PhysicsScene" (
         self.assertAlmostEqual(config.padmm.primal_tolerance, 0.1)
         self.assertAlmostEqual(config.padmm.dual_tolerance, 0.2)
         self.assertAlmostEqual(config.padmm.compl_tolerance, 0.3)
+        self.assertEqual(config.padmm.max_iterations, 10)
 
     @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
     def test_05_kamino_scene_api_import_full_scene_solver(self):
@@ -1390,6 +1399,7 @@ def PhysicsScene "PhysicsScene" (
     prepend apiSchemas = ["NewtonKaminoSceneAPI"]
 )
 {
+    uniform int newton:maxSolverIterations = 10
     uniform float newton:kamino:padmm:primalTolerance = 0.1
     uniform float newton:kamino:padmm:dualTolerance = 0.2
     uniform float newton:kamino:padmm:complementarityTolerance = 0.3
@@ -1418,6 +1428,7 @@ def PhysicsScene "PhysicsScene" (
         self.assertAlmostEqual(config.padmm.primal_tolerance, 0.1)
         self.assertAlmostEqual(config.padmm.dual_tolerance, 0.2)
         self.assertAlmostEqual(config.padmm.compl_tolerance, 0.3)
+        self.assertEqual(config.padmm.max_iterations, 10)
 
 
 ###

@@ -389,7 +389,7 @@ def build_boxes_nunchaku(
         builder = ModelBuilder()
 
     d, w, h, r = 0.5, 0.1, 0.1, 0.05
-    no_gap = ModelBuilder.ShapeConfig(gap=0.01)
+    no_gap = ModelBuilder.ShapeConfig(gap=0.0)
 
     b0 = builder.add_link()
     builder.add_shape_box(b0, hx=d / 2, hy=w / 2, hz=h / 2, cfg=no_gap)

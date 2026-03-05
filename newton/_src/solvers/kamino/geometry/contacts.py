@@ -766,6 +766,7 @@ def _convert_contacts_newton_to_kamino(
     # Model lookups
     shape_body: wp.array(dtype=int32),
     shape_world: wp.array(dtype=int32),
+    shape_world_start: wp.array(dtype=int32),
     shape_mu: wp.array(dtype=float32),
     shape_restitution: wp.array(dtype=float32),
     body_q: wp.array(dtype=wp.transformf),
@@ -834,11 +835,16 @@ def _convert_contacts_newton_to_kamino(
     # with n_newton = -n_a_to_b and offset* stored in rigid_contact_thickness*.
     d_newton = -wp.dot(p1_world - p0_world, n_newton) - (newton_thickness0[tid] + newton_thickness1[tid])
 
+    # Convert model-global shape indices to world-local for Kamino convention
+    world_start = shape_world_start[wid]
+    s0_local = s0 - world_start
+    s1_local = s1 - world_start
+
     if b1 < 0:
         # shape1 is world-static → make it A, shape0 becomes B.
         # Newton normal already points from shape1 (A) to shape0 (B).
-        gid_A = s1
-        gid_B = s0
+        gid_A = s1_local
+        gid_B = s0_local
         bid_A = b1
         bid_B = b0
         pos_A = p1_world
@@ -847,8 +853,8 @@ def _convert_contacts_newton_to_kamino(
     else:
         # Both dynamic or shape0 is static → keep A=shape0, B=shape1.
         # Newton normal goes shape1→shape0 = B→A, need A→B so negate.
-        gid_A = s0
-        gid_B = s1
+        gid_A = s0_local
+        gid_B = s1_local
         bid_A = b0
         bid_B = b1
         pos_A = p0_world
@@ -1012,6 +1018,7 @@ def convert_contacts_newton_to_kamino(
             contacts_in.rigid_contact_margin1,
             model.shape_body,
             model.shape_world,
+            model.shape_world_start,
             model.shape_material_mu,
             model.shape_material_restitution,
             state.body_q,

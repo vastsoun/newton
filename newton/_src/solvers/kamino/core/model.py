@@ -697,12 +697,19 @@ class ModelKamino:
         # Single-world Newton models may have world index -1 (unassigned).
         # Normalize to 0 so downstream world-based grouping works correctly.
         if model.world_count == 1:
+            needs_start_fix = False
             for attr in ("body_world", "joint_world", "shape_world"):
                 arr = getattr(model, attr)
                 arr_np = arr.numpy()
                 if np.any(arr_np < 0):
                     arr_np[arr_np < 0] = 0
                     arr.assign(arr_np)
+                    if attr == "shape_world":
+                        needs_start_fix = True
+            if needs_start_fix:
+                sws_np = model.shape_world_start.numpy()
+                sws_np[0] = 0
+                model.shape_world_start.assign(sws_np)
 
         # ---------------------------------------------------------------------------
         # Pre-processing: absorb non-identity joint_X_c rotations into child body

@@ -372,6 +372,8 @@ class RigidBodySim:
 
     def _make_rl_interface(self):
         """Create zero-copy PyTorch views of simulator state, control and contact arrays."""
+        import torch
+
         nw = self.sim.model.size.num_worlds
         njd = self.sim.model.size.max_of_num_joint_dofs
         nb = self.sim.model.size.max_of_num_bodies

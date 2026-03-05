@@ -75,7 +75,7 @@ def _render_table_to_console_and_file(
     # Attempt to import rich first, and warn user
     # if the necessary package is not installed
     try:
-        from rich.text import Console  # noqa: PLC0415
+        from rich.console import Console  # noqa: PLC0415
     except ImportError as e:
         raise ImportError(
             "The `rich` package is required for rendering tables. Install it with: pip install rich"

@@ -23,7 +23,6 @@ import newton
 import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
-from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
@@ -59,17 +58,15 @@ class Example:
         self.use_cuda_graph: bool = use_cuda_graph
         self.logging: bool = logging
 
-        # Set the path to the external USD assets
-        EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
-        if EXAMPLE_ASSETS_PATH is None:
-            raise FileNotFoundError("Failed to find USD assets path for examples: ensure `newton-assets` is installed.")
-        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_testmech/usd/dr_testmech.usda")
+        # Load the DR Legs USD and add it to the builder
+        asset_path = newton.utils.download_asset("disneyresearch")
+        asset_file = str(asset_path / "dr_testmech/usd" / "dr_testmech.usda")
 
         # Create a single-instance system (always load from USD for DR Test Mechanism)
         msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
         self.builder: ModelBuilderKamino = make_homogeneous_builder(
-            num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=USD_MODEL_PATH
+            num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=asset_file
         )
         msg.info("total mass: %f", self.builder.worlds[0].mass_total)
         msg.info("total diag inertia: %f", self.builder.worlds[0].inertia_total)

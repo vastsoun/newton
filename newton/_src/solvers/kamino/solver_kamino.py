@@ -239,6 +239,87 @@ class SolverKaminoConfig:
         """Post-initialization to validate config."""
         self.check()
 
+    @staticmethod
+    def register_custom_attributes(builder: ModelBuilder) -> None:
+        """
+        Register custom attributes for this config.
+
+        Args:
+            builder (ModelBuilder): The model builder to register the custom attributes to.
+        """
+
+        # Register KaminoSceneAPI attributes so the USD importer will store them on the model
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="padmm_warmstarting",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=str,
+                default="containers",
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:padmm:warmstarting",
+                usd_value_transformer=PADMMWarmStartMode.parse_usd_attribute,
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="padmm_use_acceleration",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.bool,
+                default=True,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:padmm:useAcceleration",
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="joint_correction",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=str,
+                default="twopi",
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:jointCorrection",
+                usd_value_transformer=JointCorrectionMode.parse_usd_attribute,
+            )
+        )
+
+        DualProblemConfig.register_custom_attributes(builder)
+        PADMMConfig.register_custom_attributes(builder)
+
+    @staticmethod
+    def from_model(model: Model, **kwargs: dict[str, Any]) -> SolverKaminoConfig:
+        """Creates a config based on a model, using any config parameters that might be stored in
+        the model if it was imported from USD.
+
+        Args:
+            model: Newton model.
+        """
+        config = SolverKaminoConfig(**kwargs)
+
+        # Parse solver-specific attributes imported from USD
+        kamino_attrs = getattr(model, "kamino", None)
+        if kamino_attrs is not None:
+            if hasattr(kamino_attrs, "padmm_warmstarting"):
+                config.warmstart_mode = kamino_attrs.padmm_warmstarting[0]
+            if hasattr(kamino_attrs, "padmm_use_acceleration"):
+                config.use_solver_acceleration = bool(kamino_attrs.padmm_use_acceleration.numpy()[0])
+            if hasattr(kamino_attrs, "joint_correction"):
+                config.rotation_correction = kamino_attrs.joint_correction[0]
+
+        problem_kwargs = {}
+        if "problem" in kwargs.keys():
+            problem_kwargs = kwargs["problem"].__dict__
+        config.problem = DualProblemConfig.from_model(model, **problem_kwargs)
+
+        padmm_kwargs = {}
+        if "padmm" in kwargs.keys():
+            problem_kwargs = kwargs["padmm"].__dict__
+        config.padmm = PADMMConfig.from_model(model, **padmm_kwargs)
+
+        return config
+
 
 ###
 # Interfaces
@@ -1298,6 +1379,11 @@ class SolverKamino(SolverBase):
         # Capture a reference to the contacts container
         self._contacts_kamino: ContactsKamino = self._collision_detector_kamino.contacts
 
+        # Create solver config if none is provided. This will also parse any solver-specific
+        # attributes imported from USD.
+        if solver_config is None:
+            solver_config = SolverKaminoConfig.from_model(model)
+
         # Initialize the internal Kamino solver
         self._solver_kamino = SolverKaminoImpl(
             model=self._model_kamino,
@@ -1549,9 +1635,8 @@ class SolverKamino(SolverBase):
             )
         )
 
-    ###
-    # Internals
-    ###
+        # Register KaminoSceneAPI attributes so the USD importer will store them on the model
+        SolverKaminoConfig.register_custom_attributes(builder)
 
     @staticmethod
     def _validate_model_compatibility(model: Model):

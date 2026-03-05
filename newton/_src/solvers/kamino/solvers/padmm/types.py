@@ -49,11 +49,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import warp as wp
 
+from .....sim import Model, ModelBuilder
 from ...core.size import SizeKamino
 from ...core.types import float32, int32, override, vec2f
 
@@ -185,6 +186,17 @@ class PADMMWarmStartMode(IntEnum):
     def __repr__(self):
         """Returns a string representation of the PADMMWarmStartMode."""
         return self.__str__()
+
+    @staticmethod
+    def parse_usd_attribute(value: str, context: dict[str, Any] | None = None) -> str:
+        """Parse warmstart option imported from USD, following the KaminoSceneAPI schema."""
+        if not isinstance(value, str):
+            raise TypeError("Parser expects input of type 'str'.")
+        mapping = {"none": "none", "internal": "internal", "containers": "containers"}
+        lower_value = value.lower().strip()
+        if lower_value not in mapping:
+            raise ValueError(f"Warmstart parameter '{value}' is not a valid option.")
+        return mapping[lower_value]
 
 
 @wp.struct
@@ -696,6 +708,90 @@ class PADMMConfig:
     def __post_init__(self):
         """Post-initialization to validate config."""
         self.check()
+
+    @classmethod
+    def register_custom_attributes(cls, builder: ModelBuilder) -> None:
+        """
+        Register custom attributes for this config.
+
+        Args:
+            builder (ModelBuilder): The model builder to register the custom attributes to.
+        """
+
+        # Register KaminoSceneAPI attributes so the USD importer will store them on the model
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="padmm_primal_tolerance",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.float32,
+                default=1e-6,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:padmm:primalTolerance",
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="padmm_dual_tolerance",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.float32,
+                default=1e-6,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:padmm:dualTolerance",
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="padmm_complementarity_tolerance",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.float32,
+                default=1e-6,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:padmm:complementarityTolerance",
+            )
+        )
+
+        # Separately register `newton:maxSolverIterations` from `KaminoSceneAPI` so we have access
+        # to it through the model.
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="max_solver_iterations",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.int32,
+                default=-1,
+                namespace="kamino",
+                usd_attribute_name="newton:maxSolverIterations",
+            )
+        )
+
+    @staticmethod
+    def from_model(model: Model, **kwargs: dict[str, Any]) -> PADMMConfig:
+        """Creates a config based on a model, using any config parameters that might be stored in
+        the model if it was imported from USD.
+
+        Args:
+            model: Newton model.
+        """
+        config = PADMMConfig(**kwargs)
+
+        # Parse solver-specific attributes imported from USD
+        kamino_attrs = getattr(model, "kamino", None)
+        if kamino_attrs is not None:
+            if hasattr(kamino_attrs, "padmm_primal_tolerance"):
+                config.primal_tolerance = float(kamino_attrs.padmm_primal_tolerance.numpy()[0])
+            if hasattr(kamino_attrs, "padmm_dual_tolerance"):
+                config.dual_tolerance = float(kamino_attrs.padmm_dual_tolerance.numpy()[0])
+            if hasattr(kamino_attrs, "padmm_complementarity_tolerance"):
+                config.compl_tolerance = float(kamino_attrs.padmm_complementarity_tolerance.numpy()[0])
+            if hasattr(kamino_attrs, "max_solver_iterations"):
+                max_iterations = kamino_attrs.max_solver_iterations.numpy()[0]
+                if max_iterations >= 0:
+                    config.max_iterations = max_iterations
+
+        return config
 
 
 class PADMMState:

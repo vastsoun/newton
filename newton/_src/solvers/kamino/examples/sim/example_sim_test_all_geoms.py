@@ -24,7 +24,6 @@ import newton.examples
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.shapes import ShapeType
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
-from newton._src.solvers.kamino.geometry import CollisionPipelineType
 from newton._src.solvers.kamino.geometry.primitive.broadphase import PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES
 from newton._src.solvers.kamino.geometry.primitive.narrowphase import PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS
 from newton._src.solvers.kamino.models.builders import testing
@@ -60,14 +59,6 @@ class Example:
         self.use_cuda_graph: bool = use_cuda_graph
         self.logging: bool = logging
 
-        # Set collision detection pipeline type based on user input
-        if pipeline_name.lower() == "unified":
-            cd_pipeline = CollisionPipelineType.UNIFIED
-        elif pipeline_name.lower() == "primitive":
-            cd_pipeline = CollisionPipelineType.PRIMITIVE
-        else:
-            raise ValueError(f"Unsupported collision pipeline name: {pipeline_name}")
-
         # Define excluded shape types for broadphase / narrowphase (temporary)
         excluded_types = [
             ShapeType.EMPTY,  # NOTE: Need to skip empty shapes
@@ -80,7 +71,7 @@ class Example:
 
         # Generate a list of all supported shape-pair combinations for the configured pipeline
         supported_shape_pairs: list[tuple[str, str]] = []
-        if cd_pipeline == CollisionPipelineType.UNIFIED:
+        if pipeline_name == "unified":
             supported_shape_types = [st.value for st in ShapeType]
             for shape_bottom in supported_shape_types:
                 shape_bottom_name = ShapeType(shape_bottom).name.lower()
@@ -89,7 +80,7 @@ class Example:
                     if shape_top in excluded_types or shape_bottom in excluded_types:
                         continue
                     supported_shape_pairs.append((shape_top_name, shape_bottom_name))
-        elif cd_pipeline == CollisionPipelineType.PRIMITIVE:
+        elif pipeline_name == "primitive":
             excluded_types.extend([ShapeType.CYLINDER])
             supported_shape_types = list(PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES)
             supported_type_pairs = list(PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS)
@@ -104,8 +95,8 @@ class Example:
                     if (shape_top, shape_bottom) in supported_type_pairs:
                         supported_shape_pairs.append((shape_top_name, shape_bottom_name))
         else:
-            raise ValueError(f"Unsupported collision pipeline type: {cd_pipeline}")
-        msg.notif(f"Supported shape pairs for pipeline '{cd_pipeline.name}': {supported_shape_pairs}")
+            raise ValueError(f"Unsupported collision pipeline type: {pipeline_name}")
+        msg.notif(f"Supported shape pairs for pipeline '{pipeline_name}': {supported_shape_pairs}")
 
         # Construct model builder containing all shape-pair combinations supported by the configured pipeline
         msg.info("Constructing builder using model generator ...")
@@ -120,7 +111,7 @@ class Example:
         config = SimulatorConfig()
         config.dt = 0.001
         config.solver.padmm.rho_0 = 0.1
-        config.collision_detector.pipeline = cd_pipeline
+        config.collision_detector.pipeline = pipeline_name
 
         # Create a simulator
         msg.info("Building the simulator...")
@@ -272,7 +263,7 @@ if __name__ == "__main__":
         "--pipeline-name",
         type=str,
         choices=["primitive", "unified"],
-        default="primitive",
+        default="unified",
         help="Collision detection pipeline name ('primitive' or 'unified')",
     )
     parser.add_argument(

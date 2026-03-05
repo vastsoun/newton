@@ -648,6 +648,7 @@ class USDImporter:
             R_i_pa = np.array(wp.quat_to_matrix(i_q_i_pa), dtype=np.float32).reshape(3, 3)
             i_I_i = R_i_pa @ np.diag(i_I_i_diag) @ R_i_pa.T
             i_I_i = wp.mat33(i_I_i)
+            i_I_i = 0.5 * (i_I_i + wp.transpose(i_I_i))  # Ensure moment of inertia is symmetric
         else:
             i_I_i = wp.mat33(0.0)
         msg.debug(f"i_I_i_diag:\n{i_I_i_diag}")
@@ -731,7 +732,13 @@ class USDImporter:
             return JointActuationType.VELOCITY
         return JointActuationType.FORCE
 
-    def _parse_joint_revolute(self, joint_spec, rotation_unit: float = 1.0, load_drive_dynamics: bool = False):
+    def _parse_joint_revolute(
+        self,
+        joint_spec,
+        rotation_unit: float = 1.0,
+        load_drive_dynamics: bool = False,
+        use_angular_drive_scaling: bool = True,
+    ):
         dof_type = JointDoFType.REVOLUTE
         act_type = JointActuationType.PASSIVE
         X_j = self.usd_axis_to_axis[joint_spec.axis].to_mat33()
@@ -747,8 +754,9 @@ class USDImporter:
                 if load_drive_dynamics and has_pd_gains:
                     a_j = [0.0] * dof_type.num_dofs
                     b_j = [0.0] * dof_type.num_dofs
-                    k_p_j = [joint_spec.drive.stiffness / rotation_unit] * dof_type.num_coords
-                    k_d_j = [joint_spec.drive.damping / rotation_unit] * dof_type.num_dofs
+                    scaling = rotation_unit if use_angular_drive_scaling else 1.0
+                    k_p_j = [joint_spec.drive.stiffness / scaling] * dof_type.num_coords
+                    k_d_j = [joint_spec.drive.damping / scaling] * dof_type.num_dofs
                     act_type = self._infer_joint_actuation_type(
                         joint_spec.drive.stiffness, joint_spec.drive.damping, joint_spec.drive.enabled
                     )
@@ -1040,6 +1048,7 @@ class USDImporter:
         only_load_enabled_joints: bool = True,
         load_drive_dynamics: bool = False,
         prim_path_names: bool = False,
+        use_angular_drive_scaling: bool = False,
     ) -> JointDescriptor | None:
         # Skip this body if it is not enable and we are only loading enabled rigid bodies
         if not joint_spec.jointEnabled and only_load_enabled_joints:
@@ -1144,7 +1153,10 @@ class USDImporter:
 
         elif joint_type == self.UsdPhysics.ObjectType.RevoluteJoint:
             dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max, a_j, b_j, k_p_j, k_d_j = self._parse_joint_revolute(
-                joint_spec, rotation_unit=rotation_unit, load_drive_dynamics=load_drive_dynamics
+                joint_spec,
+                rotation_unit=rotation_unit,
+                load_drive_dynamics=load_drive_dynamics,
+                use_angular_drive_scaling=use_angular_drive_scaling,
             )
 
         elif joint_type == self.UsdPhysics.ObjectType.PrismaticJoint:
@@ -1708,6 +1720,7 @@ class USDImporter:
         force_show_colliders: bool = False,
         use_prim_path_names: bool = False,
         use_articulation_root_name: bool = True,
+        use_angular_drive_scaling: bool = False,
     ) -> ModelBuilderKamino:
         """
         Parses an OpenUSD file.
@@ -1978,6 +1991,7 @@ class USDImporter:
                             rotation_unit=rotation_unit,
                             load_drive_dynamics=load_drive_dynamics,
                             prim_path_names=use_prim_path_names,
+                            use_angular_drive_scaling=use_angular_drive_scaling,
                         )
                         if joint_desc is not None:
                             msg.debug(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")
@@ -2016,6 +2030,7 @@ class USDImporter:
                     rotation_unit=rotation_unit,
                     load_drive_dynamics=load_drive_dynamics,
                     prim_path_names=use_prim_path_names,
+                    use_angular_drive_scaling=use_angular_drive_scaling,
                 )
                 if joint_desc is not None:
                     msg.debug(f"Adding joint '{builder.num_joints}':\n{joint_desc}\n")

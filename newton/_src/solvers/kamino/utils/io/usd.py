@@ -1719,7 +1719,7 @@ class USDImporter:
         force_show_colliders: bool = False,
         use_prim_path_names: bool = False,
         use_articulation_root_name: bool = True,
-        use_angular_drive_scaling: bool = False,
+        use_angular_drive_scaling: bool = True,
     ) -> ModelBuilderKamino:
         """
         Parses an OpenUSD file.

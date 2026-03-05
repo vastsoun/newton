@@ -19,7 +19,7 @@ from typing import Any, Literal
 import numpy as np
 
 from .....core.types import override
-from ...solver_kamino import SolverKamino
+from ...solver_kamino import SolverKamino, SolverKaminoImpl
 from .configs import load_solver_configs_to_hdf5, save_solver_configs_to_hdf5
 from .render import (
     ColumnGroup,
@@ -446,7 +446,7 @@ class BenchmarkMetrics:
         config_idx: int,
         step_idx: int,
         step_time: float,
-        solver: SolverKamino | None = None,
+        solver: SolverKaminoImpl | None = None,
     ):
         if self.step_time is None:
             raise ValueError(

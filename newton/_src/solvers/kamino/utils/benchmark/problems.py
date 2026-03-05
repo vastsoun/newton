@@ -13,14 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
 
 import warp as wp
 
+from .....utils import download_asset
 from ...core.builder import ModelBuilderKamino
-from ...models import basics, get_examples_usd_assets_path
+from ...models import basics
 from ...models.builders.utils import (
     add_ground_box,
     make_homogeneous_builder,
@@ -113,30 +113,39 @@ def make_benchmark_problem_dr_legs(
     gravity: bool = True,
     ground: bool = True,
 ) -> ProblemConfig:
-    # Set the path to the external USD assets
-    EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
-    if EXAMPLE_ASSETS_PATH is None:
-        raise FileNotFoundError("Failed to find USD assets path for examples: ensure `newton-assets` is installed.")
-    USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/usd/dr_legs_with_boxes.usda")
+    # Load the DR Legs model and animation data from the
+    # `newton-assets` repository using the utility function
+    asset_path = download_asset("disneyresearch")
+    model_asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
+
     # Create a model builder from the imported USD
     msg.notif("Constructing builder from imported USD ...")
     importer = USDImporter()
     builder: ModelBuilderKamino = make_homogeneous_builder(
-        num_worlds=num_worlds, build_fn=importer.import_from, load_static_geometry=True, source=USD_MODEL_PATH
+        num_worlds=num_worlds,
+        build_fn=importer.import_from,
+        source=model_asset_file,
+        load_static_geometry=True,
+        load_drive_dynamics=False,
     )
+
     # Offset the model to place it above the ground
     # NOTE: The USD model is centered at the origin
     offset = wp.transformf(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0)
     set_uniform_body_pose_offset(builder=builder, offset=offset)
+
     # Add a static collision geometry for the plane
     if ground:
         for w in range(num_worlds):
             add_ground_box(builder, world_index=w)
+
     # Set gravity
     for w in range(builder.num_worlds):
         builder.gravity[w].enabled = gravity
+
     # Set control configurations
     control = ControlConfig(decimation=20, scale=0.25)
+
     # Set the camera configuration for better visualization of the system
     camera = CameraConfig(
         position=(0.6, 0.6, 0.3),

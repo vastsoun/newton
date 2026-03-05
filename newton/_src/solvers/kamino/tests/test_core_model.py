@@ -273,6 +273,7 @@ class TestModelConversions(unittest.TestCase):
             load_static_geometry=True,
             force_show_colliders=True,
             use_prim_path_names=True,
+            use_angular_drive_scaling=True,
         )
 
         # Create models from the builders and conversion operations, and check for consistency
@@ -369,6 +370,7 @@ class TestModelConversions(unittest.TestCase):
             load_drive_dynamics=True,
             force_show_colliders=True,
             use_prim_path_names=True,
+            use_angular_drive_scaling=True,
         )
 
         # Create models from the builders and conversion operations, and check for consistency
@@ -423,6 +425,7 @@ class TestModelConversions(unittest.TestCase):
             use_articulation_root_name=False,
             force_show_colliders=True,
             use_prim_path_names=True,
+            use_angular_drive_scaling=True,
         )
 
         # Create models from the builders and conversion operations, and check for consistency

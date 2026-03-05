@@ -335,9 +335,6 @@ def benchmark_run(args: argparse.Namespace):
                 print_device_info=True,
             )
 
-    # Compute final statistics for the benchmark results
-    metrics.compute_stats()
-
     # Export the collected benchmark data to an HDF5 file for later analysis and plotting
     msg.info("Saving benchmark data to HDF5...")
     RUN_HDF5_OUTPUT_PATH = f"{RUN_OUTPUT_PATH}/metrics.hdf5"

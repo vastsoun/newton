@@ -14,25 +14,21 @@
 # limitations under the License.
 
 """
-KAMINO: UNIT TESTS: SOLVERS: FORWARD KINEMATICS
+Unit tests for the ForwardKinematicsSolver class of Kamino, in `solvers/fk.py`.
 """
 
 import hashlib
-import os
 import unittest
 
 import numpy as np
 import warp as wp
 
+import newton
 from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorrectionMode, JointDoFType
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.types import vec6f
 from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
-from newton._src.solvers.kamino.models import get_examples_usd_assets_path
-from newton._src.solvers.kamino.solvers.fk import (
-    ForwardKinematicsSolver,
-    ForwardKinematicsSolverConfig,
-)
+from newton._src.solvers.kamino.solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverConfig
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.diff_check import diff_check, run_test_single_joint_examples
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
@@ -401,12 +397,12 @@ class DRTestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
         seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
         rng = np.random.default_rng(seed)
 
+        # Load the DR TestMech model from the `newton-assets` repository
+        asset_path = newton.utils.download_asset("disneyresearch")
+        asset_file = str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda")
+
         # Load model
-        examples_path = get_examples_usd_assets_path()
-        if not examples_path:
-            self.skipTest("Examples USD assets path not found. Skipping test.")
-        model_path = os.path.join(examples_path, "dr_testmech/usd/dr_testmech.usda")
-        builder = USDImporter().import_from(model_path)
+        builder = USDImporter().import_from(asset_file)
         builder.set_base_joint("base")
         model = builder.finalize(device=self.default_device, requires_grad=False)
 
@@ -447,12 +443,10 @@ class DRLegsRandomPosesCheckForwardKinematics(unittest.TestCase):
         seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
         rng = np.random.default_rng(seed)
 
-        # Load model and set base body to pelvis
-        examples_path = get_examples_usd_assets_path()
-        if not examples_path:
-            self.skipTest("Examples USD assets path not found. Skipping test.")
-        model_path = os.path.join(examples_path, "dr_legs/usd/dr_legs_with_boxes.usda")
-        builder = USDImporter().import_from(model_path)
+        # Load the DR TestMech and DR Legs models from the `newton-assets` repository
+        asset_path = newton.utils.download_asset("disneyresearch")
+        asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
+        builder = USDImporter().import_from(asset_file)
         builder.set_base_body("pelvis")
         model = builder.finalize(device=self.default_device, requires_grad=False)
 
@@ -494,15 +488,13 @@ class HeterogenousModelRandomPosesCheckForwardKinematics(unittest.TestCase):
         seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
         rng = np.random.default_rng(seed)
 
-        # Load models
-        examples_path = get_examples_usd_assets_path()
-        if not examples_path:
-            self.skipTest("Examples USD assets path not found. Skipping test.")
-        model_path = os.path.join(examples_path, "dr_testmech/usd/dr_testmech.usda")
-        builder = USDImporter().import_from(model_path)
+        # Load the DR TestMech and DR Legs models from the `newton-assets` repository
+        asset_path = newton.utils.download_asset("disneyresearch")
+        asset_file_0 = str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda")
+        asset_file_1 = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
+        builder = USDImporter().import_from(asset_file_0)
         builder.set_base_joint("base")
-        model_path1 = os.path.join(examples_path, "dr_legs/usd/dr_legs_with_boxes.usda")
-        builder1 = USDImporter().import_from(model_path1)
+        builder1 = USDImporter().import_from(asset_file_1)
         builder1.set_base_body("pelvis")
         builder.add_builder(builder1)
         model = builder.finalize(device=self.default_device, requires_grad=False)
@@ -538,15 +530,13 @@ class HeterogenousModelSparseJacobianAssemblyCheck(unittest.TestCase):
         seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
         rng = np.random.default_rng(seed)
 
-        # Load models
-        examples_path = get_examples_usd_assets_path()
-        if not examples_path:
-            self.skipTest("Examples USD assets path not found. Skipping test.")
-        model_path = os.path.join(examples_path, "dr_testmech/usd/dr_testmech.usda")
-        builder = USDImporter().import_from(model_path)
+        # Load the DR TestMech and DR Legs models from the `newton-assets` repository
+        asset_path = newton.utils.download_asset("disneyresearch")
+        asset_file_0 = str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda")
+        asset_file_1 = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
+        builder = USDImporter().import_from(asset_file_0)
         builder.set_base_joint("base")
-        model_path1 = os.path.join(examples_path, "dr_legs/usd/dr_legs_with_boxes.usda")
-        builder1 = USDImporter().import_from(model_path1)
+        builder1 = USDImporter().import_from(asset_file_1)
         builder1.set_base_body("pelvis")
         builder.add_builder(builder1)
         model = builder.finalize(device=self.default_device, requires_grad=False)

@@ -305,16 +305,10 @@ class ViewerKamino(ViewerGL):
         body_poses = self._simulator.state.q_i.numpy()
 
         # Render each collision geom
-        for cgeom in self._geometry:
-            if cgeom.shape.type == ShapeType.EMPTY:
+        for geom in self._geometry:
+            if geom.shape.type == ShapeType.EMPTY:
                 continue
-            self.render_geometry(body_poses, cgeom, scope="collision")
-
-        # TODO: Render each visual geom
-        # for vgeom in self._physical_geometry:
-        #     if vgeom.shape.type == ShapeType.EMPTY:
-        #         continue
-        #     self.render_geometry(body_poses, vgeom, scope="visual")
+            self.render_geometry(body_poses, geom, scope="geoms")
 
         # Render contacts if they exist and visualization is enabled
         if hasattr(self._simulator, "contacts") and self._simulator.contacts is not None:

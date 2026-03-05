@@ -114,7 +114,6 @@ class TestGeometryCollisionDetector(unittest.TestCase):
 
         # Run collision detection
         detector.collide(data, state)
-        print("detector.contacts.gid_AB: ", detector.contacts.gid_AB)
 
         # Create a list of expected number of contacts per shape pair
         expected_world_contacts: list[int] = [self.expected_contacts] * builder.num_worlds

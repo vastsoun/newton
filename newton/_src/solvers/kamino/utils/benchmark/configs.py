@@ -23,9 +23,12 @@ from ...solver_kamino import SolverKamino
 __all__ = [
     "make_benchmark_configs",
     "make_solver_config_default",
-    "make_solver_config_dense_lltb_fast_dr_legs",
-    "make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs",
-    "make_solver_config_sparse_cr_fast_dr_legs",
+    "make_solver_config_dense_jacobian_llt_accurate",
+    "make_solver_config_dense_jacobian_llt_fast",
+    "make_solver_config_sparse_delassus_cr_accurate",
+    "make_solver_config_sparse_delassus_cr_fast",
+    "make_solver_config_sparse_jacobian_llt_accurate",
+    "make_solver_config_sparse_jacobian_llt_fast",
 ]
 
 
@@ -72,9 +75,9 @@ def make_solver_config_default() -> tuple[str, SolverKamino.Config]:
     return name, config
 
 
-def make_solver_config_dense_lltb_fast_dr_legs() -> tuple[str, SolverKamino.Config]:
+def make_solver_config_dense_jacobian_llt_accurate() -> tuple[str, SolverKamino.Config]:
     # ------------------------------------------------------------------------------
-    name = "Dense LLTB Fast DR Legs"
+    name = "Dense Jacobian LLT accurate"
     # ------------------------------------------------------------------------------
     config = SolverKamino.Config()
     # ------------------------------------------------------------------------------
@@ -82,8 +85,8 @@ def make_solver_config_dense_lltb_fast_dr_legs() -> tuple[str, SolverKamino.Conf
     config.problem.alpha = 0.1
     # ------------------------------------------------------------------------------
     # Jacobian representation
-    config.sparse_jacobian = False
     config.sparse_dynamics = False
+    config.sparse_jacobian = False
     # ------------------------------------------------------------------------------
     # Linear system solver
     config.linear_solver_type = LinearSolverNameToType["LLTB"]
@@ -91,12 +94,12 @@ def make_solver_config_dense_lltb_fast_dr_legs() -> tuple[str, SolverKamino.Conf
     # ------------------------------------------------------------------------------
     # PADMM
     config.padmm.max_iterations = 200
-    config.padmm.primal_tolerance = 1e-4
-    config.padmm.dual_tolerance = 1e-4
-    config.padmm.compl_tolerance = 1e-4
+    config.padmm.primal_tolerance = 1e-6
+    config.padmm.dual_tolerance = 1e-6
+    config.padmm.compl_tolerance = 1e-6
     config.padmm.restart_tolerance = 0.999
     config.padmm.eta = 1e-5
-    config.padmm.rho_0 = 0.05
+    config.padmm.rho_0 = 0.1
     config.padmm.rho_min = 1e-5
     config.padmm.penalty_update_method = "fixed"
     config.padmm.penalty_update_freq = 1
@@ -110,10 +113,9 @@ def make_solver_config_dense_lltb_fast_dr_legs() -> tuple[str, SolverKamino.Conf
     return name, config
 
 
-# TODO @cavemor: PLEASE ADD YOUR BEST CONFIGS HERE
-def make_solver_config_sparse_cr_fast_dr_legs() -> tuple[str, SolverKamino.Config]:
+def make_solver_config_dense_jacobian_llt_fast() -> tuple[str, SolverKamino.Config]:
     # ------------------------------------------------------------------------------
-    name = "Sparse CR Fast DR Legs"
+    name = "Dense Jacobian LLT fast"
     # ------------------------------------------------------------------------------
     config = SolverKamino.Config()
     # ------------------------------------------------------------------------------
@@ -121,12 +123,12 @@ def make_solver_config_sparse_cr_fast_dr_legs() -> tuple[str, SolverKamino.Confi
     config.problem.alpha = 0.1
     # ------------------------------------------------------------------------------
     # Jacobian representation
-    config.sparse_jacobian = True
-    config.sparse_dynamics = True
+    config.sparse_dynamics = False
+    config.sparse_jacobian = False
     # ------------------------------------------------------------------------------
     # Linear system solver
-    config.linear_solver_type = LinearSolverNameToType["CR"]
-    config.linear_solver_kwargs = {"maxiter": 9}
+    config.linear_solver_type = LinearSolverNameToType["LLTB"]
+    config.linear_solver_kwargs = {}
     # ------------------------------------------------------------------------------
     # PADMM
     config.padmm.max_iterations = 100
@@ -135,8 +137,8 @@ def make_solver_config_sparse_cr_fast_dr_legs() -> tuple[str, SolverKamino.Confi
     config.padmm.compl_tolerance = 1e-4
     config.padmm.restart_tolerance = 0.999
     config.padmm.eta = 1e-5
-    config.padmm.rho_0 = 0.05
-    config.padmm.rho_min = 0.01
+    config.padmm.rho_0 = 0.02
+    config.padmm.rho_min = 1e-5
     config.padmm.penalty_update_method = "fixed"
     config.padmm.penalty_update_freq = 1
     config.use_solver_acceleration = True
@@ -149,9 +151,9 @@ def make_solver_config_sparse_cr_fast_dr_legs() -> tuple[str, SolverKamino.Confi
     return name, config
 
 
-def make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs() -> tuple[str, SolverKamino.Config]:
+def make_solver_config_sparse_jacobian_llt_accurate() -> tuple[str, SolverKamino.Config]:
     # ------------------------------------------------------------------------------
-    name = "Sparse CR Adaptive Rho Balanced DR Legs"
+    name = "Sparse Jacobian LLT accurate"
     # ------------------------------------------------------------------------------
     config = SolverKamino.Config()
     # ------------------------------------------------------------------------------
@@ -159,8 +161,122 @@ def make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs() -> tuple[str, So
     config.problem.alpha = 0.1
     # ------------------------------------------------------------------------------
     # Jacobian representation
+    config.sparse_dynamics = False
     config.sparse_jacobian = True
+    # ------------------------------------------------------------------------------
+    # Linear system solver
+    config.linear_solver_type = LinearSolverNameToType["LLTB"]
+    config.linear_solver_kwargs = {}
+    # ------------------------------------------------------------------------------
+    # PADMM
+    config.padmm.max_iterations = 200
+    config.padmm.primal_tolerance = 1e-6
+    config.padmm.dual_tolerance = 1e-6
+    config.padmm.compl_tolerance = 1e-6
+    config.padmm.restart_tolerance = 0.999
+    config.padmm.eta = 1e-5
+    config.padmm.rho_0 = 0.1
+    config.padmm.rho_min = 1e-5
+    config.padmm.penalty_update_method = "fixed"
+    config.padmm.penalty_update_freq = 1
+    config.use_solver_acceleration = True
+    config.avoid_graph_conditionals = False
+    # ------------------------------------------------------------------------------
+    # Warm-starting
+    config.warmstart_mode = "containers"
+    config.contact_warmstart_method = "geom_pair_net_force"
+    # ------------------------------------------------------------------------------
+    return name, config
+
+
+def make_solver_config_sparse_jacobian_llt_fast() -> tuple[str, SolverKamino.Config]:
+    # ------------------------------------------------------------------------------
+    name = "Sparse Jacobian LLT fast"
+    # ------------------------------------------------------------------------------
+    config = SolverKamino.Config()
+    # ------------------------------------------------------------------------------
+    # Constraint stabilization
+    config.problem.alpha = 0.1
+    # ------------------------------------------------------------------------------
+    # Jacobian representation
+    config.sparse_dynamics = False
+    config.sparse_jacobian = True
+    # ------------------------------------------------------------------------------
+    # Linear system solver
+    config.linear_solver_type = LinearSolverNameToType["LLTB"]
+    config.linear_solver_kwargs = {}
+    # ------------------------------------------------------------------------------
+    # PADMM
+    config.padmm.max_iterations = 100
+    config.padmm.primal_tolerance = 1e-4
+    config.padmm.dual_tolerance = 1e-4
+    config.padmm.compl_tolerance = 1e-4
+    config.padmm.restart_tolerance = 0.999
+    config.padmm.eta = 1e-5
+    config.padmm.rho_0 = 0.02
+    config.padmm.rho_min = 1e-5
+    config.padmm.penalty_update_method = "fixed"
+    config.padmm.penalty_update_freq = 1
+    config.use_solver_acceleration = True
+    config.avoid_graph_conditionals = False
+    # ------------------------------------------------------------------------------
+    # Warm-starting
+    config.warmstart_mode = "containers"
+    config.contact_warmstart_method = "geom_pair_net_force"
+    # ------------------------------------------------------------------------------
+    return name, config
+
+
+def make_solver_config_sparse_delassus_cr_accurate() -> tuple[str, SolverKamino.Config]:
+    # ------------------------------------------------------------------------------
+    name = "Sparse Delassus CR accurate"
+    # ------------------------------------------------------------------------------
+    config = SolverKamino.Config()
+    # ------------------------------------------------------------------------------
+    # Constraint stabilization
+    config.problem.alpha = 0.1
+    # ------------------------------------------------------------------------------
+    # Jacobian representation
     config.sparse_dynamics = True
+    config.sparse_jacobian = True
+    # ------------------------------------------------------------------------------
+    # Linear system solver
+    config.linear_solver_type = LinearSolverNameToType["CR"]
+    config.linear_solver_kwargs = {"maxiter": 30}
+    # ------------------------------------------------------------------------------
+    # PADMM
+    config.padmm.max_iterations = 200
+    config.padmm.primal_tolerance = 1e-6
+    config.padmm.dual_tolerance = 1e-6
+    config.padmm.compl_tolerance = 1e-6
+    config.padmm.restart_tolerance = 0.999
+    config.padmm.eta = 1e-5
+    config.padmm.rho_0 = 0.1
+    config.padmm.rho_min = 1e-5
+    config.padmm.penalty_update_method = "fixed"
+    config.padmm.penalty_update_freq = 1
+    config.use_solver_acceleration = True
+    config.avoid_graph_conditionals = False
+    # ------------------------------------------------------------------------------
+    # Warm-starting
+    config.warmstart_mode = "containers"
+    config.contact_warmstart_method = "geom_pair_net_force"
+    # ------------------------------------------------------------------------------
+    return name, config
+
+
+def make_solver_config_sparse_delassus_cr_fast() -> tuple[str, SolverKamino.Config]:
+    # ------------------------------------------------------------------------------
+    name = "Sparse Delassus CR fast"
+    # ------------------------------------------------------------------------------
+    config = SolverKamino.Config()
+    # ------------------------------------------------------------------------------
+    # Constraint stabilization
+    config.problem.alpha = 0.1
+    # ------------------------------------------------------------------------------
+    # Jacobian representation
+    config.sparse_dynamics = True
+    config.sparse_jacobian = True
     # ------------------------------------------------------------------------------
     # Linear system solver
     config.linear_solver_type = LinearSolverNameToType["CR"]
@@ -173,10 +289,10 @@ def make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs() -> tuple[str, So
     config.padmm.compl_tolerance = 1e-4
     config.padmm.restart_tolerance = 0.999
     config.padmm.eta = 1e-5
-    config.padmm.rho_0 = 0.05
-    config.padmm.rho_min = 0.01
-    config.padmm.penalty_update_method = "balanced"
-    config.padmm.penalty_update_freq = 10
+    config.padmm.rho_0 = 0.02
+    config.padmm.rho_min = 1e-5
+    config.padmm.penalty_update_method = "fixed"
+    config.padmm.penalty_update_freq = 1
     config.use_solver_acceleration = True
     config.avoid_graph_conditionals = False
     # ------------------------------------------------------------------------------
@@ -192,13 +308,21 @@ def make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs() -> tuple[str, So
 ###
 
 
-def make_benchmark_configs() -> dict[str, SolverKamino.Config]:
-    generators = [
-        make_solver_config_default,
-        make_solver_config_dense_lltb_fast_dr_legs,
-        make_solver_config_sparse_cr_fast_dr_legs,
-        make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs,
-    ]
+def make_benchmark_configs(include_default: bool = True) -> dict[str, SolverKamino.Config]:
+    if include_default:
+        generators = [make_solver_config_default]
+    else:
+        generators = []
+    generators.extend(
+        [
+            make_solver_config_dense_jacobian_llt_accurate,
+            make_solver_config_dense_jacobian_llt_fast,
+            make_solver_config_sparse_jacobian_llt_accurate,
+            make_solver_config_sparse_jacobian_llt_fast,
+            make_solver_config_sparse_delassus_cr_accurate,
+            make_solver_config_sparse_delassus_cr_fast,
+        ]
+    )
     solver_configs: dict[str, SolverKamino.Config] = {}
     for gen in generators:
         name, config = gen()

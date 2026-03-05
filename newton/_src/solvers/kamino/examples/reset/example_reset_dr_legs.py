@@ -32,7 +32,7 @@ from newton._src.solvers.kamino.models.builders.utils import (
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.utils.sim import ViewerKamino
-from newton._src.solvers.kamino.utils.sim.simulator import Simulator, SimulatorConfig
+from newton._src.solvers.kamino.utils.sim.simulator import Simulator
 
 ###
 # Kernels
@@ -144,7 +144,7 @@ class Example:
             self.builder.gravity[w].enabled = False
 
         # Set solver config
-        config = SimulatorConfig()
+        config = Simulator.Config()
         config.dt = self.sim_dt
         config.solver.problem.alpha = 0.1
         config.solver.padmm.primal_tolerance = 1e-4

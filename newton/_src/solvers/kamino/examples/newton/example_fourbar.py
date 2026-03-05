@@ -29,8 +29,7 @@ import warp as wp
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino import SolverKaminoConfig
-from newton._src.solvers.kamino.geometry import CollisionDetectorConfig
+from newton._src.solvers.kamino.geometry import CollisionDetector
 from newton._src.solvers.kamino.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino.utils import logger as msg
 
@@ -78,10 +77,10 @@ class Example:
         self.model = builder.finalize(skip_validation_joints=True)
 
         # Create and configure settings for SolverKamino and the collision detector
-        collision_detector_config = CollisionDetectorConfig()
+        collision_detector_config = CollisionDetector.Config()
         collision_detector_config.pipeline = "unified"
         collision_detector_config.max_contacts = 32 * self.num_worlds
-        solver_config = SolverKaminoConfig()
+        solver_config = newton.solvers.SolverKamino.Config.from_model(self.model)
         solver_config.problem.preconditioning = True
         solver_config.padmm.primal_tolerance = 1e-4
         solver_config.padmm.dual_tolerance = 1e-4
@@ -176,8 +175,9 @@ class Example:
                 self.model,
                 self.state_0,
                 "body velocities are small",
-                lambda q, qd: max(abs(qd))
-                < 0.25,  # Relaxed from 0.1 - unified pipeline has residual velocities up to ~0.2
+                lambda q, qd: (
+                    max(abs(qd)) < 0.25
+                ),  # Relaxed from 0.1 - unified pipeline has residual velocities up to ~0.2
             )
 
 

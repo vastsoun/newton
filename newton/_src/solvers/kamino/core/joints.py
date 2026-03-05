@@ -236,6 +236,17 @@ class JointCorrectionMode(IntEnum):
         """Returns a string representation of the joint correction mode."""
         return self.__str__()
 
+    @staticmethod
+    def parse_usd_attribute(value: str, context: dict[str, Any] | None = None) -> str:
+        """Parse joint correction option imported from USD, following the KaminoSceneAPI schema."""
+        if not isinstance(value, str):
+            raise TypeError("Parser expects input of type 'str'.")
+        mapping = {"none": "none", "twopi": "twopi", "continuous": "continuous"}
+        lower_value = value.lower().strip()
+        if lower_value not in mapping:
+            raise ValueError(f"Joint correction parameter '{value}' is not a valid option.")
+        return mapping[lower_value]
+
 
 class JointDoFType(IntEnum):
     """

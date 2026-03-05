@@ -123,7 +123,7 @@ class Example:
         self.env_dt = self.sim_dt * self.control_decimation
 
         # USD model path
-        USD_MODEL_PATH = os.path.join(_ASSETS_DIR, "bipedal", "bipedal.usda")
+        USD_MODEL_PATH = os.path.join(_ASSETS_DIR, "bipedal", "bdx_merged.usda")
 
         # Create generic articulated body simulator
         self.sim_wrapper = RigidBodySim(
@@ -132,7 +132,7 @@ class Example:
             sim_dt=self.sim_dt,
             device=device,
             headless=headless,
-            body_pose_offset=(0.0, 0.0, -0.15, 0.0, 0.0, 0.0, 1.0),
+            body_pose_offset=(0.0, 0.0, 0.33, 0.0, 0.0, 0.0, 1.0),
         )
 
         # Override PD gains

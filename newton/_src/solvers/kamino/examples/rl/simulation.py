@@ -25,35 +25,140 @@
 from __future__ import annotations
 
 # Thirdparty
+import newton
 import torch  # noqa: TID253
 import warp as wp
-from warp.context import Devicelike
-
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino.core.control import ControlKamino
+from newton._src.solvers.kamino.core.model import ModelKamino
+from newton._src.solvers.kamino.core.state import StateKamino, compute_body_frame_state
 from newton._src.solvers.kamino.core.types import transformf, vec6f
+from newton._src.solvers.kamino.geometry import CollisionDetector
 from newton._src.solvers.kamino.geometry.aggregation import ContactAggregation
-from newton._src.solvers.kamino.models.builders.utils import (
-    build_usd,
-    make_homogeneous_builder,
-    set_uniform_body_pose_offset,
-)
+from newton._src.solvers.kamino.solver_kamino import SolverKaminoImpl
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.sim import Simulator, SimulatorConfig, ViewerKamino
+from newton._src.solvers.kamino.utils.sim.simulator import SimulatorConfig
+from newton._src.viewer import ViewerGL
+from warp.context import Devicelike
+
+
+class SimulatorFromNewton:
+    """Kamino :class:`Simulator`-like wrapper initialized from a Newton :class:`~newton.Model`.
+
+    Mirrors the core API of the Kamino ``Simulator`` class but accepts an
+    already-finalized :class:`newton.Model` instead of a ``ModelBuilderKamino``.
+    Internally uses :meth:`ModelKamino.from_newton` to obtain Kamino-native
+    model, state, control, and solver objects.
+    """
+
+    def __init__(
+        self,
+        newton_model: newton.Model,
+        config: SimulatorConfig | None = None,
+        device: Devicelike = None,
+    ):
+        self._device = wp.get_device(device)
+
+        if config is None:
+            config = SimulatorConfig()
+        self._config = config
+
+        # Create Kamino model from Newton model
+        self._model: ModelKamino = ModelKamino.from_newton(newton_model)
+        if isinstance(config.dt, float):
+            self._model.time.set_uniform_timestep(config.dt)
+
+        # Allocate state and control
+        self._state_p: StateKamino = self._model.state(device=self._device)
+        self._state_n: StateKamino = self._model.state(device=self._device)
+        self._control: ControlKamino = self._model.control(device=self._device)
+
+        # Collision detection
+        self._collision_detector = CollisionDetector(
+            model=self._model,
+            config=config.collision_detector,
+        )
+        self._contacts = self._collision_detector.contacts
+
+        # Solver
+        self._solver = SolverKaminoImpl(
+            model=self._model,
+            contacts=self._contacts,
+            config=config.solver,
+        )
+
+        # Initialize state
+        self._solver.reset(state_out=self._state_n)
+        self._state_p.copy_from(self._state_n)
+
+    @property
+    def model(self) -> ModelKamino:
+        return self._model
+
+    @property
+    def state(self) -> StateKamino:
+        """Current (next-step) state."""
+        return self._state_n
+
+    @property
+    def state_previous(self) -> StateKamino:
+        """Previous-step state."""
+        return self._state_p
+
+    @property
+    def control(self) -> ControlKamino:
+        return self._control
+
+    @property
+    def contacts(self):
+        return self._contacts
+
+    @property
+    def collision_detector(self) -> CollisionDetector:
+        return self._collision_detector
+
+    @property
+    def solver(self) -> SolverKaminoImpl:
+        return self._solver
+
+    def step(self):
+        """Advance the simulation by one timestep.
+
+        ``q_i`` is kept in COM-frame throughout (matching ``q_i_0`` and
+        the internal solver).  The COM→body-frame conversion is done
+        only for rendering via :meth:`RigidBodySim.render`.
+        """
+        self._state_p.copy_from(self._state_n)
+        self._solver.step(
+            state_in=self._state_p,
+            state_out=self._state_n,
+            control=self._control,
+            contacts=self._contacts,
+            detector=self._collision_detector,
+        )
+
+    def reset(self, **kwargs):
+        """Reset the simulation state.
+
+        Keyword arguments are forwarded to :meth:`SolverKaminoImpl.reset`
+        (e.g. ``world_mask``, ``joint_q``, ``joint_u``, ``base_q``, ``base_u``).
+        """
+        self._solver.reset(state_out=self._state_n, **kwargs)
+        self._state_p.copy_from(self._state_n)
 
 
 class RigidBodySim:
     """Generic Kamino rigid body simulator for RL.
 
-
     Features:
-        * USD model loading via ``make_homogeneous_builder``
+        * USD model loading via ``newton.ModelBuilder.add_usd``
+        * ``ModelKamino.from_newton`` for Kamino-native state/control layout
         * Configurable solver settings with sensible RL defaults
         * Zero-copy PyTorch views of state, control and contact arrays
         * Automatic extraction of actuated joint metadata
         * Selective per-world reset infrastructure (world mask + deferred buffers)
         * Optional CUDA graph capture for step and reset
-        * Optional ViewerKamino
+        * Optional Newton ViewerGL
 
     Args:
         usd_model_path: Full filesystem path to the USD model file.
@@ -61,13 +166,12 @@ class RigidBodySim:
         sim_dt: Physics timestep in seconds.
         device: Warp device (e.g. ``"cuda:0"``).  ``None`` → preferred device.
         headless: If ``True``, skip viewer creation.
-        load_drive_dynamics: Load PD gains from USD (for implicit PD control).
         body_pose_offset: Optional ``(x, y, z, qx, qy, qz, qw)`` tuple to
             offset every body's initial pose (e.g. to place the robot above
             the ground plane).
-        add_ground: Add a ground-plane box to each world.
+        add_ground: Add a ground-plane to each world.
         enable_gravity: Enable gravity in every world.
-        settings: Solver settings.  ``None`` uses ``default_settings(sim_dt)``.
+        settings: Simulator settings.  ``None`` uses ``default_settings(sim_dt)``.
         use_cuda_graph: Capture CUDA graphs for step and reset (requires
             CUDA device with memory pool enabled).
     """
@@ -79,7 +183,6 @@ class RigidBodySim:
         sim_dt: float = 0.01,
         device: Devicelike = None,
         headless: bool = False,
-        load_drive_dynamics: bool = True,
         body_pose_offset: tuple | None = None,
         add_ground: bool = True,
         enable_gravity: bool = True,
@@ -96,43 +199,65 @@ class RigidBodySim:
         self._use_cuda_graph = use_cuda_graph
         self._sim_dt = sim_dt
 
-        # ----- Model builder from USD -----
+        # ----- Build Newton model (needed for ViewerGL) -----
         msg.notif("Constructing builder from imported USD ...")
-        self.builder: ModelBuilderKamino = make_homogeneous_builder(
-            num_worlds=num_worlds,
-            build_fn=build_usd,
-            source=usd_model_path,
-            load_static_geometry=True,
-            load_drive_dynamics=load_drive_dynamics,
-            ground=add_ground,
+        robot_builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
+        newton.solvers.SolverKamino.register_custom_attributes(robot_builder)
+        robot_builder.default_shape_cfg.margin = 0.0
+        robot_builder.default_shape_cfg.gap = 0.0
+
+        robot_builder.add_usd(
+            usd_model_path,
+            joint_ordering=None,
+            force_show_colliders=True,
+            force_position_velocity_actuation=True,
+            collapse_fixed_joints=False,
+            enable_self_collisions=False,
+            hide_collision_shapes=True,
         )
+
+        # Create multi-world Newton model
+        builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
+        for _ in range(num_worlds):
+            builder.add_world(robot_builder)
+        if add_ground:
+            builder.add_ground_plane()
+
+        self._newton_model = builder.finalize(skip_validation_joints=True)
+
+        # TODO remove after fixing bug
+        self._newton_model.shape_margin.fill_(0.0)
+        self._newton_model.shape_gap.fill_(1e-5)
+
+        if enable_gravity:
+            self._newton_model.set_gravity((0.0, 0.0, -9.81))
+
+        # ----- Create Kamino simulator from Newton model -----
+        msg.notif("Building Kamino simulator ...")
+        if settings is None:
+            settings = self.default_settings(sim_dt)
 
         # Cap per-pair contact count to limit Delassus matrix size
         if max_contacts_per_pair is not None:
-            self.builder.max_contacts_per_pair = max_contacts_per_pair
+            settings.collision_detector.max_contacts_per_pair = max_contacts_per_pair
 
-        # Apply body pose offset if provided
+        self.sim = SimulatorFromNewton(
+            newton_model=self._newton_model,
+            config=settings,
+            device=self._device,
+        )
+        self.model: ModelKamino = self.sim.model
+
+        # Apply body pose offset to initial body poses (affects all resets).
+        # Kamino q_i stores COM positions, so we offset the COM directly.
         if body_pose_offset is not None:
-            offset = wp.transformf(*body_pose_offset)
-            set_uniform_body_pose_offset(builder=self.builder, offset=offset)
-
-        # Enable gravity per world
-        if enable_gravity:
-            for w in range(self.builder.num_worlds):
-                self.builder.gravity[w].enabled = True
-
-        # ----- Solver settings -----
-        if settings is None:
-            settings = self.default_settings(sim_dt)
-        else:
-            settings.dt = sim_dt
-
-        # ----- Create simulator -----
-        msg.notif("Building Kamino simulator ...")
-        self.sim = Simulator(builder=self.builder, config=settings, device=self._device)
-
-        # Empty control callback (torques applied directly via control arrays)
-        self.sim.set_control_callback(lambda _: None)
+            offset_z = body_pose_offset[2]
+            q_i_0 = self.sim.model.bodies.q_i_0
+            q_i_0_np = q_i_0.numpy().copy()
+            q_i_0_np[:, 2] += offset_z
+            q_i_0.assign(q_i_0_np)
+            # Re-initialize state from the offset initial poses
+            self.sim.reset()
 
         # ----- Wire RL interface (zero-copy tensors) -----
         self._make_rl_interface()
@@ -141,16 +266,14 @@ class RigidBodySim:
         self._extract_metadata()
 
         # ----- Viewer -----
-        self.viewer: ViewerKamino | None = None
+        self.viewer: ViewerGL | None = None
+        self._newton_state: newton.State | None = None
         if not headless:
             msg.notif("Creating the 3D viewer ...")
-            self.viewer = ViewerKamino(
-                builder=self.builder,
-                simulator=self.sim,
-                record_video=record_video,
-                async_save=async_save,
-                video_folder=video_folder,
-            )
+            self.viewer = ViewerGL()
+            self.viewer.set_model(self._newton_model)
+            # Newton state used only for rendering (body_q synced from Kamino each frame)
+            self._newton_state = self._newton_model.state()
 
         # ----- CUDA graphs -----
         self._reset_graph = None
@@ -201,9 +324,22 @@ class RigidBodySim:
         self._update_base_q = False
         self._update_base_u = False
 
-        # Contact aggregation
-        ground_geom_ids = [self.builder.worlds[0].geom_names.index("ground")]
-
+        # Contact aggregation — find ground collision geom by label.
+        # static_geom_ids are per-world geom IDs (geoms.gid), not global indices.
+        # Filter to collision geoms only (group > 0).
+        geom_labels = self.sim.model.geoms.label
+        geom_gid = wp.to_torch(self.sim.model.geoms.gid).tolist()
+        geom_group = wp.to_torch(self.sim.model.geoms.group).tolist()
+        ground_geom_ids = list(
+            {
+                int(geom_gid[i])
+                for i, lbl in enumerate(geom_labels)
+                if "ground" in lbl.lower() and int(geom_group[i]) > 0
+            }
+        )
+        if not ground_geom_ids:
+            msg.warning("No ground collision geometry found by label, falling back to geom index 0")
+            ground_geom_ids = [0]
         self._contact_aggregation = ContactAggregation(
             model=self.sim.model,
             contacts=self.sim.contacts,
@@ -232,9 +368,16 @@ class RigidBodySim:
     # ------------------------------------------------------------------
 
     def _extract_metadata(self):
-        """Extract joint/body names, actuated DOF indices, and joint limits from the builder."""
+        """Extract joint/body names, actuated DOF indices, and joint limits from the Kamino model."""
         max_joints = self.sim.model.size.max_of_num_joints
         max_bodies = self.sim.model.size.max_of_num_bodies
+
+        # Read per-joint metadata from the Kamino model (first world only)
+        joint_labels = [lbl.rsplit("/", 1)[-1] for lbl in self.sim.model.joints.label[:max_joints]]
+        joint_num_dofs = wp.to_torch(self.sim.model.joints.num_dofs)[:max_joints].tolist()
+        joint_act_type = wp.to_torch(self.sim.model.joints.act_type)[:max_joints].tolist()
+        joint_q_j_min = wp.to_torch(self.sim.model.joints.q_j_min)
+        joint_q_j_max = wp.to_torch(self.sim.model.joints.q_j_max)
 
         # Joint names and actuated indices
         self._joint_names: list[str] = []
@@ -242,13 +385,13 @@ class RigidBodySim:
         self._actuated_dof_indices: list[int] = []
         dof_offset = 0
         for j in range(max_joints):
-            joint = self.builder.joints[j]
-            self._joint_names.append(joint.name)
-            if joint.is_actuated:
-                self._actuated_joint_names.append(joint.name)
-                for dof_idx in range(joint.num_dofs):
+            ndofs = int(joint_num_dofs[j])
+            self._joint_names.append(joint_labels[j])
+            if int(joint_act_type[j]) > 0:  # act_type > PASSIVE means actuated
+                self._actuated_joint_names.append(joint_labels[j])
+                for dof_idx in range(ndofs):
                     self._actuated_dof_indices.append(dof_offset + dof_idx)
-            dof_offset += joint.num_dofs
+            dof_offset += ndofs
 
         self._actuated_dof_indices_tensor = torch.tensor(
             self._actuated_dof_indices, device=self._torch_device, dtype=torch.long
@@ -257,16 +400,14 @@ class RigidBodySim:
         msg.info(f"Actuated joints ({self.num_actuated}): {self._actuated_joint_names}")
 
         # Body names
-        self._body_names: list[str] = []
-        for b in range(max_bodies):
-            self._body_names.append(self.builder.bodies[b].name)
+        self._body_names: list[str] = [lbl.rsplit("/", 1)[-1] for lbl in self.sim.model.bodies.label[:max_bodies]]
 
-        # Joint limits
+        # Joint limits (per-DOF, first world only)
+        num_dofs_total = self.sim.model.size.max_of_num_joint_dofs
         self._joint_limits: list[list[float]] = []
-        for j in range(max_joints):
-            joint = self.builder.joints[j]
-            lower = float(joint.q_j_min[0])
-            upper = float(joint.q_j_max[0])
+        for d in range(num_dofs_total):
+            lower = float(joint_q_j_min[d])
+            upper = float(joint_q_j_max[d])
             self._joint_limits.append([lower, upper])
 
     # ------------------------------------------------------------------
@@ -344,7 +485,20 @@ class RigidBodySim:
     def render(self):
         """Render the current frame if viewer exists."""
         if self.viewer is not None:
-            self.viewer.render_frame()
+            self.viewer.begin_frame(self.time)
+            # Kamino q_i is COM-frame; ViewerGL expects body-frame-origin poses.
+            compute_body_frame_state(
+                body_com=self.sim.model.bodies.i_r_com_i,
+                body_q_com=self.sim.state.q_i,
+                body_q=self._newton_state.body_q,
+            )
+            self.viewer.log_state(self._newton_state)
+            self.viewer.end_frame()
+
+    @property
+    def time(self) -> float:
+        """Current simulation time."""
+        return getattr(self, "_sim_time", 0.0)
 
     def is_running(self) -> bool:
         """Check if the viewer is still running (always ``True`` in headless mode)."""
@@ -630,7 +784,8 @@ class RigidBodySim:
         """Return sensible default solver settings for RL."""
         settings = SimulatorConfig()
         settings.dt = sim_dt
-        settings.solver.integrator = "moreau"
+        settings.collision_detector.pipeline = "unified"
+        settings.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
         settings.solver.problem.alpha = 0.1
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4

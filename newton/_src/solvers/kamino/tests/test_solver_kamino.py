@@ -35,7 +35,7 @@ from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino.linalg import ConjugateGradientSolver, LinearSolverType, LLTBlockedSolver
 from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
-from newton._src.solvers.kamino.solver_kamino import SolverKaminoConfig, SolverKaminoImpl
+from newton._src.solvers.kamino.solver_kamino import SolverKamino, SolverKaminoImpl
 from newton._src.solvers.kamino.solvers import PADMMConfig, PADMMSolver
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
@@ -109,8 +109,8 @@ rtol = 1e-7
 atol = 1e-6
 
 
-def assert_solver_config(testcase: unittest.TestCase, config: SolverKaminoConfig):
-    testcase.assertIsInstance(config, SolverKaminoConfig)
+def assert_solver_config(testcase: unittest.TestCase, config: SolverKamino.Config):
+    testcase.assertIsInstance(config, SolverKamino.Config)
     testcase.assertIsInstance(config.problem, DualProblemConfig)
     testcase.assertIsInstance(config.padmm, PADMMConfig)
     testcase.assertIsInstance(config.warmstart_mode, str)
@@ -120,7 +120,7 @@ def assert_solver_config(testcase: unittest.TestCase, config: SolverKaminoConfig
 
 def assert_solver_components(testcase: unittest.TestCase, solver: SolverKaminoImpl):
     testcase.assertIsInstance(solver, SolverKaminoImpl)
-    testcase.assertIsInstance(solver.config, SolverKaminoConfig)
+    testcase.assertIsInstance(solver.config, SolverKamino.Config)
     testcase.assertIsInstance(solver._model, ModelKamino)
     testcase.assertIsInstance(solver._data, DataKamino)
     testcase.assertIsInstance(solver._limits, LimitsKamino)
@@ -257,12 +257,12 @@ class TestSolverKaminoConfig(unittest.TestCase):
             msg.reset_log_level()
 
     def test_00_make_default(self):
-        config = SolverKaminoConfig()
+        config = SolverKamino.Config()
         assert_solver_config(self, config)
         self.assertEqual(config.linear_solver_type, LLTBlockedSolver)
 
     def test_01_make_explicit(self):
-        config = SolverKaminoConfig(
+        config = SolverKamino.Config(
             problem=DualProblemConfig(),
             padmm=PADMMConfig(),
             warmstart_mode="containers",

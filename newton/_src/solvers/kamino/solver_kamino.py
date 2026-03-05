@@ -91,234 +91,8 @@ from .utils import logger as msg
 
 __all__ = [
     "SolverKamino",
-    "SolverKaminoConfig",
     "SolverKaminoImpl",
 ]
-
-
-###
-# Types
-###
-
-
-@dataclass
-class SolverKaminoConfig:
-    """
-    A container to hold configurations for :class:`SolverKamino`.
-    """
-
-    integrator: Literal["euler", "moreau"] | None = "euler"
-    """
-    The time-integrator to use for state integration.\n
-    See available options in the `integrators` module.\n
-    Defaults to `"euler"`.
-    """
-
-    problem: DualProblemConfig = field(default_factory=DualProblemConfig)
-    """
-    Config for the dynamics problem.\n
-    See :class:`DualProblemConfig` for more details.
-    """
-
-    padmm: PADMMConfig = field(default_factory=PADMMConfig)
-    """
-    Config for the dynamics solver.\n
-    See :class:`PADMMConfig` for more details.
-    """
-
-    fk: ForwardKinematicsSolverConfig = field(default_factory=ForwardKinematicsSolverConfig)
-    """
-    Config for the forward kinematics solver.\n
-    See :class:`ForwardKinematicsSolverConfig` for more details.
-    """
-
-    warmstart_mode: Literal["none", "internal", "containers"] = "containers"
-    """
-    Warmstart mode to be used for the dynamics solver.\n
-    See :class:`PADMMWarmStartMode` for the available options.\n
-    Defaults to `containers` to warmstart from the solver data containers.
-    """
-
-    contact_warmstart_method: Literal[
-        "key_and_position",
-        "geom_pair_net_force",
-        "geom_pair_net_wrench",
-        "key_and_position_with_net_force_backup",
-        "key_and_position_with_net_wrench_backup",
-    ] = "key_and_position"
-    """
-    Method to be used for warm-starting contacts.\n
-    See :class:`WarmstarterContacts.Method` for available options.\n
-    Defaults to `key_and_position`.
-    """
-
-    use_solver_acceleration: bool = True
-    """
-    Enables Nesterov-type acceleration, i.e. use APADMM instead of standard PADMM.\n
-    Defaults to `True`.
-    """
-
-    collect_solver_info: bool = False
-    """
-    Enables collection of dynamics solver convergence and performance info at each simulation step.\n
-    Defaults to `False`.
-    """
-
-    compute_metrics: bool = False
-    """
-    Enables computation of solution metrics at each simulation step.\n
-    Defaults to `False`.
-    """
-
-    avoid_graph_conditionals: bool = False
-    """
-    Avoids CUDA graph conditional nodes in iterative solvers.\n
-    When enabled, replaces `wp.capture_while` with unrolled for-loops over max iterations.\n
-    Defaults to `False`.
-    """
-
-    linear_solver_type: type[LinearSolverType] = LLTBlockedSolver
-    """
-    The type of linear solver to use for the dynamics problem.\n
-    See :class:`LinearSolverType` for available options.\n
-    Defaults to :class:`LLTBlockedSolver`.
-    """
-
-    linear_solver_kwargs: dict[str, Any] = field(default_factory=dict)
-    """
-    Additional keyword arguments to pass to the linear solver.\n
-    Defaults to an empty dictionary.
-    """
-
-    rotation_correction: Literal["twopi", "continuous", "none"] = "twopi"
-    """
-    The rotation correction mode to use for rotational DoFs.\n
-    See :class:`JointCorrectionMode` for available options.\n
-    Defaults to `twopi`.
-    """
-
-    angular_velocity_damping: float = 0.0
-    """
-    A damping factor applied to the angular velocity of bodies during state integration.\n
-    This can help stabilize simulations with large time steps or high angular velocities.\n
-    Defaults to `0.0` (i.e. no damping).
-    """
-
-    sparse_dynamics: bool = False
-    """
-    Flag to indicate whether the solver should use sparse data representations for the dynamics.
-    """
-
-    sparse_jacobian: bool = False
-    """
-    Flag to indicate whether the solver should use sparse data representations for the Jacobian.
-    """
-
-    def check(self) -> None:
-        """Validates relevant solver config."""
-        if not issubclass(self.linear_solver_type, LinearSolverType):
-            raise TypeError(
-                "Invalid linear solver type: Expected a subclass of `LinearSolverType`, "
-                f"but got {type(self.linear_solver_type)}."
-            )
-        # Conversion to PADMMWarmStartMode will raise an error if the input string is invalid.
-        PADMMWarmStartMode.from_string(self.warmstart_mode)
-        # Conversion to WarmstarterContacts.Method will raise an error if the input string is invalid.
-        WarmstarterContacts.Method.from_string(self.contact_warmstart_method)
-        # Conversion to JointCorrectionMode will raise an error if the input string is invalid.
-        JointCorrectionMode.from_string(self.rotation_correction)
-        if self.sparse_dynamics and not self.sparse_jacobian:
-            raise ValueError(
-                "Sparsity setting mismatch: `sparse_dynamics` solver option requires that `sparse_jacobian` is set to `True`."
-            )
-        self.problem.check()
-        self.padmm.check()
-        self.fk.check()
-
-    def __post_init__(self):
-        """Post-initialization to validate config."""
-        self.check()
-
-    @staticmethod
-    def register_custom_attributes(builder: ModelBuilder) -> None:
-        """
-        Register custom attributes for this config.
-
-        Args:
-            builder (ModelBuilder): The model builder to register the custom attributes to.
-        """
-
-        # Register KaminoSceneAPI attributes so the USD importer will store them on the model
-        builder.add_custom_attribute(
-            ModelBuilder.CustomAttribute(
-                name="padmm_warmstarting",
-                frequency=Model.AttributeFrequency.ONCE,
-                assignment=Model.AttributeAssignment.MODEL,
-                dtype=str,
-                default="containers",
-                namespace="kamino",
-                usd_attribute_name="newton:kamino:padmm:warmstarting",
-                usd_value_transformer=PADMMWarmStartMode.parse_usd_attribute,
-            )
-        )
-        builder.add_custom_attribute(
-            ModelBuilder.CustomAttribute(
-                name="padmm_use_acceleration",
-                frequency=Model.AttributeFrequency.ONCE,
-                assignment=Model.AttributeAssignment.MODEL,
-                dtype=wp.bool,
-                default=True,
-                namespace="kamino",
-                usd_attribute_name="newton:kamino:padmm:useAcceleration",
-            )
-        )
-        builder.add_custom_attribute(
-            ModelBuilder.CustomAttribute(
-                name="joint_correction",
-                frequency=Model.AttributeFrequency.ONCE,
-                assignment=Model.AttributeAssignment.MODEL,
-                dtype=str,
-                default="twopi",
-                namespace="kamino",
-                usd_attribute_name="newton:kamino:jointCorrection",
-                usd_value_transformer=JointCorrectionMode.parse_usd_attribute,
-            )
-        )
-
-        DualProblemConfig.register_custom_attributes(builder)
-        PADMMConfig.register_custom_attributes(builder)
-
-    @staticmethod
-    def from_model(model: Model, **kwargs: dict[str, Any]) -> SolverKaminoConfig:
-        """Creates a config based on a model, using any config parameters that might be stored in
-        the model if it was imported from USD.
-
-        Args:
-            model: Newton model.
-        """
-        config = SolverKaminoConfig(**kwargs)
-
-        # Parse solver-specific attributes imported from USD
-        kamino_attrs = getattr(model, "kamino", None)
-        if kamino_attrs is not None:
-            if hasattr(kamino_attrs, "padmm_warmstarting"):
-                config.warmstart_mode = kamino_attrs.padmm_warmstarting[0]
-            if hasattr(kamino_attrs, "padmm_use_acceleration"):
-                config.use_solver_acceleration = bool(kamino_attrs.padmm_use_acceleration.numpy()[0])
-            if hasattr(kamino_attrs, "joint_correction"):
-                config.rotation_correction = kamino_attrs.joint_correction[0]
-
-        problem_kwargs = {}
-        if "problem" in kwargs.keys():
-            problem_kwargs = kwargs["problem"].__dict__
-        config.problem = DualProblemConfig.from_model(model, **problem_kwargs)
-
-        padmm_kwargs = {}
-        if "padmm" in kwargs.keys():
-            problem_kwargs = kwargs["padmm"].__dict__
-        config.padmm = PADMMConfig.from_model(model, **padmm_kwargs)
-
-        return config
 
 
 ###
@@ -358,7 +132,7 @@ class SolverKaminoImpl(SolverBase):
     .. code-block:: python
 
         contacts = ...
-        config = newton.solvers.kamino.SolverKaminoConfig()
+        config = newton.solvers.kamino.SolverKamino.Config()
         solver = newton.solvers.SolverKamino(model, contacts, config)
 
         # simulation loop
@@ -377,7 +151,7 @@ class SolverKaminoImpl(SolverBase):
         self,
         model: ModelKamino,
         contacts: ContactsKamino | None = None,
-        config: SolverKaminoConfig | None = None,
+        config: SolverKamino.Config | None = None,
     ):
         """
         Initializes the Kamino physics solver for the given set of multi-body systems
@@ -389,7 +163,7 @@ class SolverKaminoImpl(SolverBase):
         Args:
             model (ModelKamino): The multi-body systems model to simulate.
             contacts (ContactsKamino): The contact data container for the simulation.
-            config (SolverKaminoConfig | None): Optional solver config.
+            config (SolverKamino.Config | None): Optional solver config.
         """
         # Ensure the input containers are valid
         if not isinstance(model, ModelKamino):
@@ -398,8 +172,10 @@ class SolverKaminoImpl(SolverBase):
             raise TypeError(
                 f"Invalid contacts container: Expected a `ContactsKamino` instance, but got {type(contacts)}."
             )
-        if config is not None and not isinstance(config, SolverKaminoConfig):
-            raise TypeError(f"Invalid solver config: Expected a `SolverKaminoConfig` instance, but got {type(config)}.")
+        if config is not None and not isinstance(config, SolverKamino.Config):
+            raise TypeError(
+                f"Invalid solver config: Expected a `SolverKamino.Config` instance, but got {type(config)}."
+            )
 
         # First initialize the base solver
         # NOTE: Although we pass the model here, we will re-assign it below
@@ -409,9 +185,9 @@ class SolverKaminoImpl(SolverBase):
 
         # Cache solver config: If no config is provided, use default
         if config is None:
-            config = SolverKaminoConfig()
+            config = SolverKamino.Config()
         config.check()
-        self._config: SolverKaminoConfig = config
+        self._config: SolverKamino.Config = config
         self._warmstart_mode: PADMMWarmStartMode = PADMMWarmStartMode.from_string(config.warmstart_mode)
         self._rotation_correction: JointCorrectionMode = JointCorrectionMode.from_string(config.rotation_correction)
 
@@ -531,7 +307,7 @@ class SolverKaminoImpl(SolverBase):
     ###
 
     @property
-    def config(self) -> SolverKaminoConfig:
+    def config(self) -> SolverKamino.Config:
         """
         Returns the host-side cache of high-level solver config.
         """
@@ -1352,10 +1128,229 @@ class SolverKamino(SolverBase):
     TODO
     """
 
+    @dataclass
+    class Config:
+        """
+        A container to hold configurations for :class:`SolverKamino`.
+        """
+
+        integrator: Literal["euler", "moreau"] | None = "euler"
+        """
+        The time-integrator to use for state integration.\n
+        See available options in the `integrators` module.\n
+        Defaults to `"euler"`.
+        """
+
+        problem: DualProblemConfig = field(default_factory=DualProblemConfig)
+        """
+        Config for the dynamics problem.\n
+        See :class:`DualProblemConfig` for more details.
+        """
+
+        padmm: PADMMConfig = field(default_factory=PADMMConfig)
+        """
+        Config for the dynamics solver.\n
+        See :class:`PADMMConfig` for more details.
+        """
+
+        fk: ForwardKinematicsSolverConfig = field(default_factory=ForwardKinematicsSolverConfig)
+        """
+        Config for the forward kinematics solver.\n
+        See :class:`ForwardKinematicsSolverConfig` for more details.
+        """
+
+        warmstart_mode: Literal["none", "internal", "containers"] = "containers"
+        """
+        Warmstart mode to be used for the dynamics solver.\n
+        See :class:`PADMMWarmStartMode` for the available options.\n
+        Defaults to `containers` to warmstart from the solver data containers.
+        """
+
+        contact_warmstart_method: Literal[
+            "key_and_position",
+            "geom_pair_net_force",
+            "geom_pair_net_wrench",
+            "key_and_position_with_net_force_backup",
+            "key_and_position_with_net_wrench_backup",
+        ] = "key_and_position"
+        """
+        Method to be used for warm-starting contacts.\n
+        See :class:`WarmstarterContacts.Method` for available options.\n
+        Defaults to `key_and_position`.
+        """
+
+        use_solver_acceleration: bool = True
+        """
+        Enables Nesterov-type acceleration, i.e. use APADMM instead of standard PADMM.\n
+        Defaults to `True`.
+        """
+
+        collect_solver_info: bool = False
+        """
+        Enables collection of dynamics solver convergence and performance info at each simulation step.\n
+        Defaults to `False`.
+        """
+
+        compute_metrics: bool = False
+        """
+        Enables computation of solution metrics at each simulation step.\n
+        Defaults to `False`.
+        """
+
+        avoid_graph_conditionals: bool = False
+        """
+        Avoids CUDA graph conditional nodes in iterative solvers.\n
+        When enabled, replaces `wp.capture_while` with unrolled for-loops over max iterations.\n
+        Defaults to `False`.
+        """
+
+        linear_solver_type: type[LinearSolverType] = LLTBlockedSolver
+        """
+        The type of linear solver to use for the dynamics problem.\n
+        See :class:`LinearSolverType` for available options.\n
+        Defaults to :class:`LLTBlockedSolver`.
+        """
+
+        linear_solver_kwargs: dict[str, Any] = field(default_factory=dict)
+        """
+        Additional keyword arguments to pass to the linear solver.\n
+        Defaults to an empty dictionary.
+        """
+
+        rotation_correction: Literal["twopi", "continuous", "none"] = "twopi"
+        """
+        The rotation correction mode to use for rotational DoFs.\n
+        See :class:`JointCorrectionMode` for available options.\n
+        Defaults to `twopi`.
+        """
+
+        angular_velocity_damping: float = 0.0
+        """
+        A damping factor applied to the angular velocity of bodies during state integration.\n
+        This can help stabilize simulations with large time steps or high angular velocities.\n
+        Defaults to `0.0` (i.e. no damping).
+        """
+
+        sparse_dynamics: bool = False
+        """
+        Flag to indicate whether the solver should use sparse data representations for the dynamics.
+        """
+
+        sparse_jacobian: bool = False
+        """
+        Flag to indicate whether the solver should use sparse data representations for the Jacobian.
+        """
+
+        def check(self) -> None:
+            """Validates relevant solver config."""
+            if not issubclass(self.linear_solver_type, LinearSolverType):
+                raise TypeError(
+                    "Invalid linear solver type: Expected a subclass of `LinearSolverType`, "
+                    f"but got {type(self.linear_solver_type)}."
+                )
+            # Conversion to PADMMWarmStartMode will raise an error if the input string is invalid.
+            PADMMWarmStartMode.from_string(self.warmstart_mode)
+            # Conversion to WarmstarterContacts.Method will raise an error if the input string is invalid.
+            WarmstarterContacts.Method.from_string(self.contact_warmstart_method)
+            # Conversion to JointCorrectionMode will raise an error if the input string is invalid.
+            JointCorrectionMode.from_string(self.rotation_correction)
+            if self.sparse_dynamics and not self.sparse_jacobian:
+                raise ValueError(
+                    "Sparsity setting mismatch: `sparse_dynamics` solver option requires that `sparse_jacobian` is set to `True`."
+                )
+            self.problem.check()
+            self.padmm.check()
+            self.fk.check()
+
+        def __post_init__(self):
+            """Post-initialization to validate config."""
+            self.check()
+
+        @staticmethod
+        def register_custom_attributes(builder: ModelBuilder) -> None:
+            """
+            Register custom attributes for this config.
+
+            Args:
+                builder (ModelBuilder): The model builder to register the custom attributes to.
+            """
+
+            # Register KaminoSceneAPI attributes so the USD importer will store them on the model
+            builder.add_custom_attribute(
+                ModelBuilder.CustomAttribute(
+                    name="padmm_warmstarting",
+                    frequency=Model.AttributeFrequency.ONCE,
+                    assignment=Model.AttributeAssignment.MODEL,
+                    dtype=str,
+                    default="containers",
+                    namespace="kamino",
+                    usd_attribute_name="newton:kamino:padmm:warmstarting",
+                    usd_value_transformer=PADMMWarmStartMode.parse_usd_attribute,
+                )
+            )
+            builder.add_custom_attribute(
+                ModelBuilder.CustomAttribute(
+                    name="padmm_use_acceleration",
+                    frequency=Model.AttributeFrequency.ONCE,
+                    assignment=Model.AttributeAssignment.MODEL,
+                    dtype=wp.bool,
+                    default=True,
+                    namespace="kamino",
+                    usd_attribute_name="newton:kamino:padmm:useAcceleration",
+                )
+            )
+            builder.add_custom_attribute(
+                ModelBuilder.CustomAttribute(
+                    name="joint_correction",
+                    frequency=Model.AttributeFrequency.ONCE,
+                    assignment=Model.AttributeAssignment.MODEL,
+                    dtype=str,
+                    default="twopi",
+                    namespace="kamino",
+                    usd_attribute_name="newton:kamino:jointCorrection",
+                    usd_value_transformer=JointCorrectionMode.parse_usd_attribute,
+                )
+            )
+
+            DualProblemConfig.register_custom_attributes(builder)
+            PADMMConfig.register_custom_attributes(builder)
+
+        @staticmethod
+        def from_model(model: Model, **kwargs: dict[str, Any]) -> SolverKamino.Config:
+            """Creates a config based on a model, using any config parameters that might be stored in
+            the model if it was imported from USD.
+
+            Args:
+                model: Newton model.
+            """
+            config = SolverKamino.Config(**kwargs)
+
+            # Parse solver-specific attributes imported from USD
+            kamino_attrs = getattr(model, "kamino", None)
+            if kamino_attrs is not None:
+                if hasattr(kamino_attrs, "padmm_warmstarting"):
+                    config.warmstart_mode = kamino_attrs.padmm_warmstarting[0]
+                if hasattr(kamino_attrs, "padmm_use_acceleration"):
+                    config.use_solver_acceleration = bool(kamino_attrs.padmm_use_acceleration.numpy()[0])
+                if hasattr(kamino_attrs, "joint_correction"):
+                    config.rotation_correction = kamino_attrs.joint_correction[0]
+
+            problem_kwargs = {}
+            if "problem" in kwargs.keys():
+                problem_kwargs = kwargs["problem"].__dict__
+            config.problem = DualProblemConfig.from_model(model, **problem_kwargs)
+
+            padmm_kwargs = {}
+            if "padmm" in kwargs.keys():
+                problem_kwargs = kwargs["padmm"].__dict__
+            config.padmm = PADMMConfig.from_model(model, **padmm_kwargs)
+
+            return config
+
     def __init__(
         self,
         model: Model,
-        solver_config: SolverKaminoConfig | None = None,
+        solver_config: SolverKamino.Config | None = None,
         collision_detector_config: CollisionDetectorConfig | None = None,
     ):
         """
@@ -1382,7 +1377,7 @@ class SolverKamino(SolverBase):
         # Create solver config if none is provided. This will also parse any solver-specific
         # attributes imported from USD.
         if solver_config is None:
-            solver_config = SolverKaminoConfig.from_model(model)
+            solver_config = SolverKamino.Config.from_model(model)
 
         # Initialize the internal Kamino solver
         self._solver_kamino = SolverKaminoImpl(
@@ -1636,7 +1631,7 @@ class SolverKamino(SolverBase):
         )
 
         # Register KaminoSceneAPI attributes so the USD importer will store them on the model
-        SolverKaminoConfig.register_custom_attributes(builder)
+        SolverKamino.Config.register_custom_attributes(builder)
 
     @staticmethod
     def _validate_model_compatibility(model: Model):

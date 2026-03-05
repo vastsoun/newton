@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from ...linalg.linear import LinearSolverNameToType, LinearSolverTypeToName
-from ...solver_kamino import SolverKaminoConfig
+from ...solver_kamino import SolverKamino
 
 ###
 # Module interface
@@ -34,11 +34,11 @@ __all__ = [
 ###
 
 
-def make_solver_config_default() -> tuple[str, SolverKaminoConfig]:
+def make_solver_config_default() -> tuple[str, SolverKamino.Config]:
     # ------------------------------------------------------------------------------
     name = "Default"
     # ------------------------------------------------------------------------------
-    config = SolverKaminoConfig()
+    config = SolverKamino.Config()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
     config.problem.alpha = 0.1
@@ -72,11 +72,11 @@ def make_solver_config_default() -> tuple[str, SolverKaminoConfig]:
     return name, config
 
 
-def make_solver_config_dense_lltb_fast_dr_legs() -> tuple[str, SolverKaminoConfig]:
+def make_solver_config_dense_lltb_fast_dr_legs() -> tuple[str, SolverKamino.Config]:
     # ------------------------------------------------------------------------------
     name = "Dense LLTB Fast DR Legs"
     # ------------------------------------------------------------------------------
-    config = SolverKaminoConfig()
+    config = SolverKamino.Config()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
     config.problem.alpha = 0.1
@@ -111,11 +111,11 @@ def make_solver_config_dense_lltb_fast_dr_legs() -> tuple[str, SolverKaminoConfi
 
 
 # TODO @cavemor: PLEASE ADD YOUR BEST CONFIGS HERE
-def make_solver_config_sparse_cr_fast_dr_legs() -> tuple[str, SolverKaminoConfig]:
+def make_solver_config_sparse_cr_fast_dr_legs() -> tuple[str, SolverKamino.Config]:
     # ------------------------------------------------------------------------------
     name = "Sparse CR Fast DR Legs"
     # ------------------------------------------------------------------------------
-    config = SolverKaminoConfig()
+    config = SolverKamino.Config()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
     config.problem.alpha = 0.1
@@ -149,11 +149,11 @@ def make_solver_config_sparse_cr_fast_dr_legs() -> tuple[str, SolverKaminoConfig
     return name, config
 
 
-def make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs() -> tuple[str, SolverKaminoConfig]:
+def make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs() -> tuple[str, SolverKamino.Config]:
     # ------------------------------------------------------------------------------
     name = "Sparse CR Adaptive Rho Balanced DR Legs"
     # ------------------------------------------------------------------------------
-    config = SolverKaminoConfig()
+    config = SolverKamino.Config()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
     config.problem.alpha = 0.1
@@ -192,14 +192,14 @@ def make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs() -> tuple[str, So
 ###
 
 
-def make_benchmark_configs() -> dict[str, SolverKaminoConfig]:
+def make_benchmark_configs() -> dict[str, SolverKamino.Config]:
     generators = [
         make_solver_config_default,
         make_solver_config_dense_lltb_fast_dr_legs,
         make_solver_config_sparse_cr_fast_dr_legs,
         make_solver_config_sparse_cr_adaptiv_rho_balanced_dr_legs,
     ]
-    solver_configs: dict[str, SolverKaminoConfig] = {}
+    solver_configs: dict[str, SolverKamino.Config] = {}
     for gen in generators:
         name, config = gen()
         solver_configs[name] = config
@@ -211,7 +211,7 @@ def make_benchmark_configs() -> dict[str, SolverKaminoConfig]:
 ###
 
 
-def save_solver_configs_to_hdf5(configs: dict[str, SolverKaminoConfig], datafile):
+def save_solver_configs_to_hdf5(configs: dict[str, SolverKamino.Config], datafile):
     for config_name, config in configs.items():
         scope = f"Solver/{config_name}"
         # ------------------------------------------------------------------------------
@@ -249,10 +249,10 @@ def save_solver_configs_to_hdf5(configs: dict[str, SolverKaminoConfig], datafile
         datafile[f"{scope}/warmstarting/contact_warmstart_method"] = config.contact_warmstart_method
 
 
-def load_solver_configs_to_hdf5(datafile) -> dict[str, SolverKaminoConfig]:
+def load_solver_configs_to_hdf5(datafile) -> dict[str, SolverKamino.Config]:
     configs = {}
     for config_name in datafile["Solver"].keys():
-        config = SolverKaminoConfig()
+        config = SolverKamino.Config()
         # ------------------------------------------------------------------------------
         config.problem.alpha = float(datafile[f"Solver/{config_name}/constraints/alpha"][()])
         config.problem.beta = float(datafile[f"Solver/{config_name}/constraints/beta"][()])

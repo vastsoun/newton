@@ -43,7 +43,6 @@ __all__ = [
     "basics_newton",
     "builders",
     "get_basics_usd_assets_path",
-    "get_examples_usd_assets_path",
     "get_testing_usd_assets_path",
     "testing",
     "utils",
@@ -52,18 +51,6 @@ __all__ = [
 ###
 # Asset path utilities
 ###
-
-
-def get_examples_usd_assets_path() -> str | None:
-    """
-    Returns the path to the USD assets for example models.
-
-    If the path does not exist, returns None.
-    """
-    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "assets/examples")
-    if not os.path.exists(path):
-        return None
-    return path
 
 
 def get_basics_usd_assets_path() -> str:

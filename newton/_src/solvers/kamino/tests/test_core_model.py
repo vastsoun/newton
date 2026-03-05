@@ -783,7 +783,87 @@ class TestModelConversions(unittest.TestCase):
                 err_msg=f"Base reset (translated): body {i} rotation mismatch",
             )
 
-    def test_10_state_conversions(self):
+    def test_09_model_conversions_shape_offset_com_relative(self):
+        """
+        Test that ``geoms.offset`` stores COM-relative shape positions
+        after Newton→Kamino conversion, while ground shapes are unchanged.
+        """
+        builder: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder)
+        builder.default_shape_cfg.margin = 0.0
+        builder.default_shape_cfg.gap = 0.0
+
+        builder.begin_world()
+
+        # Body with COM=(0.1, 0.2, 0.0), shape at (0.5, 0.0, 0.0)
+        bid = builder.add_link(
+            label="body0",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(0.0, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+            com=wp.vec3f(0.1, 0.2, 0.0),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(
+            label="box0",
+            body=bid,
+            hx=0.05,
+            hy=0.05,
+            hz=0.05,
+            xform=wp.transformf(wp.vec3f(0.5, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+        )
+        # Ground shape (bid=-1) — should be left unchanged
+        builder.add_shape_box(
+            label="ground_box",
+            body=-1,
+            hx=1.0,
+            hy=1.0,
+            hz=0.01,
+            xform=wp.transformf(wp.vec3f(1.0, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+        )
+
+        builder.add_joint_fixed(
+            label="fix",
+            parent=-1,
+            child=bid,
+            parent_xform=wp.transform_identity(dtype=wp.float32),
+            child_xform=wp.transform_identity(dtype=wp.float32),
+        )
+        builder.end_world()
+
+        model: Model = builder.finalize(skip_validation_joints=True)
+        kamino_model: ModelKamino = ModelKamino.from_newton(model)
+        offset_np = kamino_model.geoms.offset.numpy()
+
+        # Shape on body: pos should be (0.5-0.1, 0.0-0.2, 0.0) = (0.4, -0.2, 0.0)
+        np.testing.assert_allclose(offset_np[0, :3], [0.4, -0.2, 0.0], atol=1e-6)
+        # Ground shape: pos unchanged at (1.0, 0.0, 0.0)
+        np.testing.assert_allclose(offset_np[1, :3], [1.0, 0.0, 0.0], atol=1e-6)
+
+    def test_10_origin_com_roundtrip(self):
+        """
+        Test that origin→COM→origin is the identity on both body_q and body_qd.
+        """
+        from newton._src.solvers.kamino.core.bodies import (
+            convert_body_com_to_origin,
+            convert_body_origin_to_com,
+        )
+
+        model = self._build_com_offset_model()
+        body_q = wp.clone(model.body_q)
+        body_qd = wp.array(
+            np.random.default_rng(42).standard_normal((model.body_count, 6)).astype(np.float32),
+            dtype=wp.spatial_vectorf,
+        )
+        q_orig = body_q.numpy().copy()
+        qd_orig = body_qd.numpy().copy()
+
+        convert_body_origin_to_com(model.body_com, body_q, body_qd)
+        convert_body_com_to_origin(model.body_com, body_q, body_qd)
+
+        np.testing.assert_allclose(body_q.numpy(), q_orig, atol=1e-6, err_msg="body_q roundtrip failed")
+        np.testing.assert_allclose(body_qd.numpy(), qd_orig, atol=1e-6, err_msg="body_qd roundtrip failed")
+
+    def test_11_state_conversions(self):
         """
         Test the conversion operations between newton.State and kamino.StateKamino.
         """

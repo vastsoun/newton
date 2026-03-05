@@ -34,6 +34,7 @@ __all__ = [
     "convert_base_origin_to_com",
     "convert_body_com_to_origin",
     "convert_body_origin_to_com",
+    "convert_geom_offset_origin_to_com",
     "update_body_inertias",
     "update_body_wrenches",
 ]
@@ -527,9 +528,41 @@ def _convert_base_origin_to_com(
         base_u[wid] = wp.spatial_vector(v + wp.cross(omega, r_com), omega)
 
 
+@wp.kernel
+def _convert_geom_offset_origin_to_com(
+    # Inputs
+    body_com: wp.array(dtype=vec3f),
+    geom_bid: wp.array(dtype=int32),
+    # In/Outputs
+    geom_offset: wp.array(dtype=transformf),
+):
+    gid = wp.tid()
+    bid = geom_bid[gid]
+    if bid >= 0:
+        com = body_com[bid]
+        X = geom_offset[gid]
+        pos = wp.transform_get_translation(X)
+        rot = wp.transform_get_rotation(X)
+        geom_offset[gid] = transformf(pos - com, rot)
+
+
 ###
 # Launchers
 ###
+
+
+def convert_geom_offset_origin_to_com(
+    body_com: wp.array,
+    geom_bid: wp.array,
+    geom_offset: wp.array,
+):
+    wp.launch(
+        _convert_geom_offset_origin_to_com,
+        dim=geom_bid.shape[0],
+        inputs=[body_com, geom_bid],
+        outputs=[geom_offset],
+        device=body_com.device,
+    )
 
 
 def update_body_inertias(model: RigidBodiesModel, data: RigidBodiesData):

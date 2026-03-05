@@ -188,6 +188,7 @@ class StateKamino:
             world_mask: optional per-world mask selecting which worlds to process.
             body_wid: body-to-world index mapping, required when ``world_mask`` is given.
         """
+        # Ensure the model is valid
         if model is None:
             raise ValueError("Model must be provided to convert to body CoM state.")
         if not isinstance(model, Model):
@@ -227,7 +228,6 @@ class StateKamino:
         if model.body_com is None:
             raise ValueError("Model must have body_com defined to convert to body CoM state.")
 
-        # Launch the kernel to convert body poses to body frame
         convert_body_com_to_origin(
             body_com=model.body_com,
             body_q=self.q_i,

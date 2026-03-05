@@ -578,13 +578,13 @@ class SolverKaminoImpl(SolverBase):
             joint_q (wp.array, optional):
                 Optional array of target joint coordinates.\n
                 Shape of `(num_joint_coords,)` and type :class:`wp.float32`
-            joint_qd (wp.array, optional):
+            joint_u (wp.array, optional):
                 Optional array of target joint DoF velocities.\n
                 Shape of `(num_joint_dofs,)` and type :class:`wp.float32`
             base_q (wp.array, optional):
                 Optional array of target base body poses.\n
                 Shape of `(num_worlds,)` and type :class:`wp.transformf`
-            base_qd (wp.array, optional):
+            base_u (wp.array, optional):
                 Optional array of target base body twists.\n
                 Shape of `(num_worlds,)` and type :class:`wp.spatial_vectorf`
             bodies_q (wp.array, optional):
@@ -1348,13 +1348,13 @@ class SolverKamino(SolverBase):
             joint_q (wp.array, optional):
                 Optional array of target joint coordinates.\n
                 Shape of `(num_joint_coords,)` and type :class:`wp.float32`
-            joint_qd (wp.array, optional):
+            joint_u (wp.array, optional):
                 Optional array of target joint DoF velocities.\n
                 Shape of `(num_joint_dofs,)` and type :class:`wp.float32`
             base_q (wp.array, optional):
                 Optional array of target base body poses.\n
                 Shape of `(num_worlds,)` and type :class:`wp.transformf`
-            base_qd (wp.array, optional):
+            base_u (wp.array, optional):
                 Optional array of target base body twists.\n
                 Shape of `(num_worlds,)` and type :class:`wp.spatial_vectorf`
         """

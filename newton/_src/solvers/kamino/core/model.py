@@ -30,7 +30,7 @@ from ....sim.model import Model
 
 # Kamino imports
 from ..utils import logger as msg
-from .bodies import RigidBodiesData, RigidBodiesModel
+from .bodies import RigidBodiesData, RigidBodiesModel, convert_geom_offset_origin_to_com
 from .control import ControlKamino
 from .conversions import (
     compute_required_contact_capacity,
@@ -1299,6 +1299,10 @@ class ModelKamino:
                 kinematic_cts_offset=wp.array(joint_kinematic_cts_start_np, dtype=int32),
             )
 
+            # Convert shape offsets from body-frame-relative to COM-relative
+            shape_transform_com = wp.clone(model.shape_transform)
+            convert_geom_offset_origin_to_com(model.body_com, model.shape_body, shape_transform_com)
+
             # Collision geometries
             model_geoms = GeometriesModel(
                 num_geoms=model.shape_count,
@@ -1315,7 +1319,7 @@ class ModelKamino:
                 flags=model.shape_flags,
                 ptr=model.shape_source_ptr,
                 params=wp.array(geom_shape_params_np, dtype=vec4f),
-                offset=model.shape_transform,
+                offset=shape_transform_com,
                 material=wp.array(geom_material_np, dtype=int32),
                 group=model.shape_collision_group,
                 gap=model.shape_gap,

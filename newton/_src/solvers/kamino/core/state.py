@@ -23,6 +23,7 @@ import warp as wp
 
 from ....sim.model import Model
 from ....sim.state import State
+from .bodies import convert_body_origin_to_com, convert_body_com_to_origin
 from .size import SizeKamino
 from .types import vec6f
 
@@ -32,159 +33,7 @@ from .types import vec6f
 
 __all__ = [
     "StateKamino",
-    "compute_body_com_state",
-    "compute_body_frame_state",
 ]
-
-
-###
-# Module configs
-###
-
-wp.set_module_options({"enable_backward": False})
-
-
-###
-# Kernels
-###
-
-
-# TODO: Should we also transform body_q_prev to CoM frame here?
-@wp.kernel
-def _compute_body_com_state(
-    # Inputs:
-    body_com: wp.array(dtype=wp.vec3f),
-    body_q: wp.array(dtype=wp.transformf),
-    # Outputs:
-    body_q_com: wp.array(dtype=wp.transformf),
-):
-    """
-    Transforms body-frame state to body center-of-mass (CoM) state.
-
-    Inputs:
-        body_com (`wp.array(dtype=wp.vec3f)`):
-            Array of body center-of-mass offsets in body frame.
-        body_q (`wp.array(dtype=wp.transformf)`):
-            Array of body-frame poses in world frame.
-
-    Outputs:
-        body_q_com (`wp.array(dtype=wp.transformf)`):
-            Array of body CoM poses in world frame.
-    """
-    # Retrieve the body index from the thread grid
-    bid = wp.tid()
-
-    # Load body-frame pose and local CoM offset
-    q_i = body_q[bid]
-    r_com_i = body_com[bid]
-
-    # Compute and store the CoM pose in world frame
-    body_q_com[bid] = wp.transform_multiply(q_i, wp.transformf(r_com_i, wp.quat_identity()))
-
-
-# TODO: Should we also transform body_q_prev to CoM frame here?
-@wp.kernel
-def _compute_body_frame_state(
-    # Inputs:
-    body_com: wp.array(dtype=wp.vec3f),
-    body_q_com: wp.array(dtype=wp.transformf),
-    world_mask: wp.array(dtype=wp.int32),
-    body_wid: wp.array(dtype=wp.int32),
-    # Outputs:
-    body_q: wp.array(dtype=wp.transformf),
-):
-    """
-    Transforms body center-of-mass (CoM) state to body-frame state.
-
-    Inputs:
-        body_com (`wp.array(dtype=wp.vec3f)`):
-            Array of body center-of-mass offsets in body frame.
-        body_q_com (`wp.array(dtype=wp.transformf)`):
-            Array of body CoM poses in world frame.
-        world_mask (`wp.array(dtype=wp.int32)`):
-            Optional per-world mask; when non-null, only bodies in marked worlds are processed.
-        body_wid (`wp.array(dtype=wp.int32)`):
-            Optional body-to-world index mapping; required when ``world_mask`` is non-null.
-
-    Outputs:
-        body_q (`wp.array(dtype=wp.transformf)`):
-            Array of body-frame poses in world frame.
-    """
-    # Retrieve the body index from the thread grid
-    bid = wp.tid()
-
-    # Skip masked-out worlds when a mask is provided
-    if world_mask:
-        assert body_wid
-        wid = body_wid[bid]
-        if world_mask[wid] == 0:
-            return
-
-    # Load body CoM pose and local CoM offset
-    q_com_i = body_q_com[bid]
-    r_com_i = body_com[bid]
-
-    # Compute and store the body-frame pose in world frame
-    body_q[bid] = wp.transform_multiply(q_com_i, wp.transformf(-r_com_i, wp.quat_identity()))
-
-
-###
-# Launchers
-###
-
-
-def compute_body_com_state(
-    body_com: wp.array,
-    body_q: wp.array,
-    body_q_com: wp.array,
-):
-    """
-    Computes body center-of-mass (CoM) state from body-frame state.
-
-    Args:
-        body_com (`wp.array`):
-            Array of body center-of-mass offsets in body frame.
-        body_q (`wp.array`):
-            Array of body-frame poses in world frame.
-        body_q_com (`wp.array`):
-            Array of body CoM poses in world frame.
-    """
-    wp.launch(
-        kernel=_compute_body_com_state,
-        dim=body_com.shape[0],
-        inputs=[body_com, body_q],
-        outputs=[body_q_com],
-        device=body_com.device,
-    )
-
-
-def compute_body_frame_state(
-    body_com: wp.array,
-    body_q_com: wp.array,
-    body_q: wp.array,
-    world_mask: wp.array | None = None,
-    body_wid: wp.array | None = None,
-):
-    """
-    Computes body-frame state from body center-of-mass (CoM) state.
-
-    Args:
-        body_com (`wp.array`):
-            Array of body center-of-mass offsets in body frame.
-        body_q_com (`wp.array`):
-            Array of body CoM poses in world frame.
-        body_q (`wp.array`):
-            Array of body-frame poses in world frame.
-        world_mask: optional per-world mask selecting which worlds to process.
-        body_wid: body-to-world index mapping, required when ``world_mask`` is given.
-    """
-    wp.launch(
-        kernel=_compute_body_frame_state,
-        dim=body_com.shape[0],
-        inputs=[body_com, body_q_com, world_mask, body_wid],
-        outputs=[body_q],
-        device=body_com.device,
-    )
 
 
 ###
@@ -323,7 +172,12 @@ class StateKamino:
         wp.copy(self.dq_j, other.dq_j)
         wp.copy(self.lambda_j, other.lambda_j)
 
-    def convert_to_body_com_state(self, model: Model) -> None:
+    def convert_to_body_com_state(
+        self,
+        model: Model,
+        world_mask: wp.array | None = None,
+        body_wid: wp.array | None = None,
+    ) -> None:
         """
         Convert the body-frame state to body center-of-mass (CoM)
         state using the provided body center-of-mass offsets.
@@ -331,8 +185,9 @@ class StateKamino:
         Args:
             model (Model):
                 The model container holding the time-invariant parameters of the simulation.
+            world_mask: optional per-world mask selecting which worlds to process.
+            body_wid: body-to-world index mapping, required when ``world_mask`` is given.
         """
-        # Ensure the model is valid
         if model is None:
             raise ValueError("Model must be provided to convert to body CoM state.")
         if not isinstance(model, Model):
@@ -340,14 +195,20 @@ class StateKamino:
         if model.body_com is None:
             raise ValueError("Model must have body_com defined to convert to body CoM state.")
 
-        # Launch the kernel to convert body poses to CoM frame
-        compute_body_com_state(
+        convert_body_origin_to_com(
             body_com=model.body_com,
             body_q=self.q_i,
-            body_q_com=self.q_i,
+            body_qd=self.u_i,
+            world_mask=world_mask,
+            body_wid=body_wid,
         )
 
-    def convert_to_body_frame_state(self, model: Model) -> None:
+    def convert_to_body_frame_state(
+        self,
+        model: Model,
+        world_mask: wp.array | None = None,
+        body_wid: wp.array | None = None,
+    ) -> None:
         """
         Convert the body center-of-mass (CoM) state to body-frame
         state using the provided body center-of-mass offsets.
@@ -355,6 +216,8 @@ class StateKamino:
         Args:
             model (Model):
                 The model container holding the time-invariant parameters of the simulation.
+            world_mask: optional per-world mask selecting which worlds to process.
+            body_wid: body-to-world index mapping, required when ``world_mask`` is given.
         """
         # Ensure the model is valid
         if model is None:
@@ -365,10 +228,12 @@ class StateKamino:
             raise ValueError("Model must have body_com defined to convert to body CoM state.")
 
         # Launch the kernel to convert body poses to body frame
-        compute_body_frame_state(
+        convert_body_com_to_origin(
             body_com=model.body_com,
-            body_q_com=self.q_i,
             body_q=self.q_i,
+            body_qd=self.u_i,
+            world_mask=world_mask,
+            body_wid=body_wid,
         )
 
     @staticmethod
@@ -454,8 +319,7 @@ class StateKamino:
             lambda_j=joint_lambdas,
         )
 
-        # Optionally convert to the body states to CoM frame
-        # NOTE: This only affects the body poses
+        # Optionally convert body poses and velocities to CoM frame
         if convert_to_com_frame:
             state_kamino.convert_to_body_com_state(model)
 
@@ -492,8 +356,7 @@ class StateKamino:
         if not isinstance(state, StateKamino):
             raise TypeError(f"Expected state of type StateKamino, but got {type(state)}.")
 
-        # Optionally convert to the body states to body frame
-        # NOTE: This only affects the body poses
+        # Optionally convert body poses and velocities to body frame
         if convert_to_body_frame:
             state.convert_to_body_frame_state(model)
 

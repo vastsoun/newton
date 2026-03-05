@@ -1300,6 +1300,19 @@ class ModelKamino:
             )
 
             # Collision geometries
+            # shape_transform stores offsets relative to body-frame origin, but
+            # Kamino's collision detector combines them with COM-frame body poses
+            # (q_i).  We convert offsets to be COM-relative so that
+            #   geom_world = q_i_com * offset_from_com
+            # gives the correct world-space geometry pose.
+            shape_transform_np = model.shape_transform.numpy().copy()
+            shape_body_np = model.shape_body.numpy()
+            for s in range(model.shape_count):
+                bid = int(shape_body_np[s])
+                if bid >= 0:
+                    shape_transform_np[s, :3] -= body_com_np[bid]
+            geom_offset_com = wp.array(shape_transform_np, dtype=wp.transformf)
+
             model_geoms = GeometriesModel(
                 num_geoms=model.shape_count,
                 num_collidable=model_num_collidable_geoms,
@@ -1315,7 +1328,7 @@ class ModelKamino:
                 flags=model.shape_flags,
                 ptr=model.shape_source_ptr,
                 params=wp.array(geom_shape_params_np, dtype=vec4f),
-                offset=model.shape_transform,
+                offset=geom_offset_com,
                 material=wp.array(geom_material_np, dtype=int32),
                 group=model.shape_collision_group,
                 gap=model.shape_gap,

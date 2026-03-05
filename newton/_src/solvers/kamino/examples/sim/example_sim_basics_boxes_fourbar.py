@@ -32,7 +32,7 @@ from newton._src.solvers.kamino.models.builders.utils import (
 )
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, ViewerKamino
 
 ###
 # Module configs
@@ -245,7 +245,7 @@ class Example:
             self.builder.gravity[w].enabled = gravity
 
         # Set solver config
-        config = SimulatorConfig()
+        config = Simulator.Config()
         config.dt = self.sim_dt
         config.solver.problem.gamma = 0.1
         config.solver.sparse_jacobian = False

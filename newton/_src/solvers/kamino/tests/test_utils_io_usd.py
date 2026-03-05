@@ -23,7 +23,7 @@ import numpy as np
 import warp as wp
 
 from newton import Model, ModelBuilder
-from newton._src.solvers.kamino import SolverKamino, SolverKaminoConfig
+from newton._src.solvers.kamino import SolverKamino
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.joints import JOINT_QMAX, JOINT_QMIN, JointActuationType, JointDoFType
 from newton._src.solvers.kamino.core.shapes import ShapeType
@@ -1374,7 +1374,7 @@ def PhysicsScene "PhysicsScene" (
     uniform token newton:kamino:jointCorrection = "continuous"
 }
 """)
-        config = SolverKaminoConfig.from_model(model)
+        config = SolverKamino.Config.from_model(model)
 
         self.assertEqual(config.warmstart_mode, "none")
         self.assertEqual(config.use_solver_acceleration, False)

@@ -17,7 +17,7 @@
 Kamino: A physics back-end for Newton for constrained multi-body body simulation.
 """
 
-from .solver_kamino import SolverKamino, SolverKaminoConfig
+from .solver_kamino import SolverKamino
 
 ###
 # Kamino API
@@ -25,5 +25,4 @@ from .solver_kamino import SolverKamino, SolverKaminoConfig
 
 __all__ = [
     "SolverKamino",
-    "SolverKaminoConfig",
 ]

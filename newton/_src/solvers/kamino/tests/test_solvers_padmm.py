@@ -29,7 +29,7 @@ from newton._src.solvers.kamino.linalg import ConjugateResidualSolver, LLTBlocke
 from newton._src.solvers.kamino.linalg.utils.matrix import SquareSymmetricMatrixProperties
 from newton._src.solvers.kamino.linalg.utils.range import in_range_via_gaussian_elimination
 from newton._src.solvers.kamino.models.builders import basics
-from newton._src.solvers.kamino.solvers.padmm import PADMMConfig, PADMMSolver, PADMMWarmStartMode
+from newton._src.solvers.kamino.solvers.padmm import PADMMSolver, PADMMWarmStartMode
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_delassus,
@@ -399,7 +399,7 @@ class TestPADMMSolver(unittest.TestCase):
         # NOTE: These are all equal to their default values
         # but are defined here explicitly for the purposes
         # of experimentation and testing.
-        config = PADMMConfig()
+        config = PADMMSolver.Config()
         config.primal_tolerance = 1e-6
         config.dual_tolerance = 1e-6
         config.compl_tolerance = 1e-6
@@ -443,7 +443,7 @@ class TestPADMMSolver(unittest.TestCase):
         # NOTE: These are all equal to their default values
         # but are defined here explicitly for the purposes
         # of experimentation and testing.
-        config = PADMMConfig()
+        config = PADMMSolver.Config()
         config.primal_tolerance = 1e-6
         config.dual_tolerance = 1e-6
         config.compl_tolerance = 1e-6
@@ -488,7 +488,7 @@ class TestPADMMSolver(unittest.TestCase):
         # NOTE: These are all equal to their default values
         # but are defined here explicitly for the purposes
         # of experimentation and testing.
-        config = PADMMConfig()
+        config = PADMMSolver.Config()
         config.primal_tolerance = 1e-6
         config.dual_tolerance = 1e-6
         config.compl_tolerance = 1e-6
@@ -535,7 +535,7 @@ class TestPADMMSolver(unittest.TestCase):
         # NOTE: These are all equal to their default values
         # but are defined here explicitly for the purposes
         # of experimentation and testing.
-        config = PADMMConfig()
+        config = PADMMSolver.Config()
         config.primal_tolerance = 1e-6
         config.dual_tolerance = 1e-6
         config.compl_tolerance = 1e-6
@@ -583,7 +583,7 @@ class TestPADMMSolver(unittest.TestCase):
         # NOTE: These are all equal to their default values
         # but are defined here explicitly for the purposes
         # of experimentation and testing.
-        config = PADMMConfig()
+        config = PADMMSolver.Config()
         config.primal_tolerance = 1e-6
         config.dual_tolerance = 1e-6
         config.compl_tolerance = 1e-6
@@ -631,7 +631,7 @@ class TestPADMMSolver(unittest.TestCase):
         # NOTE: These are all equal to their default values
         # but are defined here explicitly for the purposes
         # of experimentation and testing.
-        config = PADMMConfig()
+        config = PADMMSolver.Config()
         config.primal_tolerance = 1e-6
         config.dual_tolerance = 1e-6
         config.compl_tolerance = 1e-6

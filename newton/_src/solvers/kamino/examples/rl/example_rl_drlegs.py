@@ -20,10 +20,11 @@
 # solver with implicit PD joint control.  Velocity commands come from an
 # Xbox gamepad or keyboard via the 3-D viewer.
 #
-# The policy expects 92D observations with path-frame integration:
+# The policy expects 94D observations with path-frame integration:
 #   ori_root_to_path (9D) + path_deviation (2D) + path_dev_heading (2D)
 #   + path_cmd (3D) + cmd_linvel_in_root (3D) + cmd_angvel_in_root (3D)
 #   + phase_encoding (4D) + root_linvel_in_root (3D) + root_angvel_in_root (3D)
+#   + cmd_height (1D) + height_error (1D)
 #   + joint_positions (36D) + action_history (24D)
 #
 # Usage:
@@ -36,7 +37,7 @@ import argparse
 import os
 
 import numpy as np
-import torch
+import torch  # noqa: TID253
 import warp as wp
 from warp.context import Devicelike
 
@@ -79,6 +80,10 @@ _PD_KD = 0.6  # derivative gain (N·m·s/rad) for actuated joints
 _PD_ARMATURE = 0.01  # rotor inertia (kg·m²) for actuated joints
 _PATH_DEVIATION_SCALE = 0.1  # scaling for path deviation observations
 _LINEAR_PATH_ERROR_LIMIT = 0.1  # max path-to-root deviation before clipping (m)
+_STANDING_HEIGHT = 0.265  # m, default pelvis Z from body_pose_offset
+_HEIGHT_CMD_MIN = 0.13  # m, minimum pelvis height command (must match training)
+_HEIGHT_CMD_MAX = 0.28  # m, maximum pelvis height command (must match training)
+_HEIGHT_ERROR_SCALE = 0.05  # scaling for height error observation (must match training)
 
 
 ###
@@ -158,12 +163,15 @@ class Example:
         # Command yaw rate buffer (filled by joystick each step)
         self._cmd_yaw_rate = torch.zeros(num_worlds, 1, device=self.torch_device, dtype=torch.float32)
 
+        # Height command buffer (default = standing height, adjustable via keyboard Y/N)
+        self._cmd_height = torch.full((num_worlds, 1), _STANDING_HEIGHT, device=self.torch_device, dtype=torch.float32)
+
         # Zero column for 2D->3D padding
         self._zeros = torch.zeros(num_worlds, 1, device=self.torch_device, dtype=torch.float32)
 
-        # Full observation buffer (92D)
-        # 9 + 2 + 2 + 3 + 3 + 3 + 4 + 3 + 3 + 36 + 24 = 92
-        obs_dim = 92
+        # Full observation buffer (94D)
+        # 9 + 2 + 2 + 3 + 3 + 3 + 4 + 3 + 3 + 1 + 1 + 36 + 24 = 94
+        obs_dim = 94
         self._obs_buffer = torch.zeros(num_worlds, obs_dim, device=self.torch_device, dtype=torch.float32)
         msg.info(f"Observation dim: {obs_dim}")
 
@@ -237,6 +245,7 @@ class Example:
         self._phase.zero_()
         self._cmd_vel.zero_()
         self._cmd_yaw_rate.zero_()
+        self._cmd_height.fill_(_STANDING_HEIGHT)
         self._path_heading.zero_()
         self._path_position[:] = self.sim_wrapper.q_i[:, 0, :2]
         self.sim_wrapper.q_j_ref.zero_()
@@ -248,18 +257,26 @@ class Example:
         self.sim_wrapper.step()
 
     def update_input(self):
-        """Transfer joystick velocity commands to the command buffer."""
+        """Transfer joystick velocity commands and height command to buffers."""
         self._cmd_vel[0, 0] = self.joystick.forward_velocity
         self._cmd_vel[0, 1] = self.joystick.lateral_velocity
         self._cmd_yaw_rate[0, 0] = self.joystick.angular_velocity
 
+        # Height command via keyboard: Y = increase, N = decrease
+        if self.viewer is not None and hasattr(self.viewer, "is_key_down"):
+            if self.viewer.is_key_down("y"):
+                self._cmd_height[0, 0] = min(self._cmd_height[0, 0].item() + 0.001, _HEIGHT_CMD_MAX)
+            if self.viewer.is_key_down("n"):
+                self._cmd_height[0, 0] = max(self._cmd_height[0, 0].item() - 0.001, _HEIGHT_CMD_MIN)
+
     def sim_step(self):
         """Observations -> policy inference -> actions -> physics step.
 
-        Builds 92D path-frame observations matching DrlegsWalkObserver:
+        Builds 94D path-frame observations matching DrlegsWalkObserver:
             ori_root_to_path(9) + path_dev(2) + path_dev_heading(2)
             + path_cmd(3) + cmd_linvel_root(3) + cmd_angvel_root(3)
             + phase_enc(4) + root_linvel_root(3) + root_angvel_root(3)
+            + cmd_height(1) + height_error(1)
             + joints(36) + action_hist(24)
         """
         # Advance phase clock
@@ -312,7 +329,11 @@ class Example:
         root_linvel = quat_rotate_inv(root_quat, world_linvel)  # (N, 3)
         root_angvel = quat_rotate_inv(root_quat, world_angvel)  # (N, 3)
 
-        # --- Build full 92D observation ---
+        # --- Pelvis height command and error (2D) ---
+        actual_height = self.sim_wrapper.q_i[:, 0, 2:3]  # (N, 1)
+        height_error = (actual_height - self._cmd_height) / _HEIGHT_ERROR_SCALE  # (N, 1)
+
+        # --- Build full 94D observation ---
         i = 0
         self._obs_buffer[:, i : i + 9] = ori_9d
         i += 9
@@ -332,8 +353,12 @@ class Example:
         i += 3
         self._obs_buffer[:, i : i + 3] = root_angvel
         i += 3
+        self._obs_buffer[:, i : i + 1] = self._cmd_height
+        i += 1
+        self._obs_buffer[:, i : i + 1] = height_error
+        i += 1
         self._obs_buffer[:, i : i + 60] = base_no_root
-        # i += 60 → total = 92
+        # i += 60 → total = 94
 
         # Policy inference
         with torch.no_grad():

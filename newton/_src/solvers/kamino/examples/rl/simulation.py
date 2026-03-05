@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 # Thirdparty
+import torch  # noqa: TID253
 import warp as wp
 from warp.context import Devicelike
 
@@ -167,8 +168,6 @@ class RigidBodySim:
 
     def _make_rl_interface(self):
         """Create zero-copy PyTorch views of simulator state, control and contact arrays."""
-        import torch
-
         nw = self.sim.model.size.num_worlds
         njd = self.sim.model.size.max_of_num_joint_dofs
         nb = self.sim.model.size.max_of_num_bodies
@@ -234,8 +233,6 @@ class RigidBodySim:
 
     def _extract_metadata(self):
         """Extract joint/body names, actuated DOF indices, and joint limits from the builder."""
-        import torch
-
         max_joints = self.sim.model.size.max_of_num_joints
         max_bodies = self.sim.model.size.max_of_num_bodies
 

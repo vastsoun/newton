@@ -21,7 +21,7 @@ from typing import Any
 import numpy as np
 
 from ...linalg.linear import LinearSolverTypeToName
-from ...solver_kamino import SolverKaminoConfig
+from ...solver_kamino import SolverKamino
 from .problems import ProblemDimensions
 
 ###
@@ -332,7 +332,7 @@ def render_subcolumn_metrics_table(
 
 
 def render_solver_configs_table(
-    configs: dict[str, SolverKaminoConfig],
+    configs: dict[str, SolverKamino.Config],
     path: str | None = None,
     groups: list[str] | None = None,
     to_console: bool = False,
@@ -341,8 +341,8 @@ def render_solver_configs_table(
     Renders a rich table summarizing the solver configurations.
 
     Args:
-        configs (dict[str, SolverKaminoConfig]):
-            A dictionary mapping configuration names to SolverKaminoConfig objects.
+        configs (dict[str, SolverKamino.Config]):
+            A dictionary mapping configuration names to SolverKamino.Config objects.
         path (str, optional):
             The file path to save the rendered table as a text file. If None, the table is not saved to a file.
         groups (list[str], optional):
@@ -472,7 +472,7 @@ def render_problem_dimensions_table(
     Renders a rich table summarizing the problem dimensions.
 
     Args:
-        configs (dict[str, SolverKaminoConfig]):
+        configs (dict[str, SolverKamino.Config]):
             A dictionary mapping configuration names to problem dimensions.
         path (str, optional):
             The file path to save the rendered table as a text file. If None, the table is not saved to a file.

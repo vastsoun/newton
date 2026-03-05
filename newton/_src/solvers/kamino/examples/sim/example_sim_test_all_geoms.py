@@ -21,14 +21,14 @@ import warp as wp
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.shapes import ShapeType
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino._src.core.shapes import ShapeType
+from newton._src.solvers.kamino._src.geometry.primitive.broadphase import PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES
+from newton._src.solvers.kamino._src.geometry.primitive.narrowphase import PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS
+from newton._src.solvers.kamino._src.models.builders import testing
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.sim import SimulationLogger, Simulator, ViewerKamino
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
-from newton._src.solvers.kamino.geometry.primitive.broadphase import PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES
-from newton._src.solvers.kamino.geometry.primitive.narrowphase import PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS
-from newton._src.solvers.kamino.models.builders import testing
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, ViewerKamino
 
 ###
 # Example class

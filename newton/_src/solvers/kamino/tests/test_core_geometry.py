@@ -20,14 +20,14 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.geometry import GeometryDescriptor
-from newton._src.solvers.kamino.core.shapes import (
+from newton._src.solvers.kamino._src.core.geometry import GeometryDescriptor
+from newton._src.solvers.kamino._src.core.shapes import (
     MeshShape,
     ShapeType,
     SphereShape,
 )
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Tests

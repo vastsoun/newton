@@ -18,8 +18,8 @@
 import numpy as np
 import warp as wp
 
-from ...core.types import FloatArrayLike, float32, int32
-from ...linalg.utils.rand import (
+from ..._src.core.types import FloatArrayLike, float32, int32
+from ..._src.linalg.utils.rand import (
     random_rhs_for_matrix,
     random_spd_matrix,
     random_symmetric_matrix,

@@ -23,7 +23,7 @@ import numpy as np
 import warp as wp
 
 from newton._src.geometry.types import GeoType
-from newton._src.solvers.kamino.core.shapes import (
+from newton._src.solvers.kamino._src.core.shapes import (
     BoxShape,
     CapsuleShape,
     ConeShape,
@@ -35,8 +35,8 @@ from newton._src.solvers.kamino.core.shapes import (
     ShapeType,
     SphereShape,
 )
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Tests

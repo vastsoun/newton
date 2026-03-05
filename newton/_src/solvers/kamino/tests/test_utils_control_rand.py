@@ -20,11 +20,11 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar
-from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino._src.models.builders.basics import build_boxes_fourbar
+from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.control.rand import RandomJointController
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.control.rand import RandomJointController
 
 ###
 # Tests

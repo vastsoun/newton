@@ -22,23 +22,23 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.bodies import RigidBodyDescriptor
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.geometry import GeometryDescriptor
-from newton._src.solvers.kamino.core.gravity import (
+from newton._src.solvers.kamino._src.core.bodies import RigidBodyDescriptor
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino._src.core.geometry import GeometryDescriptor
+from newton._src.solvers.kamino._src.core.gravity import (
     GRAVITY_ACCEL_DEFAULT,
     GRAVITY_DIREC_DEFAULT,
     GRAVITY_NAME_DEFAULT,
 )
-from newton._src.solvers.kamino.core.joints import JointActuationType, JointDescriptor, JointDoFType
-from newton._src.solvers.kamino.core.materials import MaterialDescriptor
-from newton._src.solvers.kamino.core.model import ModelKamino
-from newton._src.solvers.kamino.core.shapes import SphereShape
-from newton._src.solvers.kamino.core.types import Axis, mat33f, transformf, vec6f
-from newton._src.solvers.kamino.models.builders import basics
-from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino._src.core.joints import JointActuationType, JointDescriptor, JointDoFType
+from newton._src.solvers.kamino._src.core.materials import MaterialDescriptor
+from newton._src.solvers.kamino._src.core.model import ModelKamino
+from newton._src.solvers.kamino._src.core.shapes import SphereShape
+from newton._src.solvers.kamino._src.core.types import Axis, mat33f, transformf, vec6f
+from newton._src.solvers.kamino._src.models.builders import basics
+from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Utilities

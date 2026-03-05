@@ -22,17 +22,17 @@ from scipy.spatial.transform import Rotation  # noqa: TID253
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
-from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
-from newton._src.solvers.kamino.models.builders.utils import (
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino._src.core.types import float32, int32, transformf, vec6f
+from newton._src.solvers.kamino._src.models.builders.utils import (
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import ViewerKamino
-from newton._src.solvers.kamino.utils.sim.simulator import Simulator
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
+from newton._src.solvers.kamino._src.utils.sim import ViewerKamino
+from newton._src.solvers.kamino._src.utils.sim.simulator import Simulator
+from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
 
 ###
 # Kernels

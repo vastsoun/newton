@@ -21,15 +21,15 @@ import warp as wp
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.types import float32
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino._src.core.types import float32
+from newton._src.solvers.kamino._src.models import get_basics_usd_assets_path
+from newton._src.solvers.kamino._src.models.builders.basics import build_boxes_hinged
+from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
+from newton._src.solvers.kamino._src.utils.sim import SimulationLogger, Simulator, ViewerKamino
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
-from newton._src.solvers.kamino.models import get_basics_usd_assets_path
-from newton._src.solvers.kamino.models.builders.basics import build_boxes_hinged
-from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, ViewerKamino
 
 ###
 # Module configs
@@ -144,12 +144,13 @@ class Example:
         # Set solver config
         config = Simulator.Config()
         config.dt = self.sim_dt
+        config.collision_detector.pipeline = "primitive"
         config.solver.problem.preconditioning = True
         config.solver.padmm.primal_tolerance = 1e-6
         config.solver.padmm.dual_tolerance = 1e-6
         config.solver.padmm.compl_tolerance = 1e-6
         config.solver.padmm.max_iterations = 200
-        config.solver.padmm.rho_0 = 0.1
+        config.solver.padmm.rho_0 = 0.05
         config.solver.use_solver_acceleration = True
         config.solver.warmstart_mode = "containers"
         config.solver.contact_warmstart_method = "geom_pair_net_force"

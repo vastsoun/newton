@@ -20,19 +20,19 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.linalg.utils.matrix import (
+from newton._src.solvers.kamino._src.linalg.utils.matrix import (
     SquareSymmetricMatrixProperties,
     is_square_matrix,
     is_symmetric_matrix,
 )
-from newton._src.solvers.kamino.linalg.utils.rand import (
+from newton._src.solvers.kamino._src.linalg.utils.rand import (
     eigenvalues_from_distribution,
     random_rhs_for_matrix,
     random_spd_matrix,
     random_symmetric_matrix,
 )
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Tests

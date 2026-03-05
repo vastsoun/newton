@@ -26,7 +26,7 @@ import warp as wp
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.utils import logger as msg
+from newton._src.solvers.kamino._src.utils import logger as msg
 
 
 class Example:

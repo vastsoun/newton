@@ -21,15 +21,15 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.data import DataKamino
-from newton._src.solvers.kamino.core.math import quat_exp, screw, screw_angular, screw_linear
-from newton._src.solvers.kamino.core.model import ModelKamino
-from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
-from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
-from newton._src.solvers.kamino.models.builders.testing import build_unary_revolute_joint_test
-from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino._src.core.data import DataKamino
+from newton._src.solvers.kamino._src.core.math import quat_exp, screw, screw_angular, screw_linear
+from newton._src.solvers.kamino._src.core.model import ModelKamino
+from newton._src.solvers.kamino._src.core.types import float32, int32, mat33f, transformf, vec3f, vec6f
+from newton._src.solvers.kamino._src.kinematics.joints import compute_joints_data
+from newton._src.solvers.kamino._src.models.builders.testing import build_unary_revolute_joint_test
+from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Module configs

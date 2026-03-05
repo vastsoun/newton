@@ -18,12 +18,12 @@
 import numpy as np
 import warp as wp
 
-from ...core.data import DataKamino
-from ...core.model import ModelKamino
-from ...dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
-from ...geometry.contacts import ContactsKamino
-from ...kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
-from ...kinematics.limits import LimitsKamino
+from ..._src.core.data import DataKamino
+from ..._src.core.model import ModelKamino
+from ..._src.dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
+from ..._src.geometry.contacts import ContactsKamino
+from ..._src.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
+from ..._src.kinematics.limits import LimitsKamino
 
 ###
 # Helper functions

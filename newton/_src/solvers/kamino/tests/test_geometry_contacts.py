@@ -24,8 +24,8 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import int32, mat33f, vec3f
-from newton._src.solvers.kamino.geometry.contacts import (
+from newton._src.solvers.kamino._src.core.types import int32, mat33f, vec3f
+from newton._src.solvers.kamino._src.geometry.contacts import (
     ContactMode,
     ContactsKamino,
     # TODO: convert_contacts_kamino_to_newton,
@@ -33,8 +33,8 @@ from newton._src.solvers.kamino.geometry.contacts import (
     make_contact_frame_xnorm,
     make_contact_frame_znorm,
 )
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Kernels

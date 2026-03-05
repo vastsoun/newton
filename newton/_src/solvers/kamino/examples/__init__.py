@@ -19,7 +19,7 @@ import time
 
 import warp as wp
 
-from ..utils import logger as msg
+from .._src.utils import logger as msg
 
 ###
 # Example Paths

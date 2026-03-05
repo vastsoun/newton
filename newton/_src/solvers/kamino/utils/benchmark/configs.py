@@ -22,6 +22,7 @@ from ...solver_kamino import SolverKaminoConfig
 
 __all__ = [
     "make_benchmark_configs",
+    "make_solver_config_default",
     "make_solver_config_dense_jacobian_llt_accurate",
     "make_solver_config_dense_jacobian_llt_fast",
     "make_solver_config_sparse_delassus_cr_accurate",
@@ -34,6 +35,44 @@ __all__ = [
 ###
 # Solver configurations
 ###
+
+
+def make_solver_config_default() -> tuple[str, SolverKaminoConfig]:
+    # ------------------------------------------------------------------------------
+    name = "Default"
+    # ------------------------------------------------------------------------------
+    config = SolverKaminoConfig()
+    # ------------------------------------------------------------------------------
+    # Constraint stabilization
+    config.problem.alpha = 0.1
+    # ------------------------------------------------------------------------------
+    # Jacobian representation
+    config.sparse_jacobian = False
+    config.sparse_dynamics = False
+    # ------------------------------------------------------------------------------
+    # Linear system solver
+    config.linear_solver_type = LinearSolverNameToType["LLTB"]
+    config.linear_solver_kwargs = {}
+    # ------------------------------------------------------------------------------
+    # PADMM
+    config.padmm.max_iterations = 200
+    config.padmm.primal_tolerance = 1e-6
+    config.padmm.dual_tolerance = 1e-6
+    config.padmm.compl_tolerance = 1e-6
+    config.padmm.restart_tolerance = 0.999
+    config.padmm.eta = 1e-5
+    config.padmm.rho_0 = 1.0
+    config.padmm.rho_min = 1e-5
+    config.padmm.penalty_update_method = "fixed"
+    config.padmm.penalty_update_freq = 1
+    config.use_solver_acceleration = True
+    config.avoid_graph_conditionals = False
+    # ------------------------------------------------------------------------------
+    # Warm-starting
+    config.warmstart_mode = "containers"
+    config.contact_warmstart_method = "geom_pair_net_force"
+    # ------------------------------------------------------------------------------
+    return name, config
 
 
 def make_solver_config_dense_jacobian_llt_accurate() -> tuple[str, SolverKaminoConfig]:
@@ -269,15 +308,21 @@ def make_solver_config_sparse_delassus_cr_fast() -> tuple[str, SolverKaminoConfi
 ###
 
 
-def make_benchmark_configs() -> dict[str, SolverKaminoConfig]:
-    generators = [
-        make_solver_config_dense_jacobian_llt_accurate,
-        make_solver_config_dense_jacobian_llt_fast,
-        make_solver_config_sparse_jacobian_llt_accurate,
-        make_solver_config_sparse_jacobian_llt_fast,
-        make_solver_config_sparse_delassus_cr_accurate,
-        make_solver_config_sparse_delassus_cr_fast,
-    ]
+def make_benchmark_configs(include_default: bool = True) -> dict[str, SolverKaminoConfig]:
+    if include_default:
+        generators = [make_solver_config_default]
+    else:
+        generators = []
+    generators.extend(
+        [
+            make_solver_config_dense_jacobian_llt_accurate,
+            make_solver_config_dense_jacobian_llt_fast,
+            make_solver_config_sparse_jacobian_llt_accurate,
+            make_solver_config_sparse_jacobian_llt_fast,
+            make_solver_config_sparse_delassus_cr_accurate,
+            make_solver_config_sparse_delassus_cr_fast,
+        ]
+    )
     solver_configs: dict[str, SolverKaminoConfig] = {}
     for gen in generators:
         name, config = gen()

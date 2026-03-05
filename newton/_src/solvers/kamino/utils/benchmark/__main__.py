@@ -280,7 +280,7 @@ def benchmark_run(args: argparse.Namespace):
         os.makedirs(RUN_OUTPUT_PATH, exist_ok=True)
 
     # Generate a set of solver configurations to benchmark over
-    configs_set = make_benchmark_configs()
+    configs_set = make_benchmark_configs(include_default=False)
     msg.notif(f"config_names: {list(configs_set.keys())}")
     render_solver_configs_table(configs=configs_set, groups=["sparse", "linear", "padmm"], to_console=True)
     if args.output == "full":

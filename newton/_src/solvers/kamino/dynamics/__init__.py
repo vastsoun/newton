@@ -16,7 +16,7 @@
 """The Kamino Dynamics Module"""
 
 from .delassus import DelassusOperator
-from .dual import DualProblem, DualProblemConfig, DualProblemData
+from .dual import DualProblem, DualProblemData
 from .wrenches import compute_constraint_body_wrenches, compute_joint_dof_body_wrenches
 
 ###
@@ -26,7 +26,6 @@ from .wrenches import compute_constraint_body_wrenches, compute_joint_dof_body_w
 __all__ = [
     "DelassusOperator",
     "DualProblem",
-    "DualProblemConfig",
     "DualProblemData",
     "compute_constraint_body_wrenches",
     "compute_joint_dof_body_wrenches",

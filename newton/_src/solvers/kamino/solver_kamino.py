@@ -50,7 +50,7 @@ from .core.model import ModelKamino
 from .core.state import StateKamino, compute_body_com_state, compute_body_frame_state
 from .core.time import advance_time
 from .core.types import float32, int32, transformf, vec6f
-from .dynamics.dual import DualProblem, DualProblemConfig
+from .dynamics.dual import DualProblem
 from .dynamics.wrenches import (
     compute_constraint_body_wrenches,
     compute_joint_dof_body_wrenches,
@@ -1141,10 +1141,10 @@ class SolverKamino(SolverBase):
         Defaults to `"euler"`.
         """
 
-        problem: DualProblemConfig = field(default_factory=DualProblemConfig)
+        problem: DualProblem.Config = field(default_factory=DualProblem.Config)
         """
         Config for the dynamics problem.\n
-        See :class:`DualProblemConfig` for more details.
+        See :class:`DualProblem.Config` for more details.
         """
 
         padmm: PADMMConfig = field(default_factory=PADMMConfig)
@@ -1312,7 +1312,7 @@ class SolverKamino(SolverBase):
                 )
             )
 
-            DualProblemConfig.register_custom_attributes(builder)
+            DualProblem.Config.register_custom_attributes(builder)
             PADMMConfig.register_custom_attributes(builder)
 
         @staticmethod
@@ -1338,7 +1338,7 @@ class SolverKamino(SolverBase):
             problem_kwargs = {}
             if "problem" in kwargs.keys():
                 problem_kwargs = kwargs["problem"].__dict__
-            config.problem = DualProblemConfig.from_model(model, **problem_kwargs)
+            config.problem = DualProblem.Config.from_model(model, **problem_kwargs)
 
             padmm_kwargs = {}
             if "padmm" in kwargs.keys():

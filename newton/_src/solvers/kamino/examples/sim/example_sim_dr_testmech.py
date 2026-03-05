@@ -26,7 +26,7 @@ from newton._src.solvers.kamino.examples import get_examples_output_path, run_he
 from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, ViewerKamino
 
 ###
 # Example class
@@ -76,7 +76,7 @@ class Example:
             self.builder.gravity[w].enabled = gravity
 
         # Set solver config
-        config = SimulatorConfig()
+        config = Simulator.Config()
         config.dt = self.sim_dt
         config.solver.problem.alpha = 0.1
         config.solver.padmm.primal_tolerance = 1e-6

@@ -34,7 +34,7 @@ from newton._src.solvers.kamino.models.builders.utils import (
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.control import AnimationJointReference, JointSpacePIDController
 from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
+from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, ViewerKamino
 
 ###
 # Module configs
@@ -214,7 +214,7 @@ class Example:
             load_drive_dynamics=implicit_pd,
             load_static_geometry=True,
             source=asset_file,
-            use_angular_drive_scaling=False,
+            use_angular_drive_scaling=True,
         )
         msg.info("total mass: %f", self.builder.worlds[0].mass_total)
         msg.info("total diag inertia: %f", self.builder.worlds[0].inertia_total)
@@ -233,15 +233,16 @@ class Example:
         for w in range(self.builder.num_worlds):
             self.builder.gravity[w].enabled = gravity
 
-        # Print-out of actuated joints used for verifying the imported USD was parsed as expected
+        # Set joint armatures, and verify that correct gains were loaded from the USD file
         for joint in self.builder.joints:
             if joint.is_dynamic or joint.is_implicit_pd:
                 joint.a_j = [0.011]  # Set joint armature according to Dynamixel XH540-V150 specs
                 joint.b_j = [0.044]  # Set joint damping according to Dynamixel XH540-V150 specs
-                msg.info(f"Joint '{joint.name}':\n{joint}\n")
+                assert abs(joint.k_p_j[0] - 50.0) < 1e-4
+                assert abs(joint.k_d_j[0] - 1.0) < 1e-4
 
         # Set solver config
-        config = SimulatorConfig()
+        config = Simulator.Config()
         config.dt = self.sim_dt
         config.solver.sparse_jacobian = False
         config.solver.sparse_dynamics = False
@@ -252,7 +253,7 @@ class Example:
         config.solver.padmm.primal_tolerance = 1e-4
         config.solver.padmm.dual_tolerance = 1e-4
         config.solver.padmm.compl_tolerance = 1e-4
-        config.solver.padmm.max_iterations = 100
+        config.solver.padmm.max_iterations = 200
         config.solver.padmm.eta = 1e-5
         config.solver.padmm.rho_0 = 0.02  # try 0.02 for Balanced update
         config.solver.padmm.rho_min = 0.01

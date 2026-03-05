@@ -37,10 +37,6 @@ This module provides a front-end defined by:
     using different pipelines, and is responsible for determining the necessary
     allocations of contacts data based on the contents of the simulation.
 
-- :class:`CollisionDetectorConfig`:
-    A simple dataclass defining and bundling the set of configurations supported
-    by the :class:`CollisionDetector`: class and its subordinate CD pipelines.
-
 - :class:`CollisionPipelineType`:
     An enumeration defining the different collision detection pipelines
     (i.e. backends) supported by Kamino.
@@ -67,7 +63,6 @@ from .contacts import ContactMode, ContactsKamino, ContactsKaminoData
 from .detector import (
     BroadPhaseType,
     CollisionDetector,
-    CollisionDetectorConfig,
     CollisionPipelineType,
 )
 from .primitive import BoundingVolumeType, CollisionPipelinePrimitive
@@ -81,7 +76,6 @@ __all__ = [
     "BoundingVolumeType",
     "BroadPhaseType",
     "CollisionDetector",
-    "CollisionDetectorConfig",
     "CollisionPipelinePrimitive",
     "CollisionPipelineType",
     "CollisionPipelineUnifiedKamino",

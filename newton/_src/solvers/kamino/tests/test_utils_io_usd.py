@@ -21,14 +21,11 @@ import unittest
 
 import warp as wp
 
+import newton
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.joints import JOINT_QMAX, JOINT_QMIN, JointActuationType, JointDoFType
 from newton._src.solvers.kamino.core.shapes import ShapeType
-from newton._src.solvers.kamino.models import (
-    get_basics_usd_assets_path,
-    get_examples_usd_assets_path,
-    get_testing_usd_assets_path,
-)
+from newton._src.solvers.kamino.models import get_basics_usd_assets_path, get_testing_usd_assets_path
 from newton._src.solvers.kamino.models.builders import basics
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.checks import assert_builders_equal
@@ -50,7 +47,6 @@ class TestUSDImporter(unittest.TestCase):
         # Set the paths to the assets provided by the kamino package
         self.TEST_USD_ASSETS_PATH = get_testing_usd_assets_path()
         self.BASICS_USD_ASSETS_PATH = get_basics_usd_assets_path()
-        self.EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -1051,12 +1047,14 @@ class TestUSDImporter(unittest.TestCase):
 
     def test_import_model_dr_testmech(self):
         """Test importing the `DR Test Mechanism` example model with all joint types from a USD file"""
-        if self.EXAMPLES_USD_ASSETS_PATH is None:
-            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Test Mechanism` import test.")
         print("")  # Add a newline for better readability
-        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_testmech/usd/dr_testmech.usda")
+
+        # Load the DR Test Mechanism model from the `newton-assets` repository
+        asset_path = newton.utils.download_asset("disneyresearch")
+        model_asset_file = str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=model_asset_file)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 10)
         self.assertEqual(builder_usd.num_joints, 14)
@@ -1093,12 +1091,14 @@ class TestUSDImporter(unittest.TestCase):
 
     def test_import_model_dr_legs(self):
         """Test importing the `DR Legs` example model from a USD file"""
-        if self.EXAMPLES_USD_ASSETS_PATH is None:
-            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         print("")  # Add a newline for better readability
-        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs.usda")
+
+        # Load the default DR Legs model from the `newton-assets` repository
+        asset_path = newton.utils.download_asset("disneyresearch")
+        model_asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=model_asset_file)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
@@ -1106,12 +1106,14 @@ class TestUSDImporter(unittest.TestCase):
 
     def test_import_model_dr_legs_with_boxes(self):
         """Test importing the `DR Legs` example model from a USD file"""
-        if self.EXAMPLES_USD_ASSETS_PATH is None:
-            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         print("")  # Add a newline for better readability
-        usd_asset_filename = os.path.join(self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs_with_boxes.usda")
+
+        # Load the primitives-only DR Legs model from the `newton-assets` repository
+        asset_path = newton.utils.download_asset("disneyresearch")
+        model_asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=model_asset_file)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
@@ -1119,14 +1121,14 @@ class TestUSDImporter(unittest.TestCase):
 
     def test_import_model_dr_legs_with_meshes_and_boxes(self):
         """Test importing the `DR Legs` example model from a USD file"""
-        if self.EXAMPLES_USD_ASSETS_PATH is None:
-            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
         print("")  # Add a newline for better readability
-        usd_asset_filename = os.path.join(
-            self.EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda"
-        )
+
+        # Load the primitives-plus-meshes DR Legs model from the `newton-assets` repository
+        asset_path = newton.utils.download_asset("disneyresearch")
+        model_asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_meshes_and_boxes.usda")
         importer = USDImporter()
-        builder_usd: ModelBuilderKamino = importer.import_from(source=usd_asset_filename)
+        builder_usd: ModelBuilderKamino = importer.import_from(source=model_asset_file)
+
         # Check the loaded contents
         self.assertEqual(builder_usd.num_bodies, 31)
         self.assertEqual(builder_usd.num_joints, 36)
@@ -1140,9 +1142,6 @@ class TestUSDImporter(unittest.TestCase):
 if __name__ == "__main__":
     # Test setup
     setup_tests()
-
-    # Set global log-level
-    # msg.set_log_level(msg.LogLevel.DEBUG)
 
     # Run all tests
     unittest.main(verbosity=2)

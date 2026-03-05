@@ -28,12 +28,12 @@ from newton._src.solvers.kamino.utils import logger as msg
 ###
 
 
-class TestUtilsLinAlgProfiles(unittest.TestCase):
+class TestUtilsPerformanceProfiles(unittest.TestCase):
     def setUp(self):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.verbose = test_context.verbose  # Set to True for verbose output
-        self.plots = False  # Set to True to generate plots
+        self.plots = test_context.verbose  # Set to True to generate plots
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

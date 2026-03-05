@@ -38,7 +38,7 @@ class TestBlockDType(unittest.TestCase):
             setup_tests(clear_cache=False)
         self.seed = 42
         self.default_device = wp.get_device(test_context.device)
-        self.verbose = True  # Set to True for verbose output
+        self.verbose = test_context.verbose  # Set to True for verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -133,8 +133,8 @@ class TestBlockSparseMatrices(unittest.TestCase):
             setup_tests(clear_cache=False)
         self.seed = 42
         self.default_device = wp.get_device(test_context.device)
-        self.verbose = False  # Set to True for verbose output
-        self.plot = False  # Set to True for verbose output
+        self.verbose = test_context.verbose  # Set to True for verbose output
+        self.plot = test_context.verbose  # Set to True to plot sparse matrices
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -393,8 +393,8 @@ class TestBlockSparseMatrixOperations(unittest.TestCase):
             setup_tests(clear_cache=False)
         self.epsilon = 1e-5  # Threshold for matvec product test
         self.default_device = wp.get_device(test_context.device)
-        self.verbose = False  # Set to True for verbose output
-        self.plot = False  # Set to True to plot sparse matrices
+        self.verbose = test_context.verbose  # Set to True for verbose output
+        self.plot = test_context.verbose  # Set to True to plot sparse matrices
 
         # Random number generation.
         self.seed = 42

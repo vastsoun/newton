@@ -279,7 +279,7 @@ class TestSolverKaminoImpl(unittest.TestCase):
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
         self.verbose = test_context.verbose  # Set to True to enable verbose output
-        self.progress = False  # Set to True for progress output
+        self.progress = test_context.verbose  # Set to True to show progress bars during long tests
         self.seed = 42
 
         # Set debug-level logging to print verbose test output to console

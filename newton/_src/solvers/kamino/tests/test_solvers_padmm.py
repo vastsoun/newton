@@ -328,8 +328,8 @@ class TestPADMMSolver(unittest.TestCase):
     def setUp(self):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
-        self.verbose = True  # Set to True for detailed output
-        self.savefig = True  # Set to True to generate solver info plots
+        self.verbose = test_context.verbose  # Set to True for detailed output
+        self.savefig = test_context.verbose  # Set to True to generate solver info plots
         self.default_device = wp.get_device(test_context.device)
         self.output_path = test_context.output_path / "test_solvers_padmm"
 

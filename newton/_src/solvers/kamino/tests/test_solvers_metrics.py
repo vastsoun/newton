@@ -39,7 +39,6 @@ class TestSolverMetrics(unittest.TestCase):
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
         self.verbose = test_context.verbose  # Set to True for detailed output
-        self.savefig = True  # Set to True to generate solver info plots
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

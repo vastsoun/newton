@@ -214,7 +214,7 @@ class Example:
             load_drive_dynamics=implicit_pd,
             load_static_geometry=True,
             source=asset_file,
-            use_angular_drive_scaling=False,
+            use_angular_drive_scaling=True,
         )
         msg.info("total mass: %f", self.builder.worlds[0].mass_total)
         msg.info("total diag inertia: %f", self.builder.worlds[0].inertia_total)
@@ -243,6 +243,7 @@ class Example:
         # Set solver config
         config = SimulatorConfig()
         config.dt = self.sim_dt
+        config.collision_detector.pipeline = "unified"  # Select from {"primitive", "unified"}
         config.solver.sparse_jacobian = False
         config.solver.sparse_dynamics = False
         config.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
@@ -252,10 +253,10 @@ class Example:
         config.solver.padmm.primal_tolerance = 1e-4
         config.solver.padmm.dual_tolerance = 1e-4
         config.solver.padmm.compl_tolerance = 1e-4
-        config.solver.padmm.max_iterations = 100
+        config.solver.padmm.max_iterations = 200
         config.solver.padmm.eta = 1e-5
         config.solver.padmm.rho_0 = 0.02  # try 0.02 for Balanced update
-        config.solver.padmm.rho_min = 0.01
+        config.solver.padmm.rho_min = 0.05
         config.solver.padmm.penalty_update_method = "fixed"  # try "balanced"
         config.solver.use_solver_acceleration = True
         config.solver.warmstart_mode = "containers"

@@ -273,7 +273,7 @@ class TestModelConversions(unittest.TestCase):
             load_static_geometry=True,
             force_show_colliders=True,
             use_prim_path_names=True,
-            use_angular_drive_scaling=False,
+            use_angular_drive_scaling=True,
         )
 
         # Create models from the builders and conversion operations, and check for consistency

@@ -1149,7 +1149,6 @@ class TestUSDKaminoSceneAPIImport(unittest.TestCase):
         # Set the paths to the assets provided by the kamino package
         self.TEST_USD_ASSETS_PATH = get_testing_usd_assets_path()
         self.BASICS_USD_ASSETS_PATH = get_basics_usd_assets_path()
-        self.EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

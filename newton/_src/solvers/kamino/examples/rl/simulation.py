@@ -25,7 +25,6 @@
 from __future__ import annotations
 
 # Thirdparty
-import torch
 import warp as wp
 from warp.context import Devicelike
 
@@ -37,7 +36,6 @@ from newton._src.solvers.kamino.models.builders.utils import (
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
-from newton._src.solvers.kamino.solvers.padmm import PADMMWarmStartMode
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.sim import Simulator, SimulatorConfig, ViewerKamino
@@ -169,6 +167,8 @@ class RigidBodySim:
 
     def _make_rl_interface(self):
         """Create zero-copy PyTorch views of simulator state, control and contact arrays."""
+        import torch
+
         nw = self.sim.model.size.num_worlds
         njd = self.sim.model.size.max_of_num_joint_dofs
         nb = self.sim.model.size.max_of_num_bodies
@@ -214,6 +214,7 @@ class RigidBodySim:
         self._contact_flags = wp.to_torch(self._contact_aggregation.body_contact_flag).reshape(nw, nb)
         self._ground_contact_flags = wp.to_torch(self._contact_aggregation.body_static_contact_flag).reshape(nw, nb)
         self._net_contact_forces = wp.to_torch(self._contact_aggregation.body_net_force).reshape(nw, nb, 3)
+        self._body_pair_contact_flag: torch.Tensor | None = None  # Set via set_body_pair_contact_filter()
 
         # Default joint positions (cloned from initial state)
         self._default_q_j = self._q_j.clone()
@@ -233,6 +234,8 @@ class RigidBodySim:
 
     def _extract_metadata(self):
         """Extract joint/body names, actuated DOF indices, and joint limits from the builder."""
+        import torch
+
         max_joints = self.sim.model.size.max_of_num_joints
         max_bodies = self.sim.model.size.max_of_num_bodies
 
@@ -490,6 +493,30 @@ class RigidBodySim:
         """Net contact forces ``(num_worlds, num_bodies, 3)``."""
         return self._net_contact_forces
 
+    @property
+    def body_pair_contact_flag(self) -> torch.Tensor:
+        """Per-world body-pair contact flag ``(num_worlds,)``."""
+        return self._body_pair_contact_flag
+
+    def set_body_pair_contact_filter(self, body_a_name: str, body_b_name: str) -> None:
+        """Configure detection of contacts between two named bodies.
+
+        Must be called after construction. The detection runs outside the
+        CUDA graph via :meth:`compute_body_pair_contacts`.
+
+        Args:
+            body_a_name: Name of the first body.
+            body_b_name: Name of the second body.
+        """
+        a_idx = self.find_body_index(body_a_name)
+        b_idx = self.find_body_index(body_b_name)
+        self._contact_aggregation.set_body_pair_filter(a_idx, b_idx)
+        self._body_pair_contact_flag = wp.to_torch(self._contact_aggregation.body_pair_contact_flag)
+
+    def compute_body_pair_contacts(self) -> None:
+        """Run body-pair contact detection (call after physics step)."""
+        self._contact_aggregation.compute_body_pair_contact()
+
     # ------------------------------------------------------------------
     # Metadata properties
     # ------------------------------------------------------------------
@@ -606,23 +633,23 @@ class RigidBodySim:
         """Return sensible default solver settings for RL."""
         settings = SimulatorConfig()
         settings.dt = sim_dt
-        settings.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
+        settings.solver.integrator = "moreau"
         settings.solver.problem.alpha = 0.1
-        settings.solver.padmm.primal_tolerance = 1e-3
-        settings.solver.padmm.dual_tolerance = 1e-3
-        settings.solver.padmm.compl_tolerance = 1e-3
-        settings.solver.padmm.max_iterations = 100
+        settings.solver.padmm.primal_tolerance = 1e-4
+        settings.solver.padmm.dual_tolerance = 1e-4
+        settings.solver.padmm.compl_tolerance = 1e-4
+        settings.solver.padmm.max_iterations = 200
         settings.solver.padmm.eta = 1e-5
-        settings.solver.padmm.rho_0 = 0.02
+        settings.solver.padmm.rho_0 = 0.05
         settings.solver.sparse_jacobian = True
         settings.solver.use_solver_acceleration = True
-        settings.solver.warmstart_mode = PADMMWarmStartMode.CONTAINERS
+        settings.solver.warmstart_mode = "containers"
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         settings.solver.collect_solver_info = False
         settings.solver.compute_metrics = False
         linear_solver_maxiter = 0
         settings.solver.linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
         settings.solver.angular_velocity_damping = 0.0
-        settings.collision_detector.max_contacts_per_world = 45
-        settings.collision_detector.max_contacts_per_pair = 1
+        # settings.collision_detector.max_contacts_per_world = 40
+        settings.collision_detector.max_contacts_per_pair = 8
         return settings

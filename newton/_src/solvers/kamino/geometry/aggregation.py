@@ -280,6 +280,75 @@ def _aggregate_contact_force_per_geom(
     wp.atomic_max(contact_flag, world_idx, geom_B, int32(1))
 
 
+@wp.kernel
+def _aggregate_body_pair_contact_flag_per_world(
+    # Input: Kamino ContactsData
+    wid: wp.array(dtype=int32),  # world index per contact
+    bid_AB: wp.array(dtype=vec2i),  # body pair per contact (global body indices)
+    mode: wp.array(dtype=int32),  # contact mode
+    world_active_contacts: wp.array(dtype=int32),  # contacts per world
+    # Model data for global to per-world body ID conversion
+    model_body_bid: wp.array(dtype=int32),  # Per-world body ID for each global body
+    num_worlds: int,
+    # Target body pair (per-world body indices)
+    target_body_a: int,
+    target_body_b: int,
+    # Output
+    body_pair_contact_flag: wp.array(dtype=int32),  # [num_worlds]
+):
+    """
+    Detect contact between a specific pair of bodies across all worlds.
+
+    Each thread processes one contact. If the contact involves the target
+    body pair (in either order), the per-world flag is set.
+
+    Args:
+        wid: World index for each contact
+        bid_AB: Body index pair (A, B) for each contact
+        mode: Contact mode (INACTIVE, OPENING, STICKING, SLIDING)
+        world_active_contacts: Number of active contacts per world
+        model_body_bid: Mapping from global body index to per-world body index
+        num_worlds: Total number of worlds
+        target_body_a: Per-world body index of the first body in the target pair
+        target_body_b: Per-world body index of the second body in the target pair
+        body_pair_contact_flag: Output flag per world (1 if pair is in contact)
+    """
+    contact_idx = wp.tid()
+
+    # Calculate total active contacts across all worlds
+    total_contacts = int32(0)
+    for w in range(num_worlds):
+        total_contacts += world_active_contacts[w]
+
+    # Early exit if this thread is beyond active contacts
+    if contact_idx >= total_contacts:
+        return
+
+    # Skip inactive contacts
+    if mode[contact_idx] == ContactMode.INACTIVE:
+        return
+
+    # Get contact data
+    world_idx = wid[contact_idx]
+    body_pair = bid_AB[contact_idx]
+    global_body_A = body_pair[0]
+    global_body_B = body_pair[1]
+
+    # Skip static bodies (bid < 0)
+    if global_body_A < 0 or global_body_B < 0:
+        return
+
+    # Convert global body indices to per-world body indices
+    body_A_in_world = model_body_bid[global_body_A]
+    body_B_in_world = model_body_bid[global_body_B]
+
+    # Check if this contact matches the target pair (in either order)
+    if (body_A_in_world == target_body_a and body_B_in_world == target_body_b) or (
+        body_A_in_world == target_body_b and body_B_in_world == target_body_a
+    ):
+        wp.atomic_max(body_pair_contact_flag, world_idx, int32(1))
+
+
 ###
 # Types
 ###
@@ -321,6 +390,11 @@ class ContactAggregationData:
 
     body_num_contacts: wp.array | None = None
     """Number of contacts per body. Shape: (num_worlds, max_bodies_per_world)"""
+
+    # === Body-Pair Contact Detection ===
+
+    body_pair_contact_flag: wp.array | None = None
+    """Per-world flag indicating contact between a specific body pair. Shape: (num_worlds,)"""
 
     # === Static Geometry Filter ===
 
@@ -377,6 +451,10 @@ class ContactAggregation:
         self._contacts: ContactsKamino | None = None
         self._data: ContactAggregationData | None = None
         self._enable_positions_normals: bool = enable_positions_normals
+
+        # Body-pair filter (set via set_body_pair_filter)
+        self._body_pair_target_a: int = -1
+        self._body_pair_target_b: int = -1
 
         # Proceed with memory allocations if model and contacts are provided
         if model is not None and contacts is not None:
@@ -611,3 +689,66 @@ class ContactAggregation:
     def static_geom_mask(self) -> wp.array:
         """Static geometry mask [num_geoms]"""
         return self._data.static_geom_mask
+
+    # ------------------------------------------------------------------
+    # Body-pair contact detection
+    # ------------------------------------------------------------------
+
+    def set_body_pair_filter(self, body_a_idx: int, body_b_idx: int) -> None:
+        """Configure detection of contacts between a specific body pair.
+
+        After calling this, use :meth:`compute_body_pair_contact` to detect
+        whether the specified bodies are in contact in each world.
+
+        Args:
+            body_a_idx: Per-world body index of the first body.
+            body_b_idx: Per-world body index of the second body.
+        """
+        self._body_pair_target_a = body_a_idx
+        self._body_pair_target_b = body_b_idx
+
+        # Allocate output array if not yet allocated
+        num_worlds = self._model.size.num_worlds
+        self._data.body_pair_contact_flag = wp.zeros(num_worlds, dtype=wp.int32, device=self._device)
+
+    def compute_body_pair_contact(self) -> None:
+        """Detect contact between the configured body pair.
+
+        Must be called after :meth:`set_body_pair_filter`. This method is
+        separate from :meth:`compute` so it can be called outside of CUDA
+        graph capture when the body pair is configured after graph creation.
+
+        Raises:
+            RuntimeError: If no body pair filter has been configured.
+        """
+        if self._body_pair_target_a < 0 or self._body_pair_target_b < 0:
+            return
+
+        self._data.body_pair_contact_flag.zero_()
+
+        contacts_data = self._contacts.data
+        num_worlds = self._model.size.num_worlds
+
+        wp.launch(
+            _aggregate_body_pair_contact_flag_per_world,
+            dim=contacts_data.model_max_contacts_host,
+            inputs=[
+                contacts_data.wid,
+                contacts_data.bid_AB,
+                contacts_data.mode,
+                contacts_data.world_active_contacts,
+                self._model.bodies.bid,
+                num_worlds,
+                self._body_pair_target_a,
+                self._body_pair_target_b,
+            ],
+            outputs=[
+                self._data.body_pair_contact_flag,
+            ],
+            device=self._device,
+        )
+
+    @property
+    def body_pair_contact_flag(self) -> wp.array:
+        """Per-world body-pair contact flag [num_worlds]."""
+        return self._data.body_pair_contact_flag

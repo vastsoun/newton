@@ -671,10 +671,12 @@ def _build_free_velocity_bias_contacts(
     # The gap-function value (penetration_k) is the margin-shifted signed
     # distance: negative means penetration past the resting separation,
     # zero means at rest, positive means within the detection gap.
-    # We pass the full value through so that the one-sided Baumgarte
-    # stabilization (xi_relaxed) can generate a positive bias for gap
-    # contacts, allowing controlled approach toward d = 0.
-    distance_k = penetration_k
+    # Pass the full value through so that one-sided Baumgarte stabilization
+    # (xi_relaxed) can generate a positive bias for gap contacts, guiding
+    # objects toward d = 0.  A dead-zone of config.delta filters out
+    # floating-point noise on nearly-touching contacts that would otherwise
+    # destabilize accelerated solvers (e.g. Nesterov momentum in PADMM).
+    distance_k = wp.where(wp.abs(penetration_k) < config.delta, 0.0, penetration_k)
 
     # Compute the per-contact penetration error reduction term
     # NOTE#1: Penetrations are represented as xi < 0 (hence the sign inversion)

@@ -19,8 +19,9 @@ from typing import Any, Literal
 import numpy as np
 
 from .....core.types import override
-from ...solver_kamino import SolverKamino, SolverKaminoConfig
+from ...solver_kamino import SolverKamino, SolverKaminoImpl
 from .configs import load_solver_configs_to_hdf5, save_solver_configs_to_hdf5
+from .problems import ProblemDimensions, save_problem_dimensions_to_hdf5
 from .render import (
     ColumnGroup,
     render_subcolumn_metrics_table,
@@ -341,7 +342,7 @@ class BenchmarkMetrics:
     def __init__(
         self,
         problems: list[str] | None = None,
-        configs: dict[str, SolverKaminoConfig] | None = None,
+        configs: dict[str, SolverKamino.Config] | None = None,
         num_steps: int | None = None,
         step_metrics: bool = False,
         solver_metrics: bool = False,
@@ -353,9 +354,12 @@ class BenchmarkMetrics:
         self._config_names: list[str] | None = None
         self._num_steps: int | None = None
 
+        # Declare problem dimensions
+        self._problem_dims: dict[str, ProblemDimensions] = {}
+
         # Declare cache of the solver configurations used in the
         # benchmark for easy reference when analyzing results
-        self._configs: dict[str, SolverKaminoConfig] | None = None
+        self._configs: dict[str, SolverKamino.Config] | None = None
 
         # One-time metrics
         self.memory_used: np.ndarray | None = None
@@ -412,7 +416,7 @@ class BenchmarkMetrics:
     def finalize(
         self,
         problems: list[str],
-        configs: dict[str, SolverKaminoConfig],
+        configs: dict[str, SolverKamino.Config],
         num_steps: int | None = None,
         step_metrics: bool = False,
         solver_metrics: bool = False,
@@ -446,7 +450,7 @@ class BenchmarkMetrics:
         config_idx: int,
         step_idx: int,
         step_time: float,
-        solver: SolverKamino | None = None,
+        solver: SolverKaminoImpl | None = None,
     ):
         if self.step_time is None:
             raise ValueError(
@@ -531,6 +535,9 @@ class BenchmarkMetrics:
             datafile["Info/code/branch"] = self.codeinfo.branch
             datafile["Info/code/commit"] = self.codeinfo.commit
             datafile["Info/code/diff"] = self.codeinfo.diff
+
+            # Problem dimensions
+            save_problem_dimensions_to_hdf5(self._problem_dims, datafile)
 
             # Save solver configuration parameters
             save_solver_configs_to_hdf5(self._configs, datafile)

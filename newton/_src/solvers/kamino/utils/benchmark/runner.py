@@ -27,9 +27,9 @@ from ...examples import print_progress_bar
 from ...utils import logger as msg
 from ...utils.control.rand import RandomJointController
 from ...utils.device import get_device_malloc_info
-from ...utils.sim import SimulationLogger, Simulator, SimulatorConfig, ViewerKamino
+from ...utils.sim import SimulationLogger, Simulator, ViewerKamino
 from .metrics import BenchmarkMetrics
-from .problems import CameraConfig, ControlConfig
+from .problems import CameraConfig, ControlConfig, ProblemDimensions
 
 ###
 # Types
@@ -40,7 +40,7 @@ class BenchmarkSim:
     def __init__(
         self,
         builder: ModelBuilderKamino,
-        configs: SimulatorConfig,
+        configs: Simulator.Config,
         control: ControlConfig | None = None,
         camera: CameraConfig | None = None,
         device: wp.DeviceLike = None,
@@ -65,23 +65,24 @@ class BenchmarkSim:
         msg.info("Building the simulator...")
         self.sim = Simulator(builder=builder, config=configs, device=device)
 
-        # Create a random-action controller for the model
-        self.ctlr = RandomJointController(
-            model=self.sim.model,
-            seed=seed,
-            decimation=control.decimation if control else None,
-            scale=control.scale if control else None,
-        )
-
-        # Define a callback function to wrap the execution of the controller
-        def control_callback(simulator: Simulator):
-            self.ctlr.compute(
-                time=simulator.solver.data.time,
-                control=simulator.control,
+        if control is None or not control.disable_controller:
+            # Create a random-action controller for the model
+            self.ctlr = RandomJointController(
+                model=self.sim.model,
+                seed=seed,
+                decimation=control.decimation if control else None,
+                scale=control.scale if control else None,
             )
 
-        # Set the control callbacks into the simulator
-        self.sim.set_control_callback(control_callback)
+            # Define a callback function to wrap the execution of the controller
+            def control_callback(simulator: Simulator):
+                self.ctlr.compute(
+                    time=simulator.solver.data.time,
+                    control=simulator.control,
+                )
+
+            # Set the control callbacks into the simulator
+            self.sim.set_control_callback(control_callback)
 
         # Initialize the data logger
         self.logger: SimulationLogger | None = None
@@ -230,7 +231,7 @@ def run_single_benchmark(
     metrics: BenchmarkMetrics,
     args: argparse.Namespace,
     builder: ModelBuilderKamino,
-    configs: SimulatorConfig,
+    configs: Simulator.Config,
     control: ControlConfig | None = None,
     camera: CameraConfig | None = None,
     device: wp.DeviceLike = None,
@@ -274,6 +275,17 @@ def run_single_benchmark(
         total_steps=int(simulator.sim.solver.data.time.steps.numpy()[0]),
         memory_used=float(wp.get_mempool_used_mem_current(device) if device.is_cuda else 0.0),
     )
+
+    # Record problem dimensions
+    problem_name = metrics._problem_names[problem_idx]
+    if problem_name not in metrics._problem_dims:
+        metrics._problem_dims[problem_name] = ProblemDimensions(
+            num_body_dofs=simulator.sim.model.size.max_of_num_body_dofs,
+            num_joint_dofs=simulator.sim.model.size.max_of_num_joint_dofs,
+            min_delassus_dim=simulator.sim.model.size.max_of_num_kinematic_joint_cts
+            + simulator.sim.model.size.max_of_num_dynamic_joint_cts,
+            max_delassus_dim=simulator.sim.model.size.max_of_max_total_cts,
+        )
 
     # Optionally also print the total device memory allocated during the benchmark run
     if print_device_info:

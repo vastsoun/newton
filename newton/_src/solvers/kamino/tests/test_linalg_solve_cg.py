@@ -41,8 +41,8 @@ class TestLinalgConjugate(unittest.TestCase):
     def setUp(self):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
+        self.verbose = test_context.verbose  # Set to True for verbose output
         self.seed = 42
-        self.verbose = False
 
     def tearDown(self):
         pass

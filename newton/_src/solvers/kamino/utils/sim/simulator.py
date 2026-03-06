@@ -27,8 +27,8 @@ from ...core.control import ControlKamino
 from ...core.model import ModelKamino
 from ...core.state import StateKamino
 from ...core.types import FloatArrayLike
-from ...geometry import CollisionDetector, CollisionDetectorConfig
-from ...solver_kamino import SolverKaminoConfig, SolverKaminoImpl
+from ...geometry import CollisionDetector
+from ...solver_kamino import SolverKamino, SolverKaminoImpl
 
 ###
 # Module interface
@@ -36,7 +36,6 @@ from ...solver_kamino import SolverKaminoConfig, SolverKaminoImpl
 
 __all__ = [
     "Simulator",
-    "SimulatorConfig",
     "SimulatorData",
 ]
 
@@ -51,67 +50,6 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Types
 ###
-
-
-@dataclass
-class SimulatorConfig:
-    """
-    Holds the configuration for the simulator.
-    """
-
-    dt: float | FloatArrayLike = 0.001
-    """
-    The time-step to be used for the simulation.\n
-    Defaults to `0.001` seconds.
-    """
-
-    collision_detector: CollisionDetectorConfig = field(default_factory=CollisionDetectorConfig)
-    """
-    The config for the collision detector.
-    See :class:`CollisionDetectorConfig` for more details.
-    """
-
-    solver: SolverKaminoConfig = field(default_factory=SolverKaminoConfig)
-    """
-    The config for the dynamics solver.\n
-    See :class:`SolverKaminoConfig` for more details.
-    """
-
-    def check(self) -> None:
-        """
-        Checks the validity of the config.
-        """
-        # First check the time-step
-        if isinstance(self.dt, float):
-            if self.dt != self.dt:
-                raise ValueError("Invalid time-step: cannot be NaN.")
-            if self.dt <= 0.0:
-                raise ValueError(f"Invalid time-step: got {self.dt}, but must be a positive value.")
-        elif isinstance(self.dt, FloatArrayLike):
-            if len(self.dt) == 0:
-                raise ValueError("Invalid time-step array: cannot be empty.")
-            elif any(dt <= 0.0 or dt != dt for dt in self.dt):
-                raise ValueError("Invalid time-step array: all values must be positive and non-NaN.")
-            elif not all(isinstance(dt, float) for dt in self.dt):
-                raise TypeError("Invalid time-step array: all values must be of type float.")
-        else:
-            raise TypeError("Invalid time-step: must be a `float` or a `FloatArrayLike`.`")
-
-        # Ensure nested configs are properly created
-        if not isinstance(self.collision_detector, CollisionDetectorConfig):
-            raise TypeError(f"Invalid type for collision_detector config: {type(self.collision_detector)}")
-        if not isinstance(self.solver, SolverKaminoConfig):
-            raise TypeError(f"Invalid type for solver config: {type(self.solver)}")
-
-        # Then check the nested config values
-        # TODO: self.collision_detector.check()
-        self.solver.check()
-
-    def __post_init__(self):
-        """
-        Post-initialization processing to ensure nested configs are properly created.
-        """
-        self.check()
 
 
 class SimulatorData:
@@ -179,13 +117,73 @@ class Simulator:
     ```
     """
 
+    @dataclass
+    class Config:
+        """
+        Holds the configuration for the simulator.
+        """
+
+        dt: float | FloatArrayLike = 0.001
+        """
+        The time-step to be used for the simulation.\n
+        Defaults to `0.001` seconds.
+        """
+
+        collision_detector: CollisionDetector.Config = field(default_factory=CollisionDetector.Config)
+        """
+        The config for the collision detector.
+        See :class:`CollisionDetector.Config` for more details.
+        """
+
+        solver: SolverKamino.Config = field(default_factory=SolverKamino.Config)
+        """
+        The config for the dynamics solver.\n
+        See :class:`SolverKamino.Config` for more details.
+        """
+
+        def check(self) -> None:
+            """
+            Checks the validity of the config.
+            """
+            # First check the time-step
+            if isinstance(self.dt, float):
+                if self.dt != self.dt:
+                    raise ValueError("Invalid time-step: cannot be NaN.")
+                if self.dt <= 0.0:
+                    raise ValueError(f"Invalid time-step: got {self.dt}, but must be a positive value.")
+            elif isinstance(self.dt, FloatArrayLike):
+                if len(self.dt) == 0:
+                    raise ValueError("Invalid time-step array: cannot be empty.")
+                elif any(dt <= 0.0 or dt != dt for dt in self.dt):
+                    raise ValueError("Invalid time-step array: all values must be positive and non-NaN.")
+                elif not all(isinstance(dt, float) for dt in self.dt):
+                    raise TypeError("Invalid time-step array: all values must be of type float.")
+            else:
+                raise TypeError("Invalid time-step: must be a `float` or a `FloatArrayLike`.`")
+
+            # Ensure nested configs are properly created
+            if not isinstance(self.collision_detector, CollisionDetector.Config):
+                raise TypeError(f"Invalid type for collision_detector config: {type(self.collision_detector)}")
+            if not isinstance(self.solver, SolverKamino.Config):
+                raise TypeError(f"Invalid type for solver config: {type(self.solver)}")
+
+            # Then check the nested config values
+            # TODO: self.collision_detector.check()
+            self.solver.check()
+
+        def __post_init__(self):
+            """
+            Post-initialization processing to ensure nested configs are properly created.
+            """
+            self.check()
+
     SimCallbackType = Callable[["Simulator"], None]
     """Defines a common type signature for all simulator callback functions."""
 
     def __init__(
         self,
         builder: ModelBuilderKamino,
-        config: SimulatorConfig = None,
+        config: Simulator.Config = None,
         device: wp.DeviceLike = None,
         shadow: bool = False,
     ):
@@ -194,15 +192,15 @@ class Simulator:
 
         Args:
             builder (ModelBuilderKamino): The model builder defining the model to be simulated.
-            config (SimulatorConfig, optional): The simulator config to use. If None, the default config are used.
+            config (Simulator.Config, optional): The simulator config to use. If None, the default config are used.
             device (wp.DeviceLike, optional): The device to run the simulation on. If None, the default device is used.
             shadow (bool, optional): If True, maintains a host-side copy of the simulation data for easy access.
         """
         # Cache simulator config: If no config is provided, use default configs
         if config is None:
-            config = SimulatorConfig()
+            config = Simulator.Config()
         config.check()
-        self._config: SimulatorConfig = config
+        self._config: Simulator.Config = config
 
         # Cache the target device use for the simulation
         self._device: wp.DeviceLike = device
@@ -254,7 +252,7 @@ class Simulator:
     ###
 
     @property
-    def config(self) -> SimulatorConfig:
+    def config(self) -> Simulator.Config:
         """
         Returns the simulator config.
         """

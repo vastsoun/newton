@@ -26,7 +26,7 @@ Usage example:
     model = builder.finalize(device="cuda:0")
 
     # Create a collision detector with desired config
-    config = CollisionDetectorConfig(
+    config = CollisionDetector.Config(
         pipeline="unified",
         broadphase="explicit",
         bvtype="aabb",
@@ -64,7 +64,6 @@ from ..geometry.unified import CollisionPipelineUnifiedKamino
 __all__ = [
     "BroadPhaseType",
     "CollisionDetector",
-    "CollisionDetectorConfig",
     "CollisionPipelineType",
 ]
 
@@ -171,80 +170,6 @@ class BroadPhaseType(IntEnum):
 ###
 
 
-@dataclass
-class CollisionDetectorConfig:
-    """Defines the config for a CollisionDetector."""
-
-    pipeline: Literal["primitive", "unified"] = "unified"
-    """
-    The type of collision-detection pipeline to use, either `primitive` or `unified`.\n
-    Defaults to `unified`.
-    """
-
-    broadphase: Literal["nxn", "sap", "explicit"] = "explicit"
-    """
-    The broad-phase collision-detection to use (`nxn`, `sap`, or `explicit`).\n
-    Defaults to `explicit`.
-    """
-
-    bvtype: Literal["aabb", "bs"] = "aabb"
-    """
-    The type of bounding volume to use in the broad-phase.\n
-    Defaults to `aabb`.
-    """
-
-    max_contacts: int = DEFAULT_MODEL_MAX_CONTACTS
-    """
-    The maximum number of contacts to generate over the entire model.\n
-    Used to compute the total maximum contacts allocated for the model,
-    in conjunction with the total number of candidate geom-pairs.\n
-    Defaults to `DEFAULT_MODEL_MAX_CONTACTS` (`1000`).
-    """
-
-    max_contacts_per_world: int | None = None
-    """
-    The per-world maximum contacts allocation override.\n
-    If specified, it will override the per-world maximum number of contacts
-    computed according to the candidate geom-pairs represented in the model.\n
-    Defaults to `None`, allowing contact allocations to occur according to the model.
-    """
-
-    max_contacts_per_pair: int = DEFAULT_GEOM_PAIR_MAX_CONTACTS
-    """
-    The maximum number of contacts to generate per candidate geom-pair.\n
-    Used to compute the total maximum contacts allocated for the model,
-    in conjunction with the total number of candidate geom-pairs.\n
-    Defaults to `DEFAULT_GEOM_PAIR_MAX_CONTACTS` (`12`).
-    """
-
-    max_triangle_pairs: int = 1_000_000
-    """
-    The maximum number of triangle-primitive shape pairs to consider in the narrow-phase.\n
-    Used only when the model contains triangle meshes or heightfields.\n
-    Defaults to `1_000_000`.
-    """
-
-    default_gap: float = DEFAULT_GEOM_PAIR_CONTACT_GAP
-    """
-    The default detection gap [m] applied as a floor to per-geometry gaps.\n
-    Defaults to `1e-5`.
-    """
-
-    def __post_init__(self):
-        """Post-initialization processing to check if string literals correspond to supported enum types."""
-        pipelines_supported = [e.name.lower() for e in CollisionPipelineType]
-        if self.pipeline not in pipelines_supported:
-            raise ValueError(f"Invalid CD pipeline type: {self.pipeline}. Valid options are: {pipelines_supported}")
-        broadphases_supported = [e.name.lower() for e in BroadPhaseType]
-        if self.broadphase not in broadphases_supported:
-            raise ValueError(
-                f"Invalid CD broad-phase type: {self.broadphase}. Valid options are: {broadphases_supported}"
-            )
-        bvtypes_supported = [e.name.lower() for e in BoundingVolumeType]
-        if self.bvtype not in bvtypes_supported:
-            raise ValueError(f"Invalid CD bounding-volume type: {self.bvtype}. Valid options are: {bvtypes_supported}")
-
-
 class CollisionDetector:
     """
     Provides a Collision Detection (CD) front-end for Kamino.
@@ -264,10 +189,85 @@ class CollisionDetector:
     collision geometries, including meshes and SDFs.
     """
 
+    @dataclass
+    class Config:
+        """Defines the config for a CollisionDetector."""
+
+        pipeline: Literal["primitive", "unified"] = "unified"
+        """
+        The type of collision-detection pipeline to use, either `primitive` or `unified`.\n
+        Defaults to `unified`.
+        """
+
+        broadphase: Literal["nxn", "sap", "explicit"] = "explicit"
+        """
+        The broad-phase collision-detection to use (`nxn`, `sap`, or `explicit`).\n
+        Defaults to `explicit`.
+        """
+
+        bvtype: Literal["aabb", "bs"] = "aabb"
+        """
+        The type of bounding volume to use in the broad-phase.\n
+        Defaults to `aabb`.
+        """
+
+        max_contacts: int = DEFAULT_MODEL_MAX_CONTACTS
+        """
+        The maximum number of contacts to generate over the entire model.\n
+        Used to compute the total maximum contacts allocated for the model,
+        in conjunction with the total number of candidate geom-pairs.\n
+        Defaults to `DEFAULT_MODEL_MAX_CONTACTS` (`1000`).
+        """
+
+        max_contacts_per_world: int | None = None
+        """
+        The per-world maximum contacts allocation override.\n
+        If specified, it will override the per-world maximum number of contacts
+        computed according to the candidate geom-pairs represented in the model.\n
+        Defaults to `None`, allowing contact allocations to occur according to the model.
+        """
+
+        max_contacts_per_pair: int = DEFAULT_GEOM_PAIR_MAX_CONTACTS
+        """
+        The maximum number of contacts to generate per candidate geom-pair.\n
+        Used to compute the total maximum contacts allocated for the model,
+        in conjunction with the total number of candidate geom-pairs.\n
+        Defaults to `DEFAULT_GEOM_PAIR_MAX_CONTACTS` (`12`).
+        """
+
+        max_triangle_pairs: int = 1_000_000
+        """
+        The maximum number of triangle-primitive shape pairs to consider in the narrow-phase.\n
+        Used only when the model contains triangle meshes or heightfields.\n
+        Defaults to `1_000_000`.
+        """
+
+        default_gap: float = DEFAULT_GEOM_PAIR_CONTACT_GAP
+        """
+        The default detection gap [m] applied as a floor to per-geometry gaps.\n
+        Defaults to `1e-5`.
+        """
+
+        def __post_init__(self):
+            """Post-initialization processing to check if string literals correspond to supported enum types."""
+            pipelines_supported = [e.name.lower() for e in CollisionPipelineType]
+            if self.pipeline not in pipelines_supported:
+                raise ValueError(f"Invalid CD pipeline type: {self.pipeline}. Valid options are: {pipelines_supported}")
+            broadphases_supported = [e.name.lower() for e in BroadPhaseType]
+            if self.broadphase not in broadphases_supported:
+                raise ValueError(
+                    f"Invalid CD broad-phase type: {self.broadphase}. Valid options are: {broadphases_supported}"
+                )
+            bvtypes_supported = [e.name.lower() for e in BoundingVolumeType]
+            if self.bvtype not in bvtypes_supported:
+                raise ValueError(
+                    f"Invalid CD bounding-volume type: {self.bvtype}. Valid options are: {bvtypes_supported}"
+                )
+
     def __init__(
         self,
         model: ModelKamino | None = None,
-        config: CollisionDetectorConfig | None = None,
+        config: CollisionDetector.Config | None = None,
         device: wp.DeviceLike = None,
     ):
         """
@@ -292,7 +292,7 @@ class CollisionDetector:
         self._model: ModelKamino | None = model
 
         # Cache the collision detector config
-        self._config: CollisionDetectorConfig | None = config
+        self._config: CollisionDetector.Config | None = config
 
         # Declare the contacts container
         self._contacts: ContactsKamino | None = None
@@ -325,7 +325,7 @@ class CollisionDetector:
         return self._model
 
     @property
-    def config(self) -> CollisionDetectorConfig | None:
+    def config(self) -> CollisionDetector.Config | None:
         """Returns the config used to configure the CollisionDetector."""
         return self._config
 
@@ -351,7 +351,7 @@ class CollisionDetector:
     def finalize(
         self,
         model: ModelKamino | None = None,
-        config: CollisionDetectorConfig | None = None,
+        config: CollisionDetector.Config | None = None,
         device: wp.DeviceLike = None,
     ):
         """
@@ -363,7 +363,7 @@ class CollisionDetector:
                 If provided, the detector will be finalized using the provided model and config.\n
                 If `None`, the detector will be created empty without allocating data, and
                 can be finalized later by providing a model to the `finalize` method.\n
-            config (CollisionDetectorConfig, optional):
+            config (CollisionDetector.Config, optional):
                 Config for the CollisionDetector.\n
                 If `None`, uses default config.
             device (wp.DeviceLike, optional):
@@ -390,14 +390,14 @@ class CollisionDetector:
 
         # Override the config if specified, ensuring that they are valid
         if config is not None:
-            if not isinstance(config, CollisionDetectorConfig):
+            if not isinstance(config, CollisionDetector.Config):
                 raise TypeError(
-                    f"Cannot finalize CollisionDetector: expected CollisionDetectorConfig, got {type(config)}"
+                    f"Cannot finalize CollisionDetector: expected CollisionDetector.Config, got {type(config)}"
                 )
             self._config = config
         # If no config is provided, use the defaults
         if self._config is None:
-            self._config = CollisionDetectorConfig()
+            self._config = CollisionDetector.Config()
 
         # Configure the collision detection pipeline type based on the config
         self._pipeline_type = CollisionPipelineType.from_string(self._config.pipeline)

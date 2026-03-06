@@ -262,14 +262,14 @@ def compute_required_contact_capacity(
         if wid < 0:
             continue  # Both shapes are global — skip
         if max_contacts_per_pair is not None:
-            world_max_contacts[wid] += max(num_contacts, max_contacts_per_pair)
+            world_max_contacts[wid] += min(num_contacts, max_contacts_per_pair)
         else:
             world_max_contacts[wid] += num_contacts
 
     # Override the per-world maximum contacts if specified in the settings
     if max_contacts_per_world is not None:
         for w in range(model.world_count):
-            world_max_contacts[w] = max(world_max_contacts[w], max_contacts_per_world)
+            world_max_contacts[w] = min(world_max_contacts[w], max_contacts_per_world)
 
     # Return the per-world maximum contacts list
     return sum(world_max_contacts), world_max_contacts

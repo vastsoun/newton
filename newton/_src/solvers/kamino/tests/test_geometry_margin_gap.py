@@ -179,7 +179,7 @@ class TestMarginGapNarrowphase(unittest.TestCase):
         self.assertEqual(
             num_active,
             1,
-            f"Expected 1 contact: separation={separation} < gap_A+gap_B={2*gap}",
+            f"Expected 1 contact: separation={separation} < gap_A+gap_B={2 * gap}",
         )
 
     def test_05_gap_no_contact_beyond_threshold(self):
@@ -193,7 +193,7 @@ class TestMarginGapNarrowphase(unittest.TestCase):
         self.assertEqual(
             num_active,
             0,
-            f"Expected 0 contacts: separation={separation} > gap_A+gap_B={2*gap}",
+            f"Expected 0 contacts: separation={separation} > gap_A+gap_B={2 * gap}",
         )
 
     def test_06_gap_does_not_shift_gapfunc(self):
@@ -235,7 +235,7 @@ class TestMarginGapNarrowphase(unittest.TestCase):
         self.assertEqual(
             num_active,
             1,
-            f"Expected 1 contact: separation={separation} < margin+gap={margin+gap}",
+            f"Expected 1 contact: separation={separation} < margin+gap={margin + gap}",
         )
 
     def test_08_margin_and_gap_combined_gapfunc(self):
@@ -282,7 +282,7 @@ class TestMarginGapNarrowphase(unittest.TestCase):
         self.assertEqual(
             num_active,
             0,
-            f"Expected 0 contacts: separation={separation} > margin+gap={margin+gap}",
+            f"Expected 0 contacts: separation={separation} > margin+gap={margin + gap}",
         )
 
 

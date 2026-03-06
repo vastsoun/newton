@@ -1075,7 +1075,9 @@ def plane_box(
     contact_key: wp.array(dtype=uint64),
 ):
     # Use the tested collision calculation from collision_primitive.py
-    distances, positions, normal = collide_plane_box(plane1.normal, plane1.pos, box2.pos, box2.rot, box2.size, margin_plus_gap)
+    distances, positions, normal = collide_plane_box(
+        plane1.normal, plane1.pos, box2.pos, box2.rot, box2.size, margin_plus_gap
+    )
 
     # Add the active contacts to the global contacts arrays (up to 4 contacts with shared normal)
     wp.static(make_add_multiple_contacts(4, True))(

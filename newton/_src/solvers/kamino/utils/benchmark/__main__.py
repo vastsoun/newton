@@ -356,7 +356,6 @@ def benchmark_run(args: argparse.Namespace):
     # Compute final statistics for the benchmark results
     metrics.compute_stats()
 
-
     # Export the collected benchmark data to an HDF5 file for later analysis and plotting
     if args.output == "full":
         msg.info("Saving benchmark data to HDF5...")

@@ -427,9 +427,7 @@ class TestGeometryContactConversions(unittest.TestCase):
         # Verify A/B convention: bid_B must be >= 0 for all active contacts
         bid_AB = kamino_out.bid_AB.numpy()[:nc_kamino]
         for i in range(nc_kamino):
-            self.assertGreaterEqual(
-                int(bid_AB[i, 1]), 0, f"Contact {i}: bid_B must be >= 0 (Kamino convention)"
-            )
+            self.assertGreaterEqual(int(bid_AB[i, 1]), 0, f"Contact {i}: bid_B must be >= 0 (Kamino convention)")
 
         # Verify gapfunc normals are unit vectors
         gapfunc = kamino_out.gapfunc.numpy()[:nc_kamino]
@@ -517,11 +515,15 @@ class TestGeometryContactConversions(unittest.TestCase):
                 p1_world = point1[i]
 
             np.testing.assert_allclose(
-                p0_world, kamino_pos_A[i], atol=1e-4,
+                p0_world,
+                kamino_pos_A[i],
+                atol=1e-4,
                 err_msg=f"Contact {i}: point0 world mismatch",
             )
             np.testing.assert_allclose(
-                p1_world, kamino_pos_B[i], atol=1e-4,
+                p1_world,
+                kamino_pos_B[i],
+                atol=1e-4,
                 err_msg=f"Contact {i}: point1 world mismatch",
             )
 
@@ -594,11 +596,15 @@ class TestGeometryContactConversions(unittest.TestCase):
             p1w = _transform_point(body_q[b1], point1_rt[i]) if b1 >= 0 else point1_rt[i]
 
             np.testing.assert_allclose(
-                p0w, kamino_pos_A[i], atol=1e-4,
+                p0w,
+                kamino_pos_A[i],
+                atol=1e-4,
                 err_msg=f"Contact {i}: round-trip point0 world mismatch",
             )
             np.testing.assert_allclose(
-                p1w, kamino_pos_B[i], atol=1e-4,
+                p1w,
+                kamino_pos_B[i],
+                atol=1e-4,
                 err_msg=f"Contact {i}: round-trip point1 world mismatch",
             )
 
@@ -678,11 +684,15 @@ class TestGeometryContactConversions(unittest.TestCase):
                 p1_world = point1[i]
 
             np.testing.assert_allclose(
-                p0_world, kamino_pos_A[i], atol=1e-4,
+                p0_world,
+                kamino_pos_A[i],
+                atol=1e-4,
                 err_msg=f"Contact {i}: K->N point0 world mismatch with Kamino pos_A",
             )
             np.testing.assert_allclose(
-                p1_world, kamino_pos_B[i], atol=1e-4,
+                p1_world,
+                kamino_pos_B[i],
+                atol=1e-4,
                 err_msg=f"Contact {i}: K->N point1 world mismatch with Kamino pos_B",
             )
 
@@ -734,7 +744,8 @@ class TestGeometryContactConversions(unittest.TestCase):
 
         expected_contacts = 9 + 9 + 4
         self.assertEqual(
-            nc_orig, expected_contacts,
+            nc_orig,
+            expected_contacts,
             f"Expected {expected_contacts} contacts (9+9+4), got {nc_orig}",
         )
 
@@ -780,7 +791,9 @@ class TestGeometryContactConversions(unittest.TestCase):
         if self.verbose:
             msg.debug(
                 "Multi-world round-trip: %d -> %d -> %d contacts (3 worlds: nunchaku, nunchaku, box)",
-                nc_orig, nc_kamino, nc_rt,
+                nc_orig,
+                nc_kamino,
+                nc_rt,
             )
 
 

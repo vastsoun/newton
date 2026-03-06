@@ -21,6 +21,7 @@ simulating constrained multi-body systems for arbitrary mechanical assemblies.
 from __future__ import annotations
 
 import warnings
+from typing import TYPE_CHECKING
 
 import warp as wp
 
@@ -35,6 +36,10 @@ from ...sim import (
 )
 from ..flags import SolverNotifyFlags
 from ..solver import SolverBase
+
+if TYPE_CHECKING:
+    from ._src.geometry.detector import CollisionDetector
+    from ._src.solver_kamino_impl import SolverKaminoImpl
 
 ###
 # Module interface
@@ -96,13 +101,13 @@ class SolverKamino(SolverBase):
 
     # Placeholder for the SolverKamino.Config class
     # which is defined in _src/solver_kamino_impl.py
-    Config = None
+    Config: type[SolverKaminoImpl.Config] | None = None
 
     def __init__(
         self,
         model: Model,
-        solver_config=None,
-        collision_detector_config=None,
+        solver_config: SolverKaminoImpl.Config | None = None,
+        collision_detector_config: CollisionDetector.Config | None = None,
     ):
         """
         Constructs a Kamino solver for the given model and optional configurations.

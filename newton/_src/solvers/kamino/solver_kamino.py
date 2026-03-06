@@ -1649,8 +1649,8 @@ class SolverKamino(SolverBase):
                 name="body_f_total",
                 assignment=Model.AttributeAssignment.STATE,
                 frequency=Model.AttributeFrequency.BODY,
-                dtype=vec6f,
-                default=vec6f(0.0),
+                dtype=wp.spatial_vectorf,
+                default=wp.spatial_vectorf(0.0),
             )
         )
         builder.add_custom_attribute(

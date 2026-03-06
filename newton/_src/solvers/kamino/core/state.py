@@ -247,7 +247,7 @@ class StateKamino:
         """
         Constructs a :class:`kamino.StateKamino` object from a :class:`newton.State` object.
 
-        This operation serves only as a adaptor-like constructor to interface a
+        This operation serves only as an adaptor-like constructor to interface a
         :class:`newton.State`, effectively creating an alias without copying data.
 
         Args:
@@ -335,7 +335,7 @@ class StateKamino:
         """
         Constructs a :class:`newton.State` object from a :class:`kamino.StateKamino` object.
 
-        This operation serves only as a adaptor-like constructor to interface a
+        This operation serves only as an adaptor-like constructor to interface a
         :class:`kamino.StateKamino`, effectively creating an alias without copying data.
 
         Args:

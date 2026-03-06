@@ -107,7 +107,7 @@ class ControlKamino:
         """
         Constructs a :class:`kamino.ControlKamino` object from a :class:`newton.Control` object.
 
-        This operation serves only as a adaptor-like constructor to interface a
+        This operation serves only as an adaptor-like constructor to interface a
         :class:`newton.Control`, effectively creating an alias without copying data.
 
         Args:
@@ -125,7 +125,7 @@ class ControlKamino:
         """
         Constructs a :class:`newton.Control` object from a :class:`kamino.ControlKamino` object.
 
-        This operation serves only as a adaptor-like constructor to interface a
+        This operation serves only as an adaptor-like constructor to interface a
         :class:`kamino.ControlKamino`, effectively creating an alias without copying data.
 
         Args:

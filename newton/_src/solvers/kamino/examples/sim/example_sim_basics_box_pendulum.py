@@ -339,7 +339,7 @@ if __name__ == "__main__":
         if hasattr(example.viewer, "set_camera"):
             camera_pos = wp.vec3(0.0, -2.0, 1.0)
             pitch = -10.0
-            yaw = 90  # Changed to -90 degrees to look left
+            yaw = 90
             example.viewer.set_camera(camera_pos, pitch, yaw)
 
         # Launch the example using Newton's built-in runtime

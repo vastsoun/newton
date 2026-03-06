@@ -439,7 +439,7 @@ def update_geometries_state(
             The poses of the bodies in world coordinates.\n
             Shape of ``(num_bodies,)`` and type :class:`transformf`.
         geom_model (GeometriesModel):
-            The model container holding time-invariant geometry .
+            The model container holding time-invariant geometry data.
         geom_data (GeometriesData):
             The data container of the geometry elements.
     """

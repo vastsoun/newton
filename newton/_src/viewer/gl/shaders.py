@@ -345,7 +345,7 @@ void main()
     // energy-preserving normalization for Blinn-Phong
     float normFactor = (shininess + 2.0) / (8.0 * PI);
 
-    vec3 diffuse  = albedo * light_color * NdotL * light_intensity;
+    vec3 diffuse  = albedo * light_color * NdotL;
 
     // Specular color: dielectrics ~0.04, metals use albedo
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
@@ -369,7 +369,7 @@ void main()
 
     // Metals should contribute little diffuse light.
     diffuse *= 1.0 - metallic;
-    vec3 color = ambient + (1.0 - shadow) * spotlightAttenuation * (diffuse + spec);
+    vec3 color = ambient + (1.0 - shadow) * spotlightAttenuation * light_intensity * (diffuse + spec);
 
     // Fresnel darkening: reduce brightness at glancing angles for metals
     color *= mix(1.0, pow(NdotV, 2.0), metallic);

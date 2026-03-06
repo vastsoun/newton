@@ -1466,8 +1466,8 @@ class SolverKamino(SolverBase):
         # Convert com-frame poses from Kamino reset to body-origin frame
         convert_body_com_to_origin(
             body_com=self._model_kamino.bodies.i_r_com_i,
-            body_q_c=state_out_kamino.q_i,
-            body_q_o=state_out_kamino.q_i,
+            body_q_com=state_out_kamino.q_i,
+            body_q_org=state_out_kamino.q_i,
             world_mask=world_mask,
             body_wid=self._model_kamino.bodies.wid,
         )
@@ -1512,8 +1512,8 @@ class SolverKamino(SolverBase):
         # Kamino's corrected body-com offsets (can differ from Newton model data).
         convert_body_origin_to_com(
             body_com=self._model_kamino.bodies.i_r_com_i,
-            body_q_o=state_in_kamino.q_i,
-            body_q_c=state_in_kamino.q_i,
+            body_q_org=state_in_kamino.q_i,
+            body_q_com=state_in_kamino.q_i,
         )
 
         # Step the physics solver
@@ -1530,13 +1530,13 @@ class SolverKamino(SolverBase):
         # the same corrected body-com offsets as the forward conversion.
         convert_body_com_to_origin(
             body_com=self._model_kamino.bodies.i_r_com_i,
-            body_q_c=state_in_kamino.q_i,
-            body_q_o=state_in_kamino.q_i,
+            body_q_com=state_in_kamino.q_i,
+            body_q_org=state_in_kamino.q_i,
         )
         convert_body_com_to_origin(
             body_com=self._model_kamino.bodies.i_r_com_i,
-            body_q_c=state_out_kamino.q_i,
-            body_q_o=state_out_kamino.q_i,
+            body_q_com=state_out_kamino.q_i,
+            body_q_org=state_out_kamino.q_i,
         )
 
         # Keep a reference for update_contacts() which needs body_q to

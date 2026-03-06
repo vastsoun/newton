@@ -198,8 +198,8 @@ class StateKamino:
 
         convert_body_origin_to_com(
             body_com=model.body_com,
-            body_q_o=self.q_i,
-            body_q_c=self.q_i,
+            body_q_org=self.q_i,
+            body_q_com=self.q_i,
             world_mask=world_mask,
             body_wid=body_wid,
         )
@@ -230,8 +230,8 @@ class StateKamino:
 
         convert_body_com_to_origin(
             body_com=model.body_com,
-            body_q_c=self.q_i,
-            body_q_o=self.q_i,
+            body_q_com=self.q_i,
+            body_q_org=self.q_i,
             world_mask=world_mask,
             body_wid=body_wid,
         )

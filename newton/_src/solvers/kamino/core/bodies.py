@@ -441,9 +441,9 @@ def _update_body_wrenches(
 @wp.kernel
 def _convert_body_origin_to_com(
     # Inputs
-    body_com: wp.array(dtype=vec3f),
     world_mask: wp.array(dtype=int32),
     body_wid: wp.array(dtype=int32),
+    body_com: wp.array(dtype=vec3f),
     body_q_org: wp.array(dtype=transformf),
     # Outputs
     body_q_com: wp.array(dtype=transformf),
@@ -468,12 +468,12 @@ def _convert_body_origin_to_com(
 @wp.kernel
 def _convert_body_com_to_origin(
     # Inputs
-    body_com: wp.array(dtype=vec3f),
     world_mask: wp.array(dtype=int32),
     body_wid: wp.array(dtype=int32),
-    body_q_c: wp.array(dtype=transformf),
+    body_com: wp.array(dtype=vec3f),
+    body_q_com: wp.array(dtype=transformf),
     # Outputs
-    body_q_o: wp.array(dtype=transformf),
+    body_q_org: wp.array(dtype=transformf),
 ):
     bid = wp.tid()
 
@@ -483,13 +483,13 @@ def _convert_body_com_to_origin(
             return
 
     com = body_com[bid]
-    q = body_q_c[bid]
+    q = body_q_com[bid]
 
     body_r_com = wp.transform_get_translation(q)
     body_rot = wp.transform_get_rotation(q)
     r_com = wp.quat_rotate(body_rot, com)
 
-    body_q_o[bid] = transformf(body_r_com - r_com, body_rot)
+    body_q_org[bid] = transformf(body_r_com - r_com, body_rot)
 
 
 @wp.kernel
@@ -596,7 +596,7 @@ def convert_body_origin_to_com(
     wp.launch(
         _convert_body_origin_to_com,
         dim=body_com.shape[0],
-        inputs=[body_com, world_mask, body_wid, body_q_org],
+        inputs=[world_mask, body_wid, body_com, body_q_org],
         outputs=[body_q_com],
         device=body_com.device,
     )
@@ -612,7 +612,7 @@ def convert_body_com_to_origin(
     wp.launch(
         _convert_body_com_to_origin,
         dim=body_com.shape[0],
-        inputs=[body_com, world_mask, body_wid, body_q_com],
+        inputs=[world_mask, body_wid, body_com, body_q_com],
         outputs=[body_q_org],
         device=body_com.device,
     )

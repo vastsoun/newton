@@ -23,10 +23,8 @@ import numpy as np
 import warp as wp
 
 # Newton imports
-from ....geometry.flags import ShapeFlags
-from ....geometry.types import GeoType
-from ....sim.joints import JointTargetMode, JointType
-from ....sim.model import Model
+from ....geometry import GeoType, ShapeFlags
+from ....sim import JointTargetMode, JointType, Model
 
 # Kamino imports
 from ..utils import logger as msg

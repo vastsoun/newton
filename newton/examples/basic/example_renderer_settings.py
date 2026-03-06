@@ -92,12 +92,14 @@ class Example:
 
 
 if __name__ == "__main__":
+    import argparse  # noqa: PLC0415
+
     parser = newton.examples.create_parser()
     parser.add_argument("--diffuse-scale", type=float, default=None, help="Diffuse light scale")
     parser.add_argument("--specular-scale", type=float, default=None, help="Specular light scale")
     parser.add_argument("--shadow-radius", type=float, default=None, help="PCF shadow softness radius")
     parser.add_argument("--shadow-extents", type=float, default=None, help="Shadow map half-size in world units")
-    parser.add_argument("--spotlight", type=bool, default=None, help="Use cone spotlight")
+    parser.add_argument("--spotlight", action=argparse.BooleanOptionalAction, default=None, help="Use cone spotlight")
 
     viewer, args = newton.examples.init(parser)
 

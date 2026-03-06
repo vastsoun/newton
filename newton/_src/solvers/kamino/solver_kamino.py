@@ -1441,14 +1441,14 @@ class SolverKamino(SolverBase):
         """
         # Convert base pose from body-origin to COM frame
         if base_q is not None:
-            base_q_c = wp.zeros_like(base_q)
+            base_q_com = wp.zeros_like(base_q)
             convert_base_origin_to_com(
                 base_body_index=self._model_kamino.info.base_body_index,
                 body_com=self._model_kamino.bodies.i_r_com_i,
-                base_q_o=base_q,
-                base_q_c=base_q_c,
+                base_q=base_q,
+                base_q_com=base_q_com,
             )
-            base_q = base_q_c
+            base_q = base_q_com
 
         # TODO: fix brittle in-place update of arrays after conversion
         state_out_kamino = StateKamino.from_newton(self._model_kamino.size, self.model, state_out)
@@ -1467,7 +1467,7 @@ class SolverKamino(SolverBase):
         convert_body_com_to_origin(
             body_com=self._model_kamino.bodies.i_r_com_i,
             body_q_com=state_out_kamino.q_i,
-            body_q_org=state_out_kamino.q_i,
+            body_q=state_out_kamino.q_i,
             world_mask=world_mask,
             body_wid=self._model_kamino.bodies.wid,
         )
@@ -1512,7 +1512,7 @@ class SolverKamino(SolverBase):
         # Kamino's corrected body-com offsets (can differ from Newton model data).
         convert_body_origin_to_com(
             body_com=self._model_kamino.bodies.i_r_com_i,
-            body_q_org=state_in_kamino.q_i,
+            body_q=state_in_kamino.q_i,
             body_q_com=state_in_kamino.q_i,
         )
 
@@ -1531,12 +1531,12 @@ class SolverKamino(SolverBase):
         convert_body_com_to_origin(
             body_com=self._model_kamino.bodies.i_r_com_i,
             body_q_com=state_in_kamino.q_i,
-            body_q_org=state_in_kamino.q_i,
+            body_q=state_in_kamino.q_i,
         )
         convert_body_com_to_origin(
             body_com=self._model_kamino.bodies.i_r_com_i,
             body_q_com=state_out_kamino.q_i,
-            body_q_org=state_out_kamino.q_i,
+            body_q=state_out_kamino.q_i,
         )
 
         # Keep a reference for update_contacts() which needs body_q to

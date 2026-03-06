@@ -19,7 +19,6 @@ import os
 
 import numpy as np
 import warp as wp
-
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.benchmark.configs import make_benchmark_configs

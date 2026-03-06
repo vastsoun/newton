@@ -668,14 +668,13 @@ def _build_free_velocity_bias_contacts(
     mu_k = material_k.x  # Friction coefficient
     epsilon_k = material_k.y  # Penetration reduction coefficient
 
-    # Compute the constraint residuals for unilateral contact constraints
-    # NOTE#1: The residuals correspond to configuration-level constraint
-    # violation of each contact along the corresponding normal direction
-    # NOTE#2: contact penetration is assumed to be represented using
-    # non-positive values (d <= 0), and since the penetration value
-    # in the container is positive (p >= 0) we need to invert the sign
-    # TODO: How to best use config.delta?
-    distance_k = wp.min(0.0, penetration_k)
+    # The gap-function value (penetration_k) is the margin-shifted signed
+    # distance: negative means penetration past the resting separation,
+    # zero means at rest, positive means within the detection gap.
+    # We pass the full value through so that the one-sided Baumgarte
+    # stabilization (xi_relaxed) can generate a positive bias for gap
+    # contacts, allowing controlled approach toward d = 0.
+    distance_k = penetration_k
 
     # Compute the per-contact penetration error reduction term
     # NOTE#1: Penetrations are represented as xi < 0 (hence the sign inversion)

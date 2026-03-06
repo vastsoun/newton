@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 
 import warp as wp
 
-# from ....sim.builder import ModelBuilder
+# TODO: from ....sim.builder import ModelBuilder
 from ....geometry.flags import ShapeFlags
 from .shapes import ShapeDescriptorType
 from .types import Descriptor, float32, int32, override, transformf
@@ -158,7 +158,8 @@ class GeometryDescriptor(Descriptor):
     flags: int = ShapeFlags.VISIBLE | ShapeFlags.COLLIDE_SHAPES | ShapeFlags.COLLIDE_PARTICLES
     """
     Shape flags of the geometry entity, used to specify additional properties of the geometry.\n
-    Defaults to `0`, indicating that the geometry is disabled.
+    Defaults to `ShapeFlags.VISIBLE | ShapeFlags.COLLIDE_SHAPES | ShapeFlags.COLLIDE_PARTICLES`,
+    indicating that the geometry is visible and can collide with shapes and particles.
     """
 
     ###

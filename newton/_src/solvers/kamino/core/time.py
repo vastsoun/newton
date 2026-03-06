@@ -43,7 +43,7 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
-# Containers Containers
+# Containers
 ###
 
 
@@ -204,12 +204,12 @@ def advance_time(model: TimeModel, data: TimeData):
         raise ValueError("'model' must contain a `model.dt` array, is None.")
 
     # Ensure the state is valid
-    if data.steps is None:
-        raise ValueError("'data' must contain a `data.steps` array, is None.")
+    if data is None:
+        raise ValueError("'data' must be initialized, is None.")
     elif not isinstance(data, TimeData):
         raise TypeError("'data' must be an instance of TimeData.")
-    if data.time is None:
-        raise ValueError("'data' must contain a `data.time` array, is None.")
+    if data.steps is None:
+        raise ValueError("'data' must contain a `data.steps` array, is None.")
 
     # Launch the kernel to advance the time state of each world by one step
     wp.launch(

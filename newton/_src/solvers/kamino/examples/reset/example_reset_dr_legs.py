@@ -429,7 +429,6 @@ class Example:
 
         Args:
             path: Output directory path (uses video_folder if None)
-            show: If True, display plots after saving
             keep_frames: If True, keep PNG frames after video creation
         """
         # Optionally generate video from recorded frames

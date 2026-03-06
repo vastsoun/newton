@@ -404,7 +404,7 @@ def make_add_multiple_contacts(MAX_CONTACTS: int, SHARED_NORMAL: bool):
         # Add generated contacts data to the output arrays
         for k in range(MAX_CONTACTS):
             # Break if we've reached the maximum number of contacts for this geom pair
-            if k >= max_num_contacts:
+            if active_contact_idx >= max_num_contacts:
                 break
 
             # If contact is valid, store it
@@ -449,6 +449,11 @@ def make_add_multiple_contacts(MAX_CONTACTS: int, SHARED_NORMAL: bool):
 
                 # Increment active contact index
                 active_contact_idx += 1
+
+        # Roll-back the atomic add if we exceeded limits
+        if active_contact_idx < num_contacts:
+            wp.atomic_sub(contact_model_num, 0, num_contacts - active_contact_idx)
+            wp.atomic_sub(contact_world_num, wid, num_contacts - active_contact_idx)
 
     # Return the generated function
     return add_multiple_contacts

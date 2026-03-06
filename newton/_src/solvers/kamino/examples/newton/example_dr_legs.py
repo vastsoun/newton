@@ -74,13 +74,19 @@ class Example:
 
         # TODO @nvtw: This is a temporary fix because `robot_builder.default_shape_cfg`
         # is not correctly applied to the shapes when using `add_usd()`,
-        msg.warning("self.model.shape_margin: %s", self.model.shape_margin)
-        msg.warning("self.model.shape_gap: %s", self.model.shape_gap)
+        msg.debug("self.model.shape_margin: %s", self.model.shape_margin)
+        msg.debug("self.model.shape_gap: %s", self.model.shape_gap)
         self.model.shape_margin.fill_(0.0)
-        self.model.shape_gap.fill_(1e-5)
+        self.model.shape_gap.fill_(0.0)
 
         # Create the Kamino solver for the given model
         self.solver = newton.solvers.SolverKamino(self.model)
+
+        # Set joint armature and viscous damping for better
+        # stability of the implicit joint-space PD controller
+        # TODO: Remove this once we add Newton USD schemas in the model asset
+        self.solver._solver_kamino._model.joints.a_j.fill_(0.011)
+        self.solver._solver_kamino._model.joints.b_j.fill_(0.044)
 
         # Create state and control data containers
         self.state_0 = self.model.state()

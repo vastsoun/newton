@@ -164,7 +164,7 @@ class WorldDescriptor(Descriptor):
     num_dynamic_joint_cts: int = 0
     """
     The total number of joint dynamics constraints.\n
-    This is equal to the sum of the dyanimcs constraints of all dynamic joints defined in the world.
+    This is equal to the sum of the dynamic constraints of all dynamic joints defined in the world.
     """
 
     num_kinematic_joint_cts: int = 0
@@ -173,56 +173,56 @@ class WorldDescriptor(Descriptor):
     This is equal to the sum of the kinematics constraints of all joints defined in the world.
     """
 
-    joint_coords: list[int] = field(default_factory=list[int])
+    joint_coords: list[int] = field(default_factory=list)
     """
     The list of of all joint coordinates.\n
     This list is ordered according the joint indices in the world,
     and the sum of all elements is equal to `num_joint_coords`.\n
     """
 
-    joint_dofs: list[int] = field(default_factory=list[int])
+    joint_dofs: list[int] = field(default_factory=list)
     """
     The list of of all joint DoFs.\n
     This list is ordered according the joint indices in the world,
     and the sum of all elements is equal to `num_joint_dofs`.\n
     """
 
-    joint_passive_coords: list[int] = field(default_factory=list[int])
+    joint_passive_coords: list[int] = field(default_factory=list)
     """
     The list of of all passive joint coordinates.\n
     This list is ordered according the joint indices in the world,
     and the sum of all elements is equal to `num_passive_joint_coords`.\n
     """
 
-    joint_passive_dofs: list[int] = field(default_factory=list[int])
+    joint_passive_dofs: list[int] = field(default_factory=list)
     """
     The list of of all passive joint DoFs.\n
     This list is ordered according the joint indices in the world,
     and the sum of all elements is equal to `num_passive_joint_dofs`.\n
     """
 
-    joint_actuated_coords: list[int] = field(default_factory=list[int])
+    joint_actuated_coords: list[int] = field(default_factory=list)
     """
     The list of of all actuated joint coordinates.\n
     This list is ordered according the joint indices in the world,
     and the sum of all elements is equal to `num_actuated_joint_coords`.\n
     """
 
-    joint_actuated_dofs: list[int] = field(default_factory=list[int])
+    joint_actuated_dofs: list[int] = field(default_factory=list)
     """
     The list of of all actuated joint DoFs.\n
     This list is ordered according the joint indices in the world,
     and the sum of all elements is equal to `num_actuated_joint_dofs`.\n
     """
 
-    joint_dynamic_cts: list[int] = field(default_factory=list[int])
+    joint_dynamic_cts: list[int] = field(default_factory=list)
     """
     The list of all joint dynamics constraints.\n
     This list is ordered according the joint indices in the world,
     and the sum of all elements is equal to `num_dynamic_joint_cts`.\n
     """
 
-    joint_kinematic_cts: list[int] = field(default_factory=list[int])
+    joint_kinematic_cts: list[int] = field(default_factory=list)
     """
     The list of all joint kinematics constraints.\n
     This list is ordered according the joint indices in the world,
@@ -319,7 +319,7 @@ class WorldDescriptor(Descriptor):
     dynamic_joint_names: list[str] = field(default_factory=list[str])
     """List of dynamic joint names."""
 
-    geometry_max_contacts: list[int] = field(default_factory=list[int])
+    geometry_max_contacts: list[int] = field(default_factory=list)
     """List of maximum contacts prescribed for each geometry."""
 
     ###

@@ -37,13 +37,6 @@ __all__ = [
 
 
 ###
-# Module configs
-###
-
-wp.set_module_options({"enable_backward": False})
-
-
-###
 # Types
 ###
 

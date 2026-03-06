@@ -27,9 +27,10 @@ import warp as wp
 import newton
 import newton._src.solvers.kamino.tests.utils.checks as test_util_checks
 from newton._src.sim import Control, Model, ModelBuilder, State
+from newton._src.solvers.kamino.core.bodies import convert_body_com_to_origin, convert_body_origin_to_com
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.control import ControlKamino
-from newton._src.solvers.kamino.core.model import ModelKamino
+from newton._src.solvers.kamino.core.model import MaterialDescriptor, ModelKamino
 from newton._src.solvers.kamino.core.state import StateKamino
 from newton._src.solvers.kamino.models import basics as basics_kamino
 from newton._src.solvers.kamino.models import basics_newton, get_basics_usd_assets_path
@@ -211,6 +212,9 @@ class TestModelConversions(unittest.TestCase):
             actuator_ids=[1, 3],
         )
 
+        # Overwriting mu = 0.7 to match Kamino's default material properties
+        builder_0.shape_material_mu = [0.7] * len(builder_0.shape_material_mu)
+
         # Duplicate the world to test multi-world handling
         builder_0.begin_world()
         builder_0.add_builder(copy.deepcopy(builder_0))
@@ -264,6 +268,9 @@ class TestModelConversions(unittest.TestCase):
         )
         builder_0.end_world()
 
+        # Overwriting mu = 0.7 to match Kamino's default material properties
+        builder_0.shape_material_mu = [0.7] * len(builder_0.shape_material_mu)
+
         # Import the same fourbar using Kamino's USDImporter and ModelBuilderKamino
         importer = USDImporter()
         builder_1: ModelBuilderKamino = importer.import_from(
@@ -315,6 +322,9 @@ class TestModelConversions(unittest.TestCase):
         )
         builder_0.end_world()
 
+        # Overwriting mu = 0.7 to match Kamino's default material properties
+        builder_0.shape_material_mu = [0.7] * len(builder_0.shape_material_mu)
+
         # Import the same fourbar using Kamino's USDImporter and ModelBuilderKamino
         importer = USDImporter()
         builder_1: ModelBuilderKamino = importer.import_from(
@@ -363,6 +373,9 @@ class TestModelConversions(unittest.TestCase):
             force_position_velocity_actuation=True,
         )
         builder_0.end_world()
+
+        # Overwriting mu = 0.7 to match Kamino's default material properties
+        builder_0.shape_material_mu = [0.7] * len(builder_0.shape_material_mu)
 
         # Import the same fourbar using Kamino's USDImporter and ModelBuilderKamino
         importer = USDImporter()
@@ -418,6 +431,9 @@ class TestModelConversions(unittest.TestCase):
             force_show_colliders=True,
         )
         builder_0.end_world()
+
+        # Overwriting mu = 0.7 to match Kamino's default material properties
+        builder_0.shape_material_mu = [0.7] * len(builder_0.shape_material_mu)
 
         # Import the same fourbar using Kamino's USDImporter and ModelBuilderKamino
         importer = USDImporter()
@@ -621,7 +637,388 @@ class TestModelConversions(unittest.TestCase):
         np.testing.assert_allclose(q_i_0_np[2, :3], [1.1, -0.3, 0.2], atol=1e-6)
         np.testing.assert_allclose(q_i_0_np[2, 3:7], body_q_np[2, 3:7], atol=1e-6)
 
-    def test_10_state_conversions(self):
+    def _build_com_offset_model(self):
+        """Build a 3-body chain with non-zero COM offsets for reset tests."""
+        builder: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder)
+        builder.default_shape_cfg.margin = 0.0
+        builder.default_shape_cfg.gap = 0.0
+
+        builder.begin_world()
+
+        # Body 0: at origin, identity rotation, COM offset along x
+        bid0 = builder.add_link(
+            label="body0",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(0.0, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+            com=wp.vec3f(0.1, 0.0, 0.0),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(label="box0", body=bid0, hx=0.05, hy=0.05, hz=0.05)
+
+        # Body 1: at (0,0,1), rotated 90° about z-axis, single-axis COM offset
+        rot_90z = wp.quat_from_axis_angle(wp.vec3f(0.0, 0.0, 1.0), np.pi / 2.0)
+        bid1 = builder.add_link(
+            label="body1",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(0.0, 0.0, 1.0), rot_90z),
+            com=wp.vec3f(0.1, 0.0, 0.0),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(label="box1", body=bid1, hx=0.05, hy=0.05, hz=0.05)
+
+        # Body 2: at (1,0,0), rotated 90° about x-axis, 3D COM offset
+        rot_90x = wp.quat_from_axis_angle(wp.vec3f(1.0, 0.0, 0.0), np.pi / 2.0)
+        bid2 = builder.add_link(
+            label="body2",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(1.0, 0.0, 0.0), rot_90x),
+            com=wp.vec3f(0.1, 0.2, 0.3),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(label="box2", body=bid2, hx=0.05, hy=0.05, hz=0.05)
+
+        # Fix body 0 to world
+        builder.add_joint_fixed(
+            label="world_to_body0",
+            parent=-1,
+            child=bid0,
+            parent_xform=wp.transform_identity(dtype=wp.float32),
+            child_xform=wp.transform_identity(dtype=wp.float32),
+        )
+
+        # Revolute joint: body 0 -> body 1
+        builder.add_joint_revolute(
+            label="body0_to_body1",
+            parent=bid0,
+            child=bid1,
+            axis=wp.vec3(0.0, 1.0, 0.0),
+            parent_xform=wp.transformf(wp.vec3f(0.0, 0.0, 0.5), wp.quat_identity(dtype=wp.float32)),
+            child_xform=wp.transformf(wp.vec3f(0.0, 0.0, -0.5), wp.quat_identity(dtype=wp.float32)),
+        )
+
+        # Revolute joint: body 1 -> body 2
+        builder.add_joint_revolute(
+            label="body1_to_body2",
+            parent=bid1,
+            child=bid2,
+            axis=wp.vec3(0.0, 1.0, 0.0),
+            parent_xform=wp.transformf(wp.vec3f(0.5, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+            child_xform=wp.transformf(wp.vec3f(-0.5, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+        )
+
+        builder.end_world()
+
+        return builder.finalize(skip_validation_joints=True)
+
+    def test_07_reset_produces_body_origin_frame(self):
+        """
+        Test that ``SolverKamino.reset()`` writes body-origin frame poses
+        into ``state.body_q``, not COM-frame poses, for bodies with non-zero
+        COM offsets.
+        """
+        model = self._build_com_offset_model()
+        body_q_expected = model.body_q.numpy().copy()
+
+        solver = SolverKamino(model)
+
+        # Default reset (no args) should restore body-origin poses
+        state_out: State = model.state()
+        solver.reset(state_out=state_out)
+        body_q_after = state_out.body_q.numpy()
+
+        for i in range(model.body_count):
+            np.testing.assert_allclose(
+                body_q_after[i],
+                body_q_expected[i],
+                atol=1e-6,
+                err_msg=f"Default reset: body {i} pose is not in body-origin frame",
+            )
+
+        # Velocities should be zero after default reset
+        body_qd_after = state_out.body_qd.numpy()
+        np.testing.assert_allclose(
+            body_qd_after,
+            0.0,
+            atol=1e-6,
+            err_msg="Default reset: body velocities should be zero",
+        )
+
+    def test_08_base_reset_produces_body_origin_frame(self):
+        """
+        Test that ``SolverKamino.reset(base_q=..., base_u=...)`` writes
+        body-origin frame poses and velocities into ``state.body_q`` and
+        ``state.body_qd`` for bodies with non-zero COM offsets.
+        """
+        model = self._build_com_offset_model()
+        body_q_expected = model.body_q.numpy().copy()
+
+        solver = SolverKamino(model)
+
+        # --- Base reset with identity base pose should restore body-origin poses ---
+        state_out: State = model.state()
+        base_q = wp.array(
+            [wp.transformf(wp.vec3f(0.0, 0.0, 0.0), wp.quat_identity(dtype=wp.float32))],
+            dtype=wp.transformf,
+        )
+        base_u = wp.zeros(1, dtype=wp.spatial_vectorf)
+        solver.reset(state_out=state_out, base_q=base_q, base_u=base_u)
+        body_q_after = state_out.body_q.numpy()
+
+        for i in range(model.body_count):
+            np.testing.assert_allclose(
+                body_q_after[i],
+                body_q_expected[i],
+                atol=1e-6,
+                err_msg=f"Base reset (identity): body {i} pose is not in body-origin frame",
+            )
+
+        # Velocities should be zero with zero base twist
+        body_qd_after = state_out.body_qd.numpy()
+        np.testing.assert_allclose(
+            body_qd_after,
+            0.0,
+            atol=1e-6,
+            err_msg="Base reset (identity): body velocities should be zero",
+        )
+
+        # --- Base reset with a translated base pose ---
+        offset = np.array([2.0, 3.0, 5.0])
+        base_q_shifted = wp.array(
+            [wp.transformf(wp.vec3f(*offset), wp.quat_identity(dtype=wp.float32))],
+            dtype=wp.transformf,
+        )
+        solver.reset(state_out=state_out, base_q=base_q_shifted, base_u=base_u)
+        body_q_shifted = state_out.body_q.numpy()
+
+        for i in range(model.body_count):
+            np.testing.assert_allclose(
+                body_q_shifted[i, :3],
+                body_q_expected[i, :3] + offset,
+                atol=1e-6,
+                err_msg=f"Base reset (translated): body {i} position mismatch",
+            )
+            np.testing.assert_allclose(
+                body_q_shifted[i, 3:7],
+                body_q_expected[i, 3:7],
+                atol=1e-6,
+                err_msg=f"Base reset (translated): body {i} rotation mismatch",
+            )
+
+    def test_09_model_conversions_shape_offset_com_relative(self):
+        """
+        Test that ``geoms.offset`` stores COM-relative shape positions
+        after Newton→Kamino conversion, while ground shapes are unchanged.
+        """
+        builder: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder)
+        builder.default_shape_cfg.margin = 0.0
+        builder.default_shape_cfg.gap = 0.0
+
+        builder.begin_world()
+
+        # Body with COM=(0.1, 0.2, 0.0), shape at (0.5, 0.0, 0.0)
+        bid = builder.add_link(
+            label="body0",
+            mass=1.0,
+            xform=wp.transformf(wp.vec3f(0.0, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+            com=wp.vec3f(0.1, 0.2, 0.0),
+            lock_inertia=True,
+        )
+        builder.add_shape_box(
+            label="box0",
+            body=bid,
+            hx=0.05,
+            hy=0.05,
+            hz=0.05,
+            xform=wp.transformf(wp.vec3f(0.5, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+        )
+        # Ground shape (bid=-1) — should be left unchanged
+        builder.add_shape_box(
+            label="ground_box",
+            body=-1,
+            hx=1.0,
+            hy=1.0,
+            hz=0.01,
+            xform=wp.transformf(wp.vec3f(1.0, 0.0, 0.0), wp.quat_identity(dtype=wp.float32)),
+        )
+
+        builder.add_joint_fixed(
+            label="fix",
+            parent=-1,
+            child=bid,
+            parent_xform=wp.transform_identity(dtype=wp.float32),
+            child_xform=wp.transform_identity(dtype=wp.float32),
+        )
+        builder.end_world()
+
+        model: Model = builder.finalize(skip_validation_joints=True)
+        kamino_model: ModelKamino = ModelKamino.from_newton(model)
+        offset_np = kamino_model.geoms.offset.numpy()
+
+        # Shape on body: pos should be (0.5-0.1, 0.0-0.2, 0.0) = (0.4, -0.2, 0.0)
+        np.testing.assert_allclose(offset_np[0, :3], [0.4, -0.2, 0.0], atol=1e-6)
+        # Ground shape: pos unchanged at (1.0, 0.0, 0.0)
+        np.testing.assert_allclose(offset_np[1, :3], [1.0, 0.0, 0.0], atol=1e-6)
+
+    def test_10_origin_com_roundtrip(self):
+        """
+        Test that origin→COM→origin is the identity on body_q.
+        """
+        model = self._build_com_offset_model()
+        body_q = wp.clone(model.body_q)
+        q_orig = body_q.numpy().copy()
+
+        convert_body_origin_to_com(model.body_com, body_q, body_q)
+        convert_body_com_to_origin(model.body_com, body_q, body_q)
+
+        np.testing.assert_allclose(body_q.numpy(), q_orig, atol=1e-6, err_msg="body_q roundtrip failed")
+
+    def test_11_model_conversions_material_fourbar_from_builder(self):
+        """
+        Test the conversion operations between newton.Model and kamino.ModelKamino
+        on a simple fourbar model with different materials, created explicitly using the builder.
+        """
+        # Create a fourbar using Newton's ModelBuilder and
+        # register Kamino-specific custom attributes
+        builder_0: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder_0)
+        builder_0.default_shape_cfg.margin = 0.0
+        builder_0.default_shape_cfg.gap = 0.0
+
+        # Create a fourbar using Newton's ModelBuilder
+        builder_0: ModelBuilder = basics_newton.build_boxes_fourbar(
+            builder=builder_0,
+            z_offset=0.0,
+            fixedbase=False,
+            floatingbase=True,
+            limits=True,
+            ground=True,
+            dynamic_joints=False,
+            implicit_pd=False,
+            new_world=True,
+            actuator_ids=[1, 3],
+        )
+
+        # Setting material properties
+        restitution = [0.1, 0.2, 0.3, 0.4, 0.5]
+        mu = [0.5, 0.6, 0.7, 0.8, 0.9]
+        builder_0.shape_material_restitution = list(restitution)
+        builder_0.shape_material_mu = list(mu)
+
+        # Duplicate the world to test multi-world handling
+        builder_0.begin_world()
+        builder_0.add_builder(copy.deepcopy(builder_0))
+        builder_0.end_world()
+
+        # Create a fourbar using Kamino's ModelBuilderKamino
+        builder_1: ModelBuilderKamino = basics_kamino.build_boxes_fourbar(
+            builder=None,
+            z_offset=0.0,
+            fixedbase=False,
+            floatingbase=True,
+            limits=True,
+            ground=True,
+            dynamic_joints=False,
+            implicit_pd=False,
+            new_world=True,
+            actuator_ids=[1, 3],
+        )
+
+        # Setting material properties
+        for i in range(len(mu)):
+            mid = builder_1.add_material(
+                MaterialDescriptor(
+                    name=f"mat{i}",
+                    restitution=restitution[i],
+                    static_friction=mu[i],
+                    dynamic_friction=mu[i],
+                )
+            )
+            builder_1.geoms[i].material = mid
+            builder_1.geoms[i].mid = mid
+
+        # Duplicate the world to test multi-world handling
+        builder_1.add_builder(copy.deepcopy(builder_1))
+
+        # Create models from the builders and conversion operations, and check for consistency
+        model_0: Model = builder_0.finalize(skip_validation_joints=True)
+        model_1: ModelKamino = builder_1.finalize()
+        model_2: ModelKamino = ModelKamino.from_newton(model_0)
+        test_util_checks.assert_model_equal(self, model_2, model_1)
+
+    def test_12_model_conversions_material_box_on_plane_from_usd(self):
+        """
+        Test the conversion operations between newton.Model and kamino.ModelKamino
+        on a simple box on plane model loaded from USD, containing different materials.
+        """
+        # Define the path to the USD file for the fourbar model
+        asset_file = os.path.join(get_basics_usd_assets_path(), "box_on_plane.usda")
+
+        # Create a fourbar using Newton's ModelBuilder and
+        # register Kamino-specific custom attributes
+        builder_0: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder_0)
+        builder_0.default_shape_cfg.margin = 0.0
+        builder_0.default_shape_cfg.gap = 0.0
+
+        # Create a fourbar using Newton's ModelBuilder
+        builder_0.begin_world()
+        builder_0.add_usd(
+            source=asset_file,
+            joint_ordering=None,
+            force_show_colliders=True,
+            force_position_velocity_actuation=True,
+        )
+        builder_0.end_world()
+
+        # Duplicate the world to test multi-world handling
+        builder_0.begin_world()
+        builder_0.add_builder(copy.deepcopy(builder_0))
+        builder_0.end_world()
+
+        # Import the same fourbar using Kamino's USDImporter and ModelBuilderKamino
+        importer = USDImporter()
+        builder_1: ModelBuilderKamino = importer.import_from(
+            source=asset_file,
+            load_drive_dynamics=True,
+            load_static_geometry=True,
+            force_show_colliders=True,
+            use_prim_path_names=True,
+        )
+
+        # Resetting default material parameters, since the Newton USD importer does not import a
+        # default material and therefore does not have a non-standard default material
+        builder_1.materials[0].dynamic_friction = 0.7
+
+        # Overwriting dynamic friction with static friction, since the Newton USD importer only
+        # imports static friction and the Kamino conversion uses this to initialize both parameters
+        for mat in builder_1.materials:
+            mat.static_friction = mat.dynamic_friction
+
+        # Duplicate the world to test multi-world handling
+        builder_1.add_builder(copy.deepcopy(builder_1))
+
+        # Create models from the builders and conversion operations, and check for consistency
+        model_0: Model = builder_0.finalize(skip_validation_joints=True)
+        model_1: ModelKamino = builder_1.finalize()
+        model_2: ModelKamino = ModelKamino.from_newton(model_0)
+
+        msg.warning(f"{model_1.materials.restitution}")
+        msg.warning(f"{model_2.materials.restitution}")
+        msg.warning(f"{model_1.material_pairs.restitution}")
+        msg.warning(f"{model_2.material_pairs.restitution}")
+
+        test_util_checks.assert_model_geoms_equal(self, model_2.geoms, model_1.geoms)
+        test_util_checks.assert_model_materials_equal(self, model_2.materials, model_1.materials)
+        # TODO: Material pairs are currently not checked. The Kamino USD importer will set material
+        #       pair properties based on the list of materials, using the average of the material
+        #       properties. The Newton-to-Kamino conversion will leave the material pair properties
+        #       uninitialized, leaving the choice of how to combine materials for a pair to the
+        #       runtime material resolution system (see :class:`MaterialMuxMode`).
+        # test_util_checks.assert_model_material_pairs_equal(self, model_2.material_pairs, model_1.material_pairs)
+
+    def test_20_state_conversions(self):
         """
         Test the conversion operations between newton.State and kamino.StateKamino.
         """
@@ -643,6 +1040,9 @@ class TestModelConversions(unittest.TestCase):
             new_world=True,
             actuator_ids=[2, 4],
         )
+
+        # Overwriting mu = 0.7 to match Kamino's default material properties
+        builder_0.shape_material_mu = [0.7] * len(builder_0.shape_material_mu)
 
         # Duplicate the world to test multi-world handling
         builder_0.begin_world()
@@ -713,7 +1113,7 @@ class TestModelConversions(unittest.TestCase):
         self.assertIs(state_3.joint_q_prev, state_2.q_j_p)
         self.assertIs(state_3.joint_lambdas, state_2.lambda_j)
 
-    def test_20_control_conversions(self):
+    def test_30_control_conversions(self):
         """
         Test the conversions between newton.Control and kamino.ControlKamino.
         """
@@ -737,6 +1137,9 @@ class TestModelConversions(unittest.TestCase):
             new_world=True,
             actuator_ids=[1, 2, 3, 4],
         )
+
+        # Overwriting mu = 0.7 to match Kamino's default material properties
+        builder_0.shape_material_mu = [0.7] * len(builder_0.shape_material_mu)
 
         # Duplicate the world to test multi-world handling
         builder_0.begin_world()

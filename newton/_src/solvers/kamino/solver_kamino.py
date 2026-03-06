@@ -40,14 +40,20 @@ from ..flags import SolverNotifyFlags
 from ..solver import SolverBase
 
 # Kamino imports
-from .core.bodies import update_body_inertias, update_body_wrenches
+from .core.bodies import (
+    convert_base_origin_to_com,
+    convert_body_com_to_origin,
+    convert_body_origin_to_com,
+    update_body_inertias,
+    update_body_wrenches,
+)
 from .core.control import ControlKamino
 from .core.conversions import convert_model_joint_transforms
 from .core.data import DataKamino
 from .core.gravity import convert_model_gravity
 from .core.joints import JointCorrectionMode
 from .core.model import ModelKamino
-from .core.state import StateKamino, compute_body_com_state, compute_body_frame_state
+from .core.state import StateKamino
 from .core.time import advance_time
 from .core.types import float32, int32, transformf, vec6f
 from .dynamics.dual import DualProblem
@@ -255,7 +261,9 @@ class SolverKaminoImpl(SolverBase):
         )
 
         # Allocate the forward kinematics solver on the device
-        self._solver_fk = ForwardKinematicsSolver(model=self._model, config=self._config.fk)
+        self._solver_fk = None
+        if self._config.use_fk_solver:
+            self._solver_fk = ForwardKinematicsSolver(model=self._model, config=self._config.fk)
 
         # Create the time-integrator instance based on the config
         if self._config.integrator == "euler":
@@ -342,9 +350,9 @@ class SolverKaminoImpl(SolverBase):
         return self._solver_fd
 
     @property
-    def solver_fk(self) -> ForwardKinematicsSolver:
+    def solver_fk(self) -> ForwardKinematicsSolver | None:
         """
-        Returns the forward kinematics solver backend.
+        Returns the forward kinematics solver backend, if it was initialized.
         """
         return self._solver_fk
 
@@ -429,13 +437,13 @@ class SolverKaminoImpl(SolverBase):
             joint_q (wp.array, optional):
                 Optional array of target joint coordinates.\n
                 Shape of `(num_joint_coords,)` and type :class:`wp.float32`
-            joint_qd (wp.array, optional):
+            joint_u (wp.array, optional):
                 Optional array of target joint DoF velocities.\n
                 Shape of `(num_joint_dofs,)` and type :class:`wp.float32`
             base_q (wp.array, optional):
                 Optional array of target base body poses.\n
                 Shape of `(num_worlds,)` and type :class:`wp.transformf`
-            base_qd (wp.array, optional):
+            base_u (wp.array, optional):
                 Optional array of target base body twists.\n
                 Shape of `(num_worlds,)` and type :class:`wp.spatial_vectorf`
             bodies_q (wp.array, optional):
@@ -817,6 +825,10 @@ class SolverKaminoImpl(SolverBase):
         Resets the simulation to the given joint states by solving
         the forward kinematics to compute the corresponding body states.
         """
+        # Check that the FK solver was initialized
+        if self._solver_fk is None:
+            raise RuntimeError("The FK solver must be enabled to use resets from joint angles.")
+
         # Detect if joint or actuator targets are provided
         with_joint_targets = joint_q is not None and (actuator_q is None and actuator_u is None)
 
@@ -1241,6 +1253,11 @@ class SolverKamino(SolverBase):
         Flag to indicate whether the solver should use sparse data representations for the Jacobian.
         """
 
+        use_fk_solver: bool = False
+        """
+        Flag to indicate that the FK solver, allowing for resets using joint angles, should be enabled.
+        """
+
         def check(self) -> None:
             """Validates relevant solver config."""
             if not issubclass(self.linear_solver_type, LinearSolverType):
@@ -1423,18 +1440,31 @@ class SolverKamino(SolverBase):
             joint_q (wp.array, optional):
                 Optional array of target joint coordinates.\n
                 Shape of `(num_joint_coords,)` and type :class:`wp.float32`
-            joint_qd (wp.array, optional):
+            joint_u (wp.array, optional):
                 Optional array of target joint DoF velocities.\n
                 Shape of `(num_joint_dofs,)` and type :class:`wp.float32`
             base_q (wp.array, optional):
                 Optional array of target base body poses.\n
                 Shape of `(num_worlds,)` and type :class:`wp.transformf`
-            base_qd (wp.array, optional):
+            base_u (wp.array, optional):
                 Optional array of target base body twists.\n
                 Shape of `(num_worlds,)` and type :class:`wp.spatial_vectorf`
         """
+        # Convert base pose from body-origin to COM frame
+        if base_q is not None:
+            base_q_com = wp.zeros_like(base_q)
+            convert_base_origin_to_com(
+                base_body_index=self._model_kamino.info.base_body_index,
+                body_com=self._model_kamino.bodies.i_r_com_i,
+                base_q=base_q,
+                base_q_com=base_q_com,
+            )
+            base_q = base_q_com
+
+        # TODO: fix brittle in-place update of arrays after conversion
+        state_out_kamino = StateKamino.from_newton(self._model_kamino.size, self.model, state_out)
         self._solver_kamino.reset(
-            state_out=StateKamino.from_newton(self._model_kamino.size, self.model, state_out),
+            state_out=state_out_kamino,
             world_mask=world_mask,
             actuator_q=actuator_q,
             actuator_u=actuator_u,
@@ -1442,6 +1472,15 @@ class SolverKamino(SolverBase):
             joint_u=joint_u,
             base_q=base_q,
             base_u=base_u,
+        )
+
+        # Convert com-frame poses from Kamino reset to body-origin frame
+        convert_body_com_to_origin(
+            body_com=self._model_kamino.bodies.i_r_com_i,
+            body_q_com=state_out_kamino.q_i,
+            body_q=state_out_kamino.q_i,
+            world_mask=world_mask,
+            body_wid=self._model_kamino.bodies.wid,
         )
 
     @override
@@ -1482,8 +1521,7 @@ class SolverKamino(SolverBase):
 
         # Convert Newton body-frame poses to Kamino CoM-frame poses using
         # Kamino's corrected body-com offsets (can differ from Newton model data).
-        # TODO: state_in_kamino.convert_to_body_com_state(model=self.model)
-        compute_body_com_state(
+        convert_body_origin_to_com(
             body_com=self._model_kamino.bodies.i_r_com_i,
             body_q=state_in_kamino.q_i,
             body_q_com=state_in_kamino.q_i,
@@ -1501,14 +1539,12 @@ class SolverKamino(SolverBase):
 
         # Convert back from Kamino CoM-frame to Newton body-frame poses using
         # the same corrected body-com offsets as the forward conversion.
-        # state_in_kamino.convert_to_body_frame_state(model=self.model)
-        # state_out_kamino.convert_to_body_frame_state(model=self.model)
-        compute_body_frame_state(
+        convert_body_com_to_origin(
             body_com=self._model_kamino.bodies.i_r_com_i,
             body_q_com=state_in_kamino.q_i,
             body_q=state_in_kamino.q_i,
         )
-        compute_body_frame_state(
+        convert_body_com_to_origin(
             body_com=self._model_kamino.bodies.i_r_com_i,
             body_q_com=state_out_kamino.q_i,
             body_q=state_out_kamino.q_i,

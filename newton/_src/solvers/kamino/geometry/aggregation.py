@@ -538,20 +538,18 @@ class ContactAggregation:
         """Mark which geometries are considered 'static'.
 
         Args:
-            static_geom_ids: List of geometry IDs (per world) that should be marked as static
+            static_geom_ids: List of global geometry indices that should be marked as static.
+                These are direct indices into the geoms arrays, NOT per-world gid values.
         """
         # Get collision geometry data
         geoms = self._model.geoms
         num_geoms = geoms.num_geoms
 
-        # Create mask on host and copy geometry per-world IDs to host
+        # Create mask on host — mark geometries at the specified global indices
         mask_host = np.zeros(num_geoms, dtype=np.int32)
-        gid_host = geoms.gid.numpy()  # Per-world geometry IDs
-
-        # Mark geometries whose per-world ID is in static_geom_ids
-        for i in range(num_geoms):
-            if gid_host[i] in static_geom_ids:
-                mask_host[i] = 1
+        for idx in static_geom_ids:
+            if 0 <= idx < num_geoms:
+                mask_host[idx] = 1
 
         # Copy to device
         wp.copy(self._data.static_geom_mask, wp.array(mask_host, dtype=wp.int32, device=self._device))

@@ -133,6 +133,7 @@ class Example:
             device=device,
             headless=headless,
             body_pose_offset=(0.0, 0.0, 0.33, 0.0, 0.0, 0.0, 1.0),
+            use_cuda_graph=True,
         )
 
         # Override PD gains
@@ -234,7 +235,7 @@ class Example:
         obs = self.obs.compute(setpoints=self.actions)
 
         # Policy inference (in-place: no clone, no intermediates)
-        with torch.no_grad():
+        with torch.inference_mode():
             raw = self.policy(obs)
             torch.mul(raw, self.joint_pos_scale, out=self.actions)
             self.actions.add_(self.joint_pos_offset)

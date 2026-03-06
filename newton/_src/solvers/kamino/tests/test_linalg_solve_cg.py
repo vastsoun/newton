@@ -20,17 +20,17 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import float32
-from newton._src.solvers.kamino.linalg.conjugate import BatchedLinearOperator, CGSolver, CRSolver
-from newton._src.solvers.kamino.linalg.core import DenseLinearOperatorData, DenseSquareMultiLinearInfo
-from newton._src.solvers.kamino.linalg.linear import ConjugateGradientSolver
-from newton._src.solvers.kamino.linalg.sparse_matrix import (
+from newton._src.solvers.kamino._src.core.types import float32
+from newton._src.solvers.kamino._src.linalg.conjugate import BatchedLinearOperator, CGSolver, CRSolver
+from newton._src.solvers.kamino._src.linalg.core import DenseLinearOperatorData, DenseSquareMultiLinearInfo
+from newton._src.solvers.kamino._src.linalg.linear import ConjugateGradientSolver
+from newton._src.solvers.kamino._src.linalg.sparse_matrix import (
     BlockDType,
     BlockSparseMatrices,
     allocate_block_sparse_from_dense,
     dense_to_block_sparse_copy_values,
 )
-from newton._src.solvers.kamino.linalg.utils.rand import random_spd_matrix
+from newton._src.solvers.kamino._src.linalg.utils.rand import random_spd_matrix
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import get_vector_block
 from newton._src.solvers.kamino.tests.utils.print import print_error_stats

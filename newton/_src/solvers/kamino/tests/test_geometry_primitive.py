@@ -20,17 +20,17 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.data import DataKamino
-from newton._src.solvers.kamino.core.model import ModelKamino
-from newton._src.solvers.kamino.core.state import StateKamino
-from newton._src.solvers.kamino.core.types import float32, int32, vec6f
-from newton._src.solvers.kamino.geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_GAP, ContactsKamino
-from newton._src.solvers.kamino.geometry.primitive import (
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino._src.core.data import DataKamino
+from newton._src.solvers.kamino._src.core.model import ModelKamino
+from newton._src.solvers.kamino._src.core.state import StateKamino
+from newton._src.solvers.kamino._src.core.types import float32, int32, vec6f
+from newton._src.solvers.kamino._src.geometry.contacts import DEFAULT_GEOM_PAIR_CONTACT_GAP, ContactsKamino
+from newton._src.solvers.kamino._src.geometry.primitive import (
     BoundingVolumeType,
     CollisionPipelinePrimitive,
 )
-from newton._src.solvers.kamino.geometry.primitive.broadphase import (
+from newton._src.solvers.kamino._src.geometry.primitive.broadphase import (
     PRIMITIVE_BROADPHASE_SUPPORTED_SHAPES,
     BoundingVolumesData,
     CollisionCandidatesData,
@@ -40,13 +40,13 @@ from newton._src.solvers.kamino.geometry.primitive.broadphase import (
     update_geoms_aabb,
     update_geoms_bs,
 )
-from newton._src.solvers.kamino.geometry.primitive.narrowphase import (
+from newton._src.solvers.kamino._src.geometry.primitive.narrowphase import (
     PRIMITIVE_NARROWPHASE_SUPPORTED_SHAPE_PAIRS,
     primitive_narrowphase,
 )
-from newton._src.solvers.kamino.models.builders import basics, testing
+from newton._src.solvers.kamino._src.models.builders import basics, testing
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Constants

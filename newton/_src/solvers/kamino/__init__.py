@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """
-Kamino: A Newton physics solver for simulating arbitrary mechanical assembiles, (i.e.
+Kamino: A Newton physics solver for simulating arbitrary mechanical assemblies, (i.e.
 constrained rigid multi-body systems) with kinematic loops and under-/overactuation.
 """
 

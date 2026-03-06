@@ -20,16 +20,17 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.math import screw, vec3f
-from newton._src.solvers.kamino.core.model import ModelKamino
-from newton._src.solvers.kamino.dynamics.dual import DualProblem
-from newton._src.solvers.kamino.kinematics.constraints import unpack_constraint_solutions
-from newton._src.solvers.kamino.linalg import ConjugateResidualSolver, LLTBlockedSolver
-from newton._src.solvers.kamino.linalg.utils.matrix import SquareSymmetricMatrixProperties
-from newton._src.solvers.kamino.linalg.utils.range import in_range_via_gaussian_elimination
-from newton._src.solvers.kamino.models.builders import basics
-from newton._src.solvers.kamino.solvers.padmm import PADMMSolver, PADMMWarmStartMode
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino._src.core.math import screw, vec3f
+from newton._src.solvers.kamino._src.core.model import ModelKamino
+from newton._src.solvers.kamino._src.dynamics.dual import DualProblem
+from newton._src.solvers.kamino._src.kinematics.constraints import unpack_constraint_solutions
+from newton._src.solvers.kamino._src.linalg import ConjugateResidualSolver, LLTBlockedSolver
+from newton._src.solvers.kamino._src.linalg.utils.matrix import SquareSymmetricMatrixProperties
+from newton._src.solvers.kamino._src.linalg.utils.range import in_range_via_gaussian_elimination
+from newton._src.solvers.kamino._src.models.builders import basics
+from newton._src.solvers.kamino._src.solvers.padmm import PADMMSolver, PADMMWarmStartMode
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_delassus,
@@ -37,7 +38,6 @@ from newton._src.solvers.kamino.tests.utils.extract import (
     extract_problem_vector,
 )
 from newton._src.solvers.kamino.tests.utils.make import make_containers, update_containers
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Helper functions

@@ -22,21 +22,24 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.model import ModelKamino
-from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
-from newton._src.solvers.kamino.kinematics.constraints import make_unilateral_constraints_info
-from newton._src.solvers.kamino.kinematics.jacobians import (
+from newton._src.solvers.kamino._src.core.model import ModelKamino
+from newton._src.solvers.kamino._src.geometry.contacts import ContactsKamino
+from newton._src.solvers.kamino._src.kinematics.constraints import make_unilateral_constraints_info
+from newton._src.solvers.kamino._src.kinematics.jacobians import (
     ColMajorSparseConstraintJacobians,
     DenseSystemJacobians,
     SparseSystemJacobians,
 )
-from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
-from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar, make_basics_heterogeneous_builder
-from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino._src.kinematics.limits import LimitsKamino
+from newton._src.solvers.kamino._src.models.builders.basics import (
+    build_boxes_fourbar,
+    make_basics_heterogeneous_builder,
+)
+from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import extract_cts_jacobians, extract_dofs_jacobians
 from newton._src.solvers.kamino.tests.utils.make import make_test_problem_fourbar, make_test_problem_heterogeneous
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Module configs

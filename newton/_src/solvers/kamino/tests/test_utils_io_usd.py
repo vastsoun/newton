@@ -25,15 +25,15 @@ import warp as wp
 import newton
 from newton import Model, ModelBuilder
 from newton._src.solvers.kamino import SolverKamino
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.joints import JOINT_QMAX, JOINT_QMIN, JointActuationType, JointDoFType
-from newton._src.solvers.kamino.core.shapes import ShapeType
-from newton._src.solvers.kamino.models import get_basics_usd_assets_path, get_testing_usd_assets_path
-from newton._src.solvers.kamino.models.builders import basics
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino._src.core.joints import JOINT_QMAX, JOINT_QMIN, JointActuationType, JointDoFType
+from newton._src.solvers.kamino._src.core.shapes import ShapeType
+from newton._src.solvers.kamino._src.models import get_basics_usd_assets_path, get_testing_usd_assets_path
+from newton._src.solvers.kamino._src.models.builders import basics
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.checks import assert_builders_equal
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
 from newton.tests.unittest_utils import USD_AVAILABLE
 
 ###

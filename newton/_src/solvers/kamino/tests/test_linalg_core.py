@@ -20,13 +20,13 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.linalg.core import (
+from newton._src.solvers.kamino._src.linalg.core import (
     DenseRectangularMultiLinearInfo,
     DenseSquareMultiLinearInfo,
     make_dtype_tolerance,
 )
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Tests

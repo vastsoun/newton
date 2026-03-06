@@ -17,9 +17,9 @@
 
 import unittest
 
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.logger import Logger
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.logger import Logger
 
 ###
 # Tests

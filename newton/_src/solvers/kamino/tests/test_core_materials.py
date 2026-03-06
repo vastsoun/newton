@@ -18,7 +18,7 @@
 import unittest
 
 # Module to be tested
-from newton._src.solvers.kamino.core.materials import (
+from newton._src.solvers.kamino._src.core.materials import (
     DEFAULT_FRICTION,
     DEFAULT_RESTITUTION,
     MaterialDescriptor,

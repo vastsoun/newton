@@ -27,19 +27,19 @@ import warp as wp
 import newton
 import newton._src.solvers.kamino.tests.utils.checks as test_util_checks
 from newton._src.sim import Control, Model, ModelBuilder, State
-from newton._src.solvers.kamino.core.bodies import convert_body_com_to_origin, convert_body_origin_to_com
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.control import ControlKamino
-from newton._src.solvers.kamino.core.model import MaterialDescriptor, ModelKamino
-from newton._src.solvers.kamino.core.state import StateKamino
-from newton._src.solvers.kamino.models import basics as basics_kamino
-from newton._src.solvers.kamino.models import basics_newton, get_basics_usd_assets_path
-from newton._src.solvers.kamino.models.builders import utils as model_utils
+from newton._src.solvers.kamino._src.core.bodies import convert_body_com_to_origin, convert_body_origin_to_com
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino._src.core.control import ControlKamino
+from newton._src.solvers.kamino._src.core.model import MaterialDescriptor, ModelKamino
+from newton._src.solvers.kamino._src.core.state import StateKamino
+from newton._src.solvers.kamino._src.models import basics as basics_kamino
+from newton._src.solvers.kamino._src.models import basics_newton, get_basics_usd_assets_path
+from newton._src.solvers.kamino._src.models.builders import utils as model_utils
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.solver_kamino import SolverKamino
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils import print as print_utils
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
 ###
 # Tests
@@ -1089,8 +1089,8 @@ class TestModelConversions(unittest.TestCase):
         self.assertEqual(state_2.q_i.size, model_1.size.sum_of_num_bodies)
         # NOTE: Check ptr due to conversion from wp.spatial_vectorf
         self.assertIs(state_2.u_i.ptr, state_0.body_qd.ptr)
-        self.assertIs(state_2.w_i.ptr, state_0.body_f_total.ptr)
         self.assertIs(state_2.w_i_e.ptr, state_0.body_f.ptr)
+        self.assertIs(state_2.w_i.ptr, state_0.body_f_total.ptr)
         # NOTE: Check that the same arrays because these should be pure references
         self.assertIs(state_2.q_i, state_0.body_q)
         self.assertIs(state_2.q_j, state_0.joint_q)
@@ -1104,8 +1104,8 @@ class TestModelConversions(unittest.TestCase):
         self.assertEqual(state_3.body_q.size, model_0.body_count)
         # NOTE: Check ptr due to conversion from vec6f
         self.assertIs(state_3.body_qd.ptr, state_2.u_i.ptr)
-        self.assertIs(state_3.body_f_total.ptr, state_2.w_i.ptr)
         self.assertIs(state_3.body_f.ptr, state_2.w_i_e.ptr)
+        self.assertIs(state_3.body_f_total.ptr, state_2.w_i.ptr)
         # NOTE: Check that the same arrays because these should be pure references
         self.assertIs(state_3.body_q, state_2.q_i)
         self.assertIs(state_3.joint_q, state_2.q_j)

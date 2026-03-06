@@ -40,7 +40,8 @@ import torch  # noqa: TID253
 import warp as wp
 
 import newton
-from newton._src.solvers.kamino.core.joints import JointActuationType
+from newton._src.solvers.kamino._src.core.joints import JointActuationType
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.examples.rl.joystick import JoystickConfig, JoystickController
 from newton._src.solvers.kamino.examples.rl.observations import DrlegsBaseObservation
@@ -56,7 +57,6 @@ from newton._src.solvers.kamino.examples.rl.utils import (
     yaw_apply_2d,
     yaw_to_quat,
 )
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Module configs

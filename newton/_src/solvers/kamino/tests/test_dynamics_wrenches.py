@@ -22,17 +22,18 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.data import DataKamino
-from newton._src.solvers.kamino.core.model import ModelKamino
-from newton._src.solvers.kamino.dynamics.wrenches import (
+from newton._src.solvers.kamino._src.core.data import DataKamino
+from newton._src.solvers.kamino._src.core.model import ModelKamino
+from newton._src.solvers.kamino._src.dynamics.wrenches import (
     compute_constraint_body_wrenches_dense,
     compute_constraint_body_wrenches_sparse,
     compute_joint_dof_body_wrenches_dense,
     compute_joint_dof_body_wrenches_sparse,
 )
-from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
-from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
+from newton._src.solvers.kamino._src.geometry.contacts import ContactsKamino
+from newton._src.solvers.kamino._src.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
+from newton._src.solvers.kamino._src.kinematics.limits import LimitsKamino
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import (
     extract_active_constraint_vectors,
@@ -45,7 +46,6 @@ from newton._src.solvers.kamino.tests.utils.make import (
     make_test_problem_fourbar,
     make_test_problem_heterogeneous,
 )
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Constants

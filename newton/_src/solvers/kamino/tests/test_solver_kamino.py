@@ -21,24 +21,24 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.control import ControlKamino
-from newton._src.solvers.kamino.core.data import DataKamino
-from newton._src.solvers.kamino.core.joints import JointActuationType
-from newton._src.solvers.kamino.core.model import ModelKamino
-from newton._src.solvers.kamino.core.state import StateKamino
-from newton._src.solvers.kamino.core.types import float32, int32, transformf, vec6f
-from newton._src.solvers.kamino.dynamics import DualProblem
+from newton._src.solvers.kamino._src.core.control import ControlKamino
+from newton._src.solvers.kamino._src.core.data import DataKamino
+from newton._src.solvers.kamino._src.core.joints import JointActuationType
+from newton._src.solvers.kamino._src.core.model import ModelKamino
+from newton._src.solvers.kamino._src.core.state import StateKamino
+from newton._src.solvers.kamino._src.core.types import float32, int32, transformf, vec6f
+from newton._src.solvers.kamino._src.dynamics import DualProblem
+from newton._src.solvers.kamino._src.geometry.contacts import ContactsKamino
+from newton._src.solvers.kamino._src.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
+from newton._src.solvers.kamino._src.kinematics.limits import LimitsKamino
+from newton._src.solvers.kamino._src.linalg import ConjugateGradientSolver, LinearSolverType, LLTBlockedSolver
+from newton._src.solvers.kamino._src.models.builders.basics import build_boxes_fourbar
+from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino._src.solver_kamino_impl import SolverKaminoImpl
+from newton._src.solvers.kamino._src.solvers import PADMMSolver
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.examples import print_progress_bar
-from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
-from newton._src.solvers.kamino.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
-from newton._src.solvers.kamino.kinematics.limits import LimitsKamino
-from newton._src.solvers.kamino.linalg import ConjugateGradientSolver, LinearSolverType, LLTBlockedSolver
-from newton._src.solvers.kamino.models.builders.basics import build_boxes_fourbar
-from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
-from newton._src.solvers.kamino.solver_kamino import SolverKamino, SolverKaminoImpl
-from newton._src.solvers.kamino.solvers import PADMMSolver
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Kernels
@@ -109,8 +109,8 @@ rtol = 1e-7
 atol = 1e-6
 
 
-def assert_solver_config(testcase: unittest.TestCase, config: SolverKamino.Config):
-    testcase.assertIsInstance(config, SolverKamino.Config)
+def assert_solver_config(testcase: unittest.TestCase, config: SolverKaminoImpl.Config):
+    testcase.assertIsInstance(config, SolverKaminoImpl.Config)
     testcase.assertIsInstance(config.problem, DualProblem.Config)
     testcase.assertIsInstance(config.padmm, PADMMSolver.Config)
     testcase.assertIsInstance(config.warmstart_mode, str)
@@ -120,7 +120,7 @@ def assert_solver_config(testcase: unittest.TestCase, config: SolverKamino.Confi
 
 def assert_solver_components(testcase: unittest.TestCase, solver: SolverKaminoImpl):
     testcase.assertIsInstance(solver, SolverKaminoImpl)
-    testcase.assertIsInstance(solver.config, SolverKamino.Config)
+    testcase.assertIsInstance(solver.config, SolverKaminoImpl.Config)
     testcase.assertIsInstance(solver._model, ModelKamino)
     testcase.assertIsInstance(solver._data, DataKamino)
     testcase.assertIsInstance(solver._limits, LimitsKamino)
@@ -257,12 +257,12 @@ class TestSolverKaminoConfig(unittest.TestCase):
             msg.reset_log_level()
 
     def test_00_make_default(self):
-        config = SolverKamino.Config()
+        config = SolverKaminoImpl.Config()
         assert_solver_config(self, config)
         self.assertEqual(config.linear_solver_type, LLTBlockedSolver)
 
     def test_01_make_explicit(self):
-        config = SolverKamino.Config(
+        config = SolverKaminoImpl.Config(
             problem=DualProblem.Config(),
             padmm=PADMMSolver.Config(),
             warmstart_mode="containers",
@@ -672,7 +672,7 @@ class TestSolverKaminoImpl(unittest.TestCase):
         """
         builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
-        config = SolverKamino.Config(use_fk_solver=True)
+        config = SolverKaminoImpl.Config(use_fk_solver=True)
         solver = SolverKaminoImpl(model=model, config=config)
 
         # Set a pre-step control callback to apply external forces
@@ -876,7 +876,7 @@ class TestSolverKaminoImpl(unittest.TestCase):
         """
         builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
-        config = SolverKamino.Config(use_fk_solver=True)
+        config = SolverKaminoImpl.Config(use_fk_solver=True)
         solver = SolverKaminoImpl(model=model, config=config)
 
         # Set a pre-step control callback to apply external forces

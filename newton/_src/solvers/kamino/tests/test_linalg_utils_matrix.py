@@ -19,9 +19,9 @@ import unittest
 
 import numpy as np
 
-import newton._src.solvers.kamino.linalg as linalg
+import newton._src.solvers.kamino._src.linalg as linalg
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Tests

@@ -19,9 +19,9 @@ import unittest
 
 import numpy as np
 
-import newton._src.solvers.kamino.utils.profiles as profiles
+import newton._src.solvers.kamino._src.utils.profiles as profiles
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Tests

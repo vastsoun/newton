@@ -21,15 +21,15 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.bodies import RigidBodyDescriptor
-from newton._src.solvers.kamino.core.geometry import GeometryDescriptor
-from newton._src.solvers.kamino.core.gravity import (
+from newton._src.solvers.kamino._src.core.bodies import RigidBodyDescriptor
+from newton._src.solvers.kamino._src.core.geometry import GeometryDescriptor
+from newton._src.solvers.kamino._src.core.gravity import (
     GRAVITY_ACCEL_DEFAULT,
     GRAVITY_DIREC_DEFAULT,
     GRAVITY_NAME_DEFAULT,
     GravityDescriptor,
 )
-from newton._src.solvers.kamino.core.joints import (
+from newton._src.solvers.kamino._src.core.joints import (
     JOINT_DQMAX,
     JOINT_QMAX,
     JOINT_QMIN,
@@ -38,16 +38,16 @@ from newton._src.solvers.kamino.core.joints import (
     JointDescriptor,
     JointDoFType,
 )
-from newton._src.solvers.kamino.core.materials import (
+from newton._src.solvers.kamino._src.core.materials import (
     DEFAULT_DENSITY,
     DEFAULT_FRICTION,
     DEFAULT_RESTITUTION,
     MaterialDescriptor,
 )
-from newton._src.solvers.kamino.core.shapes import ShapeType, SphereShape
-from newton._src.solvers.kamino.core.world import WorldDescriptor
+from newton._src.solvers.kamino._src.core.shapes import ShapeType, SphereShape
+from newton._src.solvers.kamino._src.core.world import WorldDescriptor
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Tests

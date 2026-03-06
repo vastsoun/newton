@@ -148,7 +148,8 @@ uniform int up_axis;
 uniform mat4 light_space_matrix;
 
 uniform float shadow_radius;
-uniform float light_intensity;
+uniform float diffuse_scale;
+uniform float specular_scale;
 uniform bool spotlight_enabled;
 uniform float shadow_extents;
 
@@ -345,11 +346,11 @@ void main()
     // energy-preserving normalization for Blinn-Phong
     float normFactor = (shininess + 2.0) / (8.0 * PI);
 
-    vec3 diffuse  = albedo * light_color * NdotL;
+    vec3 diffuse  = albedo * light_color * NdotL * 3.0 * diffuse_scale;
 
     // Specular color: dielectrics ~0.04, metals use albedo
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
-    vec3 spec = F0 * light_color * normFactor * pow(NdotH, shininess) * NdotL;
+    vec3 spec = F0 * light_color * normFactor * pow(NdotH, shininess) * NdotL * specular_scale;
 
     // simple hemispherical ambient term
     vec3 up = vec3(0.0, 1.0, 0.0);
@@ -369,7 +370,7 @@ void main()
 
     // Metals should contribute little diffuse light.
     diffuse *= 1.0 - metallic;
-    vec3 color = ambient + (1.0 - shadow) * spotlightAttenuation * light_intensity * (diffuse + spec);
+    vec3 color = ambient + (1.0 - shadow) * spotlightAttenuation * (diffuse + spec);
 
     // Fresnel darkening: reduce brightness at glancing angles for metals
     color *= mix(1.0, pow(NdotV, 2.0), metallic);
@@ -548,7 +549,8 @@ class ShaderShape(ShaderGL):
             self.loc_ground_color = self._get_uniform_location("ground_color")
             self.loc_sky_color = self._get_uniform_location("sky_color")
             self.loc_shadow_radius = self._get_uniform_location("shadow_radius")
-            self.loc_light_intensity = self._get_uniform_location("light_intensity")
+            self.loc_diffuse_scale = self._get_uniform_location("diffuse_scale")
+            self.loc_specular_scale = self._get_uniform_location("specular_scale")
             self.loc_spotlight_enabled = self._get_uniform_location("spotlight_enabled")
             self.loc_shadow_extents = self._get_uniform_location("shadow_extents")
 
@@ -569,7 +571,8 @@ class ShaderShape(ShaderGL):
         env_texture: int | None = None,
         env_intensity: float = 1.0,
         shadow_radius: float = 3.0,
-        light_intensity: float = 1.5,
+        diffuse_scale: float = 1.0,
+        specular_scale: float = 1.0,
         spotlight_enabled: bool = True,
         shadow_extents: float = 10.0,
     ):
@@ -586,7 +589,8 @@ class ShaderShape(ShaderGL):
             self._gl.glUniform3f(self.loc_ground_color, *ground_color)
             self._gl.glUniform3f(self.loc_sky_color, *sky_color)
             self._gl.glUniform1f(self.loc_shadow_radius, shadow_radius)
-            self._gl.glUniform1f(self.loc_light_intensity, light_intensity)
+            self._gl.glUniform1f(self.loc_diffuse_scale, diffuse_scale)
+            self._gl.glUniform1f(self.loc_specular_scale, specular_scale)
             self._gl.glUniform1i(self.loc_spotlight_enabled, int(spotlight_enabled))
             self._gl.glUniform1f(self.loc_shadow_extents, shadow_extents)
 

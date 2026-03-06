@@ -29,16 +29,16 @@ import warp as wp
 
 # Thirdparty
 import newton
-from newton._src.solvers.kamino.core.bodies import convert_body_com_to_origin
-from newton._src.solvers.kamino.core.control import ControlKamino
-from newton._src.solvers.kamino.core.model import ModelKamino
-from newton._src.solvers.kamino.core.state import StateKamino
-from newton._src.solvers.kamino.core.types import transformf, vec6f
-from newton._src.solvers.kamino.geometry import CollisionDetector
-from newton._src.solvers.kamino.geometry.aggregation import ContactAggregation
-from newton._src.solvers.kamino.solver_kamino import SolverKaminoImpl
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.sim import Simulator
+from newton._src.solvers.kamino._src.core.bodies import convert_body_com_to_origin
+from newton._src.solvers.kamino._src.core.control import ControlKamino
+from newton._src.solvers.kamino._src.core.model import ModelKamino
+from newton._src.solvers.kamino._src.core.state import StateKamino
+from newton._src.solvers.kamino._src.core.types import transformf, vec6f
+from newton._src.solvers.kamino._src.geometry import CollisionDetector
+from newton._src.solvers.kamino._src.geometry.aggregation import ContactAggregation
+from newton._src.solvers.kamino._src.solver_kamino_impl import SolverKaminoImpl
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.sim import Simulator
 from newton._src.viewer import ViewerGL
 
 

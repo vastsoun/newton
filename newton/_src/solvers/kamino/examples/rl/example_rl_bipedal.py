@@ -34,13 +34,13 @@ import numpy as np
 import torch  # noqa: TID253
 import warp as wp
 
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.examples.rl.joystick import JoystickController
 from newton._src.solvers.kamino.examples.rl.observations import BipedalObservation
 from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
 from newton._src.solvers.kamino.examples.rl.simulation_runner import SimulationRunner
 from newton._src.solvers.kamino.examples.rl.utils import _load_policy_checkpoint, quat_to_projected_yaw
-from newton._src.solvers.kamino.utils import logger as msg
 
 # Asset root relative to this file
 _ASSETS_DIR = os.path.normpath(

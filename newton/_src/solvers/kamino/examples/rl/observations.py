@@ -22,9 +22,9 @@ from abc import ABC, abstractmethod
 import torch  # noqa: TID253
 import warp as wp
 
+from newton._src.solvers.kamino._src.utils.sim import Simulator
 from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim
 from newton._src.solvers.kamino.examples.rl.utils import StackedIndices, periodic_encoding
-from newton._src.solvers.kamino.utils.sim import Simulator
 
 # ---------------------------------------------------------------------------
 # Warp helpers for BipedalObservation

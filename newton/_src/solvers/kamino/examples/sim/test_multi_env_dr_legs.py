@@ -16,13 +16,13 @@ import time
 import warp as wp
 
 import newton
-from newton._src.solvers.kamino.models.builders.utils import (
+from newton._src.solvers.kamino._src.models.builders.utils import (
     build_usd,
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.sim import Simulator
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.sim import Simulator
 
 wp.set_module_options({"enable_backward": False})
 

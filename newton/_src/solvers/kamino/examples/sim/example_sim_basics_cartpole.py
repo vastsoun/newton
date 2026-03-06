@@ -23,18 +23,18 @@ import warp as wp
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.data import DataKamino
-from newton._src.solvers.kamino.core.math import I_3, R_x, screw
-from newton._src.solvers.kamino.core.model import ModelKamino
-from newton._src.solvers.kamino.core.types import float32, int32, mat33f, transformf, uint32, vec3f, vec6f
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino._src.core.data import DataKamino
+from newton._src.solvers.kamino._src.core.math import I_3, R_x, screw
+from newton._src.solvers.kamino._src.core.model import ModelKamino
+from newton._src.solvers.kamino._src.core.types import float32, int32, mat33f, transformf, uint32, vec3f, vec6f
+from newton._src.solvers.kamino._src.models import get_basics_usd_assets_path
+from newton._src.solvers.kamino._src.models.builders.basics import build_cartpole
+from newton._src.solvers.kamino._src.models.builders.utils import add_ground_box, make_homogeneous_builder
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
+from newton._src.solvers.kamino._src.utils.sim import SimulationLogger, Simulator, ViewerKamino
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
-from newton._src.solvers.kamino.models import get_basics_usd_assets_path
-from newton._src.solvers.kamino.models.builders.basics import build_cartpole
-from newton._src.solvers.kamino.models.builders.utils import add_ground_box, make_homogeneous_builder
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, ViewerKamino
 
 ###
 # Module configs

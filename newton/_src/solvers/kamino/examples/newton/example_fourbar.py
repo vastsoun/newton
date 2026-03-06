@@ -29,9 +29,9 @@ import warp as wp
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino.geometry import CollisionDetector
-from newton._src.solvers.kamino.models import get_basics_usd_assets_path
-from newton._src.solvers.kamino.utils import logger as msg
+from newton._src.solvers.kamino._src.geometry import CollisionDetector
+from newton._src.solvers.kamino._src.models import get_basics_usd_assets_path
+from newton._src.solvers.kamino._src.utils import logger as msg
 
 
 class Example:

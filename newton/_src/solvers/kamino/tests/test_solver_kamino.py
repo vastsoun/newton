@@ -672,7 +672,8 @@ class TestSolverKaminoImpl(unittest.TestCase):
         """
         builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
-        solver = SolverKaminoImpl(model=model)
+        config = SolverKamino.Config(use_fk_solver=True)
+        solver = SolverKaminoImpl(model=model, config=config)
 
         # Set a pre-step control callback to apply external forces
         # that will sufficiently perturb the system state
@@ -875,7 +876,8 @@ class TestSolverKaminoImpl(unittest.TestCase):
         """
         builder = make_homogeneous_builder(num_worlds=3, build_fn=build_boxes_fourbar, limits=False)
         model = builder.finalize(device=self.default_device)
-        solver = SolverKaminoImpl(model=model)
+        config = SolverKamino.Config(use_fk_solver=True)
+        solver = SolverKaminoImpl(model=model, config=config)
 
         # Set a pre-step control callback to apply external forces
         # that will sufficiently perturb the system state

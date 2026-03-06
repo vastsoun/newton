@@ -31,11 +31,11 @@ from ...core.types import override
 from ...sim import (
     Contacts,
     Control,
+    JointType,
     Model,
     ModelBuilder,
     State,
 )
-from ...sim.joints import JointType
 from ..flags import SolverNotifyFlags
 from ..solver import SolverBase
 

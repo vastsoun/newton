@@ -37,7 +37,6 @@ from newton._src.solvers.kamino.core.types import transformf, vec6f
 from newton._src.solvers.kamino.geometry import CollisionDetector
 from newton._src.solvers.kamino.geometry.aggregation import ContactAggregation
 from newton._src.solvers.kamino.solver_kamino import SolverKaminoImpl
-from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.sim import Simulator
 from newton._src.viewer import ViewerGL
@@ -803,7 +802,7 @@ class RigidBodySim:
         settings.solver.use_fk_solver = True
         settings.solver.use_solver_acceleration = True
         settings.solver.warmstart_mode = "containers"
-        settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
+        settings.solver.contact_warmstart_method = "geom_pair_net_force"
         settings.solver.collect_solver_info = False
         settings.solver.compute_metrics = False
         settings.solver.avoid_graph_conditionals = True

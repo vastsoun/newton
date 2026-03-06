@@ -233,12 +233,13 @@ class Example:
         for w in range(self.builder.num_worlds):
             self.builder.gravity[w].enabled = gravity
 
-        # Print-out of actuated joints used for verifying the imported USD was parsed as expected
+        # Set joint armatures, and verify that correct gains were loaded from the USD file
         for joint in self.builder.joints:
             if joint.is_dynamic or joint.is_implicit_pd:
                 joint.a_j = [0.011]  # Set joint armature according to Dynamixel XH540-V150 specs
                 joint.b_j = [0.044]  # Set joint damping according to Dynamixel XH540-V150 specs
-                msg.info(f"Joint '{joint.name}':\n{joint}\n")
+                assert abs(joint.k_p_j[0] - 50.0) < 1e-4
+                assert abs(joint.k_d_j[0] - 1.0) < 1e-4
 
         # Set solver config
         config = Simulator.Config()

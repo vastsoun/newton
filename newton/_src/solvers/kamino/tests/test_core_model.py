@@ -171,8 +171,7 @@ class TestModelConversions(unittest.TestCase):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
-        # self.verbose = test_context.verbose  # Set to True to enable verbose output
-        self.verbose = True  # Set to True to enable verbose output
+        self.verbose = test_context.verbose  # Set to True to enable verbose output
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:
@@ -335,7 +334,9 @@ class TestModelConversions(unittest.TestCase):
         # - mesh geometry pointers since they have been loaded separately
         # Inversion of the inertia matrix amplifies small floating-point differences,
         # so inv_i_I_i needs a somewhat higher tolerance.
-        test_util_checks.assert_model_equal(self, model_2, model_1, excluded=["ptr"], rtol={"inv_i_I_i": 1e-5})
+        rtol = {"inv_i_I_i": 1e-5}
+        atol = {"inv_i_I_i": 1e-6}
+        test_util_checks.assert_model_equal(self, model_2, model_1, excluded=["ptr"], rtol=rtol, atol=atol)
 
     def test_03_model_conversions_dr_legs_from_usd(self):
         """
@@ -388,7 +389,9 @@ class TestModelConversions(unittest.TestCase):
         #   whether they are actually collidable or not, which leads to differences in the
         #   number of excluded pairs and their contents
         excluded = ["ptr", "group", "gap", "num_excluded_pairs", "excluded_pairs"]
-        test_util_checks.assert_model_equal(self, model_2, model_1, excluded=excluded)
+        rtol = {"inv_i_I_i": 1e-5}
+        atol = {"inv_i_I_i": 1e-6}
+        test_util_checks.assert_model_equal(self, model_2, model_1, excluded=excluded, rtol=rtol, atol=atol)
 
     def test_04_model_conversions_anymal_d_from_usd(self):
         """

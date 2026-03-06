@@ -24,10 +24,12 @@
 
 from __future__ import annotations
 
-# Thirdparty
-import newton
 import torch  # noqa: TID253
 import warp as wp
+from warp.context import Devicelike
+
+# Thirdparty
+import newton
 from newton._src.solvers.kamino.core.control import ControlKamino
 from newton._src.solvers.kamino.core.model import ModelKamino
 from newton._src.solvers.kamino.core.state import StateKamino, compute_body_frame_state
@@ -39,7 +41,6 @@ from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.sim.simulator import SimulatorConfig
 from newton._src.viewer import ViewerGL
-from warp.context import Devicelike
 
 
 class SimulatorFromNewton:
@@ -199,6 +200,10 @@ class RigidBodySim:
         self._use_cuda_graph = use_cuda_graph
         self._sim_dt = sim_dt
 
+        # Resolve settings (subclass override via default_settings)
+        if settings is None:
+            settings = self.default_settings(sim_dt)
+
         # ----- Build Newton model (needed for ViewerGL) -----
         msg.notif("Constructing builder from imported USD ...")
         robot_builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
@@ -216,25 +221,16 @@ class RigidBodySim:
             hide_collision_shapes=True,
         )
 
-        # Create multi-world Newton model
+        # Create the multi-world model by duplicating the single-robot
+        # builder for the specified number of worlds
         builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
         for _ in range(num_worlds):
             builder.add_world(robot_builder)
 
-        # Resolve settings early so we know which collision pipeline is used.
-        if settings is None:
-            settings = self.default_settings(sim_dt)
+        # Add a global ground plane applied to all worlds
+        builder.add_ground_plane()
 
-        if add_ground:
-            if settings.collision_detector.pipeline == "primitive":
-                # Primitive broadphase does not support PLANE shapes —
-                # use a large static box as ground instead.
-                builder.add_shape_box(
-                    body=-1, xform=wp.transform((0.0, 0.0, -0.5), wp.quat_identity()), hx=50.0, hy=50.0, hz=0.5
-                )
-            else:
-                builder.add_ground_plane()
-
+        # Create the model from the builder
         self._newton_model = builder.finalize(skip_validation_joints=True)
 
         # TODO remove after fixing bug
@@ -257,6 +253,8 @@ class RigidBodySim:
             device=self._device,
         )
         self.model: ModelKamino = self.sim.model
+        msg.info(f"Model size: {self.sim.model.size}")
+        msg.info(f"Contacts capacity: {self.sim.contacts.model_max_contacts_host}")
 
         # Apply body pose offset to initial body poses (affects all resets).
         # Kamino q_i stores COM positions, so we offset the COM directly.
@@ -334,26 +332,23 @@ class RigidBodySim:
         self._update_base_q = False
         self._update_base_u = False
 
-        # Contact aggregation — find ground collision geom by label.
-        # static_geom_ids are per-world geom IDs (geoms.gid), not global indices.
-        # Filter to collision geoms only (group > 0).
+        # Contact aggregation — find ground collision geoms by label.
+        # We identify ground geoms by their GLOBAL indices (not per-world gid)
+        # because gid can collide with robot geom IDs (e.g., gid=0 for both
+        # the pelvis mesh and the ground plane).
         geom_labels = self.sim.model.geoms.label
-        geom_gid = wp.to_torch(self.sim.model.geoms.gid).tolist()
         geom_group = wp.to_torch(self.sim.model.geoms.group).tolist()
-        ground_geom_ids = list(
-            {
-                int(geom_gid[i])
-                for i, lbl in enumerate(geom_labels)
-                if "ground" in lbl.lower() and int(geom_group[i]) > 0
-            }
-        )
-        if not ground_geom_ids:
+        ground_geom_global_indices = [
+            i for i, lbl in enumerate(geom_labels) if "ground" in lbl.lower() and int(geom_group[i]) > 0
+        ]
+        if not ground_geom_global_indices:
             msg.warning("No ground collision geometry found by label, falling back to geom index 0")
-            ground_geom_ids = [0]
+            ground_geom_global_indices = [0]
+        msg.info(f"Ground geom global indices: {ground_geom_global_indices}")
         self._contact_aggregation = ContactAggregation(
             model=self.sim.model,
             contacts=self.sim.contacts,
-            static_geom_ids=ground_geom_ids,
+            static_geom_ids=ground_geom_global_indices,
             device=self._device,
         )
         self._contact_flags = wp.to_torch(self._contact_aggregation.body_contact_flag).reshape(nw, nb)

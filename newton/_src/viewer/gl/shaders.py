@@ -147,6 +147,11 @@ uniform int up_axis;
 
 uniform mat4 light_space_matrix;
 
+uniform float shadow_radius;
+uniform float light_intensity;
+uniform bool spotlight_enabled;
+uniform float shadow_extents;
+
 const float PI = 3.14159265359;
 
 float rand(vec2 co){
@@ -204,7 +209,7 @@ float ShadowCalculation()
     vec3 lightDir = normalize(sun_direction);
 
     // bias in normal dir - adjust for backfacing triangles
-    float worldTexel = 20.0 / float(4096); // world extent / shadow map resolution
+    float worldTexel = (shadow_extents * 2.0) / float(4096); // world extent / shadow map resolution
     float normalBias = 2.0 * worldTexel;   // tune ~1-3
 
     // For backfacing triangles, we might need different bias handling
@@ -218,9 +223,22 @@ float ShadowCalculation()
         return 0.0;
     float frag_depth = projCoords.z;
 
+    // Fade shadow to zero near edges of the shadow map to avoid hard rectangle
+    float fade = 1.0;
+    float margin = 0.15;
+    fade *= smoothstep(0.0, margin, projCoords.x);
+    fade *= smoothstep(0.0, margin, 1.0 - projCoords.x);
+    fade *= smoothstep(0.0, margin, projCoords.y);
+    fade *= smoothstep(0.0, margin, 1.0 - projCoords.y);
+
+    // Slope-scaled depth bias: more bias when surface is nearly parallel to light
+    // (where self-shadowing from float precision is worst), minimal when facing light.
+    float NdotL_bias = max(dot(normal, lightDir), 0.0);
+    float depthBias = mix(0.0003, 0.00002, NdotL_bias);
+    float biased_depth = frag_depth - depthBias;
 
     float shadow = 0.0;
-    float radius = 1.25;
+    float radius = shadow_radius;
     vec2 texelSize = 1.0 / textureSize(shadow_map, 0);
     float angle = rand(gl_FragCoord.xy) * 2.0 * PI;
     float s = sin(angle);
@@ -230,15 +248,18 @@ float ShadowCalculation()
     {
         vec2 offset = rotationMatrix * poissonDisk[i];
         float pcf_depth = texture(shadow_map, projCoords.xy + offset * radius * texelSize).r;
-        if(pcf_depth < frag_depth)
+        if(pcf_depth < biased_depth)
             shadow += 1.0;
     }
     shadow /= 16.0;
-    return shadow;
+    return shadow * fade;
 }
 
 float SpotlightAttenuation()
 {
+    if (!spotlight_enabled)
+        return 1.0;
+
     // Calculate spotlight position as 20 units from the camera in sun direction
     vec3 spotlight_pos = view_pos + sun_direction * 20.0;
 
@@ -324,7 +345,7 @@ void main()
     // energy-preserving normalization for Blinn-Phong
     float normFactor = (shininess + 2.0) / (8.0 * PI);
 
-    vec3 diffuse  = albedo * light_color * NdotL * 3.0; // total light intensity multiplier
+    vec3 diffuse  = albedo * light_color * NdotL * light_intensity;
 
     // Specular color: dielectrics ~0.04, metals use albedo
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
@@ -526,6 +547,10 @@ class ShaderShape(ShaderGL):
             self.loc_light_color = self._get_uniform_location("light_color")
             self.loc_ground_color = self._get_uniform_location("ground_color")
             self.loc_sky_color = self._get_uniform_location("sky_color")
+            self.loc_shadow_radius = self._get_uniform_location("shadow_radius")
+            self.loc_light_intensity = self._get_uniform_location("light_intensity")
+            self.loc_spotlight_enabled = self._get_uniform_location("spotlight_enabled")
+            self.loc_shadow_extents = self._get_uniform_location("shadow_extents")
 
     def update(
         self,
@@ -543,6 +568,10 @@ class ShaderShape(ShaderGL):
         light_space_matrix: np.ndarray | None = None,
         env_texture: int | None = None,
         env_intensity: float = 1.0,
+        shadow_radius: float = 3.0,
+        light_intensity: float = 1.5,
+        spotlight_enabled: bool = True,
+        shadow_extents: float = 10.0,
     ):
         """Update all shader uniforms."""
         with self:
@@ -556,6 +585,10 @@ class ShaderShape(ShaderGL):
             self._gl.glUniform3f(self.loc_light_color, *light_color)
             self._gl.glUniform3f(self.loc_ground_color, *ground_color)
             self._gl.glUniform3f(self.loc_sky_color, *sky_color)
+            self._gl.glUniform1f(self.loc_shadow_radius, shadow_radius)
+            self._gl.glUniform1f(self.loc_light_intensity, light_intensity)
+            self._gl.glUniform1i(self.loc_spotlight_enabled, int(spotlight_enabled))
+            self._gl.glUniform1f(self.loc_shadow_extents, shadow_extents)
 
             # Fog and rendering options
             self._gl.glUniform3f(self.loc_fog_color, *fog_color)

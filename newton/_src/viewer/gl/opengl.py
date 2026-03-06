@@ -898,6 +898,12 @@ class RendererGL:
         self.sky_upper = self.background_color
         self.sky_lower = (40.0 / 255.0, 44.0 / 255.0, 55.0 / 255.0)
 
+        # Lighting settings
+        self.shadow_radius = 3.0
+        self.light_intensity = 1.5
+        self.spotlight_enabled = True
+        self.shadow_extents = 10.0
+
         # On Wayland, PyOpenGL defaults to EGL which cannot see the GLX context
         # that pyglet creates via XWayland. Force GLX so both libraries agree.
         # Must be set before PyOpenGL is first imported (platform is selected
@@ -1624,7 +1630,7 @@ class RendererGL:
 
         self._make_current()
 
-        extents = 10.0
+        extents = self.shadow_extents
 
         light_near = 1.0
         light_far = 1000.0
@@ -1669,6 +1675,10 @@ class RendererGL:
             ground_color=self.sky_lower,
             env_texture=self._env_texture,
             env_intensity=self._env_intensity,
+            shadow_radius=self.shadow_radius,
+            light_intensity=self.light_intensity,
+            spotlight_enabled=self.spotlight_enabled,
+            shadow_extents=self.shadow_extents,
         )
 
         with self._shape_shader:

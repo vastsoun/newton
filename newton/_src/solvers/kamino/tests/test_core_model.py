@@ -29,7 +29,7 @@ import newton._src.solvers.kamino.tests.utils.checks as test_util_checks
 from newton._src.sim import Control, Model, ModelBuilder, State
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.control import ControlKamino
-from newton._src.solvers.kamino.core.model import ModelKamino
+from newton._src.solvers.kamino.core.model import MaterialDescriptor, ModelKamino
 from newton._src.solvers.kamino.core.state import StateKamino
 from newton._src.solvers.kamino.models import basics as basics_kamino
 from newton._src.solvers.kamino.models import basics_newton, get_basics_usd_assets_path
@@ -211,6 +211,9 @@ class TestModelConversions(unittest.TestCase):
             actuator_ids=[1, 3],
         )
 
+        # Overwriting mu = 0.7 to match Kamino's default material properties
+        builder_0.shape_material_mu = [0.7] * len(builder_0.shape_material_mu)
+
         # Duplicate the world to test multi-world handling
         builder_0.begin_world()
         builder_0.add_builder(copy.deepcopy(builder_0))
@@ -264,6 +267,9 @@ class TestModelConversions(unittest.TestCase):
         )
         builder_0.end_world()
 
+        # Overwriting mu = 0.7 to match Kamino's default material properties
+        builder_0.shape_material_mu = [0.7] * len(builder_0.shape_material_mu)
+
         # Import the same fourbar using Kamino's USDImporter and ModelBuilderKamino
         importer = USDImporter()
         builder_1: ModelBuilderKamino = importer.import_from(
@@ -315,6 +321,9 @@ class TestModelConversions(unittest.TestCase):
         )
         builder_0.end_world()
 
+        # Overwriting mu = 0.7 to match Kamino's default material properties
+        builder_0.shape_material_mu = [0.7] * len(builder_0.shape_material_mu)
+
         # Import the same fourbar using Kamino's USDImporter and ModelBuilderKamino
         importer = USDImporter()
         builder_1: ModelBuilderKamino = importer.import_from(
@@ -363,6 +372,9 @@ class TestModelConversions(unittest.TestCase):
             force_position_velocity_actuation=True,
         )
         builder_0.end_world()
+
+        # Overwriting mu = 0.7 to match Kamino's default material properties
+        builder_0.shape_material_mu = [0.7] * len(builder_0.shape_material_mu)
 
         # Import the same fourbar using Kamino's USDImporter and ModelBuilderKamino
         importer = USDImporter()
@@ -418,6 +430,9 @@ class TestModelConversions(unittest.TestCase):
             force_show_colliders=True,
         )
         builder_0.end_world()
+
+        # Overwriting mu = 0.7 to match Kamino's default material properties
+        builder_0.shape_material_mu = [0.7] * len(builder_0.shape_material_mu)
 
         # Import the same fourbar using Kamino's USDImporter and ModelBuilderKamino
         importer = USDImporter()
@@ -863,7 +878,151 @@ class TestModelConversions(unittest.TestCase):
 
         np.testing.assert_allclose(body_q.numpy(), q_orig, atol=1e-6, err_msg="body_q roundtrip failed")
 
-    def test_11_state_conversions(self):
+    def test_11_model_conversions_material_fourbar_from_builder(self):
+        """
+        Test the conversion operations between newton.Model and kamino.ModelKamino
+        on a simple fourbar model with different materials, created explicitly using the builder.
+        """
+        # Create a fourbar using Newton's ModelBuilder and
+        # register Kamino-specific custom attributes
+        builder_0: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder_0)
+        builder_0.default_shape_cfg.margin = 0.0
+        builder_0.default_shape_cfg.gap = 0.0
+
+        # Create a fourbar using Newton's ModelBuilder
+        builder_0: ModelBuilder = basics_newton.build_boxes_fourbar(
+            builder=builder_0,
+            z_offset=0.0,
+            fixedbase=False,
+            floatingbase=True,
+            limits=True,
+            ground=True,
+            dynamic_joints=False,
+            implicit_pd=False,
+            new_world=True,
+            actuator_ids=[1, 3],
+        )
+
+        # Setting material properties
+        restitution = [0.1, 0.2, 0.3, 0.4, 0.5]
+        mu = [0.5, 0.6, 0.7, 0.8, 0.9]
+        builder_0.shape_material_restitution = list(restitution)
+        builder_0.shape_material_mu = list(mu)
+
+        # Duplicate the world to test multi-world handling
+        builder_0.begin_world()
+        builder_0.add_builder(copy.deepcopy(builder_0))
+        builder_0.end_world()
+
+        # Create a fourbar using Kamino's ModelBuilderKamino
+        builder_1: ModelBuilderKamino = basics_kamino.build_boxes_fourbar(
+            builder=None,
+            z_offset=0.0,
+            fixedbase=False,
+            floatingbase=True,
+            limits=True,
+            ground=True,
+            dynamic_joints=False,
+            implicit_pd=False,
+            new_world=True,
+            actuator_ids=[1, 3],
+        )
+
+        # Setting material properties
+        for i in range(len(mu)):
+            mid = builder_1.add_material(
+                MaterialDescriptor(
+                    name=f"mat{i}",
+                    restitution=restitution[i],
+                    static_friction=mu[i],
+                    dynamic_friction=mu[i],
+                )
+            )
+            builder_1.geoms[i].material = mid
+            builder_1.geoms[i].mid = mid
+
+        # Duplicate the world to test multi-world handling
+        builder_1.add_builder(copy.deepcopy(builder_1))
+
+        # Create models from the builders and conversion operations, and check for consistency
+        model_0: Model = builder_0.finalize(skip_validation_joints=True)
+        model_1: ModelKamino = builder_1.finalize()
+        model_2: ModelKamino = ModelKamino.from_newton(model_0)
+        test_util_checks.assert_model_equal(self, model_2, model_1)
+
+    def test_12_model_conversions_material_box_on_plane_from_usd(self):
+        """
+        Test the conversion operations between newton.Model and kamino.ModelKamino
+        on a simple box on plane model loaded from USD, containing different materials.
+        """
+        # Define the path to the USD file for the fourbar model
+        asset_file = os.path.join(get_basics_usd_assets_path(), "box_on_plane.usda")
+
+        # Create a fourbar using Newton's ModelBuilder and
+        # register Kamino-specific custom attributes
+        builder_0: ModelBuilder = ModelBuilder()
+        SolverKamino.register_custom_attributes(builder_0)
+        builder_0.default_shape_cfg.margin = 0.0
+        builder_0.default_shape_cfg.gap = 0.0
+
+        # Create a fourbar using Newton's ModelBuilder
+        builder_0.begin_world()
+        builder_0.add_usd(
+            source=asset_file,
+            joint_ordering=None,
+            force_show_colliders=True,
+            force_position_velocity_actuation=True,
+        )
+        builder_0.end_world()
+
+        # Duplicate the world to test multi-world handling
+        builder_0.begin_world()
+        builder_0.add_builder(copy.deepcopy(builder_0))
+        builder_0.end_world()
+
+        # Import the same fourbar using Kamino's USDImporter and ModelBuilderKamino
+        importer = USDImporter()
+        builder_1: ModelBuilderKamino = importer.import_from(
+            source=asset_file,
+            load_drive_dynamics=True,
+            load_static_geometry=True,
+            force_show_colliders=True,
+            use_prim_path_names=True,
+        )
+
+        # Resetting default material parameters, since the Newton USD importer does not import a
+        # default material and therefore does not have a non-standard default material
+        builder_1.materials[0].dynamic_friction = 0.7
+
+        # Overwriting dynamic friction with static friction, since the Newton USD importer only
+        # imports static friction and the Kamino conversion uses this to initialize both parameters
+        for mat in builder_1.materials:
+            mat.static_friction = mat.dynamic_friction
+
+        # Duplicate the world to test multi-world handling
+        builder_1.add_builder(copy.deepcopy(builder_1))
+
+        # Create models from the builders and conversion operations, and check for consistency
+        model_0: Model = builder_0.finalize(skip_validation_joints=True)
+        model_1: ModelKamino = builder_1.finalize()
+        model_2: ModelKamino = ModelKamino.from_newton(model_0)
+
+        msg.warning(f"{model_1.materials.restitution}")
+        msg.warning(f"{model_2.materials.restitution}")
+        msg.warning(f"{model_1.material_pairs.restitution}")
+        msg.warning(f"{model_2.material_pairs.restitution}")
+
+        test_util_checks.assert_model_geoms_equal(self, model_2.geoms, model_1.geoms)
+        test_util_checks.assert_model_materials_equal(self, model_2.materials, model_1.materials)
+        # TODO: Material pairs are currently not checked. The Kamino USD importer will set material
+        #       pair properties based on the list of materials, using the average of the material
+        #       properties. The Newton-to-Kamino conversion will leave the material pair properties
+        #       uninitialized, leaving the choice of how to combine materials for a pair to the
+        #       runtime material resolution system (see :class:`MaterialMuxMode`).
+        # test_util_checks.assert_model_material_pairs_equal(self, model_2.material_pairs, model_1.material_pairs)
+
+    def test_20_state_conversions(self):
         """
         Test the conversion operations between newton.State and kamino.StateKamino.
         """
@@ -885,6 +1044,9 @@ class TestModelConversions(unittest.TestCase):
             new_world=True,
             actuator_ids=[2, 4],
         )
+
+        # Overwriting mu = 0.7 to match Kamino's default material properties
+        builder_0.shape_material_mu = [0.7] * len(builder_0.shape_material_mu)
 
         # Duplicate the world to test multi-world handling
         builder_0.begin_world()
@@ -955,7 +1117,7 @@ class TestModelConversions(unittest.TestCase):
         self.assertIs(state_3.joint_q_prev, state_2.q_j_p)
         self.assertIs(state_3.joint_lambdas, state_2.lambda_j)
 
-    def test_20_control_conversions(self):
+    def test_30_control_conversions(self):
         """
         Test the conversions between newton.Control and kamino.ControlKamino.
         """
@@ -979,6 +1141,9 @@ class TestModelConversions(unittest.TestCase):
             new_world=True,
             actuator_ids=[1, 2, 3, 4],
         )
+
+        # Overwriting mu = 0.7 to match Kamino's default material properties
+        builder_0.shape_material_mu = [0.7] * len(builder_0.shape_material_mu)
 
         # Duplicate the world to test multi-world handling
         builder_0.begin_world()

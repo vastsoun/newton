@@ -238,7 +238,9 @@ def compute_required_contact_capacity(
     if model.shape_count == 0:
         return 0, [0] * model.world_count
 
-    # Compute the maximum possible number of geom pairs per world
+    # Compute the maximum possible number of geom pairs per world.
+    # Global shapes (world=-1, e.g. ground plane) can collide with shapes
+    # from any world — attribute their contacts to the non-global shape's world.
     world_max_contacts = [0] * model.world_count
     for shape_pair in shape_contact_pairs:
         s1 = int(shape_pair[0])
@@ -253,10 +255,16 @@ def compute_required_contact_capacity(
             type_b=type2,
         )
         num_contacts = num_contacts_a + num_contacts_b
+        # Determine the world for this pair — fall back to other shape if one is global
+        w1 = int(shape_world_np[s1])
+        w2 = int(shape_world_np[s2])
+        wid = w1 if w1 >= 0 else w2
+        if wid < 0:
+            continue  # Both shapes are global — skip
         if max_contacts_per_pair is not None:
-            world_max_contacts[shape_world_np[s1]] += min(num_contacts, max_contacts_per_pair)
+            world_max_contacts[wid] += min(num_contacts, max_contacts_per_pair)
         else:
-            world_max_contacts[shape_world_np[s1]] += num_contacts
+            world_max_contacts[wid] += num_contacts
 
     # Override the per-world maximum contacts if specified in the settings
     if max_contacts_per_world is not None:

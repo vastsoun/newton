@@ -1319,7 +1319,6 @@ class ModelKamino:
                 shape_transform_com,
             )
 
-            # Collision geometries
             model_geoms = GeometriesModel(
                 num_geoms=model.shape_count,
                 num_collidable=model_num_collidable_geoms,

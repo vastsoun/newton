@@ -1090,9 +1090,9 @@ class TestModelConversions(unittest.TestCase):
         # NOTE: Check ptr due to conversion from wp.spatial_vectorf
         self.assertIs(state_2.u_i.ptr, state_0.body_qd.ptr)
         self.assertIs(state_2.w_i_e.ptr, state_0.body_f.ptr)
+        self.assertIs(state_2.w_i.ptr, state_0.body_f_total.ptr)
         # NOTE: Check that the same arrays because these should be pure references
         self.assertIs(state_2.q_i, state_0.body_q)
-        self.assertIs(state_2.w_i, state_0.body_f_total)
         self.assertIs(state_2.q_j, state_0.joint_q)
         self.assertIs(state_2.dq_j, state_0.joint_qd)
         self.assertIs(state_2.q_j_p, state_0.joint_q_prev)
@@ -1105,9 +1105,9 @@ class TestModelConversions(unittest.TestCase):
         # NOTE: Check ptr due to conversion from vec6f
         self.assertIs(state_3.body_qd.ptr, state_2.u_i.ptr)
         self.assertIs(state_3.body_f.ptr, state_2.w_i_e.ptr)
+        self.assertIs(state_3.body_f_total.ptr, state_2.w_i.ptr)
         # NOTE: Check that the same arrays because these should be pure references
         self.assertIs(state_3.body_q, state_2.q_i)
-        self.assertIs(state_3.body_f_total, state_2.w_i)
         self.assertIs(state_3.joint_q, state_2.q_j)
         self.assertIs(state_3.joint_qd, state_2.dq_j)
         self.assertIs(state_3.joint_q_prev, state_2.q_j_p)

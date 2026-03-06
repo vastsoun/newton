@@ -29,7 +29,7 @@ from typing import Any, Literal
 
 import warp as wp
 
-from .....sim import Model, ModelBuilder
+from ......sim import Model, ModelBuilder
 from ...core.data import DataKamino
 from ...core.model import ModelKamino
 from ...core.size import SizeKamino

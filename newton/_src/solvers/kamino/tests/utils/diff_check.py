@@ -23,9 +23,10 @@ import os
 from collections.abc import Callable
 
 import numpy as np
+import warp as wp
 
-from ...models import get_testing_usd_assets_path
-from ...utils.io.usd import USDImporter
+from ..._src.models import get_testing_usd_assets_path
+from ..._src.utils.io.usd import USDImporter
 
 ###
 # Module interface

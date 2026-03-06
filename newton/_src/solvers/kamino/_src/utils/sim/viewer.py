@@ -24,7 +24,7 @@ from typing import ClassVar
 # Thirdparty
 import warp as wp
 
-from .....viewer import ViewerGL
+from ......viewer import ViewerGL
 from ...core.builder import ModelBuilderKamino
 from ...core.geometry import GeometryDescriptor
 from ...core.shapes import ShapeType

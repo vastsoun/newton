@@ -19,8 +19,8 @@ KAMINO: UNIT TESTS: GENERAL UTILITIES
 
 import numpy as np
 
-from ...core.data import DataKamino
-from ...core.model import ModelKamino
+from ..._src.core.data import DataKamino
+from ..._src.core.model import ModelKamino
 
 ###
 # Model Functions

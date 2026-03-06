@@ -22,16 +22,16 @@ from typing import Any
 
 import numpy as np
 
-from ...core.bodies import RigidBodiesModel
-from ...core.builder import ModelBuilderKamino
-from ...core.control import ControlKamino
-from ...core.geometry import GeometriesModel
-from ...core.joints import JointsModel
-from ...core.materials import MaterialPairsModel, MaterialsModel
-from ...core.model import ModelKamino, ModelKaminoInfo
-from ...core.size import SizeKamino
-from ...core.state import StateKamino
-from ...utils import logger as msg
+from ..._src.core.bodies import RigidBodiesModel
+from ..._src.core.builder import ModelBuilderKamino
+from ..._src.core.control import ControlKamino
+from ..._src.core.geometry import GeometriesModel
+from ..._src.core.joints import JointsModel
+from ..._src.core.materials import MaterialPairsModel, MaterialsModel
+from ..._src.core.model import ModelKamino, ModelKaminoInfo
+from ..._src.core.size import SizeKamino
+from ..._src.core.state import StateKamino
+from ..._src.utils import logger as msg
 
 ###
 # Module interface

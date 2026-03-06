@@ -14,7 +14,8 @@
 # limitations under the License.
 
 """
-Kamino: A physics back-end for Newton for constrained multi-body body simulation.
+Kamino: A Newton physics solver for simulating arbitrary mechanical assembiles, (i.e.
+constrained rigid multi-body systems) with kinematic loops and under/over actuation.
 """
 
 from .solver_kamino import SolverKamino

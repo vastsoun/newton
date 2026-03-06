@@ -1684,14 +1684,14 @@ class ModelBuilderKamino:
             )
             num_contacts = num_contacts_a + num_contacts_b
             if max_contacts_per_pair is not None:
-                world_max_contacts[geom1.wid] += max(num_contacts, max_contacts_per_pair)
+                world_max_contacts[geom1.wid] += min(num_contacts, max_contacts_per_pair)
             else:
                 world_max_contacts[geom1.wid] += num_contacts
 
         # Override the per-world maximum contacts if specified in the settings
         if max_contacts_per_world is not None:
             for w in range(self.num_worlds):
-                world_max_contacts[w] = max(world_max_contacts[w], max_contacts_per_world)
+                world_max_contacts[w] = min(world_max_contacts[w], max_contacts_per_world)
 
         # Return the per-world maximum contacts list
         return sum(world_max_contacts), world_max_contacts

@@ -454,7 +454,7 @@ if __name__ == "__main__":
 
     # Determine if CUDA graphs should be used for execution
     can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
-    use_cuda_graph = can_use_cuda_graph & args.cuda_graph
+    use_cuda_graph = can_use_cuda_graph and args.cuda_graph
     msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
     msg.info(f"use_cuda_graph: {use_cuda_graph}")
     msg.info(f"device: {device}")

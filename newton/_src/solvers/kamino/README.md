@@ -3,25 +3,25 @@
 <div style="background-color:#fff3cd; border:1px solid #ffecb5; padding:0.75em 1em; border-radius:6px;">
 <strong>⚠️ Disclaimer ⚠️ </strong>
 
-This project is currently in ALPHA development phase.
+`SolverKamino` is currently in BETA (`BETA 1`).
 
 At present time we discourage users of Newton from depending on it.
 
 Similarly, and due to limited bandwidth of the development team, we will NOT be accepting contributions from the community.
 
-A stable BETA version is planned for release during the spring of 2026.
+A more stable `BETA 2` version is planned for release during the summer of 2026.
 </div>
 
 ## Introduction
 
-Kamino is a solver back-end for simulating arbitrary mechanical assemblies that may feature kinematic loops.
+`SolverKamino` is a physics solver for simulating arbitrary mechanical assemblies that may feature kinematic loops and under-/overactuation.
 
 It currently supports:
 - Constrained rigid multi-body systems with arbitrary joint topologies (i.e. a kinematic tree is not assumed)
 - A large set of common and advanced bilateral joint constraints
 - Unilateral joint-limit and contact constraints with spatial friction and restitutive impacts
 - Fully configurable constraint stabilization that can be specified per constraint subset
-- Both hard and soft constraints enforced via an advanced Proximal-ADMM forward dynamics solver
+- Hard joint-limit and contact constraints enforced via an advanced Proximal-ADMM forward dynamics solver
 
 Kamino is being developed and maintained by [Disney Research](https://www.disneyresearch.com/) in collaboration with [NVIDIA](https://www.nvidia.com/) and [Google DeepMind](https://deepmind.google/).
 
@@ -42,7 +42,7 @@ A set of examples is provided in `newton/_src/solvers/kamino/examples`.
 These can be run directly as stand-alone scripts, for example:
 ```bash
 cd newton/_src/solvers/kamino/examples
-python sim/example_sim_cartpole.py
+python sim/example_sim_dr_legs.py
 ```
 
 All examples will eventually be migrated, and integrated, into the main set of examples provided in Newton located in `newton/examples`.
@@ -74,14 +74,8 @@ Because we're working on a fork of the main Newton repository, it can be useful 
 Using `pyenv` and `virtualenv` it would look something like this:
 - one for development of Kamino within our fork
 ```bash
-pyenv virtualenv kamino-dev
-pyenv activate kamino-dev
-pip install -U pip
-```
-- and a second for modifying Newton code outside of Kamino that must go through pull requests directly to the main repo:
-```bash
-pyenv virtualenv newton-dev
-pyenv activate newton-dev
+pyenv virtualenv newton
+pyenv activate newton
 pip install -U pip
 ```
 
@@ -116,7 +110,7 @@ Alternatively, Warp can be installed from source (recommended) using:
 git clone git@github.com:NVIDIA/warp.git
 cd warp
 python build_lib.py
-pip install -e .[dev,extras,docs]
+pip install -e .[dev,benchmark]
 ```
 
 **NOTE**:
@@ -140,13 +134,20 @@ pip install -e .[dev,cuda]
 ### Newton
 Newton needs to be installed from source for Kamino development using:
 ```bash
-git clone git@github.com:vastsoun/newton.git
-cd newton
-pip install -e .[dev,data,docs]
+git clone git@github.com:newton-physics/newton-usd-schemas.git
+cd newton-usd-schemas
+pip install -e .[dev,docs,notebook]
 ```
-
-**WARNING**:
-Note that currently the development branch where Kamino is being worked on is `dev/kamino`. All PR's within the fork must be issued to that instead of `main` and take care to not to accidentally issue them to `main` of the upstream Newton repository.
+```bash
+git clone git@github.com:newton-physics/newton-actuators.git
+cd newton-actuators
+pip install -e .[dev,docs,notebook]
+```
+```bash
+git clone git@github.com:newton-physics/newton.git
+cd newton
+pip install -e .[dev,docs,notebook]
+```
 
 ## Further Reading
 

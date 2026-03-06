@@ -888,12 +888,10 @@ def _convert_contacts_newton_to_kamino(
 def _convert_contacts_kamino_to_newton(
     max_output: int32,
     n_active: wp.array(dtype=int32),
-    kamino_wid: wp.array(dtype=int32),
     kamino_gid_AB: wp.array(dtype=vec2i),
     kamino_position_A: wp.array(dtype=vec3f),
     kamino_position_B: wp.array(dtype=vec3f),
     kamino_gapfunc: wp.array(dtype=vec4f),
-    shape_world_start: wp.array(dtype=int32),
     shape_body: wp.array(dtype=int32),
     body_q: wp.array(dtype=wp.transformf),
     # outputs
@@ -914,11 +912,9 @@ def _convert_contacts_kamino_to_newton(
     if tid >= n:
         return
 
-    wid = kamino_wid[tid]
-    world_shape_start = shape_world_start[wid]
     gids = kamino_gid_AB[tid]
-    shape0 = world_shape_start + gids[0]
-    shape1 = world_shape_start + gids[1]
+    shape0 = gids[0]
+    shape1 = gids[1]
 
     rigid_contact_shape0[tid] = shape0
     rigid_contact_shape1[tid] = shape1
@@ -1077,12 +1073,10 @@ def convert_contacts_kamino_to_newton(
         inputs=[
             int32(contacts_out.rigid_contact_max),
             contacts_in.data.model_active_contacts,
-            contacts_in.data.wid,
             contacts_in.data.gid_AB,
             contacts_in.data.position_A,
             contacts_in.data.position_B,
             contacts_in.data.gapfunc,
-            model.shape_world_start,
             model.shape_body,
             state.body_q,
         ],

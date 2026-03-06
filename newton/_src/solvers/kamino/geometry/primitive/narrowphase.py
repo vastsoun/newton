@@ -253,6 +253,7 @@ def add_single_contact(
     gid_2: int32,
     bid_1: int32,
     bid_2: int32,
+    margin_plus_gap: float32,
     margin: float32,
     distance: float32,
     position: vec3f,
@@ -273,8 +274,8 @@ def add_single_contact(
     contact_material: wp.array(dtype=vec2f),
     contact_key: wp.array(dtype=uint64),
 ):
-    # Skip if the contact distance exceeds the specified margin
-    if (distance - margin) > 0.0:
+    # Skip if the contact distance exceeds the detection threshold
+    if (distance - margin_plus_gap) > 0.0:
         return
 
     # Increment the active contact counters
@@ -303,8 +304,11 @@ def add_single_contact(
         position_A = position + 0.5 * distance_abs * normal
         position_B = position - 0.5 * distance_abs * normal
 
-        # Generate the gap-function, contact frame and material for this contact
-        gapfunc = vec4f(normal.x, normal.y, normal.z, distance)
+        # Store margin-shifted distance in gapfunc.w: negative means penetration
+        # past the resting separation, zero means at rest, positive means within
+        # the detection gap but not yet at rest.
+        d = distance - margin
+        gapfunc = vec4f(normal.x, normal.y, normal.z, d)
         q_frame = wp.quat_from_matrix(make_contact_frame_znorm(normal))
         material = vec2f(friction, restitution)
         key = build_pair_key2(uint32(gid_AB[0]), uint32(gid_AB[1]))
@@ -339,6 +343,7 @@ def make_add_multiple_contacts(MAX_CONTACTS: int, SHARED_NORMAL: bool):
         gid_2: int32,
         bid_1: int32,
         bid_2: int32,
+        margin_plus_gap: float32,
         margin: float32,
         friction: float32,
         restitution: float32,
@@ -359,10 +364,10 @@ def make_add_multiple_contacts(MAX_CONTACTS: int, SHARED_NORMAL: bool):
         contact_material: wp.array(dtype=vec2f),
         contact_key: wp.array(dtype=uint64),
     ):
-        # Count valid contacts (those with finite distance)
+        # Count valid contacts (those within the detection threshold)
         num_contacts = wp.int32(0)
         for k in range(MAX_CONTACTS):
-            if distances[k] != wp.inf and distances[k] <= margin:
+            if distances[k] != wp.inf and distances[k] <= margin_plus_gap:
                 num_contacts += 1
 
         # Skip operation if no contacts were detected
@@ -403,7 +408,7 @@ def make_add_multiple_contacts(MAX_CONTACTS: int, SHARED_NORMAL: bool):
                 break
 
             # If contact is valid, store it
-            if distances[k] != wp.inf and distances[k] <= margin:
+            if distances[k] != wp.inf and distances[k] <= margin_plus_gap:
                 # Compute the global contact index
                 mcid = mcio + active_contact_idx
 
@@ -425,8 +430,9 @@ def make_add_multiple_contacts(MAX_CONTACTS: int, SHARED_NORMAL: bool):
                 position_A = position + 0.5 * normal * distance_abs
                 position_B = position - 0.5 * normal * distance_abs
 
-                # Generate the gap-function and coordinate frame for this contact
-                gapfunc = vec4f(normal.x, normal.y, normal.z, distance)
+                # Store margin-shifted distance in gapfunc.w
+                d = distance - margin
+                gapfunc = vec4f(normal.x, normal.y, normal.z, d)
                 q_frame = wp.quat_from_matrix(make_contact_frame_znorm(normal))
 
                 # Store contact data
@@ -461,6 +467,7 @@ def sphere_sphere(
     sphere1: Sphere,
     sphere2: Sphere,
     wid: int32,
+    margin_plus_gap: float32,
     margin: float32,
     friction: float32,
     restitution: float32,
@@ -490,6 +497,7 @@ def sphere_sphere(
         sphere2.gid,
         sphere1.bid,
         sphere2.bid,
+        margin_plus_gap,
         margin,
         distance,
         position,
@@ -519,6 +527,7 @@ def sphere_cylinder(
     sphere1: Sphere,
     cylinder2: Cylinder,
     wid: int32,
+    margin_plus_gap: float32,
     margin: float32,
     friction: float32,
     restitution: float32,
@@ -555,6 +564,7 @@ def sphere_cylinder(
         cylinder2.gid,
         sphere1.bid,
         cylinder2.bid,
+        margin_plus_gap,
         margin,
         distance,
         position,
@@ -589,6 +599,7 @@ def sphere_capsule(
     sphere1: Sphere,
     capsule2: Capsule,
     wid: int32,
+    margin_plus_gap: float32,
     margin: float32,
     friction: float32,
     restitution: float32,
@@ -625,6 +636,7 @@ def sphere_capsule(
         capsule2.gid,
         sphere1.bid,
         capsule2.bid,
+        margin_plus_gap,
         margin,
         distance,
         position,
@@ -654,6 +666,7 @@ def sphere_box(
     sphere1: Sphere,
     box2: Box,
     wid: int32,
+    margin_plus_gap: float32,
     margin: float32,
     friction: float32,
     restitution: float32,
@@ -683,6 +696,7 @@ def sphere_box(
         box2.gid,
         sphere1.bid,
         box2.bid,
+        margin_plus_gap,
         margin,
         distance,
         position,
@@ -762,6 +776,7 @@ def capsule_capsule(
     capsule1: Capsule,
     capsule2: Capsule,
     wid: int32,
+    margin_plus_gap: float32,
     margin: float32,
     friction: float32,
     restitution: float32,
@@ -802,6 +817,7 @@ def capsule_capsule(
                 capsule2.gid,
                 capsule1.bid,
                 capsule2.bid,
+                margin_plus_gap,
                 margin,
                 distance[k],
                 position[k],
@@ -831,6 +847,7 @@ def capsule_box(
     capsule1: Capsule,
     box2: Box,
     wid: int32,
+    margin_plus_gap: float32,
     margin: float32,
     friction: float32,
     restitution: float32,
@@ -868,6 +885,7 @@ def capsule_box(
         box2.gid,
         capsule1.bid,
         box2.bid,
+        margin_plus_gap,
         margin,
         friction,
         restitution,
@@ -902,6 +920,7 @@ def box_box(
     box1: Box,
     box2: Box,
     wid: int32,
+    margin_plus_gap: float32,
     margin: float32,
     friction: float32,
     restitution: float32,
@@ -921,7 +940,7 @@ def box_box(
 ):
     # Use the tested collision calculation from collision_primitive.py
     distances, positions, normals = collide_box_box(
-        box1.pos, box1.rot, box1.size, box2.pos, box2.rot, box2.size, margin
+        box1.pos, box1.rot, box1.size, box2.pos, box2.rot, box2.size, margin_plus_gap
     )
 
     # Add the active contacts to the global contacts arrays (up to 8 contacts with per-contact normals)
@@ -933,6 +952,7 @@ def box_box(
         box2.gid,
         box1.bid,
         box2.bid,
+        margin_plus_gap,
         margin,
         friction,
         restitution,
@@ -972,6 +992,7 @@ def plane_sphere(
     plane1: Plane,
     sphere2: Sphere,
     wid: int32,
+    margin_plus_gap: float32,
     margin: float32,
     friction: float32,
     restitution: float32,
@@ -1005,6 +1026,7 @@ def plane_sphere(
         sphere2.gid,
         plane1.bid,
         sphere2.bid,
+        margin_plus_gap,
         margin,
         distance,
         position,
@@ -1034,6 +1056,7 @@ def plane_box(
     plane1: Plane,
     box2: Box,
     wid: int32,
+    margin_plus_gap: float32,
     margin: float32,
     friction: float32,
     restitution: float32,
@@ -1052,7 +1075,9 @@ def plane_box(
     contact_key: wp.array(dtype=uint64),
 ):
     # Use the tested collision calculation from collision_primitive.py
-    distances, positions, normal = collide_plane_box(plane1.normal, plane1.pos, box2.pos, box2.rot, box2.size)
+    distances, positions, normal = collide_plane_box(
+        plane1.normal, plane1.pos, box2.pos, box2.rot, box2.size, margin_plus_gap
+    )
 
     # Add the active contacts to the global contacts arrays (up to 4 contacts with shared normal)
     wp.static(make_add_multiple_contacts(4, True))(
@@ -1063,6 +1088,7 @@ def plane_box(
         box2.gid,
         plane1.bid,
         box2.bid,
+        margin_plus_gap,
         margin,
         friction,
         restitution,
@@ -1092,6 +1118,7 @@ def plane_ellipsoid(
     plane1: Plane,
     ellipsoid2: Ellipsoid,
     wid: int32,
+    margin_plus_gap: float32,
     margin: float32,
     friction: float32,
     restitution: float32,
@@ -1123,6 +1150,7 @@ def plane_ellipsoid(
         ellipsoid2.gid,
         plane1.bid,
         ellipsoid2.bid,
+        margin_plus_gap,
         margin,
         distance,
         position,
@@ -1152,7 +1180,8 @@ def plane_capsule(
     plane1: Plane,
     capsule2: Capsule,
     wid: int32,
-    margin: float32,
+    threshold: float32,
+    rest_offset: float32,
     friction: float32,
     restitution: float32,
     # Outputs:
@@ -1179,7 +1208,7 @@ def plane_capsule(
     # Count valid contacts
     num_contacts = int32(0)
     for k in range(2):
-        if distances[k] != wp.inf and distances[k] <= margin:
+        if distances[k] != wp.inf and distances[k] <= threshold:
             num_contacts += 1
 
     # Skip operation if no contacts were detected
@@ -1221,7 +1250,7 @@ def plane_capsule(
             break
 
         # If contact is valid, store it
-        if distances[k] != wp.inf and distances[k] <= margin:
+        if distances[k] != wp.inf and distances[k] <= threshold:
             # Compute the global contact index
             mcid = mcio + active_contact_idx
 
@@ -1235,7 +1264,7 @@ def plane_capsule(
             position_B = position - 0.5 * normal * distance_abs
 
             # Generate the gap-function and coordinate frame for this contact
-            gapfunc = vec4f(normal.x, normal.y, normal.z, distance)
+            gapfunc = vec4f(normal.x, normal.y, normal.z, distance - rest_offset)
 
             # Store contact data
             contact_wid[mcid] = wid
@@ -1261,7 +1290,8 @@ def plane_cylinder(
     plane1: Plane,
     cylinder2: Cylinder,
     wid: int32,
-    margin: float32,
+    threshold: float32,
+    rest_offset: float32,
     friction: float32,
     restitution: float32,
     # Outputs:
@@ -1292,7 +1322,8 @@ def plane_cylinder(
         cylinder2.gid,
         plane1.bid,
         cylinder2.bid,
-        margin,
+        threshold,
+        rest_offset,
         friction,
         restitution,
         distances,
@@ -1327,6 +1358,7 @@ def _primitive_narrowphase(
     geom_mid: wp.array(dtype=int32),
     geom_params: wp.array(dtype=vec4f),
     geom_gap: wp.array(dtype=float32),
+    geom_margin: wp.array(dtype=float32),
     geom_pose: wp.array(dtype=transformf),
     candidate_model_num_pairs: wp.array(dtype=int32),
     candidate_wid: wp.array(dtype=int32),
@@ -1377,6 +1409,7 @@ def _primitive_narrowphase(
     mid1 = geom_mid[gid1]
     params1 = geom_params[gid1]
     gap1 = geom_gap[gid1]
+    margin1 = geom_margin[gid1]
     pose1 = geom_pose[gid1]
 
     bid2 = geom_bid[gid2]
@@ -1384,10 +1417,16 @@ def _primitive_narrowphase(
     mid2 = geom_mid[gid2]
     params2 = geom_params[gid2]
     gap2 = geom_gap[gid2]
+    margin2 = geom_margin[gid2]
     pose2 = geom_pose[gid2]
 
-    # Effective detection gap: additive per-shape gaps with default floor
+    # Pairwise additive rest offset (margin) determines resting separation
+    margin_12 = margin1 + margin2
+
+    # Effective detection threshold: margin + gap (contacts accepted when
+    # surface_distance <= margin_12 + gap_12)
     contact_gap_12 = wp.max(default_gap, gap1) + wp.max(default_gap, gap2)
+    threshold_12 = margin_12 + contact_gap_12
 
     # Retrieve the material properties for the geom pair
     restitution_12, _, mu_12 = wp.static(make_get_material_pair_properties())(
@@ -1409,7 +1448,8 @@ def _primitive_narrowphase(
             make_sphere(pose1, params1, gid1, bid1),
             make_sphere(pose2, params2, gid2, bid2),
             wid,
-            contact_gap_12,
+            threshold_12,
+            margin_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1433,7 +1473,8 @@ def _primitive_narrowphase(
             make_sphere(pose1, params1, gid1, bid1),
             make_cylinder(pose2, params2, gid2, bid2),
             wid,
-            contact_gap_12,
+            threshold_12,
+            margin_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1460,7 +1501,8 @@ def _primitive_narrowphase(
             make_sphere(pose1, params1, gid1, bid1),
             make_capsule(pose2, params2, gid2, bid2),
             wid,
-            contact_gap_12,
+            threshold_12,
+            margin_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1484,7 +1526,8 @@ def _primitive_narrowphase(
             make_sphere(pose1, params1, gid1, bid1),
             make_box(pose2, params2, gid2, bid2),
             wid,
-            contact_gap_12,
+            threshold_12,
+            margin_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1538,7 +1581,8 @@ def _primitive_narrowphase(
             make_capsule(pose1, params1, gid1, bid1),
             make_capsule(pose2, params2, gid2, bid2),
             wid,
-            contact_gap_12,
+            threshold_12,
+            margin_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1562,7 +1606,8 @@ def _primitive_narrowphase(
             make_capsule(pose1, params1, gid1, bid1),
             make_box(pose2, params2, gid2, bid2),
             wid,
-            contact_gap_12,
+            threshold_12,
+            margin_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1589,7 +1634,8 @@ def _primitive_narrowphase(
             make_box(pose1, params1, gid1, bid1),
             make_box(pose2, params2, gid2, bid2),
             wid,
-            contact_gap_12,
+            threshold_12,
+            margin_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1620,7 +1666,8 @@ def _primitive_narrowphase(
             make_plane(pose1, params1, gid1, bid1),
             make_sphere(pose2, params2, gid2, bid2),
             wid,
-            contact_gap_12,
+            threshold_12,
+            margin_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1644,7 +1691,8 @@ def _primitive_narrowphase(
             make_plane(pose1, params1, gid1, bid1),
             make_box(pose2, params2, gid2, bid2),
             wid,
-            contact_gap_12,
+            threshold_12,
+            margin_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1668,7 +1716,8 @@ def _primitive_narrowphase(
             make_plane(pose1, params1, gid1, bid1),
             make_ellipsoid(pose2, params2, gid2, bid2),
             wid,
-            contact_gap_12,
+            threshold_12,
+            margin_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1692,7 +1741,8 @@ def _primitive_narrowphase(
             make_plane(pose1, params1, gid1, bid1),
             make_capsule(pose2, params2, gid2, bid2),
             wid,
-            contact_gap_12,
+            threshold_12,
+            margin_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1716,7 +1766,8 @@ def _primitive_narrowphase(
             make_plane(pose1, params1, gid1, bid1),
             make_cylinder(pose2, params2, gid2, bid2),
             wid,
-            contact_gap_12,
+            threshold_12,
+            margin_12,
             mu_12,
             restitution_12,
             contact_model_num,
@@ -1772,6 +1823,7 @@ def primitive_narrowphase(
             model.geoms.material,
             model.geoms.params,
             model.geoms.gap,
+            model.geoms.margin,
             data.geoms.pose,
             candidates.model_num_collisions,
             candidates.wid,

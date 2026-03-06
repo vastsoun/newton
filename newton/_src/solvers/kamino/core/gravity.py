@@ -196,6 +196,7 @@ class GravityModel:
 ###
 
 
+# TODO: Re-implement using kernels
 def convert_model_gravity(model_in: Model, gravity_out: GravityModel | None = None) -> GravityModel:
     """
     Converts the gravity representation from the Newton model to the Kamino format.

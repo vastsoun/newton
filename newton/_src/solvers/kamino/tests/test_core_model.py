@@ -27,6 +27,7 @@ import warp as wp
 import newton
 import newton._src.solvers.kamino.tests.utils.checks as test_util_checks
 from newton._src.sim import Control, Model, ModelBuilder, State
+from newton._src.solvers.kamino.core.bodies import convert_body_com_to_origin, convert_body_origin_to_com
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.control import ControlKamino
 from newton._src.solvers.kamino.core.model import MaterialDescriptor, ModelKamino
@@ -864,11 +865,6 @@ class TestModelConversions(unittest.TestCase):
         """
         Test that origin→COM→origin is the identity on body_q.
         """
-        from newton._src.solvers.kamino.core.bodies import (
-            convert_body_com_to_origin,
-            convert_body_origin_to_com,
-        )
-
         model = self._build_com_offset_model()
         body_q = wp.clone(model.body_q)
         q_orig = body_q.numpy().copy()

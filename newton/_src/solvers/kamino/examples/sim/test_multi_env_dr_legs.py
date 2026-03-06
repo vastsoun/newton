@@ -11,25 +11,24 @@
 ###########################################################################
 
 import argparse
-import os
 import time
 
 import warp as wp
 
-from newton._src.solvers.kamino.models import get_examples_usd_assets_path
+import newton
 from newton._src.solvers.kamino.models.builders.utils import (
     build_usd,
     make_homogeneous_builder,
     set_uniform_body_pose_offset,
 )
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.sim import Simulator, SimulatorConfig
+from newton._src.solvers.kamino.utils.sim import Simulator
 
 wp.set_module_options({"enable_backward": False})
 
 
-def make_settings(sim_dt: float = 0.004) -> SimulatorConfig:
-    settings = SimulatorConfig()
+def make_settings(sim_dt: float = 0.004) -> Simulator.Config:
+    settings = Simulator.Config()
     settings.dt = sim_dt
     settings.solver.integrator = "moreau"
     settings.solver.problem.alpha = 0.1
@@ -46,10 +45,8 @@ def make_settings(sim_dt: float = 0.004) -> SimulatorConfig:
 
 
 def run_test(num_worlds: int, num_steps: int, device):
-    ASSETS = get_examples_usd_assets_path()
-    if ASSETS is None:
-        raise FileNotFoundError("newton-assets not found")
-    usd_path = os.path.join(ASSETS, "dr_legs/usd/dr_legs_with_boxes.usda")
+    asset_path = newton.utils.download_asset("disneyresearch")
+    usd_path = str(asset_path / "dr_legs/usd/dr_legs_with_boxes.usda")
 
     msg.notif(f"--- Testing {num_worlds} environments ---")
 
@@ -97,7 +94,7 @@ def run_test(num_worlds: int, num_steps: int, device):
     # Step multiple times
     msg.info(f"Stepping {num_steps} times...")
     t0 = time.perf_counter()
-    for i in range(num_steps):
+    for _i in range(num_steps):
         sim.step()
     wp.synchronize()
     t1 = time.perf_counter()

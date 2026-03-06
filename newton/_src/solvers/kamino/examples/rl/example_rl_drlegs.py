@@ -34,13 +34,13 @@
 ###########################################################################
 
 import argparse
-import os
 
 import numpy as np
 import torch  # noqa: TID253
 import warp as wp
 from warp.context import Devicelike
 
+import newton
 from newton._src.solvers.kamino.core.joints import JointActuationType
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.examples.rl.joystick import JoystickConfig, JoystickController
@@ -57,7 +57,6 @@ from newton._src.solvers.kamino.examples.rl.utils import (
     yaw_apply_2d,
     yaw_to_quat,
 )
-from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.utils import logger as msg
 
 ###
@@ -109,10 +108,8 @@ class Example:
         num_worlds = 1
 
         # USD model path
-        EXAMPLE_ASSETS_PATH = get_examples_usd_assets_path()
-        if EXAMPLE_ASSETS_PATH is None:
-            raise FileNotFoundError("Failed to find USD assets path for examples: ensure `newton-assets` is installed.")
-        USD_MODEL_PATH = os.path.join(EXAMPLE_ASSETS_PATH, "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
+        asset_path = newton.utils.download_asset("disneyresearch")
+        USD_MODEL_PATH = str(asset_path / "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
 
         # Create generic articulated body simulator
         self.sim_wrapper = RigidBodySim(

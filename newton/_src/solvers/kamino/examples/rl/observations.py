@@ -573,7 +573,7 @@ class BipedalObservation(ObservationBuilder, torch.nn.Module):
         # -- Phase advance --
         self._phase_rate_input[:, :2] = self._command[:, self.CMD_VEL]
         self._phase_rate_input[:, 2] = self._command[:, self.CMD_YAW_RATE]
-        with torch.no_grad():
+        with torch.inference_mode():
             rate = self._phase_rate._phase_rate(self._phase_rate_input).squeeze(-1)
         self._phase.add_(rate * self._dt).remainder_(1.0)
 

@@ -220,8 +220,20 @@ class RigidBodySim:
         builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
         for _ in range(num_worlds):
             builder.add_world(robot_builder)
+
+        # Resolve settings early so we know which collision pipeline is used.
+        if settings is None:
+            settings = self.default_settings(sim_dt)
+
         if add_ground:
-            builder.add_ground_plane()
+            if settings.collision_detector.pipeline == "primitive":
+                # Primitive broadphase does not support PLANE shapes —
+                # use a large static box as ground instead.
+                builder.add_shape_box(
+                    body=-1, xform=wp.transform((0.0, 0.0, -0.5), wp.quat_identity()), hx=50.0, hy=50.0, hz=0.5
+                )
+            else:
+                builder.add_ground_plane()
 
         self._newton_model = builder.finalize(skip_validation_joints=True)
 
@@ -234,8 +246,6 @@ class RigidBodySim:
 
         # ----- Create Kamino simulator from Newton model -----
         msg.notif("Building Kamino simulator ...")
-        if settings is None:
-            settings = self.default_settings(sim_dt)
 
         # Cap per-pair contact count to limit Delassus matrix size
         if max_contacts_per_pair is not None:
@@ -790,7 +800,7 @@ class RigidBodySim:
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4
         settings.solver.padmm.compl_tolerance = 1e-4
-        settings.solver.padmm.max_iterations = 200
+        settings.solver.padmm.max_iterations = 100
         settings.solver.padmm.eta = 1e-5
         settings.solver.padmm.rho_0 = 0.05
         settings.solver.sparse_jacobian = True
@@ -799,6 +809,7 @@ class RigidBodySim:
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         settings.solver.collect_solver_info = False
         settings.solver.compute_metrics = False
+        # settings.solver.avoid_graph_conditionals = True
         linear_solver_maxiter = 0
         settings.solver.linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
         settings.solver.angular_velocity_damping = 0.0

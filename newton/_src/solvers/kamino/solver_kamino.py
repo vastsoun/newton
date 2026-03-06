@@ -255,7 +255,9 @@ class SolverKaminoImpl(SolverBase):
         )
 
         # Allocate the forward kinematics solver on the device
-        self._solver_fk = ForwardKinematicsSolver(model=self._model, config=self._config.fk)
+        self._solver_fk = None
+        if self._config.use_fk_solver:
+            self._solver_fk = ForwardKinematicsSolver(model=self._model, config=self._config.fk)
 
         # Create the time-integrator instance based on the config
         if self._config.integrator == "euler":
@@ -342,9 +344,9 @@ class SolverKaminoImpl(SolverBase):
         return self._solver_fd
 
     @property
-    def solver_fk(self) -> ForwardKinematicsSolver:
+    def solver_fk(self) -> ForwardKinematicsSolver | None:
         """
-        Returns the forward kinematics solver backend.
+        Returns the forward kinematics solver backend, if it was initialized.
         """
         return self._solver_fk
 
@@ -817,6 +819,10 @@ class SolverKaminoImpl(SolverBase):
         Resets the simulation to the given joint states by solving
         the forward kinematics to compute the corresponding body states.
         """
+        # Check that the FK solver was initialized
+        if self._solver_fk is None:
+            raise RuntimeError("The FK solver must be enabled to use resets from joint angles.")
+
         # Detect if joint or actuator targets are provided
         with_joint_targets = joint_q is not None and (actuator_q is None and actuator_u is None)
 
@@ -1239,6 +1245,11 @@ class SolverKamino(SolverBase):
         sparse_jacobian: bool = False
         """
         Flag to indicate whether the solver should use sparse data representations for the Jacobian.
+        """
+
+        use_fk_solver: bool = False
+        """
+        Flag to indicate that the FK solver, allowing for resets using joint angles, should be enabled.
         """
 
         def check(self) -> None:

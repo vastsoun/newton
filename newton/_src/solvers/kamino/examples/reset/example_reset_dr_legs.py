@@ -159,6 +159,7 @@ class Example:
         config.solver.contact_warmstart_method = "geom_pair_net_force"
         config.solver.collect_solver_info = False
         config.solver.compute_metrics = False
+        config.solver.use_fk_solver = True
 
         # Create a simulator
         msg.notif("Building the simulator...")

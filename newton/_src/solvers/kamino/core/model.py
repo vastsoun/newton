@@ -49,7 +49,7 @@ from .joints import (
     JointsData,
     JointsModel,
 )
-from .materials import MaterialManager, MaterialPairsModel, MaterialsModel
+from .materials import MaterialDescriptor, MaterialManager, MaterialPairsModel, MaterialsModel
 from .shapes import ShapeType
 from .size import SizeKamino
 from .state import StateKamino
@@ -949,22 +949,36 @@ class ModelKamino:
         model.joint_velocity_limit.assign(joint_velocity_limit_np)
         model.joint_effort_limit.assign(joint_effort_limit_np)
 
-        # TODO
+        # Set up materials
         materials_manager = MaterialManager()
-        # shape_material: list[MaterialDescriptor] = []
-        # shape_friction_np = model.shape_material_mu.numpy()
-        # shape_restitution_np = model.shape_material_restitution.numpy()
+        default_material = materials_manager.materials[0]
+        shape_friction_np = model.shape_material_mu.numpy().tolist()
+        shape_restitution_np = model.shape_material_restitution.numpy().tolist()
+        geom_material_np = np.zeros((model.shape_count,), dtype=int)
+        # TODO: Integrate world index for shape material
         # shape_world_np = model.shape_world.numpy()
-        # for s in range(model.shape_count):
-        #     shape_material.append(
-        #         MaterialDescriptor(
-        #             restitution=shape_restitution_np[s],
-        #             static_friction=shape_friction_np[s],
-        #             dynamic_friction=shape_friction_np[s],
-        #             wid=shape_world_np[s],
-        #         )
-        #     )
-        #     materials_manager.register(shape_material[-1])
+        material_param_indices: dict[tuple[float, float], int] = {}
+        # Adding default material from material manager, making sure the values undergo the same
+        # transformation as any material parameters in the Newton model (conversion to np.float32)
+        default_mu = float(np.float32(default_material.static_friction))
+        default_restitution = float(np.float32(default_material.restitution))
+        material_param_indices[(default_mu, default_restitution)] = 0
+        for s in range(model.shape_count):
+            # Check if material with these parameters already exists
+            material_desc = (shape_friction_np[s], shape_restitution_np[s])
+            if material_desc in material_param_indices:
+                material_id = material_param_indices[material_desc]
+            else:
+                material = MaterialDescriptor(
+                    name=f"{model.shape_label[s]}_material",
+                    restitution=shape_restitution_np[s],
+                    static_friction=shape_friction_np[s],
+                    dynamic_friction=shape_friction_np[s],
+                    # wid=shape_world_np[s],
+                )
+                material_id = materials_manager.register(material)
+                material_param_indices[material_desc] = material_id
+            geom_material_np[s] = material_id
 
         # Convert per-shape properties from Newton to Kamino format
         shape_type_np = model.shape_type.numpy()
@@ -974,7 +988,6 @@ class ModelKamino:
         geom_shape_collision_group_np = model.shape_collision_group.numpy()
         geom_shape_type_np = np.zeros((model.shape_count,), dtype=int)
         geom_shape_params_np = np.zeros((model.shape_count, 4), dtype=float)
-        geom_material_np = np.zeros((model.shape_count,), dtype=int)
         model_num_collidable_geoms = 0
         for s in range(model.shape_count):
             shape_type, params = ShapeType.from_newton(GeoType(int(shape_type_np[s])), vec3f(*shape_scale_np[s]))

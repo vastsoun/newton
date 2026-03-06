@@ -14,7 +14,7 @@ A more stable `BETA 2` version is planned for release during the summer of 2026.
 
 ## Introduction
 
-`SolverKamino` is a physics solver for simulating arbitrary mechanical assemblies that may feature kinematic loops and under/over actuation.
+`SolverKamino` is a physics solver for simulating arbitrary mechanical assemblies that may feature kinematic loops and under-/overactuation.
 
 It currently supports:
 - Constrained rigid multi-body systems with arbitrary joint topologies (i.e. a kinematic tree is not assumed)

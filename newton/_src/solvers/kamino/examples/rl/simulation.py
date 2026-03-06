@@ -795,7 +795,8 @@ class RigidBodySim:
         settings = SimulatorConfig()
         settings.dt = sim_dt
         settings.collision_detector.pipeline = "unified"
-        settings.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
+        settings.collision_detector.max_contacts_per_pair = 8
+        settings.solver.integrator = "moreau"
         settings.solver.problem.alpha = 0.1
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4
@@ -809,10 +810,5 @@ class RigidBodySim:
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE
         settings.solver.collect_solver_info = False
         settings.solver.compute_metrics = False
-        # settings.solver.avoid_graph_conditionals = True
-        linear_solver_maxiter = 0
-        settings.solver.linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
-        settings.solver.angular_velocity_damping = 0.0
-        # settings.collision_detector.max_contacts_per_world = 40
-        settings.collision_detector.max_contacts_per_pair = 8
+        settings.solver.avoid_graph_conditionals = True
         return settings

@@ -134,6 +134,10 @@ class Example:
             headless=headless,
             body_pose_offset=(0.0, 0.0, 0.33, 0.0, 0.0, 0.0, 1.0),
             use_cuda_graph=True,
+            render_config=RenderConfig(
+                light_intensity=2.0,
+                shadow_radius=10.0,
+            ),
         )
 
         # Override PD gains

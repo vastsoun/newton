@@ -39,6 +39,7 @@ from newton._src.solvers.kamino.geometry.aggregation import ContactAggregation
 from newton._src.solvers.kamino.solver_kamino import SolverKaminoImpl
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
+from newton._src.solvers.kamino.utils.render_config import Color3, RenderConfig
 from newton._src.solvers.kamino.utils.sim.simulator import SimulatorConfig
 from newton._src.viewer import ViewerGL
 
@@ -175,6 +176,7 @@ class RigidBodySim:
         settings: Simulator settings.  ``None`` uses ``default_settings(sim_dt)``.
         use_cuda_graph: Capture CUDA graphs for step and reset (requires
             CUDA device with memory pool enabled).
+        render_config: Viewer appearance settings.  ``None`` uses defaults.
     """
 
     def __init__(
@@ -193,6 +195,7 @@ class RigidBodySim:
         video_folder: str | None = None,
         async_save: bool = True,
         max_contacts_per_pair: int | None = None,
+        render_config: RenderConfig | None = None,
     ):
         # ----- Device setup -----
         self._device = wp.get_device(device)
@@ -282,6 +285,7 @@ class RigidBodySim:
             self.viewer.set_model(self._newton_model)
             # Newton state used only for rendering (body_q synced from Kamino each frame)
             self._newton_state = self._newton_model.state()
+            self._apply_render_config(render_config or RenderConfig())
 
         # ----- CUDA graphs -----
         self._reset_graph = None
@@ -292,6 +296,34 @@ class RigidBodySim:
         msg.notif("Warming up simulator ...")
         self.step()
         self.reset()
+
+    # ------------------------------------------------------------------
+    # Viewer appearance
+    # ------------------------------------------------------------------
+
+    def _apply_render_config(self, cfg: RenderConfig):
+        """Apply render configuration to the viewer."""
+        viewer = self.viewer
+        renderer = viewer.renderer
+
+        # Shape colors (robot only)
+        if cfg.robot_color is not None:
+            model = self._newton_model
+            shape_body = model.shape_body.numpy()
+            color_overrides: dict[int, Color3] = {}
+            for s in range(model.shape_count):
+                if int(shape_body[s]) >= 0:
+                    color_overrides[s] = cfg.robot_color
+            if color_overrides:
+                viewer.update_shape_colors(color_overrides)
+
+        # Lighting settings
+        if cfg.shadow_radius is not None:
+            renderer.shadow_radius = cfg.shadow_radius
+        if cfg.light_intensity is not None:
+            renderer.light_intensity = cfg.light_intensity
+        if cfg.spotlight_enabled is not None:
+            renderer.spotlight_enabled = cfg.spotlight_enabled
 
     # ------------------------------------------------------------------
     # RL interface wiring

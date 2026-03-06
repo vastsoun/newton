@@ -92,7 +92,7 @@ class Example:
 
 
 if __name__ == "__main__":
-    import argparse  # noqa: PLC0415
+    import argparse
 
     parser = newton.examples.create_parser()
     parser.add_argument("--diffuse-scale", type=float, default=None, help="Diffuse light scale")

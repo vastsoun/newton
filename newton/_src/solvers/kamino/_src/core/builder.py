@@ -24,7 +24,7 @@ import copy
 import numpy as np
 import warp as wp
 
-from ....geometry.flags import ShapeFlags
+from .....geometry.flags import ShapeFlags
 from .bodies import RigidBodiesModel, RigidBodyDescriptor
 from .geometry import GeometriesModel, GeometryDescriptor
 from .gravity import GravityDescriptor, GravityModel

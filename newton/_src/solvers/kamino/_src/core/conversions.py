@@ -18,7 +18,7 @@
 import numpy as np
 import warp as wp
 
-from ....sim.model import Model
+from .....sim.model import Model
 from ..utils import logger as msg
 from .joints import JointDoFType, JointsModel
 from .shapes import ShapeType, max_contacts_for_shape_pair

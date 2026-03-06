@@ -22,8 +22,8 @@ import warp as wp
 import newton
 import newton.examples
 
+from ....examples import print_progress_bar
 from ...core.builder import ModelBuilderKamino
-from ...examples import print_progress_bar
 from ...utils import logger as msg
 from ...utils.control.rand import RandomJointController
 from ...utils.device import get_device_malloc_info

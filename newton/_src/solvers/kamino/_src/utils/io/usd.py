@@ -23,10 +23,10 @@ from typing import Any
 import numpy as np
 import warp as wp
 
-from .....core.types import nparray
-from .....geometry.flags import ShapeFlags
-from .....usd import utils as usd_utils
-from .....utils.topology import topological_sort_undirected
+from ......core.types import nparray
+from ......geometry.flags import ShapeFlags
+from ......usd import utils as usd_utils
+from ......utils.topology import topological_sort_undirected
 from ...core.bodies import RigidBodyDescriptor
 from ...core.builder import ModelBuilderKamino
 from ...core.geometry import GeometryDescriptor

@@ -21,8 +21,8 @@ from dataclasses import dataclass, field
 
 import warp as wp
 
-# TODO: from ....sim.builder import ModelBuilder
-from ....geometry.flags import ShapeFlags
+# TODO: from .....sim.builder import ModelBuilder
+from .....geometry.flags import ShapeFlags
 from .shapes import ShapeDescriptorType
 from .types import Descriptor, float32, int32, override, transformf
 

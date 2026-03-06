@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 import warp as wp
 
-from ....sim.control import Control
+from .....sim.control import Control
 
 ###
 # Types

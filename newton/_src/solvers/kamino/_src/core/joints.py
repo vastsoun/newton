@@ -25,8 +25,8 @@ import numpy as np
 import warp as wp
 from warp._src.types import Any, Int, Vector
 
-from ....core.types import MAXVAL
-from ....sim import JointTargetMode, JointType
+from .....core.types import MAXVAL
+from .....sim import JointTargetMode, JointType
 from .math import FLOAT32_MAX, FLOAT32_MIN, PI, TWO_PI
 from .types import (
     ArrayLike,

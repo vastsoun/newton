@@ -42,9 +42,9 @@ from enum import IntEnum
 
 import warp as wp
 
-from ....sim.contacts import Contacts
-from ....sim.model import Model
-from ....sim.state import State
+from .....sim.contacts import Contacts
+from .....sim.model import Model
+from .....sim.state import State
 from ..core.math import COS_PI_6, UNIT_X, UNIT_Y
 from ..core.types import (
     float32,

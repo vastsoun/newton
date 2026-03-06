@@ -26,15 +26,15 @@ from typing import Literal
 import warp as wp
 
 # Newton imports
-from ....geometry.broad_phase_nxn import BroadPhaseAllPairs, BroadPhaseExplicit
-from ....geometry.broad_phase_sap import BroadPhaseSAP
-from ....geometry.collision_core import compute_tight_aabb_from_support
-from ....geometry.contact_data import ContactData
-from ....geometry.flags import ShapeFlags
-from ....geometry.narrow_phase import NarrowPhase
-from ....geometry.sdf_utils import SDFData
-from ....geometry.support_function import GenericShapeData, SupportMapDataProvider, pack_mesh_ptr
-from ....geometry.types import GeoType
+from .....geometry.broad_phase_nxn import BroadPhaseAllPairs, BroadPhaseExplicit
+from .....geometry.broad_phase_sap import BroadPhaseSAP
+from .....geometry.collision_core import compute_tight_aabb_from_support
+from .....geometry.contact_data import ContactData
+from .....geometry.flags import ShapeFlags
+from .....geometry.narrow_phase import NarrowPhase
+from .....geometry.sdf_utils import SDFData
+from .....geometry.support_function import GenericShapeData, SupportMapDataProvider, pack_mesh_ptr
+from .....geometry.types import GeoType
 
 # Kamino imports
 from ..core.data import DataKamino

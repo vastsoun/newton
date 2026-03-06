@@ -24,7 +24,7 @@ from collections.abc import Callable
 
 import warp as wp
 
-from ....core.types import override
+from .....core.types import override
 from ..core.control import ControlKamino
 from ..core.data import DataKamino
 from ..core.math import (

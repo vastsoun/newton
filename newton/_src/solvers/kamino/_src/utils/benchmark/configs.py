@@ -16,7 +16,7 @@
 import ast
 
 from ...linalg.linear import LinearSolverNameToType, LinearSolverTypeToName
-from ...solver_kamino import SolverKamino
+from ...solver_kamino_impl import SolverKaminoImpl
 
 ###
 # Module interface
@@ -39,11 +39,11 @@ __all__ = [
 ###
 
 
-def make_solver_config_default() -> tuple[str, SolverKamino.Config]:
+def make_solver_config_default() -> tuple[str, SolverKaminoImpl.Config]:
     # ------------------------------------------------------------------------------
     name = "Default"
     # ------------------------------------------------------------------------------
-    config = SolverKamino.Config()
+    config = SolverKaminoImpl.Config()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
     config.problem.alpha = 0.1
@@ -77,11 +77,11 @@ def make_solver_config_default() -> tuple[str, SolverKamino.Config]:
     return name, config
 
 
-def make_solver_config_dense_jacobian_llt_accurate() -> tuple[str, SolverKamino.Config]:
+def make_solver_config_dense_jacobian_llt_accurate() -> tuple[str, SolverKaminoImpl.Config]:
     # ------------------------------------------------------------------------------
     name = "Dense Jacobian LLT accurate"
     # ------------------------------------------------------------------------------
-    config = SolverKamino.Config()
+    config = SolverKaminoImpl.Config()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
     config.problem.alpha = 0.1
@@ -115,11 +115,11 @@ def make_solver_config_dense_jacobian_llt_accurate() -> tuple[str, SolverKamino.
     return name, config
 
 
-def make_solver_config_dense_jacobian_llt_fast() -> tuple[str, SolverKamino.Config]:
+def make_solver_config_dense_jacobian_llt_fast() -> tuple[str, SolverKaminoImpl.Config]:
     # ------------------------------------------------------------------------------
     name = "Dense Jacobian LLT fast"
     # ------------------------------------------------------------------------------
-    config = SolverKamino.Config()
+    config = SolverKaminoImpl.Config()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
     config.problem.alpha = 0.1
@@ -153,11 +153,11 @@ def make_solver_config_dense_jacobian_llt_fast() -> tuple[str, SolverKamino.Conf
     return name, config
 
 
-def make_solver_config_sparse_jacobian_llt_accurate() -> tuple[str, SolverKamino.Config]:
+def make_solver_config_sparse_jacobian_llt_accurate() -> tuple[str, SolverKaminoImpl.Config]:
     # ------------------------------------------------------------------------------
     name = "Sparse Jacobian LLT accurate"
     # ------------------------------------------------------------------------------
-    config = SolverKamino.Config()
+    config = SolverKaminoImpl.Config()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
     config.problem.alpha = 0.1
@@ -191,11 +191,11 @@ def make_solver_config_sparse_jacobian_llt_accurate() -> tuple[str, SolverKamino
     return name, config
 
 
-def make_solver_config_sparse_jacobian_llt_fast() -> tuple[str, SolverKamino.Config]:
+def make_solver_config_sparse_jacobian_llt_fast() -> tuple[str, SolverKaminoImpl.Config]:
     # ------------------------------------------------------------------------------
     name = "Sparse Jacobian LLT fast"
     # ------------------------------------------------------------------------------
-    config = SolverKamino.Config()
+    config = SolverKaminoImpl.Config()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
     config.problem.alpha = 0.1
@@ -229,11 +229,11 @@ def make_solver_config_sparse_jacobian_llt_fast() -> tuple[str, SolverKamino.Con
     return name, config
 
 
-def make_solver_config_sparse_delassus_cr_accurate() -> tuple[str, SolverKamino.Config]:
+def make_solver_config_sparse_delassus_cr_accurate() -> tuple[str, SolverKaminoImpl.Config]:
     # ------------------------------------------------------------------------------
     name = "Sparse Delassus CR accurate"
     # ------------------------------------------------------------------------------
-    config = SolverKamino.Config()
+    config = SolverKaminoImpl.Config()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
     config.problem.alpha = 0.1
@@ -267,11 +267,11 @@ def make_solver_config_sparse_delassus_cr_accurate() -> tuple[str, SolverKamino.
     return name, config
 
 
-def make_solver_config_sparse_delassus_cr_fast() -> tuple[str, SolverKamino.Config]:
+def make_solver_config_sparse_delassus_cr_fast() -> tuple[str, SolverKaminoImpl.Config]:
     # ------------------------------------------------------------------------------
     name = "Sparse Delassus CR fast"
     # ------------------------------------------------------------------------------
-    config = SolverKamino.Config()
+    config = SolverKaminoImpl.Config()
     # ------------------------------------------------------------------------------
     # Constraint stabilization
     config.problem.alpha = 0.1
@@ -310,7 +310,7 @@ def make_solver_config_sparse_delassus_cr_fast() -> tuple[str, SolverKamino.Conf
 ###
 
 
-def make_benchmark_configs(include_default: bool = True) -> dict[str, SolverKamino.Config]:
+def make_benchmark_configs(include_default: bool = True) -> dict[str, SolverKaminoImpl.Config]:
     if include_default:
         generators = [make_solver_config_default]
     else:
@@ -325,7 +325,7 @@ def make_benchmark_configs(include_default: bool = True) -> dict[str, SolverKami
             make_solver_config_sparse_delassus_cr_fast,
         ]
     )
-    solver_configs: dict[str, SolverKamino.Config] = {}
+    solver_configs: dict[str, SolverKaminoImpl.Config] = {}
     for gen in generators:
         name, config = gen()
         solver_configs[name] = config
@@ -337,7 +337,7 @@ def make_benchmark_configs(include_default: bool = True) -> dict[str, SolverKami
 ###
 
 
-def save_solver_configs_to_hdf5(configs: dict[str, SolverKamino.Config], datafile):
+def save_solver_configs_to_hdf5(configs: dict[str, SolverKaminoImpl.Config], datafile):
     for config_name, config in configs.items():
         scope = f"Solver/{config_name}"
         # ------------------------------------------------------------------------------
@@ -375,10 +375,10 @@ def save_solver_configs_to_hdf5(configs: dict[str, SolverKamino.Config], datafil
         datafile[f"{scope}/warmstarting/contact_warmstart_method"] = config.contact_warmstart_method
 
 
-def load_solver_configs_to_hdf5(datafile) -> dict[str, SolverKamino.Config]:
+def load_solver_configs_to_hdf5(datafile) -> dict[str, SolverKaminoImpl.Config]:
     configs = {}
     for config_name in datafile["Solver"].keys():
-        config = SolverKamino.Config()
+        config = SolverKaminoImpl.Config()
         # ------------------------------------------------------------------------------
         config.problem.alpha = float(datafile[f"Solver/{config_name}/constraints/alpha"][()])
         config.problem.beta = float(datafile[f"Solver/{config_name}/constraints/beta"][()])

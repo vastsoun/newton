@@ -24,7 +24,7 @@ from typing import Any
 
 import warp as wp
 
-from .....geometry.collision_primitive import (
+from ......geometry.collision_primitive import (
     MAXVAL,
     collide_box_box,
     collide_capsule_box,

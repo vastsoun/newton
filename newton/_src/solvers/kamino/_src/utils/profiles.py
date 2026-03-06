@@ -37,7 +37,7 @@ Example
 -------
 .. code-block:: python
     import numpy as np
-    from newton._src.solvers.kamino.utils.profiles import PerformanceProfile
+    from newton._src.solvers.kamino._src.utils.profiles import PerformanceProfile
 
     data = np.array([[1.0, 2.0, 4.0], [1.5, 1.5, 8.0]])
     pp = PerformanceProfile(data)

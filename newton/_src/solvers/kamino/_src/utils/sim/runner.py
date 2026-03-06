@@ -16,11 +16,11 @@
 import time
 
 import warp as wp
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.control import JointSpacePIDController
-from newton._src.solvers.kamino.utils.sim import SimulationLogger, Simulator, ViewerKamino
 
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.control import JointSpacePIDController
+from newton._src.solvers.kamino._src.utils.sim import SimulationLogger, Simulator, ViewerKamino
 from newton._src.solvers.kamino.examples import print_progress_bar
 
 ###

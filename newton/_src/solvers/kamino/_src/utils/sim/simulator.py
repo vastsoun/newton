@@ -28,7 +28,7 @@ from ...core.model import ModelKamino
 from ...core.state import StateKamino
 from ...core.types import FloatArrayLike
 from ...geometry import CollisionDetector
-from ...solver_kamino import SolverKamino, SolverKaminoImpl
+from ...solver_kamino_impl import SolverKaminoImpl
 
 ###
 # Module interface
@@ -135,10 +135,10 @@ class Simulator:
         See :class:`CollisionDetector.Config` for more details.
         """
 
-        solver: SolverKamino.Config = field(default_factory=SolverKamino.Config)
+        solver: SolverKaminoImpl.Config = field(default_factory=SolverKaminoImpl.Config)
         """
         The config for the dynamics solver.\n
-        See :class:`SolverKamino.Config` for more details.
+        See :class:`SolverKaminoImpl.Config` for more details.
         """
 
         def check(self) -> None:
@@ -164,7 +164,7 @@ class Simulator:
             # Ensure nested configs are properly created
             if not isinstance(self.collision_detector, CollisionDetector.Config):
                 raise TypeError(f"Invalid type for collision_detector config: {type(self.collision_detector)}")
-            if not isinstance(self.solver, SolverKamino.Config):
+            if not isinstance(self.solver, SolverKaminoImpl.Config):
                 raise TypeError(f"Invalid type for solver config: {type(self.solver)}")
 
             # Then check the nested config values

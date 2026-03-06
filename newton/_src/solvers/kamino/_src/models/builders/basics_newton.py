@@ -30,8 +30,8 @@ import math
 
 import warp as wp
 
-from .....core import Axis
-from .....sim import JointTargetMode, ModelBuilder
+from ......core import Axis
+from ......sim import JointTargetMode, ModelBuilder
 from ...core import inertia
 from ...core.joints import JOINT_QMAX, JOINT_QMIN
 

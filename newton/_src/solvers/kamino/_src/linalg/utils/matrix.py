@@ -460,7 +460,7 @@ class MatrixComparison:
         """Save error visualizations to the specified path."""
         import os  # noqa: PLC0415
 
-        from newton._src.solvers.kamino.utils.sparse import sparseplot  # noqa: PLC0415
+        from newton._src.solvers.kamino._src.utils.sparse import sparseplot  # noqa: PLC0415
 
         os.makedirs(path, exist_ok=True)
         sparseplot(self.A, title=f"{title} {name_A}", path=os.path.join(path, f"{symbol_A}.png"))

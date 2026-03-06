@@ -247,7 +247,7 @@ def llt_sequential_solve_inplace(
         mio (wp.array): An array of shape `(num_blocks,)` containing the start indices of each matrix block.
         vio (wp.array): An array of shape `(num_blocks,)` containing the start indices of each vector block.
         L (wp.array): The flat input array containing the Cholesky factorization of each matrix block.
-        x (wp.array): The input/output array where the solution to the linear system `A @ x = b` will be stored in-place.
+        x (wp.array): The array where the solution to the linear system `A @ x = b` will be stored in-place.
     """
     wp.launch(
         kernel=_llt_sequential_solve_inplace,

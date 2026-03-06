@@ -23,8 +23,8 @@ from enum import IntEnum
 
 import warp as wp
 
-from ....core.types import Vec2, Vec3, nparray
-from ....geometry.types import GeoType, Heightfield, Mesh
+from .....core.types import Vec2, Vec3, nparray
+from .....geometry.types import GeoType, Heightfield, Mesh
 from .types import Descriptor, override, vec3f, vec4f
 
 ###

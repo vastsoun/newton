@@ -19,18 +19,22 @@ import os
 
 import numpy as np
 import warp as wp
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.benchmark.configs import make_benchmark_configs
-from newton._src.solvers.kamino.utils.benchmark.metrics import BenchmarkMetrics, CodeInfo
-from newton._src.solvers.kamino.utils.benchmark.problems import BenchmarkProblemNameToConfigFn, make_benchmark_problems
-from newton._src.solvers.kamino.utils.benchmark.render import (
+
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.benchmark.configs import make_benchmark_configs
+from newton._src.solvers.kamino._src.utils.benchmark.metrics import BenchmarkMetrics, CodeInfo
+from newton._src.solvers.kamino._src.utils.benchmark.problems import (
+    BenchmarkProblemNameToConfigFn,
+    make_benchmark_problems,
+)
+from newton._src.solvers.kamino._src.utils.benchmark.render import (
     render_problem_dimensions_table,
     render_solver_configs_table,
 )
-from newton._src.solvers.kamino.utils.benchmark.runner import run_single_benchmark
-from newton._src.solvers.kamino.utils.device import get_device_spec_info
-from newton._src.solvers.kamino.utils.sim import Simulator
+from newton._src.solvers.kamino._src.utils.benchmark.runner import run_single_benchmark
+from newton._src.solvers.kamino._src.utils.device import get_device_spec_info
+from newton._src.solvers.kamino._src.utils.sim import Simulator
 
 ###
 # Constants

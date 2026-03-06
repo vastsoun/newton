@@ -70,7 +70,7 @@ from typing import Any
 
 import warp as wp
 
-from ....sim import Model, ModelBuilder
+from .....sim import Model, ModelBuilder
 from ..core.data import DataKamino
 from ..core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
 from ..core.model import ModelKamino

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 import numpy as np
 import warp as wp
 
-from ....sim.model import Model
+from .....sim.model import Model
 from ..utils import logger as msg
 from .types import ArrayLike, Descriptor, override, vec3f, vec4f
 

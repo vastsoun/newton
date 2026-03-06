@@ -18,8 +18,8 @@ from typing import Any, Literal
 
 import numpy as np
 
-from .....core.types import override
-from ...solver_kamino import SolverKamino, SolverKaminoImpl
+from ......core.types import override
+from ...solver_kamino_impl import SolverKaminoImpl
 from .configs import load_solver_configs_to_hdf5, save_solver_configs_to_hdf5
 from .problems import ProblemDimensions, save_problem_dimensions_to_hdf5
 from .render import (
@@ -342,7 +342,7 @@ class BenchmarkMetrics:
     def __init__(
         self,
         problems: list[str] | None = None,
-        configs: dict[str, SolverKamino.Config] | None = None,
+        configs: dict[str, SolverKaminoImpl.Config] | None = None,
         num_steps: int | None = None,
         step_metrics: bool = False,
         solver_metrics: bool = False,
@@ -359,7 +359,7 @@ class BenchmarkMetrics:
 
         # Declare cache of the solver configurations used in the
         # benchmark for easy reference when analyzing results
-        self._configs: dict[str, SolverKamino.Config] | None = None
+        self._configs: dict[str, SolverKaminoImpl.Config] | None = None
 
         # One-time metrics
         self.memory_used: np.ndarray | None = None
@@ -416,7 +416,7 @@ class BenchmarkMetrics:
     def finalize(
         self,
         problems: list[str],
-        configs: dict[str, SolverKamino.Config],
+        configs: dict[str, SolverKaminoImpl.Config],
         num_steps: int | None = None,
         step_metrics: bool = False,
         solver_metrics: bool = False,

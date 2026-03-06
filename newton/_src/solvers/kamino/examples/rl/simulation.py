@@ -30,16 +30,17 @@ from warp.context import Devicelike
 
 # Thirdparty
 import newton
+from newton._src.solvers.kamino.core.bodies import convert_body_com_to_origin
 from newton._src.solvers.kamino.core.control import ControlKamino
 from newton._src.solvers.kamino.core.model import ModelKamino
-from newton._src.solvers.kamino.core.state import StateKamino, compute_body_frame_state
+from newton._src.solvers.kamino.core.state import StateKamino
 from newton._src.solvers.kamino.core.types import transformf, vec6f
 from newton._src.solvers.kamino.geometry import CollisionDetector
 from newton._src.solvers.kamino.geometry.aggregation import ContactAggregation
 from newton._src.solvers.kamino.solver_kamino import SolverKaminoImpl
 from newton._src.solvers.kamino.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.sim.simulator import SimulatorConfig
+from newton._src.solvers.kamino.utils.sim import Simulator
 from newton._src.viewer import ViewerGL
 
 
@@ -55,13 +56,13 @@ class SimulatorFromNewton:
     def __init__(
         self,
         newton_model: newton.Model,
-        config: SimulatorConfig | None = None,
+        config: Simulator.Config | None = None,
         device: Devicelike = None,
     ):
         self._device = wp.get_device(device)
 
         if config is None:
-            config = SimulatorConfig()
+            config = Simulator.Config()
         self._config = config
 
         # Create Kamino model from Newton model
@@ -187,7 +188,7 @@ class RigidBodySim:
         body_pose_offset: tuple | None = None,
         add_ground: bool = True,
         enable_gravity: bool = True,
-        settings: SimulatorConfig | None = None,
+        settings: Simulator.Config | None = None,
         use_cuda_graph: bool = False,
         record_video: bool = False,
         video_folder: str | None = None,
@@ -492,7 +493,7 @@ class RigidBodySim:
         if self.viewer is not None:
             self.viewer.begin_frame(self.time)
             # Kamino q_i is COM-frame; ViewerGL expects body-frame-origin poses.
-            compute_body_frame_state(
+            convert_body_com_to_origin(
                 body_com=self.sim.model.bodies.i_r_com_i,
                 body_q_com=self.sim.state.q_i,
                 body_q=self._newton_state.body_q,
@@ -785,9 +786,9 @@ class RigidBodySim:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def default_settings(sim_dt: float = 0.01) -> SimulatorConfig:
+    def default_settings(sim_dt: float = 0.01) -> Simulator.Config:
         """Return sensible default solver settings for RL."""
-        settings = SimulatorConfig()
+        settings = Simulator.Config()
         settings.dt = sim_dt
         settings.collision_detector.pipeline = "unified"
         settings.collision_detector.max_contacts_per_pair = 8

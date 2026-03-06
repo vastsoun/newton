@@ -154,11 +154,7 @@ class Example:
         # so contacts are rendered with self.state_1 to match the body positions at the
         # time of contact generation.
         self.viewer.log_state(self.state_0)
-        # TODO @cavemor: why does calling `log_contacts` fail?
-        # msg.warning("contacts.rigid_contact_count: %s", self.contacts.rigid_contact_count)
-        # msg.warning("contacts.rigid_contact_shape1: %s", self.contacts.rigid_contact_shape1)
-        # msg.warning("contacts.rigid_contact_point1: %s", self.contacts.rigid_contact_point1)
-        # self.viewer.log_contacts(self.contacts, self.state_1)
+        # TODO: self.viewer.log_contacts(self.contacts, self.state_1)
         self.viewer.end_frame()
 
     def test_final(self):

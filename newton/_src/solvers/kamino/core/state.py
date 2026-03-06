@@ -295,8 +295,11 @@ class StateKamino:
 
         # If the state contains the Kamino-specific `joint_lambdas` custom attribute,
         # capture a reference to it; otherwise, create a new array for it.
-        is_joint_lambdas_valid = hasattr(state, "joint_lambdas") and state.joint_lambdas is not None
-        is_joint_lambdas_valid &= state.joint_lambdas.shape == (size.sum_of_num_joint_cts,)
+        is_joint_lambdas_valid = (
+            hasattr(state, "joint_lambdas")
+            and state.joint_lambdas is not None
+            and state.joint_lambdas.shape == (size.sum_of_num_joint_cts,)
+        )
         if is_joint_lambdas_valid:
             joint_lambdas = state.joint_lambdas
         else:

@@ -175,42 +175,42 @@ class WorldDescriptor(Descriptor):
 
     joint_coords: list[int] = field(default_factory=list)
     """
-    The list of of all joint coordinates.\n
+    The list of all joint coordinates.\n
     This list is ordered according the joint indices in the world,
     and the sum of all elements is equal to `num_joint_coords`.\n
     """
 
     joint_dofs: list[int] = field(default_factory=list)
     """
-    The list of of all joint DoFs.\n
+    The list of all joint DoFs.\n
     This list is ordered according the joint indices in the world,
     and the sum of all elements is equal to `num_joint_dofs`.\n
     """
 
     joint_passive_coords: list[int] = field(default_factory=list)
     """
-    The list of of all passive joint coordinates.\n
+    The list of all passive joint coordinates.\n
     This list is ordered according the joint indices in the world,
     and the sum of all elements is equal to `num_passive_joint_coords`.\n
     """
 
     joint_passive_dofs: list[int] = field(default_factory=list)
     """
-    The list of of all passive joint DoFs.\n
+    The list of all passive joint DoFs.\n
     This list is ordered according the joint indices in the world,
     and the sum of all elements is equal to `num_passive_joint_dofs`.\n
     """
 
     joint_actuated_coords: list[int] = field(default_factory=list)
     """
-    The list of of all actuated joint coordinates.\n
+    The list of all actuated joint coordinates.\n
     This list is ordered according the joint indices in the world,
     and the sum of all elements is equal to `num_actuated_joint_coords`.\n
     """
 
     joint_actuated_dofs: list[int] = field(default_factory=list)
     """
-    The list of of all actuated joint DoFs.\n
+    The list of all actuated joint DoFs.\n
     This list is ordered according the joint indices in the world,
     and the sum of all elements is equal to `num_actuated_joint_dofs`.\n
     """
@@ -427,7 +427,7 @@ class WorldDescriptor(Descriptor):
         self.inertia_total += 3.0 * body.m_i + float(body.i_I_i[0, 0] + body.i_I_i[1, 1] + body.i_I_i[2, 2])
 
     def add_joint(self, joint: JointDescriptor):
-        # Check if the body has already been added to a world
+        # Check if the joint has already been added to a world
         if joint.name in self.joint_names:
             raise ValueError(f"Joint name '{joint.name}' already exists in world '{self.name}' ({self.wid}).")
         if joint.uid in self.joint_uids:
@@ -516,7 +516,7 @@ class WorldDescriptor(Descriptor):
             self.dynamic_joint_names.append(joint.name)
 
     def add_geometry(self, geom: GeometryDescriptor):
-        # Check if the body has already been added to a world
+        # Check if the geometry has already been added to a world
         if geom.name in self.geom_names:
             raise ValueError(f"Geometry name '{geom.name}' already exists in world '{self.name}' ({self.wid}).")
         if geom.uid in self.geom_uids:

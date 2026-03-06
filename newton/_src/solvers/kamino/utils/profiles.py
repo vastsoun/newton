@@ -447,7 +447,7 @@ class PerformanceProfile:
             plt.rcParams["lines.linewidth"] = 1.8  # consistent, readable width
 
             # Create the figure and axis
-            fig, ax = plt.subplots(figsize=(10, 8), dpi=300)
+            fig, ax = plt.subplots(figsize=(8, 8))
 
             # Set up a prop cycle with distinct colors and linestyles
             ax.set_prop_cycle(prop)
@@ -508,9 +508,10 @@ class PerformanceProfile:
             # Works even if the legend is draggable. This is independent from picking legend lines.
             fig.canvas.mpl_connect("pick_event", on_pick)
             legend.set_draggable(True)
+            plt.tight_layout()
 
             if path is not None:
-                plt.savefig(path, bbox_inches="tight")
+                plt.savefig(path, bbox_inches="tight", dpi=300)
                 msg.debug(f"Profile plot saved to: {path}")
 
             if show:

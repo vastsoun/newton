@@ -63,6 +63,13 @@ Supported Features
      - ✅
      - ❌
      - ❌
+   * - :class:`~newton.solvers.SolverKamino`
+     - Euler (Semi-implicit), Moreau-Jean (Semi-implicit)
+     - ✅ maximal coordinates
+     - ✅ maximal coordinates
+     - ❌
+     - ❌
+     - ❌
    * - :class:`~newton.solvers.SolverMuJoCo`
      - Explicit, Semi-implicit, Implicit
      - ✅ (uses its own collision pipeline from MuJoCo/mujoco_warp by default, unless ``use_mujoco_contacts`` is set to False)
@@ -119,6 +126,7 @@ Supported Features
    SolverBase
    SolverFeatherstone
    SolverImplicitMPM
+   SolverKamino
    SolverMuJoCo
    SolverNotifyFlags
    SolverSemiImplicit

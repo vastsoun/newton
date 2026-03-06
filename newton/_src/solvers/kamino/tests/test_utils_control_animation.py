@@ -15,15 +15,14 @@
 
 """Unit tests for the AnimationJointReference class."""
 
-import os
 import unittest
 
 import numpy as np
 import warp as wp
 
+import newton
 from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino.core.types import float32
-from newton._src.solvers.kamino.models import get_examples_usd_assets_path
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.utils import logger as msg
 from newton._src.solvers.kamino.utils.control import AnimationJointReference
@@ -62,17 +61,15 @@ class TestAnimationJointReference(unittest.TestCase):
         self.assertEqual(animation._data, None)
 
     def test_01_make_with_numpy_data(self):
-        EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
-        if EXAMPLES_USD_ASSETS_PATH is None:
-            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
-
-        # Set paths to model and animation data
-        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs_with_boxes.usda")
-        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/animation/dr_legs_animation_100fps.npy")
+        # Load the DR Legs model and animation data from the
+        # `newton-assets` repository using the utility function
+        asset_path = newton.utils.download_asset("disneyresearch")
+        model_asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
+        animation_asset_file = str(asset_path / "dr_legs" / "animation" / "dr_legs_animation_100fps.npy")
 
         # Import USD model of DR Legs
         importer = USDImporter()
-        builder: ModelBuilderKamino = importer.import_from(source=USD_MODEL_PATH)
+        builder: ModelBuilderKamino = importer.import_from(source=model_asset_file)
         model = builder.finalize(device=self.default_device)
         data = model.data(device=self.default_device)
 
@@ -84,7 +81,7 @@ class TestAnimationJointReference(unittest.TestCase):
         self.assertEqual(njaq, njad)  # Ensure only 1-DoF joints
 
         # Load numpy animation data
-        animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
+        animation_np = np.load(animation_asset_file, allow_pickle=True)
         msg.info(f"animation_np (shape={animation_np.shape}):\n{animation_np}\n")
         self.assertEqual(animation_np.shape[1], njaq)  # Ensure data matches number of joints
 
@@ -168,17 +165,15 @@ class TestAnimationJointReference(unittest.TestCase):
             np.testing.assert_array_almost_equal(dq_j_ref_out.numpy(), np.zeros(njad, dtype=np.float32), decimal=6)
 
     def test_02_make_with_numpy_data_and_decimation(self):
-        EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
-        if EXAMPLES_USD_ASSETS_PATH is None:
-            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
-
-        # Set paths to model and animation data
-        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs_with_boxes.usda")
-        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/animation/dr_legs_animation_100fps.npy")
+        # Load the DR Legs model and animation data from the
+        # `newton-assets` repository using the utility function
+        asset_path = newton.utils.download_asset("disneyresearch")
+        model_asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
+        animation_asset_file = str(asset_path / "dr_legs" / "animation" / "dr_legs_animation_100fps.npy")
 
         # Import USD model of DR Legs
         importer = USDImporter()
-        builder: ModelBuilderKamino = importer.import_from(source=USD_MODEL_PATH)
+        builder: ModelBuilderKamino = importer.import_from(source=model_asset_file)
         model = builder.finalize(device=self.default_device)
         data = model.data(device=self.default_device)
 
@@ -190,7 +185,7 @@ class TestAnimationJointReference(unittest.TestCase):
         self.assertEqual(njaq, njad)  # Ensure only 1-DoF joints
 
         # Load numpy animation data
-        animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
+        animation_np = np.load(animation_asset_file, allow_pickle=True)
         msg.info(f"animation_np (shape={animation_np.shape}):\n{animation_np}\n")
         self.assertEqual(animation_np.shape[1], njaq)  # Ensure data matches number of joints
 
@@ -312,16 +307,15 @@ class TestAnimationJointReference(unittest.TestCase):
             np.testing.assert_array_almost_equal(dq_j_ref_out.numpy(), np.zeros(njad, dtype=np.float32), decimal=6)
 
     def test_03_make_with_numpy_data_and_decimation_plus_rate(self):
-        EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
-        if EXAMPLES_USD_ASSETS_PATH is None:
-            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
-        # Set paths to DR Legs model and animation data
-        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs_with_boxes.usda")
-        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/animation/dr_legs_animation_100fps.npy")
+        # Load the DR Legs model and animation data from the
+        # `newton-assets` repository using the utility function
+        asset_path = newton.utils.download_asset("disneyresearch")
+        model_asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
+        animation_asset_file = str(asset_path / "dr_legs" / "animation" / "dr_legs_animation_100fps.npy")
 
         # Import USD model of DR Legs
         importer = USDImporter()
-        builder: ModelBuilderKamino = importer.import_from(source=USD_MODEL_PATH)
+        builder: ModelBuilderKamino = importer.import_from(source=model_asset_file)
         model = builder.finalize(device=self.default_device)
         data = model.data(device=self.default_device)
 
@@ -333,7 +327,7 @@ class TestAnimationJointReference(unittest.TestCase):
         self.assertEqual(njaq, njad)  # Ensure only 1-DoF joints
 
         # Load numpy animation data
-        animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
+        animation_np = np.load(animation_asset_file, allow_pickle=True)
         msg.info(f"animation_np (shape={animation_np.shape}):\n{animation_np}\n")
         self.assertEqual(animation_np.shape[1], njaq)  # Ensure data matches number of joints
 
@@ -455,16 +449,15 @@ class TestAnimationJointReference(unittest.TestCase):
             np.testing.assert_array_almost_equal(dq_j_ref_out.numpy(), np.zeros(njad, dtype=np.float32), decimal=6)
 
     def test_04_make_with_numpy_data_and_decimation_plus_rate_no_looping(self):
-        EXAMPLES_USD_ASSETS_PATH = get_examples_usd_assets_path()
-        if EXAMPLES_USD_ASSETS_PATH is None:
-            self.skipTest("EXAMPLES_USD_ASSETS_PATH is `None` - skipping `DR Legs` import test.")
-        # Set paths to DR Legs model and animation data
-        USD_MODEL_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/usd/dr_legs_with_boxes.usda")
-        NUMPY_ANIMATION_PATH = os.path.join(EXAMPLES_USD_ASSETS_PATH, "dr_legs/animation/dr_legs_animation_100fps.npy")
+        # Load the DR Legs model and animation data from the
+        # `newton-assets` repository using the utility function
+        asset_path = newton.utils.download_asset("disneyresearch")
+        model_asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
+        animation_asset_file = str(asset_path / "dr_legs" / "animation" / "dr_legs_animation_100fps.npy")
 
         # Import USD model of DR Legs
         importer = USDImporter()
-        builder: ModelBuilderKamino = importer.import_from(source=USD_MODEL_PATH)
+        builder: ModelBuilderKamino = importer.import_from(source=model_asset_file)
         model = builder.finalize(device=self.default_device)
         data = model.data(device=self.default_device)
 
@@ -476,7 +469,7 @@ class TestAnimationJointReference(unittest.TestCase):
         self.assertEqual(njaq, njad)  # Ensure only 1-DoF joints
 
         # Load numpy animation data
-        animation_np = np.load(NUMPY_ANIMATION_PATH, allow_pickle=True)
+        animation_np = np.load(animation_asset_file, allow_pickle=True)
         msg.info(f"animation_np (shape={animation_np.shape}):\n{animation_np}\n")
         self.assertEqual(animation_np.shape[1], njaq)  # Ensure data matches number of joints
 

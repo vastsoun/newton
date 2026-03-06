@@ -209,6 +209,7 @@ class Example:
                 source=USD_MODEL_PATH,
                 load_drive_dynamics=implicit_pd,
                 load_static_geometry=ground,
+                use_angular_drive_scaling=True,
             )
             # Set joint armature and damping because the purely
             # UsdPhysics schema does not support these properties yet
@@ -227,13 +228,6 @@ class Example:
                 dynamic_joints=implicit_pd,
                 implicit_pd=implicit_pd,
             )
-
-        # TODO
-        for joint in self.builder.joints:
-            if joint.is_actuated:
-                msg.error(f"Actuated Joint:\n{joint}")
-            else:
-                msg.warning(f"Passive Joint:\n{joint}")
 
         # Offset the model to place it above the ground
         # NOTE: The USD model is centered at the origin

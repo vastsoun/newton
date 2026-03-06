@@ -15,7 +15,6 @@
 
 """Unit tests for `solvers/metrics.py`."""
 
-import os
 import unittest
 
 import numpy as np
@@ -40,12 +39,6 @@ class TestSolverMetrics(unittest.TestCase):
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
         self.verbose = test_context.verbose  # Set to True for detailed output
-        self.savefig = False  # Set to True to generate solver info plots
-        self.output_dir = os.path.dirname(os.path.realpath(__file__)) + "/output/test_solvers_padmm"
-
-        # Create output directory if saving figures
-        if self.savefig:
-            os.makedirs(self.output_dir, exist_ok=True)
 
         # Set debug-level logging to print verbose test output to console
         if self.verbose:

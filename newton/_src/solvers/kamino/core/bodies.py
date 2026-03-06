@@ -444,9 +444,9 @@ def _convert_body_origin_to_com(
     body_com: wp.array(dtype=vec3f),
     world_mask: wp.array(dtype=int32),
     body_wid: wp.array(dtype=int32),
-    # In/Outputs
-    body_q: wp.array(dtype=transformf),
-    body_qd: wp.array(dtype=vec6f),
+    body_q_org: wp.array(dtype=transformf),
+    # Outputs
+    body_q_com: wp.array(dtype=transformf),
 ):
     bid = wp.tid()
 
@@ -456,19 +456,13 @@ def _convert_body_origin_to_com(
             return
 
     com = body_com[bid]
-    q = body_q[bid]
+    q = body_q_org[bid]
 
     body_r = wp.transform_get_translation(q)
     body_rot = wp.transform_get_rotation(q)
     r_com = wp.quat_rotate(body_rot, com)
 
-    body_q[bid] = transformf(body_r + r_com, body_rot)
-
-    if body_qd:
-        u = body_qd[bid]
-        body_v = wp.spatial_top(u)
-        body_omega = wp.spatial_bottom(u)
-        body_qd[bid] = wp.spatial_vector(body_v + wp.cross(body_omega, r_com), body_omega)
+    body_q_com[bid] = transformf(body_r + r_com, body_rot)
 
 
 @wp.kernel
@@ -477,9 +471,9 @@ def _convert_body_com_to_origin(
     body_com: wp.array(dtype=vec3f),
     world_mask: wp.array(dtype=int32),
     body_wid: wp.array(dtype=int32),
-    # In/Outputs
-    body_q: wp.array(dtype=transformf),
-    body_qd: wp.array(dtype=vec6f),
+    body_q_c: wp.array(dtype=transformf),
+    # Outputs
+    body_q_o: wp.array(dtype=transformf),
 ):
     bid = wp.tid()
 
@@ -489,43 +483,33 @@ def _convert_body_com_to_origin(
             return
 
     com = body_com[bid]
-    q = body_q[bid]
+    q = body_q_c[bid]
 
     body_r_com = wp.transform_get_translation(q)
     body_rot = wp.transform_get_rotation(q)
     r_com = wp.quat_rotate(body_rot, com)
 
-    body_q[bid] = transformf(body_r_com - r_com, body_rot)
-
-    if body_qd:
-        u = body_qd[bid]
-        body_v_com = wp.spatial_top(u)
-        body_omega = wp.spatial_bottom(u)
-        body_qd[bid] = wp.spatial_vector(body_v_com - wp.cross(body_omega, r_com), body_omega)
+    body_q_o[bid] = transformf(body_r_com - r_com, body_rot)
 
 
 @wp.kernel
 def _convert_base_origin_to_com(
+    # Inputs
     base_body_index: wp.array(dtype=int32),
     body_com: wp.array(dtype=vec3f),
-    # In/Outputs
-    base_q: wp.array(dtype=transformf),
-    base_u: wp.array(dtype=vec6f),
+    base_q_o: wp.array(dtype=transformf),
+    # Outputs
+    base_q_c: wp.array(dtype=transformf),
 ):
     wid = wp.tid()
     base_bid = base_body_index[wid]
     if base_bid < 0:
         return
     com = body_com[base_bid]
-    q = base_q[wid]
+    q = base_q_o[wid]
     rot = wp.transform_get_rotation(q)
     r_com = wp.quat_rotate(rot, com)
-    base_q[wid] = transformf(wp.transform_get_translation(q) + r_com, rot)
-    if base_u:
-        u = base_u[wid]
-        v = wp.spatial_top(u)
-        omega = wp.spatial_bottom(u)
-        base_u[wid] = wp.spatial_vector(v + wp.cross(omega, r_com), omega)
+    base_q_c[wid] = transformf(wp.transform_get_translation(q) + r_com, rot)
 
 
 @wp.kernel
@@ -533,17 +517,20 @@ def _convert_geom_offset_origin_to_com(
     # Inputs
     body_com: wp.array(dtype=vec3f),
     geom_bid: wp.array(dtype=int32),
-    # In/Outputs
-    geom_offset: wp.array(dtype=transformf),
+    geom_offset_org: wp.array(dtype=transformf),
+    # Outputs
+    geom_offset_com: wp.array(dtype=transformf),
 ):
     gid = wp.tid()
     bid = geom_bid[gid]
     if bid >= 0:
         com = body_com[bid]
-        X = geom_offset[gid]
+        X = geom_offset_org[gid]
         pos = wp.transform_get_translation(X)
         rot = wp.transform_get_rotation(X)
-        geom_offset[gid] = transformf(pos - com, rot)
+        geom_offset_com[gid] = transformf(pos - com, rot)
+    else:
+        geom_offset_com[gid] = geom_offset_org[gid]
 
 
 ###
@@ -554,13 +541,14 @@ def _convert_geom_offset_origin_to_com(
 def convert_geom_offset_origin_to_com(
     body_com: wp.array,
     geom_bid: wp.array,
-    geom_offset: wp.array,
+    geom_offset_org: wp.array,
+    geom_offset_com: wp.array,
 ):
     wp.launch(
         _convert_geom_offset_origin_to_com,
         dim=geom_bid.shape[0],
-        inputs=[body_com, geom_bid],
-        outputs=[geom_offset],
+        inputs=[body_com, geom_bid, geom_offset_org],
+        outputs=[geom_offset_com],
         device=body_com.device,
     )
 
@@ -600,32 +588,32 @@ def update_body_wrenches(model: RigidBodiesModel, data: RigidBodiesData):
 
 def convert_body_origin_to_com(
     body_com: wp.array,
-    body_q: wp.array,
-    body_qd: wp.array | None = None,
+    body_q_org: wp.array,
+    body_q_com: wp.array,
     world_mask: wp.array | None = None,
     body_wid: wp.array | None = None,
 ):
     wp.launch(
         _convert_body_origin_to_com,
         dim=body_com.shape[0],
-        inputs=[body_com, world_mask, body_wid],
-        outputs=[body_q, body_qd],
+        inputs=[body_com, world_mask, body_wid, body_q_org],
+        outputs=[body_q_com],
         device=body_com.device,
     )
 
 
 def convert_body_com_to_origin(
     body_com: wp.array,
-    body_q: wp.array,
-    body_qd: wp.array | None = None,
+    body_q_com: wp.array,
+    body_q_org: wp.array,
     world_mask: wp.array | None = None,
     body_wid: wp.array | None = None,
 ):
     wp.launch(
         _convert_body_com_to_origin,
         dim=body_com.shape[0],
-        inputs=[body_com, world_mask, body_wid],
-        outputs=[body_q, body_qd],
+        inputs=[body_com, world_mask, body_wid, body_q_com],
+        outputs=[body_q_org],
         device=body_com.device,
     )
 
@@ -633,12 +621,12 @@ def convert_body_com_to_origin(
 def convert_base_origin_to_com(
     base_body_index: wp.array,
     body_com: wp.array,
-    base_q: wp.array,
-    base_u: wp.array | None = None,
+    base_q_o: wp.array,
+    base_q_c: wp.array,
 ):
     wp.launch(
         _convert_base_origin_to_com,
         dim=base_body_index.shape[0],
-        inputs=[base_body_index, body_com],
-        outputs=[base_q, base_u],
+        inputs=[base_body_index, body_com, base_q_o],
+        outputs=[base_q_c],
     )

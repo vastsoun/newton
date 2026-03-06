@@ -198,8 +198,8 @@ class StateKamino:
 
         convert_body_origin_to_com(
             body_com=model.body_com,
-            body_q=self.q_i,
-            body_qd=self.u_i,
+            body_q_o=self.q_i,
+            body_q_c=self.q_i,
             world_mask=world_mask,
             body_wid=body_wid,
         )
@@ -230,8 +230,8 @@ class StateKamino:
 
         convert_body_com_to_origin(
             body_com=model.body_com,
-            body_q=self.q_i,
-            body_qd=self.u_i,
+            body_q_c=self.q_i,
+            body_q_o=self.q_i,
             world_mask=world_mask,
             body_wid=body_wid,
         )
@@ -319,7 +319,7 @@ class StateKamino:
             lambda_j=joint_lambdas,
         )
 
-        # Optionally convert body poses and velocities to CoM frame
+        # Optionally convert body poses to CoM frame
         if convert_to_com_frame:
             state_kamino.convert_to_body_com_state(model)
 
@@ -356,7 +356,7 @@ class StateKamino:
         if not isinstance(state, StateKamino):
             raise TypeError(f"Expected state of type StateKamino, but got {type(state)}.")
 
-        # Optionally convert body poses and velocities to body frame
+        # Optionally convert body poses to body frame
         if convert_to_body_frame:
             state.convert_to_body_frame_state(model)
 

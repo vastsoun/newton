@@ -841,7 +841,7 @@ class TestModelConversions(unittest.TestCase):
 
     def test_10_origin_com_roundtrip(self):
         """
-        Test that origin→COM→origin is the identity on both body_q and body_qd.
+        Test that origin→COM→origin is the identity on body_q.
         """
         from newton._src.solvers.kamino.core.bodies import (
             convert_body_com_to_origin,
@@ -850,18 +850,12 @@ class TestModelConversions(unittest.TestCase):
 
         model = self._build_com_offset_model()
         body_q = wp.clone(model.body_q)
-        body_qd = wp.array(
-            np.random.default_rng(42).standard_normal((model.body_count, 6)).astype(np.float32),
-            dtype=wp.spatial_vectorf,
-        )
         q_orig = body_q.numpy().copy()
-        qd_orig = body_qd.numpy().copy()
 
-        convert_body_origin_to_com(model.body_com, body_q, body_qd)
-        convert_body_com_to_origin(model.body_com, body_q, body_qd)
+        convert_body_origin_to_com(model.body_com, body_q, body_q)
+        convert_body_com_to_origin(model.body_com, body_q, body_q)
 
         np.testing.assert_allclose(body_q.numpy(), q_orig, atol=1e-6, err_msg="body_q roundtrip failed")
-        np.testing.assert_allclose(body_qd.numpy(), qd_orig, atol=1e-6, err_msg="body_qd roundtrip failed")
 
     def test_11_state_conversions(self):
         """

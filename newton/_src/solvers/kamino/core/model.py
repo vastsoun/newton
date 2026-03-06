@@ -1300,8 +1300,13 @@ class ModelKamino:
             )
 
             # Convert shape offsets from body-frame-relative to COM-relative
-            shape_transform_com = wp.clone(model.shape_transform)
-            convert_geom_offset_origin_to_com(model.body_com, model.shape_body, shape_transform_com)
+            shape_transform_com = wp.zeros_like(model.shape_transform)
+            convert_geom_offset_origin_to_com(
+                model.body_com,
+                model.shape_body,
+                model.shape_transform,
+                shape_transform_com,
+            )
 
             # Collision geometries
             model_geoms = GeometriesModel(

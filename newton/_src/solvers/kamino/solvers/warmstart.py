@@ -42,7 +42,7 @@ from ..core.math import contact_wrench_matrix_from_points
 from ..core.model import ModelKamino
 from ..core.types import float32, int32, override, quatf, transformf, uint64, vec2f, vec2i, vec3f, vec6f
 from ..geometry.contacts import ContactsKamino, ContactsKaminoData
-from ..geometry.keying import KeySorter, binary_search_find_range_start
+from ..geometry.keying import KeySorter, binary_search_find_range_start, make_bitmask
 from ..kinematics.limits import LimitsKamino, LimitsKaminoData
 from ..solvers.padmm.math import project_to_coulomb_cone
 
@@ -856,6 +856,17 @@ class WarmstarterLimits:
         wp.copy(self._cache.velocity, limits.velocity)
         wp.copy(self._cache.reaction, limits.reaction)
 
+    def reset(self):
+        """
+        Resets the warmstarter's internal cache by zeroing out all data.
+        """
+        if self._cache is None:
+            return
+        self._cache.model_active_limits.zero_()
+        self._cache.key.fill_(make_bitmask(63))
+        self._cache.reaction.zero_()
+        self._cache.velocity.zero_()
+
 
 class WarmstarterContacts:
     """
@@ -1078,3 +1089,18 @@ class WarmstarterContacts:
         wp.copy(self._cache.key, contacts.key)
         wp.copy(self._cache.velocity, contacts.velocity)
         wp.copy(self._cache.reaction, contacts.reaction)
+
+    def reset(self):
+        """
+        Resets the warmstarter's internal cache by zeroing out all data.
+        """
+        if self._cache is None or self._cache.model_active_contacts is None:
+            return
+        self._cache.model_active_contacts.zero_()
+        self._cache.bid_AB.fill_(vec2i(-1, -1))
+        self._cache.position_A.zero_()
+        self._cache.position_B.zero_()
+        self._cache.frame.zero_()
+        self._cache.key.fill_(make_bitmask(63))
+        self._cache.reaction.zero_()
+        self._cache.velocity.zero_()

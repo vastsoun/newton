@@ -24,19 +24,19 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.data import DataKamino
-from newton._src.solvers.kamino.core.math import I_3
-from newton._src.solvers.kamino.core.model import ModelKamino
-from newton._src.solvers.kamino.core.shapes import SphereShape
-from newton._src.solvers.kamino.core.state import StateKamino
-from newton._src.solvers.kamino.core.types import transformf, vec6f
-from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
-from newton._src.solvers.kamino.geometry.unified import CollisionPipelineUnifiedKamino
-from newton._src.solvers.kamino.models.builders import basics, testing
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino._src.core.data import DataKamino
+from newton._src.solvers.kamino._src.core.math import I_3
+from newton._src.solvers.kamino._src.core.model import ModelKamino
+from newton._src.solvers.kamino._src.core.shapes import SphereShape
+from newton._src.solvers.kamino._src.core.state import StateKamino
+from newton._src.solvers.kamino._src.core.types import transformf, vec6f
+from newton._src.solvers.kamino._src.geometry.contacts import ContactsKamino
+from newton._src.solvers.kamino._src.geometry.unified import CollisionPipelineUnifiedKamino
+from newton._src.solvers.kamino._src.models.builders import basics, testing
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.test_geometry_primitive import check_contacts
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Constants

@@ -22,9 +22,9 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.dynamics.dual import DualProblem
-from newton._src.solvers.kamino.linalg import ConjugateGradientSolver
-from newton._src.solvers.kamino.models.builders.basics import make_basics_heterogeneous_builder
+from newton._src.solvers.kamino._src.dynamics.dual import DualProblem
+from newton._src.solvers.kamino._src.linalg import ConjugateGradientSolver
+from newton._src.solvers.kamino._src.models.builders.basics import make_basics_heterogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.extract import extract_problem_vector
 from newton._src.solvers.kamino.tests.utils.make import make_containers, update_containers

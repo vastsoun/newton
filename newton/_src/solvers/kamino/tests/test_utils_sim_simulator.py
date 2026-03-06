@@ -21,13 +21,13 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import float32
+from newton._src.solvers.kamino._src.core.types import float32
+from newton._src.solvers.kamino._src.models.builders.basics import build_cartpole
+from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.sim.simulator import Simulator
 from newton._src.solvers.kamino.examples import print_progress_bar
-from newton._src.solvers.kamino.models.builders.basics import build_cartpole
-from newton._src.solvers.kamino.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.sim.simulator import Simulator
 
 ###
 # Kernels

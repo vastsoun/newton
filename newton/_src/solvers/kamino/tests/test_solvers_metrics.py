@@ -20,13 +20,13 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.integrators.euler import integrate_euler_semi_implicit
-from newton._src.solvers.kamino.models.builders.basics import build_box_on_plane, build_boxes_hinged
-from newton._src.solvers.kamino.solvers.metrics import SolutionMetrics
-from newton._src.solvers.kamino.solvers.padmm import PADMMSolver
+from newton._src.solvers.kamino._src.integrators.euler import integrate_euler_semi_implicit
+from newton._src.solvers.kamino._src.models.builders.basics import build_box_on_plane, build_boxes_hinged
+from newton._src.solvers.kamino._src.solvers.metrics import SolutionMetrics
+from newton._src.solvers.kamino._src.solvers.padmm import PADMMSolver
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.test_solvers_padmm import TestSetup
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Tests

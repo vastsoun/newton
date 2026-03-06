@@ -20,8 +20,8 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.types import int32, uint32, uint64
-from newton._src.solvers.kamino.geometry.keying import (
+from newton._src.solvers.kamino._src.core.types import int32, uint32, uint64
+from newton._src.solvers.kamino._src.geometry.keying import (
     KeySorter,
     binary_search_find_pair,
     binary_search_find_range_start,
@@ -29,8 +29,8 @@ from newton._src.solvers.kamino.geometry.keying import (
     make_bitmask,
     make_build_pair_key3_func,
 )
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Helper functions

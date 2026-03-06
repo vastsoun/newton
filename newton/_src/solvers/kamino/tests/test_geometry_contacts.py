@@ -27,8 +27,8 @@ import warp as wp
 import newton
 from newton._src.sim import ModelBuilder
 from newton._src.sim.contacts import Contacts
-from newton._src.solvers.kamino.core.types import int32, mat33f, vec3f
-from newton._src.solvers.kamino.geometry.contacts import (
+from newton._src.solvers.kamino._src.core.types import int32, mat33f, vec3f
+from newton._src.solvers.kamino._src.geometry.contacts import (
     ContactMode,
     ContactsKamino,
     convert_contacts_kamino_to_newton,
@@ -36,9 +36,9 @@ from newton._src.solvers.kamino.geometry.contacts import (
     make_contact_frame_xnorm,
     make_contact_frame_znorm,
 )
-from newton._src.solvers.kamino.models.builders.basics_newton import build_boxes_nunchaku
+from newton._src.solvers.kamino._src.models.builders.basics_newton import build_boxes_nunchaku
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Kernels

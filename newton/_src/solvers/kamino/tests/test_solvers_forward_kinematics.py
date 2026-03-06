@@ -24,14 +24,14 @@ import numpy as np
 import warp as wp
 
 import newton
-from newton._src.solvers.kamino.core.joints import JointActuationType, JointCorrectionMode, JointDoFType
-from newton._src.solvers.kamino.core.model import ModelKamino
-from newton._src.solvers.kamino.core.types import vec6f
-from newton._src.solvers.kamino.kinematics.joints import compute_joints_data
-from newton._src.solvers.kamino.solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverConfig
+from newton._src.solvers.kamino._src.core.joints import JointActuationType, JointCorrectionMode, JointDoFType
+from newton._src.solvers.kamino._src.core.model import ModelKamino
+from newton._src.solvers.kamino._src.core.types import vec6f
+from newton._src.solvers.kamino._src.kinematics.joints import compute_joints_data
+from newton._src.solvers.kamino._src.solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverConfig
+from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils.diff_check import diff_check, run_test_single_joint_examples
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
 ###
 # Module configs

@@ -27,19 +27,19 @@ import warp as wp
 import newton
 import newton._src.solvers.kamino.tests.utils.checks as test_util_checks
 from newton._src.sim import Control, Model, ModelBuilder, State
-from newton._src.solvers.kamino.core.bodies import convert_body_com_to_origin, convert_body_origin_to_com
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.control import ControlKamino
-from newton._src.solvers.kamino.core.model import MaterialDescriptor, ModelKamino
-from newton._src.solvers.kamino.core.state import StateKamino
-from newton._src.solvers.kamino.models import basics as basics_kamino
-from newton._src.solvers.kamino.models import basics_newton, get_basics_usd_assets_path
-from newton._src.solvers.kamino.models.builders import utils as model_utils
+from newton._src.solvers.kamino._src.core.bodies import convert_body_com_to_origin, convert_body_origin_to_com
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino._src.core.control import ControlKamino
+from newton._src.solvers.kamino._src.core.model import MaterialDescriptor, ModelKamino
+from newton._src.solvers.kamino._src.core.state import StateKamino
+from newton._src.solvers.kamino._src.models import basics as basics_kamino
+from newton._src.solvers.kamino._src.models import basics_newton, get_basics_usd_assets_path
+from newton._src.solvers.kamino._src.models.builders import utils as model_utils
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.solver_kamino import SolverKamino
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton._src.solvers.kamino.tests.utils import print as print_utils
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.io.usd import USDImporter
 
 ###
 # Tests

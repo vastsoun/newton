@@ -27,17 +27,17 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino.core.joints import JointActuationType, JointDoFType
-from newton._src.solvers.kamino.core.math import I_3
-from newton._src.solvers.kamino.core.shapes import BoxShape, SphereShape
-from newton._src.solvers.kamino.core.types import mat33f, transformf, vec3f, vec6f
-from newton._src.solvers.kamino.geometry.contacts import ContactsKamino
-from newton._src.solvers.kamino.geometry.detector import CollisionDetector
-from newton._src.solvers.kamino.geometry.primitive import CollisionPipelinePrimitive
-from newton._src.solvers.kamino.solver_kamino import SolverKamino, SolverKaminoImpl
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
+from newton._src.solvers.kamino._src.core.joints import JointActuationType, JointDoFType
+from newton._src.solvers.kamino._src.core.math import I_3
+from newton._src.solvers.kamino._src.core.shapes import BoxShape, SphereShape
+from newton._src.solvers.kamino._src.core.types import mat33f, transformf, vec3f, vec6f
+from newton._src.solvers.kamino._src.geometry.contacts import ContactsKamino
+from newton._src.solvers.kamino._src.geometry.detector import CollisionDetector
+from newton._src.solvers.kamino._src.geometry.primitive import CollisionPipelinePrimitive
+from newton._src.solvers.kamino._src.solver_kamino_impl import SolverKaminoImpl
+from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
 
 ###
 # Helpers
@@ -337,9 +337,9 @@ def _build_sphere_on_ground(
     return builder
 
 
-def _fast_solver_config() -> SolverKamino.Config:
+def _fast_solver_config() -> SolverKaminoImpl.Config:
     """Relaxed solver config suitable for fast unit tests."""
-    config = SolverKamino.Config()
+    config = SolverKaminoImpl.Config()
     config.padmm.primal_tolerance = 1e-3
     config.padmm.dual_tolerance = 1e-3
     config.padmm.compl_tolerance = 1e-3

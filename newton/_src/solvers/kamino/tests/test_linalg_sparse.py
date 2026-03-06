@@ -20,11 +20,11 @@ import unittest
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino.linalg.sparse_matrix import BlockDType, BlockSparseMatrices
-from newton._src.solvers.kamino.linalg.sparse_operator import BlockSparseLinearOperators
+from newton._src.solvers.kamino._src.linalg.sparse_matrix import BlockDType, BlockSparseMatrices
+from newton._src.solvers.kamino._src.linalg.sparse_operator import BlockSparseLinearOperators
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.sparse import sparseplot
 from newton._src.solvers.kamino.tests import setup_tests, test_context
-from newton._src.solvers.kamino.utils import logger as msg
-from newton._src.solvers.kamino.utils.sparse import sparseplot
 
 ###
 # Tests

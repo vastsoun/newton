@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ast
+
 from ...linalg.linear import LinearSolverNameToType, LinearSolverTypeToName
 from ...solver_kamino import SolverKamino
 
@@ -390,7 +392,9 @@ def load_solver_configs_to_hdf5(datafile) -> dict[str, SolverKamino.Config]:
         config.linear_solver_type = LinearSolverNameToType[
             datafile[f"Solver/{config_name}/linear_solver/type"][()].decode("utf-8")
         ]
-        config.linear_solver_kwargs = eval(datafile[f"Solver/{config_name}/linear_solver/args"][()].decode("utf-8"))
+        config.linear_solver_kwargs = ast.literal_eval(
+            datafile[f"Solver/{config_name}/linear_solver/args"][()].decode("utf-8")
+        )
         # ------------------------------------------------------------------------------
         config.padmm.max_iterations = float(datafile[f"Solver/{config_name}/padmm/max_iterations"][()])
         config.padmm.primal_tolerance = float(datafile[f"Solver/{config_name}/padmm/primal_tolerance"][()])

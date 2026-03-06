@@ -74,8 +74,8 @@ class Example:
 
         # TODO @nvtw: This is a temporary fix because `robot_builder.default_shape_cfg`
         # is not correctly applied to the shapes when using `add_usd()`,
-        msg.warning("self.model.shape_margin: %s", self.model.shape_margin)
-        msg.warning("self.model.shape_gap: %s", self.model.shape_gap)
+        msg.debug("self.model.shape_margin: %s", self.model.shape_margin)
+        msg.debug("self.model.shape_gap: %s", self.model.shape_gap)
         self.model.shape_margin.fill_(0.0)
         self.model.shape_gap.fill_(1e-5)
 

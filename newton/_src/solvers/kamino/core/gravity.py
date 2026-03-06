@@ -229,7 +229,7 @@ def convert_model_gravity(model_in: Model, gravity_out: GravityModel | None = No
         g_dir_acc_np[w, :3] = direction
         g_dir_acc_np[w, 3] = accel
         vector_np[w, :3] = g_vec
-        vector_np[w, 3] = 1.0
+        vector_np[w, 3] = 1.0 if accel > 0.0 else 0.0
 
     # If the output gravity model is not provided, create a new one with allocated arrays;
     if gravity_out is None:

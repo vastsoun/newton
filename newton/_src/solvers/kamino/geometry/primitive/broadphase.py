@@ -454,11 +454,16 @@ def add_active_pair(
     collision_wid_out: wp.array(dtype=int32),
     collision_geom_pair_out: wp.array(dtype=vec2i),
 ):
+    # Increment the number of collisions detected for
+    # the model and world and retrieve the pair indices
     model_pairid_out = wp.atomic_add(model_num_collisions_out, 0, 1)
     world_pairid_out = wp.atomic_add(world_num_collisions_out, wid_in, 1)
 
-    # TODO: Check if this is necessary
+    # Check if we have exceeded the maximum number of collision pairs
+    # allowed and if yes then roll-back the atomic adds and exit
     if model_pairid_out >= model_num_pairs_in or world_pairid_out >= world_num_pairs_in:
+        wp.atomic_sub(model_num_collisions_out, 0, 1)
+        wp.atomic_sub(world_num_collisions_out, wid_in, 1)
         return
 
     # Correct the pair id order in order to invoke the correct near-phase function

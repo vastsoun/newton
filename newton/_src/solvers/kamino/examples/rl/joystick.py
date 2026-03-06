@@ -50,10 +50,10 @@ from __future__ import annotations
 
 # Python
 import dataclasses
-import math
 
 # Thirdparty
-import torch
+import torch  # noqa: TID253
+
 from newton._src.solvers.kamino.examples.rl.utils import (
     RateLimitedValue,
     _deadband,
@@ -131,7 +131,7 @@ class JoystickController:
       ``angular_velocity``  Angular velocity   (positive = turn left)
       ``head_pitch``        Head pitch command (positive = look up)
       ``head_yaw``          Head yaw command   (positive = look left)
-      ``turbo_alpha``       Current turbo blend factor (0.0 – 1.0)
+      ``turbo_alpha``       Current turbo blend factor (0.0 - 1.0)
 
     Path state (when ``root_pos_2d`` is passed to :meth:`update`):
       ``path_heading``      Integrated heading  ``(num_worlds, 1)``
@@ -188,7 +188,7 @@ class JoystickController:
 
         try:
             # Thirdparty
-            from xbox360controller import Xbox360Controller
+            from xbox360controller import Xbox360Controller  # noqa: PLC0415
 
             self._controller = Xbox360Controller(0, axis_threshold=0.015)
             self._mode = "joystick"

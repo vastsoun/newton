@@ -19,7 +19,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 # Thirdparty
-import torch
+import torch  # noqa: TID253
 import warp as wp
 
 from newton._src.solvers.kamino.examples.rl.simulation import RigidBodySim

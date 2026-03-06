@@ -38,7 +38,6 @@ import argparse
 import numpy as np
 import torch  # noqa: TID253
 import warp as wp
-from warp.context import Devicelike
 
 import newton
 from newton._src.solvers.kamino.core.joints import JointActuationType
@@ -93,7 +92,7 @@ _HEIGHT_ERROR_SCALE = 0.05  # scaling for height error observation (must match t
 class Example:
     def __init__(
         self,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         policy=None,
         headless: bool = False,
         sim_dt: float = 0.01,

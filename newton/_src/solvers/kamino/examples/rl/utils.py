@@ -23,11 +23,10 @@ from __future__ import annotations
 
 # Python
 import math
-from typing import List, Tuple, Union
 
 # Thirdparty
 import numpy as np
-import torch
+import torch  # noqa: TID253
 import warp as wp
 
 # ---------------------------------------------------------------------------
@@ -183,14 +182,14 @@ class StackedIndices:
     Example::
 
         idx = StackedIndices([("pos", 3), ("vel", 3)])
-        idx.pos        # range(0, 3)
-        idx.vel_idx    # 3  (scalar start, only for size-1 entries)
-        len(idx)       # 6
+        idx.pos  # range(0, 3)
+        idx.vel_idx  # 3  (scalar start, only for size-1 entries)
+        len(idx)  # 6
     """
 
-    def __init__(self, names_and_sizes: List[Tuple[str, int]]) -> None:
+    def __init__(self, names_and_sizes: list[tuple[str, int]]) -> None:
         start: int = 0
-        self.names: List[str] = []
+        self.names: list[str] = []
         for name, size in names_and_sizes:
             if hasattr(self, name):
                 raise ValueError(f"Duplicate entry '{name}'.")
@@ -204,10 +203,10 @@ class StackedIndices:
             self.names.append(name)
         self.size: int = start
 
-    def names_and_sizes(self) -> List[Tuple[str, int]]:
+    def names_and_sizes(self) -> list[tuple[str, int]]:
         return [(n, len(self[n])) for n in self.names]
 
-    def __getitem__(self, key: Union[str, List[str], Tuple[str, ...]]) -> Union[range, List[int]]:
+    def __getitem__(self, key: str | list[str] | tuple[str, ...]) -> range | list[int]:
         if isinstance(key, str):
             return getattr(self, key)
         elif isinstance(key, (list, tuple)):
@@ -223,7 +222,7 @@ class StackedIndices:
 # ---------------------------------------------------------------------------
 
 
-def periodic_encoding(k: int) -> Tuple[np.ndarray, np.ndarray]:
+def periodic_encoding(k: int) -> tuple[np.ndarray, np.ndarray]:
     """Compute sin/cos phase-encoding frequencies and offsets.
 
     Returns ``(freq_2pi, offset)`` arrays of length ``2*k``.  Each pair

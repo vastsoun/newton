@@ -31,8 +31,9 @@ import os
 
 # Thirdparty
 import numpy as np
-import torch
+import torch  # noqa: TID253
 import warp as wp
+
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.examples.rl.joystick import JoystickController
 from newton._src.solvers.kamino.examples.rl.observations import BipedalObservation
@@ -58,8 +59,6 @@ _ASSETS_DIR = os.path.normpath(
         "usd",
     )
 )
-# Thirdparty
-from warp.context import Devicelike
 
 # ---------------------------------------------------------------------------
 # Bipedal joint normalization
@@ -112,7 +111,7 @@ def _build_normalization(joint_names: list[str]):
 class Example:
     def __init__(
         self,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         policy=None,
         headless: bool = False,
     ):

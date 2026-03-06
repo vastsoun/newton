@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import torch  # noqa: TID253
 import warp as wp
-from warp.context import Devicelike
 
 # Thirdparty
 import newton
@@ -57,7 +56,7 @@ class SimulatorFromNewton:
         self,
         newton_model: newton.Model,
         config: Simulator.Config | None = None,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
     ):
         self._device = wp.get_device(device)
 
@@ -183,7 +182,7 @@ class RigidBodySim:
         usd_model_path: str,
         num_worlds: int = 1,
         sim_dt: float = 0.01,
-        device: Devicelike = None,
+        device: wp.DeviceLike = None,
         headless: bool = False,
         body_pose_offset: tuple | None = None,
         add_ground: bool = True,
@@ -801,6 +800,7 @@ class RigidBodySim:
         settings.solver.padmm.eta = 1e-5
         settings.solver.padmm.rho_0 = 0.05
         settings.solver.sparse_jacobian = True
+        settings.solver.use_fk_solver = True
         settings.solver.use_solver_acceleration = True
         settings.solver.warmstart_mode = "containers"
         settings.solver.contact_warmstart_method = WarmstarterContacts.Method.GEOM_PAIR_NET_FORCE

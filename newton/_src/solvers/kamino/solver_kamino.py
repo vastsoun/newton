@@ -113,14 +113,11 @@ class SolverKamino(SolverBase):
         Constructs a Kamino solver for the given model and optional configurations.
 
         Args:
-            model (Model):
-                The Newton model to simulate.
-            solver_config (SolverKamino.Config, optional):
-                Configuration for the Kamino solver.
+            model: The Newton model to simulate.
+            solver_config: Configuration for the Kamino solver.
                 If ``None``, a default configuration is created by parsing the Newton model's
                 custom attributes (e.g. from USD) using :meth:`SolverKamino.Config.from_model`.
-            collision_detector_config (CollisionDetector.Config, optional):
-                Configuration for the internal collision detector.
+            collision_detector_config: Configuration for the internal collision detector.
                 If ``None``, the default configuration is used.
         """
         # Initialize the base solver
@@ -180,28 +177,20 @@ class SolverKamino(SolverBase):
         `state_out` must initially contain the current state of the simulation.
 
         Args:
-            state_out (State):
-                The output state container to which the reset state data is written.
-            world_mask (wp.array, optional):
-                Optional array of per-world masks indicating which worlds should be reset.\n
+            state_out: The output state container to which the reset state data is written.
+            world_mask: Optional array of per-world masks indicating which worlds should be reset.\n
                 Shape of `(num_worlds,)` and type :class:`wp.int8 | wp.bool`
-            actuator_q (wp.array, optional):
-                Optional array of target actuated joint coordinates.\n
+            actuator_q: Optional array of target actuated joint coordinates.\n
                 Shape of `(num_actuated_joint_coords,)` and type :class:`wp.float32`
-            actuator_u (wp.array, optional):
-                Optional array of target actuated joint DoF velocities.\n
+            actuator_u: Optional array of target actuated joint DoF velocities.\n
                 Shape of `(num_actuated_joint_dofs,)` and type :class:`wp.float32`
-            joint_q (wp.array, optional):
-                Optional array of target joint coordinates.\n
+            joint_q: Optional array of target joint coordinates.\n
                 Shape of `(num_joint_coords,)` and type :class:`wp.float32`
-            joint_u (wp.array, optional):
-                Optional array of target joint DoF velocities.\n
+            joint_u: Optional array of target joint DoF velocities.\n
                 Shape of `(num_joint_dofs,)` and type :class:`wp.float32`
-            base_q (wp.array, optional):
-                Optional array of target base body poses.\n
+            base_q: Optional array of target base body poses.\n
                 Shape of `(num_worlds,)` and type :class:`wp.transformf`
-            base_u (wp.array, optional):
-                Optional array of target base body twists.\n
+            base_u: Optional array of target base body twists.\n
                 Shape of `(num_worlds,)` and type :class:`wp.spatial_vectorf`
         """
         # Convert base pose from body-origin to COM frame
@@ -248,14 +237,14 @@ class SolverKamino(SolverBase):
         Kamino's internal collision pipeline runs as a fallback.
 
         Args:
-            state_in (State): The input state.
-            state_out (State): The output state.
-            control (Control): The control input.
+            state_in: The input state.
+            state_out: The output state.
+            control: The control input.
                 Defaults to `None` which means the control values from the
                 :class:`Model` are used.
-            contacts (Contacts): The contact information from Newton's collision
+            contacts: The contact information from Newton's collision
                 pipeline, or ``None`` to use Kamino's internal collision detector.
-            dt (float): The time step (typically in seconds).
+            dt: The time step (typically in seconds).
         """
         # Interface the input state and control
         # containers to Kamino's equivalents
@@ -389,7 +378,7 @@ class SolverKamino(SolverBase):
         Register custom attributes for SolverKamino.
 
         Args:
-            builder (ModelBuilder): The model builder to register the custom attributes to.
+            builder: The model builder to register the custom attributes to.
         """
         # Ensure Kamino dependencies are imported so that any custom attributes defined
         if cls._kamino is None:
@@ -460,7 +449,7 @@ class SolverKamino(SolverBase):
         - distance, cable, or gimbal joints
 
         Args:
-            model (Model): The Newton model to validate.
+            model: The Newton model to validate.
 
         Raises:
             ValueError: If the model contains unsupported components.

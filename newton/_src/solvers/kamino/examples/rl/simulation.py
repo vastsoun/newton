@@ -331,24 +331,9 @@ class RigidBodySim:
         self._update_base_q = False
         self._update_base_u = False
 
-        # Contact aggregation — find ground collision geoms by label.
-        # We identify ground geoms by their GLOBAL indices (not per-world gid)
-        # because gid can collide with robot geom IDs (e.g., gid=0 for both
-        # the pelvis mesh and the ground plane).
-        geom_labels = self.sim.model.geoms.label
-        geom_group = wp.to_torch(self.sim.model.geoms.group).tolist()
-        ground_geom_global_indices = [
-            i for i, lbl in enumerate(geom_labels) if "ground" in lbl.lower() and int(geom_group[i]) > 0
-        ]
-        if not ground_geom_global_indices:
-            msg.warning("No ground collision geometry found by label, falling back to geom index 0")
-            ground_geom_global_indices = [0]
-        msg.info(f"Ground geom global indices: {ground_geom_global_indices}")
+        # Contact aggregation
         self._contact_aggregation = ContactAggregation(
-            model=self.sim.model,
-            contacts=self.sim.contacts,
-            static_geom_ids=ground_geom_global_indices,
-            device=self._device,
+            model=self.sim.model, contacts=self.sim.contacts, device=self._device
         )
         self._contact_flags = wp.to_torch(self._contact_aggregation.body_contact_flag).reshape(nw, nb)
         self._ground_contact_flags = wp.to_torch(self._contact_aggregation.body_static_contact_flag).reshape(nw, nb)

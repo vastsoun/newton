@@ -725,7 +725,7 @@ class ModelKamino:
         # rotated frame, and downstream joint_X_p transforms are updated to account
         # for the parent body's frame change.
         # ---------------------------------------------------------------------------
-        convert_entity_local_transforms(model)
+        converted = convert_entity_local_transforms(model)
         # ----------------------------------------------------------------------------
 
         def _to_wpq(q):
@@ -793,26 +793,34 @@ class ModelKamino:
         joint_dynamic_cts_start_np = np.zeros((model.joint_count,), dtype=int)
         joint_kinematic_cts_start_np = np.zeros((model.joint_count,), dtype=int)
 
+        # Unpack converted quantities
+        body_q_np = converted["body_q"]
+        body_qd_np = converted["body_qd"]
+        body_com_np = converted["body_com"]
+        body_inertia_np = converted["body_inertia"]
+        body_inv_inertia_np = converted["body_inv_inertia"]
+        shape_transform_np = converted["shape_transform"]
+        joint_X_p_np = converted["joint_X_p"]
+        joint_X_c_np = converted["joint_X_c"]
+
         # TODO
-        body_com_np: np.ndarray = model.body_com.numpy().copy()
         joint_wid_np: np.ndarray = model.joint_world.numpy().copy()
         joint_type_np: np.ndarray = model.joint_type.numpy().copy()
         joint_target_mode_np: np.ndarray = model.joint_target_mode.numpy().copy()
         joint_parent_np: np.ndarray = model.joint_parent.numpy().copy()
         joint_child_np: np.ndarray = model.joint_child.numpy().copy()
-        joint_X_p_np: np.ndarray = model.joint_X_p.numpy().copy()
-        joint_X_c_np: np.ndarray = model.joint_X_c.numpy().copy()
         joint_axis_np: np.ndarray = model.joint_axis.numpy().copy()
         joint_dof_dim_np: np.ndarray = model.joint_dof_dim.numpy().copy()
         joint_q_start_np: np.ndarray = model.joint_q_start.numpy().copy()
         joint_qd_start_np: np.ndarray = model.joint_qd_start.numpy().copy()
         joint_limit_lower_np: np.ndarray = model.joint_limit_lower.numpy().copy()
         joint_limit_upper_np: np.ndarray = model.joint_limit_upper.numpy().copy()
+        joint_velocity_limit_np = model.joint_velocity_limit.numpy().copy()
+        joint_effort_limit_np = model.joint_effort_limit.numpy().copy()
         joint_armature_np: np.ndarray = model.joint_armature.numpy().copy()
         joint_friction_np: np.ndarray = model.joint_friction.numpy().copy()
         joint_target_ke_np: np.ndarray = model.joint_target_ke.numpy().copy()
         joint_target_kd_np: np.ndarray = model.joint_target_kd.numpy().copy()
-        shape_transform_np: np.ndarray = model.shape_transform.numpy().copy()
 
         for j in range(model.joint_count):
             # TODO
@@ -935,17 +943,11 @@ class ModelKamino:
             joint_F_r_Fj_np[j, :] = F_r_Fj
             joint_X_j_np[j, :] = X_j
 
-        # TODO
-        joint_velocity_limit_np = model.joint_velocity_limit.numpy()
-        joint_effort_limit_np = model.joint_effort_limit.numpy()
+        # Convert joint limits and effort/velocity limits to np.float32 and clip to supported ranges
         np.clip(a=joint_limit_lower_np, a_min=JOINT_QMIN, a_max=JOINT_QMAX, out=joint_limit_lower_np)
         np.clip(a=joint_limit_upper_np, a_min=JOINT_QMIN, a_max=JOINT_QMAX, out=joint_limit_upper_np)
         np.clip(a=joint_velocity_limit_np, a_min=-JOINT_DQMAX, a_max=JOINT_DQMAX, out=joint_velocity_limit_np)
         np.clip(a=joint_effort_limit_np, a_min=-JOINT_TAUMAX, a_max=JOINT_TAUMAX, out=joint_effort_limit_np)
-        model.joint_limit_lower.assign(joint_limit_lower_np)
-        model.joint_limit_upper.assign(joint_limit_upper_np)
-        model.joint_velocity_limit.assign(joint_velocity_limit_np)
-        model.joint_effort_limit.assign(joint_effort_limit_np)
 
         # Set up materials
         materials_manager = MaterialManager()
@@ -982,7 +984,6 @@ class ModelKamino:
         shape_type_np = model.shape_type.numpy()
         shape_scale_np = model.shape_scale.numpy()
         shape_flags_np = model.shape_flags.numpy()
-        shape_transform_np = model.shape_transform.numpy()
         geom_shape_collision_group_np = model.shape_collision_group.numpy()
         geom_shape_type_np = np.zeros((model.shape_count,), dtype=int)
         geom_shape_params_np = np.zeros((model.shape_count, 4), dtype=float)
@@ -1000,7 +1001,7 @@ class ModelKamino:
         # instead of the hardcoded default in convert_newton_geo_to_kamino_shape.
         for s in range(model.shape_count):
             if shape_type_np[s] == GeoType.PLANE:
-                tf = shape_transform_np[s]
+                tf = shape_transform_np[s, :]
                 q_rot = _to_wpq(np.array([tf[3], tf[4], tf[5], tf[6]]))
                 normal = wp.quat_rotate(q_rot, vec3f(0.0, 0.0, 1.0))
                 geom_shape_params_np[s, 0] = float(normal[0])
@@ -1127,7 +1128,6 @@ class ModelKamino:
         mass_total_np = np.zeros((model.world_count,), dtype=float)
         inertia_total_np = np.zeros((model.world_count,), dtype=float)
         body_mass_np = model.body_mass.numpy()
-        body_inertia_np = model.body_inertia.numpy()
         for w in range(model.world_count):
             masses_w = []
             for b in range(model.body_count):
@@ -1149,8 +1149,6 @@ class ModelKamino:
 
         # model.body_q stores body-origin world poses, but Kamino expects
         # COM world poses (joint attachment vectors are COM-relative).
-        body_q_np = model.body_q.numpy()
-        body_com_np = model.body_com.numpy()
         q_i_0_np = np.empty((model.body_count, 7), dtype=np.float32)
         for i in range(model.body_count):
             pos = body_q_np[i, :3]
@@ -1263,13 +1261,13 @@ class ModelKamino:
                 label=model.body_label,
                 wid=model.body_world,
                 bid=wp.array(body_bid_np, dtype=int32),  # TODO: Remove
-                i_r_com_i=model.body_com,
                 m_i=model.body_mass,
                 inv_m_i=model.body_inv_mass,
-                i_I_i=model.body_inertia,
-                inv_i_I_i=model.body_inv_inertia,
+                i_r_com_i=wp.array(body_com_np, dtype=vec3f),
+                i_I_i=wp.array(body_inertia_np, dtype=mat33f),
+                inv_i_I_i=wp.array(body_inv_inertia_np, dtype=mat33f),
                 q_i_0=wp.array(q_i_0_np, dtype=wp.transformf),
-                u_i_0=model.body_qd,
+                u_i_0=wp.array(body_qd_np, dtype=vec6f),
             )
 
             # Joints
@@ -1285,10 +1283,10 @@ class ModelKamino:
                 B_r_Bj=wp.array(joint_B_r_Bj_np, dtype=wp.vec3f),
                 F_r_Fj=wp.array(joint_F_r_Fj_np, dtype=wp.vec3f),
                 X_j=wp.array(joint_X_j_np.reshape((model.joint_count, 3, 3)), dtype=wp.mat33f),
-                q_j_min=model.joint_limit_lower,
-                q_j_max=model.joint_limit_upper,
-                dq_j_max=model.joint_velocity_limit,
-                tau_j_max=model.joint_effort_limit,
+                q_j_min=wp.array(joint_limit_lower_np, dtype=float32),
+                q_j_max=wp.array(joint_limit_upper_np, dtype=float32),
+                dq_j_max=wp.array(joint_velocity_limit_np, dtype=float32),
+                tau_j_max=wp.array(joint_effort_limit_np, dtype=float32),
                 a_j=model.joint_armature,
                 b_j=model.joint_friction,  # TODO: Is this the right attribute?
                 k_p_j=model.joint_target_ke,
@@ -1356,11 +1354,20 @@ class ModelKamino:
         # Post-processing
         ###
 
+        # Modify the model's body COM and shape transform properties in-place to convert from body-frame-relative
+        # NOTE: These are modified only so that the visualizer correctly
+        # shows the shape poses, joints frames and body inertial properties
+        model.body_com.assign(body_com_np)
+        model.body_inertia.assign(body_inertia_np)
+        model.shape_transform.assign(shape_transform_np)
+        model.joint_X_p.assign(joint_X_p_np)
+        model.joint_X_c.assign(joint_X_c_np)
+
         # Convert shape offsets from body-frame-relative to COM-relative
         convert_geom_offset_origin_to_com(
-            model.body_com,
+            model_bodies.i_r_com_i,
             model.shape_body,
-            model.shape_transform,
+            wp.array(shape_transform_np, dtype=wp.transformf, device=model.device),
             model_geoms.offset,
         )
 

@@ -38,7 +38,7 @@ __all__ = [
 ###
 
 
-def convert_entity_local_transforms(model: Model) -> None:
+def convert_entity_local_transforms(model: Model) -> dict[str, np.ndarray]:
     """
     Converts all entity-local transforms (i.e. of bodies, joints and shapes) in the
     given  Newton model to a format that is compatible with Kamino's constraint system.
@@ -165,6 +165,7 @@ def convert_entity_local_transforms(model: Model) -> None:
         body_inertia_np[child] = R_inv_corr @ body_inertia_np[child].astype(np.float64) @ R_inv_corr.T
         body_inv_inertia_np[child] = R_inv_corr @ body_inv_inertia_np[child].astype(np.float64) @ R_inv_corr.T
 
+        # TODO: Do these need be converted? Aren't they already computed at body CoM?
         body_qd_np[child, :3] = R_inv_corr @ body_qd_np[child, :3].astype(np.float64)
         body_qd_np[child, 3:6] = R_inv_corr @ body_qd_np[child, 3:6].astype(np.float64)
 
@@ -183,17 +184,18 @@ def convert_entity_local_transforms(model: Model) -> None:
             list(body_corr.keys()),
         )
 
-    # Overwrite the warp arrays on the model so that downstream Kamino code
-    # (which reads model.body_q, model.body_com, etc.) picks up the corrected
-    # values.  This is safe because ModelKamino.from_newton owns the conversion.
-    model.body_q.assign(body_q_np)
-    model.body_qd.assign(body_qd_np)
-    model.body_com.assign(body_com_np)
-    model.body_inertia.assign(body_inertia_np)
-    model.body_inv_inertia.assign(body_inv_inertia_np)
-    model.shape_transform.assign(shape_transform_np)
-    model.joint_X_p.assign(joint_X_p_np)
-    model.joint_X_c.assign(joint_X_c_np)
+    # Return the converted transforms as numpy arrays
+    # to be used for constructing the Kamino model
+    return {
+        "body_q": body_q_np,
+        "body_qd": body_qd_np,
+        "body_com": body_com_np,
+        "body_inertia": body_inertia_np,
+        "body_inv_inertia": body_inv_inertia_np,
+        "shape_transform": shape_transform_np,
+        "joint_X_p": joint_X_p_np,
+        "joint_X_c": joint_X_c_np,
+    }
 
 
 def compute_required_contact_capacity(

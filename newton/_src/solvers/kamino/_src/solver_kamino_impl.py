@@ -792,16 +792,16 @@ class SolverKaminoImpl(SolverBase):
 
     @override
     def notify_model_changed(self, flags: int):
-        pass  # TODO
+        pass  # TODO: Migrate implementation when we fully integrate with Newton
 
     @override
     def update_contacts(self, contacts: Contacts) -> None:
-        pass  # TODO
+        pass  # TODO: Migrate implementation when we fully integrate with Newton
 
     @override
     @classmethod
     def register_custom_attributes(cls, flags: int):
-        pass  # TODO
+        pass  # TODO: Migrate implementation when we fully integrate with Newton
 
     ###
     # Internals - Callback Operations
@@ -1248,12 +1248,31 @@ class SolverKaminoImpl(SolverBase):
         state_in: StateKamino,
         state_out: StateKamino,
         control: ControlKamino,
-        limits: LimitsKamino | None = None,  # TODO: Fix this interface
+        limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
         detector: CollisionDetector | None = None,
     ):
         """
-        TODO
+        Solves the forward dynamics sub-problem to compute constraint reactions
+        and total effective body wrenches applied to each body of the system.
+
+        Args:
+            state_in (`StateKamino`):
+                State of the system at the current time-step.
+            state_out (`StateKamino`):
+                State of the system at the next time-step.
+            control (`ControlKamino`):
+                Input controls applied to the system.
+            limits (`LimitsKamino`, optional):
+                Optional container for joint limits.
+                If `None`, joint limit handling is skipped.
+            contacts (`ContactsKamino`, optional):
+                Optional container of active contacts.
+                If `None`, the solver will use the internal collision detector
+                if the model admits contacts, or skip contact handling if not.
+            detector (`CollisionDetector`, optional):
+                Optional collision detector.
+                If `None`, collision detection is skipped.
         """
         # Update intermediate quantities of the bodies and joints
         # NOTE: We update the intermediate joint and body data here

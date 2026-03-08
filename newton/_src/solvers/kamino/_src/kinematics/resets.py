@@ -84,6 +84,7 @@ def _reset_body_state_of_select_worlds(
     state_q_i: wp.array(dtype=transformf),
     state_u_i: wp.array(dtype=vec6f),
     state_w_i: wp.array(dtype=vec6f),
+    state_w_i_e: wp.array(dtype=vec6f),
 ):
     # Retrieve the body index from the 1D thread index
     bid = wp.tid()
@@ -103,6 +104,7 @@ def _reset_body_state_of_select_worlds(
     state_q_i[bid] = q_i_0
     state_u_i[bid] = u_i_0
     state_w_i[bid] = vec6f(0.0)
+    state_w_i_e[bid] = vec6f(0.0)
 
 
 @wp.kernel
@@ -653,6 +655,7 @@ def reset_state_from_bodies_state(
             state_out.q_i,
             state_out.u_i,
             state_out.w_i,
+            state_out.w_i_e,
         ],
     )
 

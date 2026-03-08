@@ -943,15 +943,22 @@ class SolverKaminoImpl(SolverBase):
         self,
         state_out: StateKamino,
         world_mask: wp.array,
-        base_q: wp.array | None = None,
+        base_q: wp.array,
         base_u: wp.array | None = None,
     ):
         """
         Resets the simulation to the given base body states by
         uniformly applying the necessary transform across all bodies.
         """
-        # First determine the effective base states to use
-        _base_q = base_q if base_q is not None else self._base_q
+        # Ensure that the base pose reset targets are valid
+        if base_q is None:
+            raise ValueError("Base pose targets must be provided for base state resets.")
+        if base_q.shape[0] != self._model.size.num_worlds:
+            raise ValueError(
+                f"Invalid base_q shape: Expected ({self._model.size.num_worlds},), but got {base_q.shape}."
+            )
+
+        # Determine the effective base twists to use
         _base_u = base_u if base_u is not None else self._base_u
 
         # Uniformly reset all bodies according to the transform between the given
@@ -960,7 +967,7 @@ class SolverKaminoImpl(SolverBase):
             model=self._model,
             state_out=state_out,
             world_mask=world_mask,
-            base_q=_base_q,
+            base_q=base_q,
             base_u=_base_u,
         )
 

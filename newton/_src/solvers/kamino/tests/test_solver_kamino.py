@@ -552,42 +552,6 @@ class TestSolverKaminoImpl(unittest.TestCase):
             show_progress=self.progress or self.verbose,
         )
 
-        # Reset all worlds to the specified base twists
-        solver.reset(
-            state_out=state_n,
-            base_u=base_u_0,
-        )
-
-        # Optionally print the reset state for debugging
-        msg.info("state_n.q_i:\n%s\n", state_n.q_i)
-        msg.info("state_n.u_i:\n%s\n", state_n.u_i)
-        msg.info("state_n.w_i:\n%s\n", state_n.w_i)
-        msg.info("state_n.q_j:\n%s\n", state_n.q_j)
-        msg.info("state_n.q_j_p:\n%s\n", state_n.q_j_p)
-        msg.info("state_n.dq_j:\n%s\n", state_n.dq_j)
-        msg.info("state_n.lambda_j:\n%s\n", state_n.lambda_j)
-
-        # Check if the assigned base body was correctly reset
-        for wid in range(model.size.num_worlds):
-            base_idx = base_body_idx[wid]
-            np.testing.assert_allclose(
-                state_n.u_i.numpy()[base_idx],
-                base_u_0_np[wid],
-                rtol=rtol,
-                atol=atol,
-            )
-
-        # Step the solver a few times to change the state
-        solver._reset()
-        step_solver(
-            num_steps=11,
-            solver=solver,
-            state_p=state_p,
-            state_n=state_n,
-            control=control,
-            show_progress=self.progress or self.verbose,
-        )
-
         # Reset all worlds to the specified base states
         solver.reset(
             state_out=state_n,

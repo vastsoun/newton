@@ -154,9 +154,6 @@ class SolverKamino(SolverBase):
             config=solver_config,
         )
 
-        # Reference to the latest state from the latest step output, used by update_contacts()
-        self._state_p: State | None = None
-
     def reset(
         self,
         state_out: State,
@@ -293,10 +290,6 @@ class SolverKamino(SolverBase):
             body_q=state_out_kamino.q_i,
         )
 
-        # Keep a reference for update_contacts() which needs body_q to
-        # transform world-space contact positions to body-local frame.
-        self._state_p = state_out
-
     @override
     def notify_model_changed(self, flags: int):
         """Propagate Newton model property changes to Kamino's internal ModelKamino.
@@ -345,31 +338,39 @@ class SolverKamino(SolverBase):
             )
 
     @override
-    def update_contacts(self, contacts: Contacts, state: State | None = None) -> None:
+    def update_contacts(self, contacts: Contacts, state: State) -> None:
         """
         Converts Kamino contacts to Newton's Contacts format.
 
         Args:
             contacts: The Newton Contacts object to populate.
-            state: Optional simulation state providing ``body_q`` for converting
-                world-space contact positions to body-local frame. Falls back to
-                the last ``state_out`` from :meth:`step` if not provided.
+            state: Simulation state providing ``body_q`` for converting
+                world-space contact positions to body-local frame.
         """
-        # Determine the source state to use for contact conversion
-        if state is not None:
-            _state = state
-        elif self._state_p is not None:
-            _state = self._state_p
-        # Skip contact conversion if no state is provided and no previous state is available
-        else:
-            self._kamino.msg.warning(
-                "SolverKamino.update_contacts: no state provided and "
-                "no previous state available, cannot convert contacts"
-            )
+        # Ensure the containers are not None and of the correct shape
+        if contacts is None:
+            raise ValueError("contacts cannot be None when calling SolverKamino.update_contacts")
+        elif not isinstance(contacts, Contacts):
+            raise TypeError(f"contacts must be of type Contacts, got {type(contacts)}")
+        if state is None:
+            raise ValueError("state cannot be None when calling SolverKamino.update_contacts")
+        elif not isinstance(state, State):
+            raise TypeError(f"state must be of type State, got {type(state)}")
+
+        # Skip the conversion if contacts have not been allocated
+        if self._contacts_kamino is None or self._contacts_kamino._data.model_max_contacts_host == 0:
             return
 
-        # Convert Kamino's internal contact representation to Newton's format
-        self._kamino.convert_contacts_kamino_to_newton(self.model, _state, self._contacts_kamino, contacts)
+        # Ensure the output contacts containers has sufficient size to hold the contact data from Kamino
+        if self._contacts_kamino._data.model_max_contacts_host > contacts.rigid_contact_max:
+            raise ValueError(
+                f"Contacts container has insufficient capacity for Kamino contacts: "
+                f"model_max_contacts={self._contacts_kamino._data.model_max_contacts_host} > "
+                f"contacts.rigid_contact_max={contacts.rigid_contact_max}"
+            )
+
+        # If all checks pass, proceed to convert contacts from Kamino to Newton format
+        self._kamino.convert_contacts_kamino_to_newton(self.model, state, self._contacts_kamino, contacts)
 
     @override
     @classmethod

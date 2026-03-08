@@ -224,7 +224,7 @@ class SolverKamino(SolverBase):
         )
 
     @override
-    def step(self, state_in: State, state_out: State, control: Control, contacts: Contacts, dt: float):
+    def step(self, state_in: State, state_out: State, control: Control | None, contacts: Contacts | None, dt: float):
         """
         Simulate the model for a given time step using the given control input.
 
@@ -243,12 +243,16 @@ class SolverKamino(SolverBase):
                 pipeline, or ``None`` to use Kamino's internal collision detector.
             dt: The time step (typically in seconds).
         """
-        # Interface the input state and control
-        # containers to Kamino's equivalents
+        # Interface the input state containers to Kamino's equivalents
         # NOTE: These should produce zero-copy views/references
         # to the arrays of the source Newton containers.
         state_in_kamino = self._kamino.StateKamino.from_newton(self._model_kamino.size, self.model, state_in)
         state_out_kamino = self._kamino.StateKamino.from_newton(self._model_kamino.size, self.model, state_out)
+
+        # Handle the control input, defaulting to the model's
+        # internal control arrays if None is provided.
+        if control is None:
+            control = self.model.control(clone_variables=False)
         control_kamino = self._kamino.ControlKamino.from_newton(control)
 
         # If contacts are provided, use them directly, bypassing Kamino's collision detector

@@ -44,8 +44,8 @@ class Example:
         # Create a single-robot model builder and register the Kamino-specific custom attributes
         robot_builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
         newton.solvers.SolverKamino.register_custom_attributes(robot_builder)
-        robot_builder.default_shape_cfg.margin = 0.0
-        robot_builder.default_shape_cfg.gap = 0.0
+        robot_builder.default_shape_cfg.margin = 1e-6
+        robot_builder.default_shape_cfg.gap = 0.01
 
         # Load the DR Legs USD and add it to the builder
         asset_path = newton.utils.download_asset("disneyresearch")
@@ -76,8 +76,8 @@ class Example:
         # is not correctly applied to the shapes when using `add_usd()`,
         msg.debug("self.model.shape_margin: %s", self.model.shape_margin)
         msg.debug("self.model.shape_gap: %s", self.model.shape_gap)
-        self.model.shape_margin.fill_(0.0)
-        self.model.shape_gap.fill_(0.0)
+        self.model.shape_margin.fill_(1e-6)
+        self.model.shape_gap.fill_(0.01)
 
         # Create the Kamino solver for the given model
         self.solver = newton.solvers.SolverKamino(self.model)
@@ -121,6 +121,7 @@ class Example:
             self.state_0.clear_forces()
             self.viewer.apply_forces(self.state_0)
             self.solver.step(self.state_0, self.state_1, self.control, None, self.sim_dt)
+            self.solver.update_contacts(self.contacts, self.state_0)
             self.state_0, self.state_1 = self.state_1, self.state_0
 
     def step(self):
@@ -134,7 +135,7 @@ class Example:
     def render(self):
         self.viewer.begin_frame(self.sim_time)
         self.viewer.log_state(self.state_0)
-        # TODO @nvtw: self.viewer.log_contacts(self.contacts, self.state_1)
+        self.viewer.log_contacts(self.contacts, self.state_1)
         self.viewer.end_frame()
 
     def test_final(self):

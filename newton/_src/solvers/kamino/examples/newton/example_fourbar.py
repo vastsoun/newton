@@ -154,7 +154,7 @@ class Example:
         # so contacts are rendered with self.state_1 to match the body positions at the
         # time of contact generation.
         self.viewer.log_state(self.state_0)
-        # TODO: self.viewer.log_contacts(self.contacts, self.state_1)
+        self.viewer.log_contacts(self.contacts, self.state_1)
         self.viewer.end_frame()
 
     def test_final(self):

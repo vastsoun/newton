@@ -1147,6 +1147,18 @@ class ModelKamino:
         mpairs_static_fric = [materials_manager.static_friction_matrix()]
         mpairs_dynamic_fric = [materials_manager.dynamic_friction_matrix()]
 
+        # model.body_q stores body-origin world poses, but Kamino expects
+        # COM world poses (joint attachment vectors are COM-relative).
+        body_q_np = model.body_q.numpy()
+        body_com_np = model.body_com.numpy()
+        q_i_0_np = np.empty((model.body_count, 7), dtype=np.float32)
+        for i in range(model.body_count):
+            pos = body_q_np[i, :3]
+            rot = wp.quatf(*body_q_np[i, 3:7])
+            com_world = pos + np.array(wp.quat_rotate(rot, wp.vec3f(*body_com_np[i])))
+            q_i_0_np[i, :3] = com_world
+            q_i_0_np[i, 3:7] = body_q_np[i, 3:7]
+
         ###
         # Model Attributes
         ###
@@ -1245,18 +1257,7 @@ class ModelKamino:
             # Per-world gravity
             model_gravity = GravityModel.from_newton(model)
 
-            # model.body_q stores body-origin world poses, but Kamino expects
-            # COM world poses (joint attachment vectors are COM-relative).
-            body_q_np = model.body_q.numpy()
-            body_com_np = model.body_com.numpy()
-            q_i_0_np = np.empty((model.body_count, 7), dtype=np.float32)
-            for i in range(model.body_count):
-                pos = body_q_np[i, :3]
-                rot = wp.quatf(*body_q_np[i, 3:7])
-                com_world = pos + np.array(wp.quat_rotate(rot, wp.vec3f(*body_com_np[i])))
-                q_i_0_np[i, :3] = com_world
-                q_i_0_np[i, 3:7] = body_q_np[i, 3:7]
-
+            # Bodies
             model_bodies = RigidBodiesModel(
                 num_bodies=model.body_count,
                 label=model.body_label,
@@ -1310,15 +1311,7 @@ class ModelKamino:
                 kinematic_cts_offset=wp.array(joint_kinematic_cts_start_np, dtype=int32),
             )
 
-            # Convert shape offsets from body-frame-relative to COM-relative
-            shape_transform_com = wp.zeros_like(model.shape_transform)
-            convert_geom_offset_origin_to_com(
-                model.body_com,
-                model.shape_body,
-                model.shape_transform,
-                shape_transform_com,
-            )
-
+            # Geometries
             model_geoms = GeometriesModel(
                 num_geoms=model.shape_count,
                 num_collidable=model_num_collidable_geoms,
@@ -1334,7 +1327,7 @@ class ModelKamino:
                 flags=model.shape_flags,
                 ptr=model.shape_source_ptr,
                 params=wp.array(geom_shape_params_np, dtype=vec4f),
-                offset=shape_transform_com,
+                offset=wp.zeros_like(model.shape_transform),
                 material=wp.array(geom_material_np, dtype=int32),
                 group=model.shape_collision_group,
                 gap=model.shape_gap,
@@ -1358,6 +1351,18 @@ class ModelKamino:
                 static_friction=wp.array(mpairs_static_fric[0], dtype=float32),
                 dynamic_friction=wp.array(mpairs_dynamic_fric[0], dtype=float32),
             )
+
+        ###
+        # Post-processing
+        ###
+
+        # Convert shape offsets from body-frame-relative to COM-relative
+        convert_geom_offset_origin_to_com(
+            model.body_com,
+            model.shape_body,
+            model.shape_transform,
+            model_geoms.offset,
+        )
 
         # Construct and return the new ModelKamino instance
         return ModelKamino(

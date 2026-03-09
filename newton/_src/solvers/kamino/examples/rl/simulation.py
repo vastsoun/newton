@@ -773,22 +773,23 @@ class RigidBodySim:
         """Return sensible default solver settings for RL."""
         settings = Simulator.Config()
         settings.dt = sim_dt
+        settings.solver.sparse_jacobian = True
+        settings.solver.use_fk_solver = True
+        settings.solver.use_collision_detector = True
         settings.collision_detector.pipeline = "unified"
         settings.collision_detector.max_contacts_per_pair = 8
         settings.solver.integrator = "moreau"
-        settings.solver.problem.alpha = 0.1
+        settings.solver.constraints.alpha = 0.1
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4
         settings.solver.padmm.compl_tolerance = 1e-4
         settings.solver.padmm.max_iterations = 100
         settings.solver.padmm.eta = 1e-5
         settings.solver.padmm.rho_0 = 0.05
-        settings.solver.sparse_jacobian = True
-        settings.solver.use_fk_solver = True
-        settings.solver.use_solver_acceleration = True
-        settings.solver.warmstart_mode = "containers"
-        settings.solver.contact_warmstart_method = "geom_pair_net_force"
+        settings.solver.padmm.use_acceleration = True
+        settings.solver.padmm.warmstart_mode = "containers"
+        settings.solver.padmm.contact_warmstart_method = "geom_pair_net_force"
         settings.solver.collect_solver_info = False
-        settings.solver.compute_metrics = False
-        settings.solver.avoid_graph_conditionals = True
+        settings.solver.compute_solution_metrics = False
+        settings.solver.padmm.use_graph_conditionals = False
         return settings

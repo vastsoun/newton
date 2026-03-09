@@ -78,7 +78,7 @@ class Example:
         config.solver.padmm.dual_tolerance = 1e-6
         config.solver.padmm.compl_tolerance = 1e-6
         config.solver.padmm.rho_0 = 0.1
-        config.solver.compute_metrics = logging and not use_cuda_graph
+        config.solver.compute_solution_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")

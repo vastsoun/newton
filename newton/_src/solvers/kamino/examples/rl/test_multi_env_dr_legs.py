@@ -43,16 +43,16 @@ def make_settings(sim_dt: float = 0.004) -> Simulator.Config:
     settings = Simulator.Config()
     settings.dt = sim_dt
     settings.solver.integrator = "moreau"
-    settings.solver.problem.alpha = 0.1
+    settings.solver.constraints.alpha = 0.1
     settings.solver.padmm.primal_tolerance = 1e-6
     settings.solver.padmm.dual_tolerance = 1e-6
     settings.solver.padmm.compl_tolerance = 1e-6
     settings.solver.padmm.max_iterations = 200
     settings.solver.padmm.rho_0 = 0.1
-    settings.solver.use_solver_acceleration = True
-    settings.solver.warmstart_mode = "containers"
+    settings.solver.padmm.use_acceleration = True
+    settings.solver.padmm.warmstart_mode = "containers"
     settings.solver.collect_solver_info = False
-    settings.solver.compute_metrics = False
+    settings.solver.compute_solution_metrics = False
     return settings
 
 

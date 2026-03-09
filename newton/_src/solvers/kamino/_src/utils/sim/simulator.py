@@ -141,9 +141,9 @@ class Simulator:
         See :class:`SolverKaminoImpl.Config` for more details.
         """
 
-        def check(self) -> None:
+        def validate(self) -> None:
             """
-            Checks the validity of the config.
+            Validates the simulator configurations.
             """
             # First check the time-step
             if isinstance(self.dt, float):
@@ -168,14 +168,12 @@ class Simulator:
                 raise TypeError(f"Invalid type for solver config: {type(self.solver)}")
 
             # Then check the nested config values
-            # TODO: self.collision_detector.check()
-            self.solver.check()
+            self.collision_detector.validate()
+            self.solver.validate()
 
         def __post_init__(self):
-            """
-            Post-initialization processing to ensure nested configs are properly created.
-            """
-            self.check()
+            """Post-initialization processing to ensure nested configs are properly created."""
+            self.validate()
 
     SimCallbackType = Callable[["Simulator"], None]
     """Defines a common type signature for all simulator callback functions."""
@@ -185,7 +183,6 @@ class Simulator:
         builder: ModelBuilderKamino,
         config: Simulator.Config = None,
         device: wp.DeviceLike = None,
-        shadow: bool = False,
     ):
         """
         Initializes the simulator with the given model builder, time-step, and device.
@@ -194,12 +191,11 @@ class Simulator:
             builder (ModelBuilderKamino): The model builder defining the model to be simulated.
             config (Simulator.Config, optional): The simulator config to use. If None, the default config are used.
             device (wp.DeviceLike, optional): The device to run the simulation on. If None, the default device is used.
-            shadow (bool, optional): If True, maintains a host-side copy of the simulation data for easy access.
         """
         # Cache simulator config: If no config is provided, use default configs
         if config is None:
             config = Simulator.Config()
-        config.check()
+        config.validate()
         self._config: Simulator.Config = config
 
         # Cache the target device use for the simulation

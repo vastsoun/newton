@@ -33,7 +33,7 @@ class Example:
     def __init__(self, viewer, num_worlds=8, args=None):
         # Set simulation run-time configurations
         self.fps = 60
-        self.sim_dt = 0.0025
+        self.sim_dt = 0.01
         self.frame_dt = 1.0 / self.fps
         self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
         self.sim_time = 0.0
@@ -80,19 +80,22 @@ class Example:
         self.model.shape_gap.fill_(0.01)
 
         # Create the Kamino solver for the given model
-        self.solver = newton.solvers.SolverKamino(self.model)
-
-        # Set some custom joint-space dynamics and PD control parameters
-        self.solver._solver_kamino._model.joints.a_j.fill_(0.011)  # Joint armature
-        self.solver._solver_kamino._model.joints.b_j.fill_(0.044)  # Joint viscous damping
-        self.solver._solver_kamino._model.joints.k_p_j.fill_(10.0)  # Proportional gain
-        self.solver._solver_kamino._model.joints.k_d_j.fill_(2.0)  # Derivative gain
+        self.config = newton.solvers.SolverKamino.Config.from_model(self.model)
+        self.config.use_collision_detector = True
+        self.config.use_fk_solver = True
+        self.config.padmm.max_iterations = 200
+        self.config.padmm.primal_tolerance = 1e-4
+        self.config.padmm.dual_tolerance = 1e-4
+        self.config.padmm.compl_tolerance = 1e-4
+        self.solver = newton.solvers.SolverKamino(self.model, config=self.config)
 
         # Set joint armature and viscous damping for better
         # stability of the implicit joint-space PD controller
         # TODO: Remove this once we add Newton USD schemas in the model asset
-        self.solver._solver_kamino._model.joints.a_j.fill_(0.011)
-        self.solver._solver_kamino._model.joints.b_j.fill_(0.044)
+        self.solver._solver_kamino._model.joints.a_j.fill_(0.011)  # Joint armature
+        self.solver._solver_kamino._model.joints.b_j.fill_(0.044)  # Joint viscous damping
+        self.solver._solver_kamino._model.joints.k_p_j.fill_(10.0)  # Proportional gain
+        self.solver._solver_kamino._model.joints.k_d_j.fill_(2.0)  # Derivative gain
 
         # Create state and control data containers
         self.state_0 = self.model.state()

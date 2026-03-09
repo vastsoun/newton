@@ -27,7 +27,6 @@ from .....geometry import GeoType, ShapeFlags
 from .....sim import JointTargetMode, JointType, Model
 
 # Kamino imports
-from ..utils import logger as msg
 from .bodies import RigidBodiesData, RigidBodiesModel, convert_geom_offset_origin_to_com
 from .control import ControlKamino
 from .conversions import (
@@ -1068,7 +1067,6 @@ class ModelKamino:
 
         # Check for articulations
         if model.articulation_count > 0:
-            msg.warning("Model contains rticulations")
             articulation_start_np = model.articulation_start.numpy()
             articulation_world_np = model.articulation_world.numpy()
             # For each articulation, assign its base body and joint to the corresponding world

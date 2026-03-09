@@ -1601,15 +1601,15 @@ class ModelBuilderKamino:
             A sorted list of geom index pairs (gid1, gid2) that should be excluded from collision detection.
         """
         # Pre-index joints per world for fast lookup
-        joint_ranges: list[tuple[int, int]] = []
-        for w in range(self.num_worlds):
-            lo = len(self.joints)
-            hi = 0
-            for i, j in enumerate(self.joints):
-                if j.wid == w:
-                    lo = min(lo, i)
-                    hi = max(hi, i)
-            joint_ranges.append((lo, hi))
+        # joint_ranges: list[tuple[int, int]] = []
+        # for w in range(self.num_worlds):
+        #     lo = len(self.joints)
+        #     hi = 0
+        #     for i, j in enumerate(self.joints):
+        #         if j.wid == w:
+        #             lo = min(lo, i)
+        #             hi = max(hi, i)
+        #     joint_ranges.append((lo, hi))
 
         model_excluded_pairs: list[tuple[int, int]] = []
         ncg_offset = 0
@@ -1640,20 +1640,20 @@ class ModelBuilderKamino:
                         continue
 
                     # Fixed-joint / DoF-joint neighbour check
-                    jlo, jhi = joint_ranges[wid]
-                    is_excluded_neighbour = False
-                    for joint in self.joints[jlo : jhi + 1]:
-                        is_pair = (joint.bid_B == geom1.body and joint.bid_F == geom2.body) or (
-                            joint.bid_B == geom2.body and joint.bid_F == geom1.body
-                        )
-                        if is_pair:
-                            if joint.dof_type == JointDoFType.FIXED:
-                                is_excluded_neighbour = True
-                            elif joint.bid_B >= 0:
-                                is_excluded_neighbour = True
-                            break
-                    if is_excluded_neighbour:
-                        model_excluded_pairs.append(candidate_pair)
+                    # jlo, jhi = joint_ranges[wid]
+                    # is_excluded_neighbour = False
+                    # for joint in self.joints[jlo : jhi + 1]:
+                    #     is_pair = (joint.bid_B == geom1.body and joint.bid_F == geom2.body) or (
+                    #         joint.bid_B == geom2.body and joint.bid_F == geom1.body
+                    #     )
+                    #     if is_pair:
+                    #         if joint.dof_type == JointDoFType.FIXED:
+                    #             is_excluded_neighbour = True
+                    #         elif joint.bid_B >= 0:
+                    #             is_excluded_neighbour = True
+                    #         break
+                    # if is_excluded_neighbour:
+                    #     model_excluded_pairs.append(candidate_pair)
 
             ncg_offset += ncg
 

@@ -51,6 +51,7 @@ from typing import Any
 import numpy as np
 import warp as wp
 
+from ....config import PADMMSolverConfig
 from ...core.size import SizeKamino
 from ...core.types import float32, int32, override, vec2f
 
@@ -1340,3 +1341,34 @@ class PADMMData:
             self.linear_solver_atol = wp.full(shape=(size.num_worlds,), value=np.finfo(np.float32).eps, dtype=float32)
             if collect_info and max_iters > 0:
                 self.info = PADMMInfo(size, max_iters, use_acceleration)
+
+
+###
+# Utilities
+###
+
+
+def convert_config_to_struct(config: PADMMSolverConfig) -> PADMMConfigStruct:
+    """
+    Converts the host-side config to the corresponding device-side object.
+
+    Returns:
+        PADMMConfigStruct: The solver config as a warp struct.
+    """
+    config_struct = PADMMConfigStruct()
+    config_struct.primal_tolerance = config.primal_tolerance
+    config_struct.dual_tolerance = config.dual_tolerance
+    config_struct.compl_tolerance = config.compl_tolerance
+    config_struct.restart_tolerance = config.restart_tolerance
+    config_struct.eta = config.eta
+    config_struct.rho_0 = config.rho_0
+    config_struct.rho_min = config.rho_min
+    config_struct.a_0 = config.a_0
+    config_struct.alpha = config.alpha
+    config_struct.tau = config.tau
+    config_struct.max_iterations = config.max_iterations
+    config_struct.penalty_update_freq = config.penalty_update_freq
+    config_struct.penalty_update_method = PADMMPenaltyUpdate.from_string(config.penalty_update_method)
+    config_struct.linear_solver_tolerance = config.linear_solver_tolerance
+    config_struct.linear_solver_tolerance_ratio = config.linear_solver_tolerance_ratio
+    return config_struct

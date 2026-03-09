@@ -82,6 +82,12 @@ class Example:
         # Create the Kamino solver for the given model
         self.solver = newton.solvers.SolverKamino(self.model)
 
+        # Set some custom joint-space dynamics and PD control parameters
+        self.solver._solver_kamino._model.joints.a_j.fill_(0.011)  # Joint armature
+        self.solver._solver_kamino._model.joints.b_j.fill_(0.044)  # Joint viscous damping
+        self.solver._solver_kamino._model.joints.k_p_j.fill_(10.0)  # Proportional gain
+        self.solver._solver_kamino._model.joints.k_d_j.fill_(2.0)  # Derivative gain
+
         # Set joint armature and viscous damping for better
         # stability of the implicit joint-space PD controller
         # TODO: Remove this once we add Newton USD schemas in the model asset

@@ -65,25 +65,18 @@ Typical usage example:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import warp as wp
 
-from .....sim import Model, ModelBuilder
+from .....core.types import override
+from ...config import ConfigBase, ConstrainedDynamicsConfig, ConstraintStabilizationConfig
 from ..core.data import DataKamino
 from ..core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
 from ..core.model import ModelKamino
 from ..core.size import SizeKamino
-from ..core.types import (
-    float32,
-    int32,
-    mat33f,
-    vec2f,
-    vec3f,
-    vec4f,
-    vec6f,
-)
+from ..core.types import float32, int32, mat33f, vec2f, vec3f, vec4f, vec6f
 from ..dynamics.delassus import BlockSparseMatrixFreeDelassusOperator, DelassusOperator
 from ..geometry.contacts import ContactsKamino
 from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
@@ -1057,152 +1050,41 @@ class DualProblem:
     """
 
     @dataclass
-    class Config:
+    class Config(ConfigBase):
         """
-        A struct to hold configuration parameters of a dual problem.
-        """
-
-        alpha: float = 0.01
-        """
-        Global default Baumgarte stabilization parameter for bilateral joint constraints.\n
-        Must be in range `[0, 1.0]`.\n
-        Defaults to `0.01`.
+        Configuration class for :class:`DualProblem`.
         """
 
-        beta: float = 0.01
-        """
-        Global default Baumgarte stabilization parameter for unilateral joint-limit constraints.\n
-        Must be in range `[0, 1.0]`.\n
-        Defaults to `0.01`.
-        """
+        constraints: ConstraintStabilizationConfig = field(default_factory=ConstraintStabilizationConfig)
+        """Constraint stabilization global defaults/override configurations."""
 
-        gamma: float = 0.01
-        """
-        Global default Baumgarte stabilization parameter for unilateral contact constraints.\n
-        Must be in range `[0, 1.0]`.\n
-        Defaults to `0.01`.
-        """
-
-        delta: float = 1.0e-6
-        """
-        Contact penetration margin used for unilateral contact constraints.\n
-        Must be non-negative.\n
-        Defaults to `1.0e-6`.
-        """
-
-        preconditioning: bool = True
-        """
-        Set to `True` to enable preconditioning of the dual problem.\n
-        Defaults to `True`.
-        """
-
-        def check(self) -> None:
-            """
-            Validate the config.
-            """
-            if self.alpha < 0.0 or self.alpha > 1.0:
-                raise ValueError(f"Invalid alpha: {self.alpha}. Must be in range [0, 1.0].")
-            if self.beta < 0.0 or self.beta > 1.0:
-                raise ValueError(f"Invalid beta: {self.beta}. Must be in range [0, 1.0].")
-            if self.gamma < 0.0 or self.gamma > 1.0:
-                raise ValueError(f"Invalid gamma: {self.gamma}. Must be in range [0, 1.0].")
-            if self.delta < 0.0:
-                raise ValueError(f"Invalid delta: {self.delta}. Must be non-negative.")
+        dynamics: ConstrainedDynamicsConfig = field(default_factory=ConstrainedDynamicsConfig)
+        """Constrained dynamics problem construction configurations."""
 
         def to_struct(self) -> DualProblemConfigStruct:
             """
-            Convert the config to a DualProblemConfigStruct struct.
+            Converts the config to a DualProblemConfigStruct struct.
             """
             config_struct = DualProblemConfigStruct()
-            config_struct.alpha = wp.float32(self.alpha)
-            config_struct.beta = wp.float32(self.beta)
-            config_struct.gamma = wp.float32(self.gamma)
-            config_struct.delta = wp.float32(self.delta)
-            config_struct.preconditioning = wp.bool(self.preconditioning)
+            config_struct.alpha = wp.float32(self.constraints.alpha)
+            config_struct.beta = wp.float32(self.constraints.beta)
+            config_struct.gamma = wp.float32(self.constraints.gamma)
+            config_struct.delta = wp.float32(self.constraints.delta)
+            config_struct.preconditioning = wp.bool(self.dynamics.preconditioning)
             return config_struct
 
+        @override
+        def validate(self) -> None:
+            """
+            Validates the current values held by the :class:`DualProblem.Config` instance.
+            """
+            self.constraints.validate()
+            self.dynamics.validate()
+
+        @override
         def __post_init__(self):
             """Post-initialization to validate config."""
-            self.check()
-
-        @classmethod
-        def register_custom_attributes(cls, builder: ModelBuilder) -> None:
-            """
-            Register custom attributes for this config.
-
-            Args:
-                builder (ModelBuilder): The model builder to register the custom attributes to.
-            """
-
-            # Register KaminoSceneAPI attributes so the USD importer will store them on the model
-            builder.add_custom_attribute(
-                ModelBuilder.CustomAttribute(
-                    name="constraints_use_preconditioning",
-                    frequency=Model.AttributeFrequency.ONCE,
-                    assignment=Model.AttributeAssignment.MODEL,
-                    dtype=wp.bool,
-                    default=True,
-                    namespace="kamino",
-                    usd_attribute_name="newton:kamino:constraints:usePreconditioning",
-                )
-            )
-            builder.add_custom_attribute(
-                ModelBuilder.CustomAttribute(
-                    name="constraints_alpha",
-                    frequency=Model.AttributeFrequency.ONCE,
-                    assignment=Model.AttributeAssignment.MODEL,
-                    dtype=wp.float32,
-                    default=0.01,
-                    namespace="kamino",
-                    usd_attribute_name="newton:kamino:constraints:alpha",
-                )
-            )
-            builder.add_custom_attribute(
-                ModelBuilder.CustomAttribute(
-                    name="constraints_beta",
-                    frequency=Model.AttributeFrequency.ONCE,
-                    assignment=Model.AttributeAssignment.MODEL,
-                    dtype=wp.float32,
-                    default=0.01,
-                    namespace="kamino",
-                    usd_attribute_name="newton:kamino:constraints:beta",
-                )
-            )
-            builder.add_custom_attribute(
-                ModelBuilder.CustomAttribute(
-                    name="constraints_gamma",
-                    frequency=Model.AttributeFrequency.ONCE,
-                    assignment=Model.AttributeAssignment.MODEL,
-                    dtype=wp.float32,
-                    default=0.01,
-                    namespace="kamino",
-                    usd_attribute_name="newton:kamino:constraints:gamma",
-                )
-            )
-
-        @staticmethod
-        def from_model(model: Model, **kwargs: dict[str, Any]) -> DualProblem.Config:
-            """Creates a config based on a model, using any config parameters that might be stored in
-            the model if it was imported from USD.
-
-            Args:
-                model: Newton model.
-            """
-            config = DualProblem.Config(**kwargs)
-
-            # Parse solver-specific attributes imported from USD
-            kamino_attrs = getattr(model, "kamino", None)
-            if kamino_attrs is not None:
-                if hasattr(kamino_attrs, "constraints_alpha"):
-                    config.alpha = float(kamino_attrs.constraints_alpha.numpy()[0])
-                if hasattr(kamino_attrs, "constraints_beta"):
-                    config.beta = float(kamino_attrs.constraints_beta.numpy()[0])
-                if hasattr(kamino_attrs, "constraints_gamma"):
-                    config.gamma = float(kamino_attrs.constraints_gamma.numpy()[0])
-                if hasattr(kamino_attrs, "constraints_use_preconditioning"):
-                    config.preconditioning = bool(kamino_attrs.constraints_use_preconditioning.numpy()[0])
-
-            return config
+            self.validate()
 
     def __init__(
         self,
@@ -1601,7 +1483,7 @@ class DualProblem:
             )
 
         # Optionally build and apply the Delassus diagonal preconditioner
-        if any(s.preconditioning for s in self._config):
+        if any(s.dynamics.preconditioning for s in self._config):
             self._build_dual_preconditioner()
             self._apply_dual_preconditioner_to_dual()
 

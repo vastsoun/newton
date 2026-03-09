@@ -108,6 +108,7 @@ class ModelBuilderKamino:
         self._bodies: list[RigidBodyDescriptor] = []
         self._joints: list[JointDescriptor] = []
         self._geoms: list[GeometryDescriptor] = []
+        self._shapes: dict[str, ShapeDescriptorType] = {}
 
         # Declare a global material manager
         self._materials: MaterialManager = MaterialManager()
@@ -231,6 +232,11 @@ class ModelBuilderKamino:
     def geoms(self) -> list[GeometryDescriptor]:
         """Returns the list of geometry descriptors contained in the model."""
         return self._geoms
+
+    @property
+    def shapes(self) -> dict[str, ShapeDescriptorType]:
+        """Returns the dictionary of shape descriptors contained in the model, indexed by geom uid."""
+        return self._shapes
 
     @property
     def materials(self) -> list[MaterialDescriptor]:
@@ -588,6 +594,8 @@ class ModelBuilderKamino:
         Args:
             geom (GeometryDescriptor):
                 The geometry descriptor to be added.
+            shape (ShapeDescriptorType):
+                The underlyling geometry
             world_index (int):
                 The index of the world to which the geometry will be added.\n
                 Defaults to the first world with index `0`.
@@ -598,23 +606,41 @@ class ModelBuilderKamino:
         # Check if the descriptor is valid
         if not isinstance(geom, GeometryDescriptor):
             raise TypeError(f"Invalid geometry descriptor type: {type(geom)}. Must be `GeometryDescriptor`.")
+        assert geom.shape is not None
+
+        # Create a copy of the descriptor without the shape (stored separately)
+        _geom = GeometryDescriptor(
+            name=geom.name,
+            uid=geom.uid,
+            body=geom.body,
+            shape=None,
+            offset=geom.offset,
+            material=geom.material,
+            group=geom.group,
+            collides=geom.collides,
+            mid=geom.mid,
+            flags=geom.flags,
+        )
 
         # Check if the world index is valid
         world = self._check_world_index(world_index)
 
         # If the geom material is not assigned, set it to the global default
-        if geom.mid is None:
-            geom.mid = self._materials.default.mid
+        if _geom.mid is None:
+            _geom.mid = self._materials.default.mid
 
         # Append body model data
-        world.add_geometry(geom)
-        self._insert_entity(self._geoms, geom, world_index=world_index)
+        world.add_geometry(_geom)
+        self._insert_entity(self._geoms, _geom, world_index=world_index)
 
         # Update model-wide counters
         self._num_geoms += 1
 
+        if _geom.uid not in self._shapes:
+            self._shapes[_geom.uid] = geom.shape
+
         # Return the new geometry index
-        return geom.gid
+        return _geom.gid
 
     def add_material(self, material: MaterialDescriptor, world_index: int = 0) -> int:
         """
@@ -659,37 +685,38 @@ class ModelBuilderKamino:
         if not isinstance(other, ModelBuilderKamino):
             raise TypeError(f"Invalid builder type: {type(other)}. Must be a ModelBuilderKamino instance.")
 
-        # Make a deep copy of the other builder to avoid modifying the original
-        # TODO: How can we avoid this deep copy to improve performance
-        # while avoiding copying expensive data like meshes?
-        _other = copy.deepcopy(other)
-
         # Append the other per-world descriptors
-        self._worlds.extend(_other._worlds)
-        self._gravity.extend(_other._gravity)
-        self._up_axes.extend(_other._up_axes)
+        self._worlds.extend(copy.deepcopy(other._worlds))
+        self._gravity.extend(copy.deepcopy(other._gravity))
+        self._up_axes.extend(copy.deepcopy(other._up_axes))
 
         # Append the other per-entity descriptors
-        self._bodies.extend(_other._bodies)
-        self._joints.extend(_other._joints)
-        self._geoms.extend(_other._geoms)
+        self._bodies.extend(copy.deepcopy(other._bodies))
+        self._joints.extend(copy.deepcopy(other._joints))
+        self._geoms.extend(copy.deepcopy(other._geoms))
+
+        # Append the other shapes as needed
+        for uid, shape in other._shapes.items():
+            if uid not in self._shapes:
+                self._shapes[uid] = shape
 
         # Append the other materials
-        self._materials.merge(_other._materials)
+        self._materials.merge(copy.deepcopy(other._materials))
 
         # Update the world index of the entities in the
         # other builder and update model-wide counters
-        for w, world in enumerate(_other._worlds):
-            # Offset world index of the other builder's world
-            world.wid = self._num_worlds + w
+        for w in range(self._num_worlds, len(self._worlds)):
+            # Update world index of the other builder's world
+            world = self._worlds[w]
+            world.wid = w
 
-            # Offset world indices of the other builders entities
+            # Update world indices of the other builders entities
             for body in self._bodies[self._num_bodies : self._num_bodies + world.num_bodies]:
-                body.wid = self._num_worlds + w
+                body.wid = w
             for joint in self._joints[self._num_joints : self._num_joints + world.num_joints]:
-                joint.wid = self._num_worlds + w
+                joint.wid = w
             for geom in self._geoms[self._num_geoms : self._num_geoms + world.num_geoms]:
-                geom.wid = self._num_worlds + w
+                geom.wid = w
 
             # Update model-wide counters
             self._num_bodies += world.num_bodies
@@ -707,7 +734,7 @@ class ModelBuilderKamino:
             self._num_joint_kinematic_cts += world.num_kinematic_joint_cts
 
         # Update the number of worlds
-        self._num_worlds += _other._num_worlds
+        self._num_worlds += other._num_worlds
 
     ###
     # Configurations
@@ -1138,40 +1165,33 @@ class ModelBuilderKamino:
                 joints_bid_B.append(joint.bid_B + world_bio if joint.bid_B >= 0 else -1)
                 joints_bid_F.append(joint.bid_F + world_bio if joint.bid_F >= 0 else -1)
 
-        # A helper function to create geometry pointers
-        # NOTE: This also finalizes the mesh/SDF/HField data on the device
-        def make_geometry_source_pointer(geom: GeometryDescriptor, mesh_geoms: dict, device) -> int:
-            # Append to data pointers array of the shape has a Mesh, SDF or HField source
-            if geom.shape.type in (ShapeType.MESH, ShapeType.CONVEX, ShapeType.HFIELD):
-                geom_uid = geom.uid
-                # If the geometry has a Mesh, SDF or HField source,
-                # finalize it and retrieve the mesh pointer/index
-                if geom_uid not in mesh_geoms:
-                    mesh_geoms[geom_uid] = geom.shape.data.finalize(device=device)
-                # Return the mesh data pointer/index
-                return mesh_geoms[geom_uid]
-            # Otherwise, append a null (i.e. zero-valued) pointer
-            else:
-                return 0
-
         # A helper function to collect model collision geometries data
         def collect_geometry_model_data():
-            cgeom_meshes = {}
+            shape_ptrs = {}
+            for uid, shape in self._shapes.items():
+                # If the geometry has a Mesh, SDF or HField source,
+                # finalize it and retrieve the mesh pointer/index
+                if shape.type in (ShapeType.MESH, ShapeType.CONVEX, ShapeType.HFIELD):
+                    shape_ptrs[uid] = shape.data.finalize(device=device)
+                # Otherwise, append a null (i.e. zero-valued) pointer
+                else:
+                    shape_ptrs[uid] = 0
             for geom in self._geoms:
+                shape = self._shapes[geom.uid]
                 geoms_label.append(geom.name)
                 geoms_wid.append(geom.wid)
                 geoms_gid.append(geom.gid)
                 geoms_bid.append(geom.body + self._worlds[geom.wid].bodies_idx_offset if geom.body >= 0 else -1)
-                geoms_type.append(geom.shape.type.value)
+                geoms_type.append(shape.type.value)
                 geoms_flags.append(geom.flags)
-                geoms_params.append(geom.shape.paramsvec)
+                geoms_params.append(shape.paramsvec)
                 geoms_offset.append(geom.offset)
                 geoms_material.append(geom.mid)
                 geoms_group.append(geom.group)
                 geoms_collides.append(geom.collides)
                 geoms_gap.append(geom.gap)
                 geoms_margin.append(geom.margin)
-                geoms_ptr.append(make_geometry_source_pointer(geom, cgeom_meshes, device))
+                geoms_ptr.append(shape_ptrs[geom.uid])
 
         # A helper function to collect model material-pairs data
         def collect_material_pairs_model_data():
@@ -1689,12 +1709,15 @@ class ModelBuilderKamino:
             g2 = int(geom_pair[1])
             geom1 = self._geoms[g1]
             geom2 = self._geoms[g2]
-            if geom1.shape.type > geom2.shape.type:
+            shape1 = self._shapes[geom1.uid]
+            shape2 = self._shapes[geom2.uid]
+            if shape1.type > shape2.type:
                 g1, g2 = g2, g1
                 geom1, geom2 = geom2, geom1
+                shape1, shape2 = shape2, shape1
             num_contacts_a, num_contacts_b = max_contacts_for_shape_pair(
-                type_a=geom1.shape.type,
-                type_b=geom2.shape.type,
+                type_a=shape1.type,
+                type_b=shape2.type,
             )
             num_contacts = num_contacts_a + num_contacts_b
             if max_contacts_per_pair is not None:

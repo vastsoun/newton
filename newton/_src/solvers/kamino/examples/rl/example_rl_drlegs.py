@@ -72,15 +72,15 @@ _CONTACT_DURATION = 0.35  # seconds per foot contact phase
 _PHASE_RATE = 1.0 / (2.0 * _CONTACT_DURATION)  # ~1.4286 Hz gait frequency
 _PHASE_EMBEDDING_K = 2  # periodic encoding order -> 4D embedding
 _VEL_CMD_MAX = 0.3  # m/s max velocity command
-_YAW_CMD_MAX = 1.0  # rad/s max yaw rate command
+_YAW_CMD_MAX = 0.8  # rad/s max yaw rate command
 _PD_KP = 15.0  # proportional gain (N·m/rad) for actuated joints
 _PD_KD = 0.6  # derivative gain (N·m·s/rad) for actuated joints
 _PD_ARMATURE = 0.01  # rotor inertia (kg·m²) for actuated joints
 _PATH_DEVIATION_SCALE = 0.1  # scaling for path deviation observations
 _LINEAR_PATH_ERROR_LIMIT = 0.1  # max path-to-root deviation before clipping (m)
 _STANDING_HEIGHT = 0.265  # m, default pelvis Z from body_pose_offset
-_HEIGHT_CMD_MIN = 0.13  # m, minimum pelvis height command (must match training)
-_HEIGHT_CMD_MAX = 0.28  # m, maximum pelvis height command (must match training)
+_HEIGHT_CMD_MIN = 0.18  # m, minimum pelvis height command (must match training)
+_HEIGHT_CMD_MAX = 0.27  # m, maximum pelvis height command (must match training)
 _HEIGHT_ERROR_SCALE = 0.05  # scaling for height error observation (must match training)
 
 
@@ -258,8 +258,16 @@ class Example:
         self._cmd_vel[0, 1] = self.joystick.lateral_velocity
         self._cmd_yaw_rate[0, 0] = self.joystick.angular_velocity
 
-        # Height command via keyboard: Y = increase, N = decrease
-        if self.viewer is not None and hasattr(self.viewer, "is_key_down"):
+        # Height command: right stick Y (joystick) or Y/N keys (keyboard)
+        if self.joystick._mode == "joystick":
+            pitch = self.joystick.head_pitch  # right stick Y, positive = up
+            if pitch >= 0:
+                t = min(1.0, pitch / self.joystick._cfg.head_pitch_up)
+                self._cmd_height[0, 0] = _STANDING_HEIGHT + t * (_HEIGHT_CMD_MAX - _STANDING_HEIGHT)
+            else:
+                t = min(1.0, -pitch / self.joystick._cfg.head_pitch_down)
+                self._cmd_height[0, 0] = _STANDING_HEIGHT - t * (_STANDING_HEIGHT - _HEIGHT_CMD_MIN)
+        elif self.viewer is not None and hasattr(self.viewer, "is_key_down"):
             if self.viewer.is_key_down("y"):
                 self._cmd_height[0, 0] = min(self._cmd_height[0, 0].item() + 0.001, _HEIGHT_CMD_MAX)
             if self.viewer.is_key_down("n"):

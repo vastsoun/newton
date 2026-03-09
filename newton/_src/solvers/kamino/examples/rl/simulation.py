@@ -196,6 +196,7 @@ class RigidBodySim:
         async_save: bool = True,
         max_contacts_per_pair: int | None = None,
         render_config: RenderConfig | None = None,
+        collapse_fixed_joints: bool = False,
     ):
         # ----- Device setup -----
         self._device = wp.get_device(device)
@@ -219,7 +220,7 @@ class RigidBodySim:
             joint_ordering=None,
             force_show_colliders=True,
             force_position_velocity_actuation=True,
-            collapse_fixed_joints=False,
+            collapse_fixed_joints=collapse_fixed_joints,
             enable_self_collisions=False,
             hide_collision_shapes=True,
         )

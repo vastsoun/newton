@@ -20,7 +20,6 @@ import os
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino._src.utils.benchmark.configs import make_benchmark_configs
 from newton._src.solvers.kamino._src.utils.benchmark.metrics import BenchmarkMetrics, CodeInfo
@@ -32,7 +31,7 @@ from newton._src.solvers.kamino._src.utils.benchmark.render import (
     render_problem_dimensions_table,
     render_solver_configs_table,
 )
-from newton._src.solvers.kamino._src.utils.benchmark.runner import run_single_benchmark
+from newton._src.solvers.kamino._src.utils.benchmark.runner import estimate_max_num_worlds, run_single_benchmark
 from newton._src.solvers.kamino._src.utils.device import get_device_spec_info
 from newton._src.solvers.kamino._src.utils.sim import Simulator
 
@@ -298,7 +297,6 @@ def benchmark_run(args: argparse.Namespace):
     # provided problem names and arguments
     problem_set = make_benchmark_problems(
         names=problem_names,
-        num_worlds=args.num_worlds,
         gravity=args.gravity,
         ground=args.ground,
     )
@@ -317,12 +315,11 @@ def benchmark_run(args: argparse.Namespace):
     # Iterator over all problem names and settings and run benchmarks for each
     for problem_name, problem_config in problem_set.items():
         # Unpack problem configurations
-        builder, control, camera = problem_config
-        if not isinstance(builder, ModelBuilderKamino):
-            builder = builder()
+        builder_fn, control, camera = problem_config
+        builder = builder_fn(args.num_worlds)
 
-        for config_name, configs in configs_set.items():
-            msg.notif("Running benchmark for problem '%s' with simulation configs '%s'", problem_name, config_name)
+        for config_name, config in configs_set.items():
+            msg.notif("Running benchmark for problem '%s' with simulation config '%s'", problem_name, config_name)
 
             # Retrieve problem and config indices
             problem_idx = metrics._problem_names.index(problem_name)
@@ -330,7 +327,7 @@ def benchmark_run(args: argparse.Namespace):
 
             # Construct simulator configurations based on the solver
             # configurations for the current benchmark configuration
-            sim_configs = Simulator.Config(dt=args.dt, solver=configs)
+            sim_configs = Simulator.Config(dt=args.dt, solver=config)
             sim_configs.solver.use_fk_solver = False
 
             # Execute the benchmark for the current problem and settings
@@ -340,7 +337,7 @@ def benchmark_run(args: argparse.Namespace):
                 metrics=metrics,
                 args=args,
                 builder=builder,
-                configs=sim_configs,
+                config=sim_config,
                 control=control,
                 camera=camera,
                 device=device,
@@ -369,6 +366,151 @@ def benchmark_run(args: argparse.Namespace):
 
     # Return collected metrics and path to export folder (None if not exported)
     return metrics, RUN_OUTPUT_PATH
+
+
+def run_throughput_profiling(args: argparse.Namespace, problem_idx: int, config_idx: int):
+    # Print the git commit hash and repository info to the
+    # console for traceability and reproducibility of benchmark runs
+    codeinfo = CodeInfo()
+    msg.notif(f"Benchmark will run with the following repository:\n{codeinfo}\n")
+
+    # Set device if specified, otherwise use Warp's default
+    if args.device:
+        device = wp.get_device(args.device)
+        wp.set_device(device)
+    else:
+        device = wp.get_preferred_device()
+
+    # Print device specification info to console for reference
+    spec_info = get_device_spec_info(device)
+    msg.notif("[Device]: %s", spec_info)
+    print(f"Mempool release threshold: {wp.get_mempool_release_threshold()}")
+
+    # Determine if CUDA graphs should be used for execution
+    can_use_cuda_graph = device.is_cuda and wp.is_mempool_enabled(device)
+    use_cuda_graph = can_use_cuda_graph and args.cuda_graph
+    msg.info(f"can_use_cuda_graph: {can_use_cuda_graph}")
+    msg.info(f"using_cuda_graph: {use_cuda_graph}")
+
+    # Determine the problem set from
+    # the single and list arguments
+    if len(args.problem_set) == 0:
+        problem_names = [args.problem]
+    else:
+        problem_names = args.problem_set
+    msg.notif(f"problem_names: {problem_names}")
+
+    # Get the problem and configuration to profile the throughput for
+    problem_name = problem_names[problem_idx]
+    problem = make_benchmark_problems(
+        names=[problem_name],
+        gravity=args.gravity,
+        ground=args.ground,
+    )[problem_name]
+    configs_set = make_benchmark_configs(include_default=False)
+    config_name = list(configs_set.keys())[config_idx]
+    config = configs_set[config_name]
+
+    # Define and create the output directory for the benchmark results
+    RUN_OUTPUT_PATH = None
+    if args.output == "full":
+        DATA_DIR_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "./data"))
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        RUN_OUTPUT_PATH = f"{DATA_DIR_PATH}/throughput_{problem_name}_{config_name}_{timestamp}"
+        os.makedirs(RUN_OUTPUT_PATH, exist_ok=True)
+
+    # Print problem and config
+    msg.notif("Profiling throughput for problem '%s' with config '%s'", problem_name, config_name)
+    render_solver_configs_table(configs={config_name: config}, groups=["sparse", "linear", "padmm"], to_console=True)
+    if args.output == "full":
+        render_solver_configs_table(
+            configs={config_name: config},
+            path=os.path.join(RUN_OUTPUT_PATH, "solver_configs.txt"),
+            groups=["cts", "sparse", "linear", "padmm", "warmstart"],
+            to_console=False,
+        )
+
+    # Unpack problem
+    builder_fn, control, camera = problem
+
+    # Construct simulator configuration
+    sim_config = Simulator.Config(dt=args.dt, solver=config)
+    sim_config.solver.enable_fk_solver = False
+
+    # Estimate max number of worlds that fit on the GPU
+    num_worlds_max = estimate_max_num_worlds(
+        args=args,
+        builder_fn=builder_fn,
+        config=sim_config,
+        control=control,
+        camera=camera,
+        device=device,
+        use_cuda_graph=use_cuda_graph,
+        physics_metrics=False,
+    )
+
+    # Collect timings and memory usage for various number of worlds
+    num_measurements = 6
+    num_worlds_min = 1
+    for measurement_id in range(num_measurements):
+        # Determine number of worlds
+        num_worlds = int(
+            num_worlds_min
+            + (num_measurements - measurement_id - 1) * (num_worlds_max - num_worlds_min) / (num_measurements - 1)
+        )
+        msg.notif("Running with %d worlds", num_worlds)
+
+        # Create subfolder
+        subfolder_path = None
+        if args.output == "full":
+            subfolder_path = os.path.join(RUN_OUTPUT_PATH, f"{num_worlds} worlds")
+            os.makedirs(subfolder_path, exist_ok=True)
+
+        # Initialize metrics to store performance data
+        metrics = BenchmarkMetrics(
+            problems=[problem_name],
+            configs={config_name: config},
+            num_steps=args.num_steps,
+            step_metrics=False,
+            solver_metrics=False,
+            physics_metrics=False,
+        )
+
+        # Run data collection
+        sim_config.collision_detector.max_contacts = 10 * num_worlds
+        run_single_benchmark(
+            problem_idx=0,
+            config_idx=0,
+            metrics=metrics,
+            args=args,
+            builder=builder_fn(num_worlds),
+            config=sim_config,
+            control=control,
+            camera=camera,
+            device=device,
+            use_cuda_graph=use_cuda_graph,
+            print_device_info=True,
+        )
+
+        # Finalize and export metrics
+        metrics.compute_stats()
+        if args.output == "full":
+            msg.info("Saving benchmark data to HDF5...")
+            RUN_HDF5_OUTPUT_PATH = f"{subfolder_path}/metrics.hdf5"
+            metrics.save_to_hdf5(path=RUN_HDF5_OUTPUT_PATH)
+            msg.info("Done.")
+
+        # Print/export results
+        benchmark_output(metrics, subfolder_path)
+
+    # Print table with problem dimensions
+    render_problem_dimensions_table(metrics._problem_dims, to_console=True)
+    if args.output == "full":
+        render_problem_dimensions_table(
+            metrics._problem_dims,
+            path=os.path.join(RUN_OUTPUT_PATH, "problem_dimensions.txt"),
+            to_console=False,
+        )
 
 
 def load_metrics(data_import_path: str | None):

@@ -26,11 +26,11 @@ import sys
 from dataclasses import dataclass
 from enum import IntEnum
 from functools import cache
-from typing import Literal
 
 import numpy as np
 import warp as wp
 
+from ...config import ForwardKinematicsSolverConfig
 from ..core.joints import JointActuationType, JointDoFType
 from ..core.math import (
     G_of,
@@ -1527,74 +1527,14 @@ class ForwardKinematicsSolver:
                     f"Valid options are: {[e.name for e in cls]}"
                 ) from e
 
-    @dataclass
-    class Config:
-        """
-        Host-side class to store config for the forward kinematics solve.
-        """
+    Config = ForwardKinematicsSolverConfig
+    """
+    Defines a type alias of the FK solver configurations container, including convergence
+    criteria, maximum iterations, and options for the linear solver and preconditioning.
 
-        max_newton_iterations: int = 30
-        """Maximal number of Gauss-Newton iterations (default: 30).
-        Changes to this setting after the solver's initialization will have no effect."""
-
-        max_line_search_iterations: int = 20
-        """Maximal line search iterations in the inner loop (default: 20).
-        Changes to this setting after the solver's initialization will have no effect."""
-
-        tolerance: float = 1e-6
-        """Maximal absolute kinematic constraint value that is acceptable at the solution (default: 1e-6).
-        Changes to this setting after the solver's initialization will have no effect."""
-
-        reset_state: bool = True
-        """Whether to reset the state to initial states, to use as initial guess (default: True).
-        Changes to this setting after graph capture will have no effect."""
-
-        TILE_SIZE_CTS: int = 8
-        """Tile size for kernels along the dimension of kinematic constraints (default: 8).
-        Changes to this setting after the solver's initialization will have no effect."""
-
-        TILE_SIZE_VRS: int = 8
-        """Tile size for kernels along the dimension of rigid body pose variables (default: 8).
-        Changes to this setting after the solver's initialization will have no effect."""
-
-        use_sparsity: bool = False
-        """Whether to use sparse Jacobian and solver; otherwise, dense versions are used (default: True).
-        Changes to this setting after the solver's initialization lead to undefined behavior."""
-
-        preconditioner: Literal["none", "jacobi_diagonal", "jacobi_block_diagonal"] = "jacobi_block_diagonal"
-        """Preconditioner to use for the Conjugate Gradient solver if sparsity is enabled
-        (default: "jacobi_block_diagonal").
-        Changes to this setting after the solver's initialization lead to undefined behavior."""
-
-        use_adaptive_cg_tolerance: bool = True
-        """Whether to use an adaptive tolerance strategy for the Conjugate Gradient solver if sparsity
-        is enabled, which reduces the number of CG iterations in most cases (default: True).
-        Changes to this setting after graph capture will have no effect."""
-
-        def check(self):
-            """
-            Checks that the config is valid.
-
-            Raises:
-                ValueError: If any of the config values is invalid.
-            """
-            if self.max_newton_iterations <= 0:
-                raise ValueError("`max_newton_iterations` must be positive.")
-            if self.max_line_search_iterations <= 0:
-                raise ValueError("`max_line_search_iterations` must be positive.")
-            if self.tolerance <= 0.0:
-                raise ValueError("`tolerance` must be positive.")
-            if self.TILE_SIZE_CTS <= 0:
-                raise ValueError("`TILE_SIZE_CTS` must be positive.")
-            if self.TILE_SIZE_VRS <= 0:
-                raise ValueError("`TILE_SIZE_VRS` must be positive.")
-            # Conversion to ForwardKinematicsSolver.PreconditionerType
-            # will raise an error if the input string is invalid.
-            ForwardKinematicsSolver.PreconditionerType.from_string(self.preconditioner)
-
-        def __post_init__(self):
-            """Post-initialization hook to check config validity."""
-            self.check()
+    See :class:`ForwardKinematicsSolverConfig` for the full
+    list of configuration options and their descriptions.
+    """
 
     @dataclass
     class Status:

@@ -1212,8 +1212,11 @@ class RendererGL:
             self.window.flip()
         #    self.app.event_loop._redraw_windows(1.0 / 60.0)
 
-    def resize(self, width, height):
-        self._screen_width, self._screen_height = self.window.get_framebuffer_size()
+    def resize(self, width=None, height=None):
+        if width is not None and height is not None:
+            self._screen_width, self._screen_height = int(width), int(height)
+        else:
+            self._screen_width, self._screen_height = self.window.get_framebuffer_size()
         self._setup_frame_buffer()
 
     def set_title(self, title):
@@ -1370,7 +1373,7 @@ class RendererGL:
             callback(x, y, scroll_x, scroll_y)
 
     def _on_window_resize(self, width, height):
-        self.resize(width, height)
+        self.resize()
 
         for callback in self._resize_callbacks:
             callback(width, height)

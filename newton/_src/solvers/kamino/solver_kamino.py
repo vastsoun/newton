@@ -240,6 +240,57 @@ class SolverKamino(SolverBase):
         Defaults to `False`.
         """
 
+        @classmethod
+        def register_custom_attributes(cls, builder: ModelBuilder) -> None:
+            """
+            Register custom attributes for this config.
+
+            Args:
+                builder (ModelBuilder): The model builder to register the custom attributes to.
+            """
+            from ._src.core.joints import JointCorrectionMode  # noqa: PLC0415
+            from ._src.solvers.padmm import PADMMWarmStartMode  # noqa: PLC0415
+
+            # Register KaminoSceneAPI attributes so the USD importer will store them on the model
+            builder.add_custom_attribute(
+                ModelBuilder.CustomAttribute(
+                    name="padmm_warmstarting",
+                    frequency=Model.AttributeFrequency.ONCE,
+                    assignment=Model.AttributeAssignment.MODEL,
+                    dtype=str,
+                    default="containers",
+                    namespace="kamino",
+                    usd_attribute_name="newton:kamino:padmm:warmstarting",
+                    usd_value_transformer=PADMMWarmStartMode.parse_usd_attribute,
+                )
+            )
+            builder.add_custom_attribute(
+                ModelBuilder.CustomAttribute(
+                    name="padmm_use_acceleration",
+                    frequency=Model.AttributeFrequency.ONCE,
+                    assignment=Model.AttributeAssignment.MODEL,
+                    dtype=wp.bool,
+                    default=True,
+                    namespace="kamino",
+                    usd_attribute_name="newton:kamino:padmm:useAcceleration",
+                )
+            )
+            builder.add_custom_attribute(
+                ModelBuilder.CustomAttribute(
+                    name="joint_correction",
+                    frequency=Model.AttributeFrequency.ONCE,
+                    assignment=Model.AttributeAssignment.MODEL,
+                    dtype=str,
+                    default="twopi",
+                    namespace="kamino",
+                    usd_attribute_name="newton:kamino:jointCorrection",
+                    usd_value_transformer=JointCorrectionMode.parse_usd_attribute,
+                )
+            )
+
+            ConstrainedDynamicsConfig.register_custom_attributes(builder)
+            PADMMSolverConfig.register_custom_attributes(builder)
+
     _kamino = None
     """
     Class variable storing the imported Kamino module.\n
@@ -517,19 +568,15 @@ class SolverKamino(SolverBase):
         self._kamino.convert_contacts_kamino_to_newton(self.model, state, self._contacts_kamino, contacts)
 
     @override
-    @classmethod
-    def register_custom_attributes(cls, builder: ModelBuilder) -> None:
+    @staticmethod
+    def register_custom_attributes(builder: ModelBuilder) -> None:
         """
         Register custom attributes for SolverKamino.
 
         Args:
             builder: The model builder to register the custom attributes to.
         """
-        # Ensure Kamino dependencies are imported so that any custom attributes defined
-        if cls._kamino is None:
-            cls._import_kamino()
-
-        # State attributes
+        # Register State attributes
         builder.add_custom_attribute(
             ModelBuilder.CustomAttribute(
                 name="body_f_total",
@@ -559,7 +606,7 @@ class SolverKamino(SolverBase):
         )
 
         # Register KaminoSceneAPI attributes so the USD importer will store them on the model
-        cls.Config.register_custom_attributes(builder)
+        SolverKamino.Config.register_custom_attributes(builder)
 
     ###
     # Internals

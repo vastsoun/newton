@@ -23,6 +23,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+import warp as wp
+
+from ...sim import Model, ModelBuilder
+
 ###
 # Module interface
 ###
@@ -248,6 +252,64 @@ class PADMMSolverConfig:
     When zero, the linear solver tolerance is not adapted (fixed tolerance).\n
     Must be non-negative. Defaults to `0.0`.
     """
+
+    @classmethod
+    def register_custom_attributes(cls, builder: ModelBuilder) -> None:
+        """
+        Register custom attributes for this config.
+
+        Args:
+            builder (ModelBuilder): The model builder to register the custom attributes to.
+        """
+
+        # Register KaminoSceneAPI attributes so the USD importer will store them on the model
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="padmm_primal_tolerance",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.float32,
+                default=1e-6,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:padmm:primalTolerance",
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="padmm_dual_tolerance",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.float32,
+                default=1e-6,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:padmm:dualTolerance",
+            )
+        )
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="padmm_complementarity_tolerance",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.float32,
+                default=1e-6,
+                namespace="kamino",
+                usd_attribute_name="newton:kamino:padmm:complementarityTolerance",
+            )
+        )
+
+        # Separately register `newton:maxSolverIterations` from `KaminoSceneAPI` so we have access
+        # to it through the model.
+        builder.add_custom_attribute(
+            ModelBuilder.CustomAttribute(
+                name="max_solver_iterations",
+                frequency=Model.AttributeFrequency.ONCE,
+                assignment=Model.AttributeAssignment.MODEL,
+                dtype=wp.int32,
+                default=-1,
+                namespace="kamino",
+                usd_attribute_name="newton:maxSolverIterations",
+            )
+        )
 
 
 @dataclass

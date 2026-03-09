@@ -69,7 +69,7 @@ from .kinematics.resets import (
     reset_time,
 )
 from .linalg import ConjugateResidualSolver, IterativeSolver, LinearSolverType, LLTBlockedSolver
-from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverConfig
+from .solvers.fk import ForwardKinematicsSolver
 from .solvers.metrics import SolutionMetrics
 from .solvers.padmm import PADMMSolver, PADMMWarmStartMode
 from .solvers.warmstart import WarmstarterContacts, WarmstarterLimits
@@ -126,10 +126,10 @@ class SolverKaminoImpl(SolverBase):
         See :class:`PADMMSolver.Config` for more details.
         """
 
-        fk: ForwardKinematicsSolverConfig = field(default_factory=ForwardKinematicsSolverConfig)
+        fk: ForwardKinematicsSolver.Config = field(default_factory=ForwardKinematicsSolver.Config)
         """
         Config for the forward kinematics solver.\n
-        See :class:`ForwardKinematicsSolverConfig` for more details.
+        See :class:`ForwardKinematicsSolver.Config` for more details.
         """
 
         warmstart_mode: Literal["none", "internal", "containers"] = "containers"

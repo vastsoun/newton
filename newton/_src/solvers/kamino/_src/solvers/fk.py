@@ -14,7 +14,10 @@
 # limitations under the License.
 
 """
-KAMINO: Solvers: Forward Kinematics
+Provides a solver for forward kinematics, i.e. computing body poses given
+joint coordinates  and base pose, by solving the kinematic constraints with
+a Gauss-Newton method. This is used as a building block in the main Kamino
+solver, but can also be used standalone (e.g., for visualization purposes).
 """
 
 from __future__ import annotations
@@ -55,7 +58,7 @@ from ..linalg.sparse_operator import BlockSparseLinearOperators
 # Module interface
 ###
 
-__all__ = ["ForwardKinematicsSolver", "ForwardKinematicsSolverConfig", "ForwardKinematicsSolverStatus"]
+__all__ = ["ForwardKinematicsSolver"]
 
 
 ###
@@ -191,9 +194,12 @@ def _eval_fk_actuated_dofs_or_coords(
     main model actuated dofs/coords, and negative indices for base dofs/coords (base dof/coord i is stored as -i - 1)
 
     Inputs:
-        model_base_dofs: Base dofs or coordinates of the main model (as a flat vector with 6 dofs or 7 coordinates per world)
-        model_actuated_dofs: Actuated dofs/coords of the main model
-        actuated_dofs_map: Map of fk to main model actuated/base dofs/coords
+        model_base_dofs:
+            Base dofs or coordinates of the main model (as a flat vector with 6 dofs or 7 coordinates per world)
+        model_actuated_dofs:
+            Actuated dofs/coords of the main model
+        actuated_dofs_map:
+            Map of fk to main model actuated/base dofs/coords
     Outputs:
         fk_actuated_dofs: Actuated dofs or coordinates of the fk model
     """
@@ -705,8 +711,9 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
 @cache
 def create_eval_joint_constraints_sparse_jacobian_kernel(has_universal_joints: bool):
     """
-    Returns the joint constraints sparse Jacobian evaluation kernel, statically baking in whether there are universal joints
-    or not (these joints need a separate handling)
+    Returns the joint constraints sparse Jacobian evaluation kernel,
+    statically baking in whether there are universal joints or not
+    (these joints need a separate handling)
     """
 
     @wp.kernel
@@ -1487,121 +1494,8 @@ def _update_cg_tolerance_kernel(
 
 
 ###
-# Classes
+# Interfaces
 ###
-
-
-class FKPreconditionerType(IntEnum):
-    """Conjugate gradient preconditioning options of the FK solver, if sparsity is enabled."""
-
-    NONE = 0
-    """No preconditioning"""
-
-    JACOBI_DIAGONAL = 1
-    """Diagonal Jacobi preconditioner"""
-
-    JACOBI_BLOCK_DIAGONAL = 2
-    """Blockwise-diagonal Jacobi preconditioner, alternating blocks of size 3 and 4 along the diagonal,
-       corresponding to the position and orientation (quaternion) of individual rigid bodies."""
-
-    @classmethod
-    def from_string(cls, s: str) -> FKPreconditionerType:
-        """Converts a string to a FKPreconditionerType enum value."""
-        try:
-            return cls[s.upper()]
-        except KeyError as e:
-            raise ValueError(f"Invalid FKPreconditionerType: {s}. Valid options are: {[e.name for e in cls]}") from e
-
-
-@dataclass
-class ForwardKinematicsSolverConfig:
-    """
-    Host-side class to store config for the forward kinematics solve.
-    """
-
-    max_newton_iterations: int = 30
-    """Maximal number of Gauss-Newton iterations (default: 30).
-       Changes to this setting after the solver's initialization will have no effect."""
-
-    max_line_search_iterations: int = 20
-    """Maximal line search iterations in the inner loop (default: 20).
-       Changes to this setting after the solver's initialization will have no effect."""
-
-    tolerance: float = 1e-6
-    """Maximal absolute kinematic constraint value that is acceptable at the solution (default: 1e-6).
-       Changes to this setting after the solver's initialization will have no effect."""
-
-    reset_state: bool = True
-    """Whether to reset the state to initial states, to use as initial guess (default: True).
-       Changes to this setting after graph capture will have no effect."""
-
-    TILE_SIZE_CTS: int = 8
-    """Tile size for kernels along the dimension of kinematic constraints (default: 8).
-       Changes to this setting after the solver's initialization will have no effect."""
-
-    TILE_SIZE_VRS: int = 8
-    """Tile size for kernels along the dimension of rigid body pose variables (default: 8).
-       Changes to this setting after the solver's initialization will have no effect."""
-
-    use_sparsity: bool = False
-    """Whether to use sparse Jacobian and solver; otherwise, dense versions are used (default: True).
-       Changes to this setting after the solver's initialization lead to undefined behavior."""
-
-    preconditioner: Literal["none", "jacobi_diagonal", "jacobi_block_diagonal"] = "jacobi_block_diagonal"
-    """Preconditioner to use for the Conjugate Gradient solver if sparsity is enabled
-       (default: "jacobi_block_diagonal").
-       Changes to this setting after the solver's initialization lead to undefined behavior."""
-
-    use_adaptive_cg_tolerance: bool = True
-    """Whether to use an adaptive tolerance strategy for the Conjugate Gradient solver if sparsity
-       is enabled, which reduces the number of CG iterations in most cases (default: True).
-       Changes to this setting after graph capture will have no effect."""
-
-    def check(self):
-        """
-        Checks that the config is valid.
-
-        Raises:
-            ValueError: If any of the config values is invalid.
-        """
-        if self.max_newton_iterations <= 0:
-            raise ValueError("`max_newton_iterations` must be positive.")
-        if self.max_line_search_iterations <= 0:
-            raise ValueError("`max_line_search_iterations` must be positive.")
-        if self.tolerance <= 0.0:
-            raise ValueError("`tolerance` must be positive.")
-        if self.TILE_SIZE_CTS <= 0:
-            raise ValueError("`TILE_SIZE_CTS` must be positive.")
-        if self.TILE_SIZE_VRS <= 0:
-            raise ValueError("`TILE_SIZE_VRS` must be positive.")
-        # Conversion to FKPreconditionerType will raise an error if the input string is invalid.
-        FKPreconditionerType.from_string(self.preconditioner)
-
-    def __post_init__(self):
-        """Post-initialization hook to check config validity."""
-        self.check()
-
-
-@dataclass
-class ForwardKinematicsSolverStatus:
-    """
-    Class containing detailed data on the success/failure status of a forward kinematics solve
-
-    Attributes
-    ----------
-    iterations : np.ndarray
-        the number of Newton iterations run per world
-    max_constraints : np.ndarray
-        the maximal kinematic constraint residual per world
-    success : np.ndarray
-        the solver success flag per world (i.e., constraint residual below tolerance within max iterations)
-    """
-
-    iterations: np.ndarray(dtype=np.int32)
-
-    max_constraints: np.ndarray(dtype=np.float32)
-
-    success: np.ndarray(dtype=np.int32)
 
 
 class ForwardKinematicsSolver:
@@ -1609,7 +1503,130 @@ class ForwardKinematicsSolver:
     Forward Kinematics solver class
     """
 
-    def __init__(self, model: ModelKamino | None = None, config: ForwardKinematicsSolverConfig | None = None):
+    class PreconditionerType(IntEnum):
+        """Conjugate gradient preconditioning options of the FK solver, if sparsity is enabled."""
+
+        NONE = 0
+        """No preconditioning"""
+
+        JACOBI_DIAGONAL = 1
+        """Diagonal Jacobi preconditioner"""
+
+        JACOBI_BLOCK_DIAGONAL = 2
+        """Blockwise-diagonal Jacobi preconditioner, alternating blocks of size 3 and 4 along the diagonal,
+        corresponding to the position and orientation (quaternion) of individual rigid bodies."""
+
+        @classmethod
+        def from_string(cls, s: str) -> ForwardKinematicsSolver.PreconditionerType:
+            """Converts a string to a ForwardKinematicsSolver.PreconditionerType enum value."""
+            try:
+                return cls[s.upper()]
+            except KeyError as e:
+                raise ValueError(
+                    f"Invalid ForwardKinematicsSolver.PreconditionerType: {s}."
+                    f"Valid options are: {[e.name for e in cls]}"
+                ) from e
+
+    @dataclass
+    class Config:
+        """
+        Host-side class to store config for the forward kinematics solve.
+        """
+
+        max_newton_iterations: int = 30
+        """Maximal number of Gauss-Newton iterations (default: 30).
+        Changes to this setting after the solver's initialization will have no effect."""
+
+        max_line_search_iterations: int = 20
+        """Maximal line search iterations in the inner loop (default: 20).
+        Changes to this setting after the solver's initialization will have no effect."""
+
+        tolerance: float = 1e-6
+        """Maximal absolute kinematic constraint value that is acceptable at the solution (default: 1e-6).
+        Changes to this setting after the solver's initialization will have no effect."""
+
+        reset_state: bool = True
+        """Whether to reset the state to initial states, to use as initial guess (default: True).
+        Changes to this setting after graph capture will have no effect."""
+
+        TILE_SIZE_CTS: int = 8
+        """Tile size for kernels along the dimension of kinematic constraints (default: 8).
+        Changes to this setting after the solver's initialization will have no effect."""
+
+        TILE_SIZE_VRS: int = 8
+        """Tile size for kernels along the dimension of rigid body pose variables (default: 8).
+        Changes to this setting after the solver's initialization will have no effect."""
+
+        use_sparsity: bool = False
+        """Whether to use sparse Jacobian and solver; otherwise, dense versions are used (default: True).
+        Changes to this setting after the solver's initialization lead to undefined behavior."""
+
+        preconditioner: Literal["none", "jacobi_diagonal", "jacobi_block_diagonal"] = "jacobi_block_diagonal"
+        """Preconditioner to use for the Conjugate Gradient solver if sparsity is enabled
+        (default: "jacobi_block_diagonal").
+        Changes to this setting after the solver's initialization lead to undefined behavior."""
+
+        use_adaptive_cg_tolerance: bool = True
+        """Whether to use an adaptive tolerance strategy for the Conjugate Gradient solver if sparsity
+        is enabled, which reduces the number of CG iterations in most cases (default: True).
+        Changes to this setting after graph capture will have no effect."""
+
+        def check(self):
+            """
+            Checks that the config is valid.
+
+            Raises:
+                ValueError: If any of the config values is invalid.
+            """
+            if self.max_newton_iterations <= 0:
+                raise ValueError("`max_newton_iterations` must be positive.")
+            if self.max_line_search_iterations <= 0:
+                raise ValueError("`max_line_search_iterations` must be positive.")
+            if self.tolerance <= 0.0:
+                raise ValueError("`tolerance` must be positive.")
+            if self.TILE_SIZE_CTS <= 0:
+                raise ValueError("`TILE_SIZE_CTS` must be positive.")
+            if self.TILE_SIZE_VRS <= 0:
+                raise ValueError("`TILE_SIZE_VRS` must be positive.")
+            # Conversion to ForwardKinematicsSolver.PreconditionerType
+            # will raise an error if the input string is invalid.
+            ForwardKinematicsSolver.PreconditionerType.from_string(self.preconditioner)
+
+        def __post_init__(self):
+            """Post-initialization hook to check config validity."""
+            self.check()
+
+    @dataclass
+    class Status:
+        """
+        Container holding detailed information on the success/failure status of a forward kinematics solve.
+        """
+
+        success: np.ndarray(dtype=np.int32)
+        """
+        Solver success flag per world, as an integer array (0 = failure, 1 = success).\n
+        Shape `(num_worlds,)` and type :class:`np.int32`.
+
+        Note that in some cases the solver may fail to converge within the maximum number
+        of iterations, but still produce a solution with a reasonable constraint residual.
+        In such cases, the success flag will be set to 0, but the `max_constraints` field
+        can be inspected to check the actual constraint residuals and determine if the
+        solution is acceptable for the intended application.
+        """
+
+        iterations: np.ndarray(dtype=np.int32)
+        """
+        Number of Gauss-Newton iterations executed per world.\n
+        Shape `(num_worlds,)` and type :class:`np.int32`.
+        """
+
+        max_constraints: np.ndarray(dtype=np.float32)
+        """
+        Maximal absolute kinematic constraint residual at the final solution, per world.\n
+        Shape `(num_worlds,)` and type :class:`np.float32`.
+        """
+
+    def __init__(self, model: ModelKamino | None = None, config: ForwardKinematicsSolver.Config | None = None):
         """
         Initializes the solver to solve forward kinematics for a given model.
 
@@ -1618,7 +1635,7 @@ class ForwardKinematicsSolver:
         model : ModelKamino, optional
             ModelKamino for which to solve forward kinematics. If not provided, the finalize() method
             must be called at a later time for deferred initialization (default: None).
-        config : ForwardKinematicsSolverConfig, optional
+        config : ForwardKinematicsSolver.Config, optional
             Solver config. If not provided, the default config will be used (default: None).
         """
 
@@ -1628,7 +1645,7 @@ class ForwardKinematicsSolver:
         self.device: wp.DeviceLike = None
         """Device for data allocations"""
 
-        self.config: ForwardKinematicsSolverConfig = ForwardKinematicsSolverConfig()
+        self.config: ForwardKinematicsSolver.Config = ForwardKinematicsSolver.Config()
         """Solver config"""
 
         self.graph: wp.Graph | None = None
@@ -1643,7 +1660,7 @@ class ForwardKinematicsSolver:
         if model is not None:
             self.finalize()
 
-    def finalize(self, model: ModelKamino | None = None, config: ForwardKinematicsSolverConfig | None = None):
+    def finalize(self, model: ModelKamino | None = None, config: ForwardKinematicsSolver.Config | None = None):
         """
         Finishes the solver initialization, performing necessary allocations and precomputations.
         This method only needs to be called manually if a model was not provided in the constructor,
@@ -1654,7 +1671,7 @@ class ForwardKinematicsSolver:
         model : ModelKamino, optional
             ModelKamino for which to solve forward kinematics. If not provided, the model given to the
             constructor will be used. Must be provided if not given to the constructor (default: None).
-        config : ForwardKinematicsSolverConfig, optional
+        config : ForwardKinematicsSolver.Config, optional
             Solver config. If not provided, the config given to the constructor, or if not, the
             default config will be used (default: None).
         """
@@ -1674,7 +1691,7 @@ class ForwardKinematicsSolver:
         self.num_worlds = self.model.size.num_worlds  # For convenience
 
         # Convert preconditioner type
-        self._preconditioner_type = FKPreconditionerType.from_string(self.config.preconditioner)
+        self._preconditioner_type = ForwardKinematicsSolver.PreconditionerType.from_string(self.config.preconditioner)
 
         # Retrieve / compute dimensions - Bodies
         num_bodies = self.model.info.num_bodies.numpy()  # Number of bodies per world
@@ -1724,7 +1741,8 @@ class ForwardKinematicsSolver:
             # Note: will currently produce garbage for passive joints (because for these the offsets are set to -1)
             # but we won't read these values below anyway.
 
-        # Create a copy of the model's joints with added actuated free joints as needed to reset the base position/orientation
+        # Create a copy of the model's joints with added actuated
+        # free joints as needed to reset the base position/orientation
         joints_dof_type_prev = self.model.joints.dof_type.numpy().copy()
         joints_act_type_prev = self.model.joints.act_type.numpy().copy()
         joints_bid_B_prev = self.model.joints.bid_B.numpy().copy()
@@ -2157,12 +2175,12 @@ class ForwardKinematicsSolver:
             self.sparse_jacobian_op = BlockSparseLinearOperators(self.sparse_jacobian)
 
             # Initialize preconditioner
-            if self._preconditioner_type == FKPreconditionerType.JACOBI_DIAGONAL:
+            if self._preconditioner_type == ForwardKinematicsSolver.PreconditionerType.JACOBI_DIAGONAL:
                 self.jacobian_diag_inv = wp.array(
                     dtype=wp.float32, device=self.device, shape=(self.num_worlds, self.num_states_max)
                 )
                 preconditioner_op = BatchedLinearOperator.from_diagonal(self.jacobian_diag_inv, self.num_states)
-            elif self._preconditioner_type == FKPreconditionerType.JACOBI_BLOCK_DIAGONAL:
+            elif self._preconditioner_type == ForwardKinematicsSolver.PreconditionerType.JACOBI_BLOCK_DIAGONAL:
                 self.inv_blocks_3 = wp.array(
                     dtype=wp.mat33f, shape=(self.num_worlds, self.num_bodies_max), device=self.device
                 )
@@ -2616,9 +2634,9 @@ class ForwardKinematicsSolver:
 
         # Compute step (system solve)
         if self.config.use_sparsity:
-            if self._preconditioner_type == FKPreconditionerType.JACOBI_DIAGONAL:
+            if self._preconditioner_type == ForwardKinematicsSolver.PreconditionerType.JACOBI_DIAGONAL:
                 block_sparse_ATA_inv_diagonal_2d(self.sparse_jacobian, self.jacobian_diag_inv, self.newton_mask)
-            elif self._preconditioner_type == FKPreconditionerType.JACOBI_BLOCK_DIAGONAL:
+            elif self._preconditioner_type == ForwardKinematicsSolver.PreconditionerType.JACOBI_BLOCK_DIAGONAL:
                 block_sparse_ATA_blockwise_3_4_inv_diagonal_2d(
                     self.sparse_jacobian, self.inv_blocks_3, self.inv_blocks_4, self.newton_mask
                 )
@@ -2757,9 +2775,9 @@ class ForwardKinematicsSolver:
 
         # Compute body velocities (system solve)
         if self.config.use_sparsity:
-            if self._preconditioner_type == FKPreconditionerType.JACOBI_DIAGONAL:
+            if self._preconditioner_type == ForwardKinematicsSolver.PreconditionerType.JACOBI_DIAGONAL:
                 block_sparse_ATA_inv_diagonal_2d(self.sparse_jacobian, self.jacobian_diag_inv, world_mask)
-            elif self._preconditioner_type == FKPreconditionerType.JACOBI_BLOCK_DIAGONAL:
+            elif self._preconditioner_type == ForwardKinematicsSolver.PreconditionerType.JACOBI_BLOCK_DIAGONAL:
                 block_sparse_ATA_blockwise_3_4_inv_diagonal_2d(
                     self.sparse_jacobian, self.inv_blocks_3, self.inv_blocks_4, world_mask
                 )
@@ -2920,8 +2938,11 @@ class ForwardKinematicsSolver:
     ):
         """
         Graph-capturable function solving forward kinematics with Gauss-Newton.
-        More specifically, solves for the rigid body poses satisfying kinematic constraints, given actuated joint coordinates
-        and base pose. Optionally also solves for rigid body velocities given actuator and base body velocities.
+
+        More specifically, solves for the rigid body poses satisfying
+        kinematic constraints, given actuated joint coordinates and
+        base pose. Optionally also solves for rigid body velocities
+        given actuator and base body velocities.
 
         Parameters
         ----------
@@ -3032,9 +3053,11 @@ class ForwardKinematicsSolver:
         use_graph: bool = True,
     ):
         """
-        Convenience function with verbosity options (non graph-capturable), solving forward kinematics with Gauss-Newton.
-        More specifically, solves for the rigid body poses satisfying kinematic constraints, given actuated joint coordinates
-        and base pose. Optionally also solves for rigid body velocities given actuator and base body velocities.
+        Convenience function with verbosity options (non graph-capturable), solving
+        forward kinematics with Gauss-Newton. More specifically, it solves for the
+        rigid body poses satisfying kinematic constraints, given actuated joint
+        coordinates and base pose. Optionally also solves for rigid body velocities
+        given actuator and base body velocities.
 
         Parameters
         ----------
@@ -3108,6 +3131,6 @@ class ForwardKinematicsSolver:
 
         # Return solver status
         if return_status:
-            return ForwardKinematicsSolverStatus(
+            return ForwardKinematicsSolver.Status(
                 iterations=iterations, max_constraints=max_constraints, success=success
             )

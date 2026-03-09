@@ -680,11 +680,17 @@ class ModelKamino:
         Finalizes the :class:`ModelKamino` from an existing instance of :class:`newton.Model`.
         """
 
+        import time  # noqa: PLC0415
+
+        from ..utils import msg  # noqa: PLC0415
+
         # Ensure the base model is valid
         if model is None:
             raise ValueError("Cannot finalize ModelKamino from a None newton.Model instance.")
         elif not isinstance(model, Model):
             raise TypeError("Cannot finalize ModelKamino from an invalid newton.Model instance.")
+
+        tic = time.time()
 
         # Single-world Newton models may have world index -1 (unassigned).
         # Normalize to 0 so downstream world-based grouping works correctly.
@@ -695,6 +701,10 @@ class ModelKamino:
                 if np.any(arr_np < 0):
                     arr_np[arr_np < 0] = 0
                     arr.assign(arr_np)
+
+        toc = time.time()
+        msg.warning(f"Preprocessing 1: {1000 * (toc - tic):.2f} ms")
+        tic = time.time()
 
         # ---------------------------------------------------------------------------
         # Pre-processing: absorb non-identity joint_X_c rotations into child body
@@ -723,17 +733,29 @@ class ModelKamino:
         # ----------------------------------------------------------------------------
 
         # Unpack converted quantities
-        body_q_np = converted["body_q"]
-        body_qd_np = converted["body_qd"]
-        body_com_np = converted["body_com"]
-        body_inertia_np = converted["body_inertia"]
-        body_inv_inertia_np = converted["body_inv_inertia"]
-        shape_transform_np = converted["shape_transform"]
-        joint_X_p_np = converted["joint_X_p"]
-        joint_X_c_np = converted["joint_X_c"]
+        body_q = converted["body_q"]
+        body_qd = converted["body_qd"]
+        body_com = converted["body_com"]
+        body_inertia = converted["body_inertia"]
+        body_inv_inertia = converted["body_inv_inertia"]
+        # shape_transform = converted["shape_transform"]
+        joint_X_p = converted["joint_X_p"]
+        joint_X_c = converted["joint_X_c"]
+        # body_q_np = converted["body_q"].numpy()
+        # body_qd_np = converted["body_qd"].numpy()
+        body_com_np = converted["body_com"].numpy()
+        body_inertia_np = converted["body_inertia"].numpy()
+        # body_inv_inertia_np = converted["body_inv_inertia"].numpy()
+        shape_transform_np = converted["shape_transform"].numpy()
+        joint_X_p_np = converted["joint_X_p"].numpy()
+        joint_X_c_np = converted["joint_X_c"].numpy()
 
         # Initialize materials manager
         materials_manager = MaterialManager()
+
+        toc = time.time()
+        msg.warning(f"Preprocessing 2: {1000 * (toc - tic):.2f} ms")
+        tic = time.time()
 
         ###
         # Model Attributes
@@ -748,10 +770,18 @@ class ModelKamino:
             max_of_num_material_pairs=materials_manager.num_material_pairs,
         )
 
+        toc = time.time()
+        msg.warning(f"SizeKamino: {1000 * (toc - tic):.2f} ms")
+        tic = time.time()
+
         # Construct the model entities from the newton.Model instance
         with wp.ScopedDevice(device=model.device):
             # Per-world heterogeneous model info, to be completed by helper functions
             model_info = ModelKaminoInfo(num_worlds=model.world_count)
+
+            toc = time.time()
+            msg.warning(f"ModelKaminoInfo: {1000 * (toc - tic):.2f} ms")
+            tic = time.time()
 
             # Per-world time
             model_time = TimeModel(
@@ -759,23 +789,47 @@ class ModelKamino:
                 inv_dt=wp.zeros(shape=(model.world_count,), dtype=float32),
             )
 
+            toc = time.time()
+            msg.warning(f"TimeModel: {1000 * (toc - tic):.2f} ms")
+            tic = time.time()
+
             # Per-world gravity
             model_gravity = GravityModel.from_newton(model)
 
+            toc = time.time()
+            msg.warning(f"Gravity: {1000 * (toc - tic):.2f} ms")
+            tic = time.time()
+
             # Bodies
             model_bodies = convert_rigid_bodies(
-                model, model_size, model_info, body_com_np, body_q_np, body_qd_np, body_inertia_np, body_inv_inertia_np
+                model, model_size, model_info, body_com, body_q, body_qd, body_inertia, body_inv_inertia
             )
 
+            toc = time.time()
+            msg.warning(f"Rigid bodies: {1000 * (toc - tic):.2f} ms")
+            tic = time.time()
+
             # Joints
-            model_joints = convert_joints(model, model_size, model_info, body_com_np, joint_X_p_np, joint_X_c_np)
+            model_joints = convert_joints(model, model_size, model_info, body_com, joint_X_p, joint_X_c)
+
+            toc = time.time()
+            msg.warning(f"Joints: {1000 * (toc - tic):.2f} ms")
+            tic = time.time()
 
             # Geometries
             model_geoms = convert_geometries(model, materials_manager, shape_transform_np)
 
+            toc = time.time()
+            msg.warning(f"Geometries: {1000 * (toc - tic):.2f} ms")
+            tic = time.time()
+
             # Materials
             model_materials = materials_manager.create_materials_model()
             model_material_pairs = materials_manager.create_material_pairs_model()
+
+            toc = time.time()
+            msg.warning(f"Materials: {1000 * (toc - tic):.2f} ms")
+            tic = time.time()
 
         ###
         # Post-processing
@@ -797,6 +851,9 @@ class ModelKamino:
             wp.array(shape_transform_np, dtype=wp.transformf, device=model.device),
             model_geoms.offset,
         )
+
+        toc = time.time()
+        msg.warning(f"Post-processing: {1000 * (toc - tic):.2f} ms")
 
         # Construct and return the new ModelKamino instance
         return ModelKamino(

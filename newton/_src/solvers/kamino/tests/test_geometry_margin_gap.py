@@ -340,17 +340,17 @@ def _build_sphere_on_ground(
 def _fast_solver_config() -> SolverKaminoImpl.Config:
     """Relaxed solver config suitable for fast unit tests."""
     config = SolverKaminoImpl.Config()
+    config.constraints.alpha = 0.1
     config.padmm.primal_tolerance = 1e-3
     config.padmm.dual_tolerance = 1e-3
     config.padmm.compl_tolerance = 1e-3
     config.padmm.max_iterations = 50
     config.padmm.rho_0 = 0.05
-    config.problem.alpha = 0.1
-    config.use_solver_acceleration = True
-    config.warmstart_mode = "containers"
+    config.padmm.use_acceleration = True
+    config.padmm.warmstart_mode = "containers"
+    config.padmm.use_graph_conditionals = False
     config.collect_solver_info = False
-    config.compute_metrics = False
-    config.avoid_graph_conditionals = True
+    config.compute_solution_metrics = False
     return config
 
 

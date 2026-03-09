@@ -1377,19 +1377,20 @@ def PhysicsScene "PhysicsScene" (
 """)
         config = SolverKamino.Config.from_model(model)
 
-        self.assertEqual(config.warmstart_mode, "none")
-        self.assertEqual(config.use_solver_acceleration, False)
         self.assertEqual(config.rotation_correction, "continuous")
 
-        self.assertEqual(config.problem.preconditioning, False)
-        self.assertAlmostEqual(config.problem.alpha, 0.4)
-        self.assertAlmostEqual(config.problem.beta, 0.5)
-        self.assertAlmostEqual(config.problem.gamma, 0.6)
+        self.assertEqual(config.dynamics.preconditioning, False)
 
+        self.assertAlmostEqual(config.constraints.alpha, 0.4)
+        self.assertAlmostEqual(config.constraints.beta, 0.5)
+        self.assertAlmostEqual(config.constraints.gamma, 0.6)
+
+        self.assertEqual(config.padmm.max_iterations, 10)
         self.assertAlmostEqual(config.padmm.primal_tolerance, 0.1)
         self.assertAlmostEqual(config.padmm.dual_tolerance, 0.2)
         self.assertAlmostEqual(config.padmm.compl_tolerance, 0.3)
-        self.assertEqual(config.padmm.max_iterations, 10)
+        self.assertEqual(config.padmm.use_acceleration, False)
+        self.assertEqual(config.padmm.warmstart_mode, "none")
 
     @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
     def test_05_kamino_scene_api_import_full_scene_solver(self):
@@ -1417,19 +1418,20 @@ def PhysicsScene "PhysicsScene" (
         solver = SolverKamino(model)
         config = solver._solver_kamino.config
 
-        self.assertEqual(config.warmstart_mode, "none")
-        self.assertEqual(config.use_solver_acceleration, False)
         self.assertEqual(config.rotation_correction, "continuous")
 
-        self.assertEqual(config.problem.preconditioning, False)
-        self.assertAlmostEqual(config.problem.alpha, 0.4)
-        self.assertAlmostEqual(config.problem.beta, 0.5)
-        self.assertAlmostEqual(config.problem.gamma, 0.6)
+        self.assertAlmostEqual(config.constraints.alpha, 0.4)
+        self.assertAlmostEqual(config.constraints.beta, 0.5)
+        self.assertAlmostEqual(config.constraints.gamma, 0.6)
 
+        self.assertEqual(config.dynamics.preconditioning, False)
+
+        self.assertEqual(config.padmm.max_iterations, 10)
         self.assertAlmostEqual(config.padmm.primal_tolerance, 0.1)
         self.assertAlmostEqual(config.padmm.dual_tolerance, 0.2)
         self.assertAlmostEqual(config.padmm.compl_tolerance, 0.3)
-        self.assertEqual(config.padmm.max_iterations, 10)
+        self.assertEqual(config.padmm.use_acceleration, False)
+        self.assertEqual(config.padmm.warmstart_mode, "none")
 
 
 ###

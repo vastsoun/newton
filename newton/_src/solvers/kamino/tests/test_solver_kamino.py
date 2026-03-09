@@ -21,6 +21,7 @@ import unittest
 import numpy as np
 import warp as wp
 
+import newton._src.solvers.kamino.config as kamino_config
 from newton._src.solvers.kamino._src.core.control import ControlKamino
 from newton._src.solvers.kamino._src.core.data import DataKamino
 from newton._src.solvers.kamino._src.core.joints import JointActuationType
@@ -31,7 +32,6 @@ from newton._src.solvers.kamino._src.dynamics import DualProblem
 from newton._src.solvers.kamino._src.geometry.contacts import ContactsKamino
 from newton._src.solvers.kamino._src.kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from newton._src.solvers.kamino._src.kinematics.limits import LimitsKamino
-from newton._src.solvers.kamino._src.linalg import ConjugateGradientSolver, LinearSolverType, LLTBlockedSolver
 from newton._src.solvers.kamino._src.models.builders.basics import build_boxes_fourbar
 from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino._src.solver_kamino_impl import SolverKaminoImpl
@@ -111,10 +111,9 @@ atol = 1e-6
 
 def assert_solver_config(testcase: unittest.TestCase, config: SolverKaminoImpl.Config):
     testcase.assertIsInstance(config, SolverKaminoImpl.Config)
-    testcase.assertIsInstance(config.problem, DualProblem.Config)
-    testcase.assertIsInstance(config.padmm, PADMMSolver.Config)
-    testcase.assertIsInstance(config.warmstart_mode, str)
-    testcase.assertTrue(issubclass(config.linear_solver_type, LinearSolverType))
+    testcase.assertIsInstance(config.constraints, kamino_config.ConstraintStabilizationConfig)
+    testcase.assertIsInstance(config.dynamics, kamino_config.ConstrainedDynamicsConfig)
+    testcase.assertIsInstance(config.padmm, kamino_config.PADMMSolverConfig)
     testcase.assertIsInstance(config.rotation_correction, str)
 
 
@@ -259,18 +258,20 @@ class TestSolverKaminoConfig(unittest.TestCase):
     def test_00_make_default(self):
         config = SolverKaminoImpl.Config()
         assert_solver_config(self, config)
-        self.assertEqual(config.linear_solver_type, LLTBlockedSolver)
+        self.assertEqual(config.rotation_correction, "twopi")
+        self.assertEqual(config.dynamics.linear_solver_type, "LLTB")
+        self.assertEqual(config.padmm.warmstart_mode, "containers")
 
     def test_01_make_explicit(self):
         config = SolverKaminoImpl.Config(
-            problem=DualProblem.Config(),
-            padmm=PADMMSolver.Config(),
-            warmstart_mode="containers",
-            linear_solver_type=ConjugateGradientSolver,
+            dynamics=kamino_config.ConstrainedDynamicsConfig(linear_solver_type="CR"),
+            padmm=kamino_config.PADMMSolverConfig(warmstart_mode="internal"),
             rotation_correction="continuous",
         )
         assert_solver_config(self, config)
-        self.assertEqual(config.linear_solver_type, ConjugateGradientSolver)
+        self.assertEqual(config.rotation_correction, "continuous")
+        self.assertEqual(config.dynamics.linear_solver_type, "CR")
+        self.assertEqual(config.padmm.warmstart_mode, "internal")
 
 
 class TestSolverKaminoImpl(unittest.TestCase):

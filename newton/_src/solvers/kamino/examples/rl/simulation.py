@@ -24,6 +24,10 @@
 
 from __future__ import annotations
 
+import glob
+import os
+import threading
+
 import torch  # noqa: TID253
 import warp as wp
 
@@ -37,7 +41,6 @@ from newton._src.solvers.kamino._src.core.types import transformf, vec6f
 from newton._src.solvers.kamino._src.geometry import CollisionDetector
 from newton._src.solvers.kamino._src.geometry.aggregation import ContactAggregation
 from newton._src.solvers.kamino._src.solver_kamino_impl import SolverKaminoImpl
-from newton._src.solvers.kamino._src.solvers.warmstart import WarmstarterContacts
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino._src.utils.render_config import Color3, RenderConfig
 from newton._src.solvers.kamino._src.utils.sim import Simulator
@@ -203,6 +206,15 @@ class RigidBodySim:
         self._torch_device: str = "cuda" if self._device.is_cuda else "cpu"
         self._use_cuda_graph = use_cuda_graph
         self._sim_dt = sim_dt
+
+        # ----- Video recording -----
+        self._record_video = record_video
+        self._video_folder = video_folder or "./frames"
+        self._async_save = async_save
+        self._frame_buffer = None
+        self._img_idx = 0
+        if self._record_video:
+            os.makedirs(self._video_folder, exist_ok=True)
 
         # Resolve settings (subclass override via default_settings)
         if settings is None:
@@ -536,6 +548,87 @@ class RigidBodySim:
             )
             self.viewer.log_state(self._newton_state)
             self.viewer.end_frame()
+            if self._record_video:
+                self._capture_frame()
+
+    def _capture_frame(self):
+        """Capture and save the current rendered frame as a PNG."""
+        try:
+            from PIL import Image
+        except ImportError:
+            msg.warning("PIL not installed. Install with: pip install pillow")
+            return
+
+        frame = self.viewer.get_frame(target_image=self._frame_buffer)
+        if self._frame_buffer is None:
+            self._frame_buffer = frame
+
+        frame_np = frame.numpy()
+        image = Image.fromarray(frame_np, mode="RGB")
+        filename = os.path.join(self._video_folder, f"{self._img_idx:05d}.png")
+
+        if self._async_save:
+            threading.Thread(target=image.save, args=(filename,), daemon=False).start()
+        else:
+            image.save(filename)
+
+        self._img_idx += 1
+
+    def generate_video(self, output_filename: str = "recording.mp4", fps: int = 60, keep_frames: bool = True) -> bool:
+        """Generate MP4 video from recorded PNG frames using imageio-ffmpeg.
+
+        Args:
+            output_filename: Name of output video file.
+            fps: Frames per second for video.
+            keep_frames: If ``True``, keep PNG frames after video creation.
+        """
+        try:
+            import imageio_ffmpeg as ffmpeg  # noqa: PLC0415
+        except ImportError:
+            msg.warning("imageio-ffmpeg not installed. Install with: pip install imageio-ffmpeg")
+            return False
+        try:
+            from PIL import Image
+        except ImportError:
+            msg.warning("PIL not installed. Install with: pip install pillow")
+            return False
+        import numpy as np  # noqa: PLC0415
+
+        frame_files = sorted(glob.glob(os.path.join(self._video_folder, "*.png")))
+        if not frame_files:
+            msg.warning(f"No PNG frames found in {self._video_folder}")
+            return False
+
+        # Read first frame to get dimensions
+        first_img = Image.open(frame_files[0])
+        size = first_img.size  # (width, height)
+
+        msg.info(f"Generating video from {len(frame_files)} frames...")
+        try:
+            writer = ffmpeg.write_frames(
+                output_filename,
+                size=size,
+                fps=fps,
+                codec="libx264",
+                macro_block_size=8,
+                quality=5,
+            )
+            writer.send(None)
+            for frame_path in frame_files:
+                img = Image.open(frame_path)
+                writer.send(np.array(img))
+            writer.close()
+            msg.info(f"Video generated: {output_filename}")
+
+            if not keep_frames:
+                for frame_path in frame_files:
+                    os.remove(frame_path)
+                msg.info("Frames deleted")
+
+            return True
+        except Exception as e:
+            msg.warning(f"Failed to generate video: {e}")
+            return False
 
     @property
     def time(self) -> float:
@@ -833,11 +926,11 @@ class RigidBodySim:
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4
         settings.solver.padmm.compl_tolerance = 1e-4
-        settings.solver.padmm.max_iterations = 100
+        settings.solver.padmm.max_iterations = 80
         settings.solver.padmm.eta = 1e-5
         settings.solver.padmm.rho_0 = 0.05
         settings.solver.sparse_jacobian = True
-        settings.solver.use_fk_solver = True
+        settings.solver.use_fk_solver = False
         settings.solver.use_solver_acceleration = True
         settings.solver.warmstart_mode = "containers"
         settings.solver.contact_warmstart_method = "geom_pair_net_force"

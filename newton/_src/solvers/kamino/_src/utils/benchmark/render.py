@@ -512,7 +512,7 @@ def render_problem_dimensions_table(
     _add_table_column_group(
         table,
         "",
-        ["Problem", "# Body Dofs", "# Joint Dofs", "Min Delassus Dim", "Max Delassus Dim"],
+        ["Problem", "# Body Dofs", "# Joint Dofs", "Min Delassus Dim", "Max Delassus Dim", "# Worlds"],
         color="white",
         justify="left",
     )
@@ -524,6 +524,7 @@ def render_problem_dimensions_table(
             str(dims.num_joint_dofs),
             str(dims.min_delassus_dim),
             str(dims.max_delassus_dim),
+            str(dims.num_worlds),
         ]
         table.add_row(name, *row)
 

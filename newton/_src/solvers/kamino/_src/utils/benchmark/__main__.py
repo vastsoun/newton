@@ -20,7 +20,6 @@ import os
 import numpy as np
 import warp as wp
 
-from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino._src.utils.benchmark.configs import make_benchmark_configs
 from newton._src.solvers.kamino._src.utils.benchmark.metrics import BenchmarkMetrics, CodeInfo
@@ -298,7 +297,6 @@ def benchmark_run(args: argparse.Namespace):
     # provided problem names and arguments
     problem_set = make_benchmark_problems(
         names=problem_names,
-        num_worlds=args.num_worlds,
         gravity=args.gravity,
         ground=args.ground,
     )
@@ -317,12 +315,11 @@ def benchmark_run(args: argparse.Namespace):
     # Iterator over all problem names and settings and run benchmarks for each
     for problem_name, problem_config in problem_set.items():
         # Unpack problem configurations
-        builder, control, camera = problem_config
-        if not isinstance(builder, ModelBuilderKamino):
-            builder = builder()
+        builder_fn, control, camera = problem_config
+        builder = builder_fn(args.num_worlds)
 
-        for config_name, configs in configs_set.items():
-            msg.notif("Running benchmark for problem '%s' with simulation configs '%s'", problem_name, config_name)
+        for config_name, config in configs_set.items():
+            msg.notif("Running benchmark for problem '%s' with simulation config '%s'", problem_name, config_name)
 
             # Retrieve problem and config indices
             problem_idx = metrics._problem_names.index(problem_name)
@@ -330,8 +327,8 @@ def benchmark_run(args: argparse.Namespace):
 
             # Construct simulator configurations based on the solver
             # configurations for the current benchmark configuration
-            sim_configs = Simulator.Config(dt=args.dt, solver=configs)
-            sim_configs.solver.use_fk_solver = False
+            sim_config = Simulator.Config(dt=args.dt, solver=config)
+            sim_config.solver.use_fk_solver = False
 
             # Execute the benchmark for the current problem and settings
             run_single_benchmark(
@@ -340,7 +337,7 @@ def benchmark_run(args: argparse.Namespace):
                 metrics=metrics,
                 args=args,
                 builder=builder,
-                configs=sim_configs,
+                config=sim_config,
                 control=control,
                 camera=camera,
                 device=device,

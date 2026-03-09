@@ -16,6 +16,7 @@
 import argparse
 import gc
 import time
+from collections.abc import Callable
 
 import warp as wp
 
@@ -26,7 +27,7 @@ from ....examples import print_progress_bar
 from ...core.builder import ModelBuilderKamino
 from ...utils import logger as msg
 from ...utils.control.rand import RandomJointController
-from ...utils.device import get_device_malloc_info
+from ...utils.device import _fmt_bytes, get_device_malloc_info
 from ...utils.sim import SimulationLogger, Simulator, ViewerKamino
 from .metrics import BenchmarkMetrics
 from .problems import CameraConfig, ControlConfig, ProblemDimensions
@@ -40,7 +41,7 @@ class BenchmarkSim:
     def __init__(
         self,
         builder: ModelBuilderKamino,
-        configs: Simulator.Config,
+        config: Simulator.Config,
         control: ControlConfig | None = None,
         camera: CameraConfig | None = None,
         device: wp.DeviceLike = None,
@@ -59,11 +60,11 @@ class BenchmarkSim:
 
         # Override the default compute_solution_metrics toggle in the
         # simulator configs based on the benchmark configuration
-        configs.solver.compute_solution_metrics = physics_metrics
+        config.solver.compute_solution_metrics = physics_metrics
 
         # Create a simulator
         msg.info("Building the simulator...")
-        self.sim = Simulator(builder=builder, config=configs, device=device)
+        self.sim = Simulator(builder=builder, config=config, device=device)
 
         if control is None or not control.disable_controller:
             # Create a random-action controller for the model
@@ -225,13 +226,91 @@ def run_single_benchmark_with_step_metrics(
     return start_time, stop_time
 
 
+def estimate_max_num_worlds(
+    args: argparse.Namespace,
+    builder_fn: Callable[[int], ModelBuilderKamino],
+    config: Simulator.Config,
+    control: ControlConfig | None = None,
+    camera: CameraConfig | None = None,
+    device: wp.DeviceLike = None,
+    use_cuda_graph: bool = True,
+    physics_metrics: bool = False,
+):
+    assert device.is_cuda
+
+    gc.collect()
+    wp.synchronize()
+
+    # Create simulator for a single world and measure memory usage
+    config.collision_detector.max_contacts = 10 * 1
+    builder = builder_fn(1)
+    simulator = BenchmarkSim(
+        builder=builder,
+        config=config,
+        control=control,
+        camera=camera,
+        device=device,
+        use_cuda_graph=use_cuda_graph,
+        max_steps=args.num_steps,
+        seed=args.seed,
+        viewer=args.viewer,
+        physics_metrics=physics_metrics,
+    )
+    memory_1_world = float(wp.get_mempool_used_mem_current(device))
+
+    # Deallocate memory
+    del builder
+    del simulator
+    gc.collect()
+    wp.synchronize()
+
+    # Create simulator for a 10 worlds and measure memory usage
+    config.collision_detector.max_contacts = 10 * 10
+    builder = builder_fn(10)
+    simulator = BenchmarkSim(
+        builder=builder,
+        config=config,
+        control=control,
+        camera=camera,
+        device=device,
+        use_cuda_graph=use_cuda_graph,
+        max_steps=args.num_steps,
+        seed=args.seed,
+        viewer=args.viewer,
+        physics_metrics=physics_metrics,
+    )
+    memory_10_worlds = float(wp.get_mempool_used_mem_current(device))
+
+    # Deallocate memory
+    del builder
+    del simulator
+    gc.collect()
+    wp.synchronize()
+
+    # Compute constant and variable memory cost per world
+    cost_per_world = (memory_10_worlds - memory_1_world) / (10 - 1)
+    constant_cost = memory_1_world - 1 * cost_per_world
+
+    # Estimate maximal number of worlds (so as to consume 95% of the free memory)
+    memory_max = 0.95 * device.free_memory
+    num_worlds_max = int((memory_max - constant_cost) / cost_per_world)
+
+    msg.notif(
+        f"Memory consumption for 1 world: {_fmt_bytes(memory_1_world)}; for 10 worlds: {_fmt_bytes(memory_10_worlds)}"
+    )
+    msg.notif(f"Estimated constant cost: {_fmt_bytes(constant_cost)}, per-world cost: {_fmt_bytes(cost_per_world)}")
+    msg.notif(f"Total free memory (with 5% margin): {_fmt_bytes(memory_max)}, estimated max worlds: {num_worlds_max}")
+
+    return num_worlds_max
+
+
 def run_single_benchmark(
     problem_idx: int,
     config_idx: int,
     metrics: BenchmarkMetrics,
     args: argparse.Namespace,
     builder: ModelBuilderKamino,
-    configs: Simulator.Config,
+    config: Simulator.Config,
     control: ControlConfig | None = None,
     camera: CameraConfig | None = None,
     device: wp.DeviceLike = None,
@@ -239,10 +318,12 @@ def run_single_benchmark(
     print_device_info: bool = False,
     progress: bool = False,
 ):
+    gc.collect()
+
     # Create example instance
     simulator = BenchmarkSim(
         builder=builder,
-        configs=configs,
+        config=config,
         control=control,
         camera=camera,
         device=device,
@@ -285,6 +366,7 @@ def run_single_benchmark(
             min_delassus_dim=simulator.sim.model.size.max_of_num_kinematic_joint_cts
             + simulator.sim.model.size.max_of_num_dynamic_joint_cts,
             max_delassus_dim=simulator.sim.model.size.max_of_max_total_cts,
+            num_worlds=simulator.sim.model.size.num_worlds,
         )
 
     # Optionally also print the total device memory allocated during the benchmark run

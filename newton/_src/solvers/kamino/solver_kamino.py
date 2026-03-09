@@ -21,8 +21,8 @@ simulating constrained multi-body systems for arbitrary mechanical assemblies.
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass, field
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal
 
 import warp as wp
 
@@ -37,20 +37,22 @@ from ...sim import (
 )
 from ..flags import SolverNotifyFlags
 from ..solver import SolverBase
-from .config import (
-    CollisionDetectorConfig,
-    ConstrainedDynamicsConfig,
-    ForwardKinematicsSolverConfig,
-    PADMMSolverConfig,
-)
+
+if TYPE_CHECKING:
+    from .config import (
+        CollisionDetectorConfig,
+        ConfigBase,
+        ConstrainedDynamicsConfig,
+        ConstraintStabilizationConfig,
+        ForwardKinematicsSolverConfig,
+        PADMMSolverConfig,
+    )
 
 ###
 # Module interface
 ###
 
-__all__ = [
-    "SolverKamino",
-]
+__all__ = ["SolverKamino"]
 
 
 ###
@@ -140,6 +142,13 @@ class SolverKamino(SolverBase):
         If `None`, the default configuration will be used.
         """
 
+        constraints: ConstraintStabilizationConfig | None = None
+        """
+        Configurations for the constraint stabilization parameters.\n
+        See :class:`ConstraintStabilizationConfig` for more details.\n
+        If `None`, default values will be used.
+        """
+
         dynamics: ConstrainedDynamicsConfig | None = None
         """
         Configurations for the constrained dynamics problem.\n
@@ -161,39 +170,6 @@ class SolverKamino(SolverBase):
         If `None`, default values will be used.
         """
 
-        linear_solver_type: Literal["LLTB", "CR"] = "LLTB"
-        """
-        The type of linear solver to use for the dynamics problem.\n
-        See :class:`LinearSolverType` for available options.\n
-        Defaults to 'LLTB', which will use the :class:`LLTBlockedSolver`.
-        """
-
-        linear_solver_kwargs: dict[str, Any] = field(default_factory=dict)
-        """
-        Additional keyword arguments to pass to the linear solver.\n
-        Defaults to an empty dictionary.
-        """
-
-        warmstart_mode: Literal["none", "internal", "containers"] = "containers"
-        """
-        Warmstart mode to be used for the dynamics solver.\n
-        See :class:`PADMMWarmStartMode` for the available options.\n
-        Defaults to `containers` to warmstart from the solver data containers.
-        """
-
-        contact_warmstart_method: Literal[
-            "key_and_position",
-            "geom_pair_net_force",
-            "geom_pair_net_wrench",
-            "key_and_position_with_net_force_backup",
-            "key_and_position_with_net_wrench_backup",
-        ] = "key_and_position"
-        """
-        Method to be used for warm-starting contacts.\n
-        See :class:`WarmstarterContacts.Method` for available options.\n
-        Defaults to `key_and_position`.
-        """
-
         rotation_correction: Literal["twopi", "continuous", "none"] = "twopi"
         """
         The rotation correction mode to use for rotational DoFs.\n
@@ -201,7 +177,7 @@ class SolverKamino(SolverBase):
         Defaults to `twopi`.
         """
 
-        integrator: Literal["euler", "moreau"] | None = "euler"
+        integrator: Literal["euler", "moreau"] = "euler"
         """
         The time-integrator to use for state integration.\n
         See available options in the `integrators` module.\n
@@ -215,66 +191,44 @@ class SolverKamino(SolverBase):
         Defaults to `0.0` (i.e. no damping).
         """
 
-        use_solver_acceleration: bool = True
-        """
-        Enables Nesterov-type acceleration, i.e. use APADMM instead of standard PADMM.\n
-        Defaults to `True`.
-        """
-
-        use_graph_conditionals: bool = True
-        """
-        Enables use of CUDA graph conditional nodes in iterative solvers.\n
-        If `False`, replaces `wp.capture_while` with unrolled for-loops over max iterations.\n
-        Defaults to `True`.
-        """
-
         collect_solver_info: bool = False
         """
-        Enables collection of dynamics solver convergence and performance info at each simulation step.\n
+        Enables/disables collection of solver convergence and performance info at each simulation step.\n
+        Enabling this option as it will significantly increase the runtime of the solver.\n
         Defaults to `False`.
         """
 
-        compute_metrics: bool = False
+        compute_solution_metrics: bool = False
         """
-        Enables computation of solution metrics at each simulation step.\n
+        Enables/disables computation of solution metrics at each simulation step.\n
+        Enabling this option as it will significantly increase the runtime of the solver.\n
         Defaults to `False`.
         """
 
-        @classmethod
-        def register_custom_attributes(cls, builder: ModelBuilder) -> None:
+        @staticmethod
+        def register_custom_attributes(builder: ModelBuilder) -> None:
             """
-            Register custom attributes for this config.
+            Register custom attributes for the :class:`SolverKamino.Config` configurations.
+
+            Note: Currently, not all configurations are registered as custom attributes,
+            as only those supported by the Kamino USD scene API have been included. More
+            will be added in the future as latter is being developed.
 
             Args:
-                builder (ModelBuilder): The model builder to register the custom attributes to.
+                builder: The model builder instance with which to register the custom attributes.
             """
+            # Import here to avoid module-level imports and circular dependencies
+            from . import config  # noqa: PLC0415
             from ._src.core.joints import JointCorrectionMode  # noqa: PLC0415
-            from ._src.solvers.padmm import PADMMWarmStartMode  # noqa: PLC0415
 
-            # Register KaminoSceneAPI attributes so the USD importer will store them on the model
-            builder.add_custom_attribute(
-                ModelBuilder.CustomAttribute(
-                    name="padmm_warmstarting",
-                    frequency=Model.AttributeFrequency.ONCE,
-                    assignment=Model.AttributeAssignment.MODEL,
-                    dtype=str,
-                    default="containers",
-                    namespace="kamino",
-                    usd_attribute_name="newton:kamino:padmm:warmstarting",
-                    usd_value_transformer=PADMMWarmStartMode.parse_usd_attribute,
-                )
-            )
-            builder.add_custom_attribute(
-                ModelBuilder.CustomAttribute(
-                    name="padmm_use_acceleration",
-                    frequency=Model.AttributeFrequency.ONCE,
-                    assignment=Model.AttributeAssignment.MODEL,
-                    dtype=wp.bool,
-                    default=True,
-                    namespace="kamino",
-                    usd_attribute_name="newton:kamino:padmm:useAcceleration",
-                )
-            )
+            # Register KaminoSceneAPI custom attributes for each sub-configuration container
+            config.ForwardKinematicsSolverConfig.register_custom_attributes(builder)
+            config.ConstraintStabilizationConfig.register_custom_attributes(builder)
+            config.ConstrainedDynamicsConfig.register_custom_attributes(builder)
+            config.CollisionDetectorConfig.register_custom_attributes(builder)
+            config.PADMMSolverConfig.register_custom_attributes(builder)
+
+            # Register KaminoSceneAPI custom attributes for each individual solver-level configurations
             builder.add_custom_attribute(
                 ModelBuilder.CustomAttribute(
                     name="joint_correction",
@@ -288,8 +242,126 @@ class SolverKamino(SolverBase):
                 )
             )
 
-            ConstrainedDynamicsConfig.register_custom_attributes(builder)
-            PADMMSolverConfig.register_custom_attributes(builder)
+        @staticmethod
+        def from_model(model: Model, **kwargs: dict[str, Any]) -> SolverKamino.Config:
+            """
+            Creates a configuration container by attempting to parse
+            custom attributes from a :class:`Model` if available.
+
+            Note: If the model was imported from USD and contains custom attributes defined
+            by the KaminoSceneAPI, those attributes will be parsed and used to populate
+            the configuration container. Additionally, any sub-configurations that are
+            provided as keyword arguments will also be used to populate the corresponding
+            sections of the configuration, allowing for a combination of model-imported
+            and explicit user-provided configurations. If certain configurations are not
+            provided either via the model's custom attributes or as keyword arguments,
+            then default values will be used.
+
+            Args:
+                model: The Newton model from which to parse configurations.
+            """
+            # Import here to avoid module-level imports and circular dependencies
+            from . import config  # noqa: PLC0415
+
+            # Create a base config with default values and
+            # user-provided provided kwarg overrides
+            cfg = SolverKamino.Config(**kwargs)
+
+            # Parse solver-specific attributes imported from USD
+            kamino_attrs = getattr(model, "kamino", None)
+            if kamino_attrs is not None:
+                if hasattr(kamino_attrs, "joint_correction"):
+                    cfg.rotation_correction = kamino_attrs.joint_correction[0]
+
+            # Parse sub-configurations from the provided kwargs, if available, otherwise use defaults
+            subconfigs: dict[str, ConfigBase] = {
+                "collision_detector": config.CollisionDetectorConfig,
+                "constraints": config.ConstraintStabilizationConfig,
+                "dynamics": config.ConstrainedDynamicsConfig,
+                "padmm": config.PADMMSolverConfig,
+                "fk": config.ForwardKinematicsSolverConfig,
+            }
+            for attr_name, config_cls in subconfigs.items():
+                nested_config = kwargs.get(attr_name, None)
+                nested_kwargs = nested_config.__dict__ if nested_config is not None else {}
+                setattr(cfg, attr_name, config_cls.from_model(model, **nested_kwargs))
+
+            # Return the fully constructed config with sub-configurations
+            # parsed from the model's custom attributes if available,
+            # otherwise using defaults or provided kwargs.
+            return cfg
+
+        @override
+        def validate(self) -> None:
+            """
+            Validates the current values held by the :class:`SolverKamino.Config` instance.
+            """
+            # Import here to avoid module-level imports and circular dependencies
+            from ._src.core.joints import JointCorrectionMode  # noqa: PLC0415
+
+            # Ensure that the sparsity settings are compatible with each other
+            if self.sparse_dynamics and not self.sparse_jacobian:
+                raise ValueError(
+                    "Sparsity setting mismatch: `sparse_dynamics` solver "
+                    "option requires that `sparse_jacobian` is set to `True`."
+                )
+
+            # Ensure that all mandatory configurations are not None.
+            if self.constraints is None:
+                raise ValueError("Constraint stabilization config cannot be None.")
+            elif self.dynamics is None:
+                raise ValueError("Constrained dynamics config cannot be None.")
+            elif self.padmm is None:
+                raise ValueError("PADMM solver config cannot be None.")
+
+            # Validate specialized sub-configurations
+            # using their own built-in validations
+            if self.collision_detector is not None:
+                self.collision_detector.validate()
+            if self.fk is not None:
+                self.fk.validate()
+            self.constraints.validate()
+            self.dynamics.validate()
+            self.padmm.validate()
+
+            # Conversion to JointCorrectionMode will raise an error if the input string is invalid.
+            JointCorrectionMode.from_string(self.rotation_correction)
+
+            # Ensure the integrator choice is valid
+            supported_integrators = {"euler", "moreau"}
+            if self.integrator not in supported_integrators:
+                raise ValueError(f"Invalid integrator: {self.integrator}. Must be one of {supported_integrators}.")
+
+            # Ensure the angular velocity damping factor is non-negative
+            if self.angular_velocity_damping < 0.0 or self.angular_velocity_damping > 1.0:
+                raise ValueError(
+                    f"Invalid angular velocity damping factor: {self.angular_velocity_damping}. "
+                    "Must be in the range [0.0, 1.0]."
+                )
+
+        @override
+        def __post_init__(self):
+            """
+            Post-initialization to default-initialize empty configurations and validate those specified by the user.
+            """
+            # Import here to avoid module-level imports and circular dependencies
+            from . import config  # noqa: PLC0415
+
+            # Default-initialize any sub-configurations that were not explicitly provided by the user
+            if self.collision_detector is None and self.use_collision_detector:
+                self.collision_detector = config.CollisionDetectorConfig()
+            if self.fk is None and self.use_fk_solver:
+                self.fk = config.ForwardKinematicsSolverConfig()
+            if self.constraints is None:
+                self.constraints = config.ConstraintStabilizationConfig()
+            if self.dynamics is None:
+                self.dynamics = config.ConstrainedDynamicsConfig()
+            if self.padmm is None:
+                self.padmm = config.PADMMSolverConfig()
+
+            # Validate the config values after all default-initialization is done
+            # to ensure that any inter-dependent parameters are properly checked.
+            self.validate()
 
     _kamino = None
     """
@@ -307,12 +379,14 @@ class SolverKamino(SolverBase):
         Constructs a Kamino solver for the given model and optional configurations.
 
         Args:
-            model: The Newton model to simulate.
-            solver_config: Configuration for the Kamino solver.
-                If ``None``, a default configuration is created by parsing the Newton model's
-                custom attributes (e.g. from USD) using :meth:`SolverKamino.Config.from_model`.
-            collision_detector_config: Configuration for the internal collision detector.
-                If ``None``, the default configuration is used.
+            model:
+                The Newton model for which to create the Kamino solver instance.
+            config:
+                Explicit user-provided configurations for the Kamino solver.\n
+                If `None`, configurations will be parsed from the Newton model's
+                custom attributes using :meth:`SolverKamino.Config.from_model`,
+                e.g. to be loaded from USD assets. If that also fails, then
+                default configurations will be used.
         """
         # Initialize the base solver
         super().__init__(model=model)
@@ -324,25 +398,44 @@ class SolverKamino(SolverBase):
         # Validate that the model does not contain unsupported components
         self._validate_model_compatibility(model)
 
+        # Cache configurations; either from the user-provided config or from the model's custom attributes
+        # NOTE: `Config.from_model` will default-initialize if no relevant custom attributes were
+        # found on the model, so `self._config` will always be fully initialized after this step.
+        if config is None:
+            config = self.Config.from_model(model)
+        self._config = config
+
         # Create a Kamino model from the Newton model
         self._model_kamino = self._kamino.ModelKamino.from_newton(model)
 
-        # TODO: Gate the construction of the collision detector to only be created
-        # if `config.use_collision_detector` is True, and otherwise skip it
-        # Create a collision detector
-        self._collision_detector_kamino = self._kamino.CollisionDetector(
-            config=config.collision_detector if config is not None else None,
-            model=self._model_kamino,
-        )
+        # Create a collision detector if enabled in the config, otherwise
+        # set to `None` to disable internal collision detection in Kamino
+        self._collision_detector_kamino = None
+        if self._config.use_collision_detector:
+            self._collision_detector_kamino = self._kamino.CollisionDetector(
+                model=self._model_kamino,
+                config=self._config.collision_detector,
+            )
 
         # Capture a reference to the contacts container
-        self._contacts_kamino = self._collision_detector_kamino.contacts
+        self._contacts_kamino = None
+        if self._collision_detector_kamino is not None:
+            self._contacts_kamino = self._collision_detector_kamino.contacts
+        else:
+            # If collision detector is disabled allocate contacts manually
+            # TODO: We need to fix this logic to properly handle the case where the collision
+            # detector is disabled but contacts are still provided by Newton's collision pipeline.
+            if self.model.rigid_contact_max == 0:
+                world_max_contacts = self._model_kamino.geoms.world_minimum_contacts
+            else:
+                world_max_contacts = [model.rigid_contact_max // self.model.world_count] * self.model.world_count
+            self._contacts_kamino = self._kamino.ContactsKamino(capacity=world_max_contacts, device=self.model.device)
 
         # Initialize the internal Kamino solver
         self._solver_kamino = self._kamino.SolverKaminoImpl(
             model=self._model_kamino,
             contacts=self._contacts_kamino,
-            config=config,
+            config=self._config,
         )
 
     def reset(
@@ -393,7 +486,12 @@ class SolverKamino(SolverBase):
             base_q = base_q_com
 
         # TODO: fix brittle in-place update of arrays after conversion
+        # Create a zer-copy view of the input state_out as a StateKamino
+        # to interface with the Kamino solver's reset operation
         state_out_kamino = self._kamino.StateKamino.from_newton(self._model_kamino.size, self.model, state_out)
+
+        # Execute the reset operation of the Kamino solver,
+        # to write the reset state to `state_out_kamino`
         self._solver_kamino.reset(
             state_out=state_out_kamino,
             world_mask=world_mask,
@@ -625,7 +723,7 @@ class SolverKamino(SolverBase):
                     from . import _src as kamino  # noqa: PLC0415
 
                     cls._kamino = kamino
-                    cls.Config = kamino.SolverKaminoImpl.Config
+
             except ImportError as e:
                 raise ImportError("Kamino backend not found.") from e
 

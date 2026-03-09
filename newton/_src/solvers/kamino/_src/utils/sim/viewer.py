@@ -239,7 +239,7 @@ class ViewerKamino(ViewerGL):
 
         # Declare and initialize geometry info cache
         self._worlds: list[WorldDescriptor] = builder.worlds
-        self._geometry: list[GeometryDescriptor] = copy.deepcopy(builder.geoms)
+        self._geometry: list[GeometryDescriptor] = copy.deepcopy([g for geoms in builder.geoms for g in geoms])
         for geom in self._geometry:
             geom.shape = builder.shapes[geom.uid]
 

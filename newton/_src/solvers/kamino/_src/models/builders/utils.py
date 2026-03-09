@@ -140,8 +140,8 @@ def set_uniform_body_pose_offset(builder: ModelBuilderKamino, offset: transformf
         builder (ModelBuilderKamino): The model builder containing the bodies to offset.
         offset (transformf): The pose offset to apply to each body in the builder in the form of a :class:`transformf`.
     """
-    for i in range(builder.num_bodies):
-        builder.bodies[i].q_i_0 = wp.mul(offset, builder.bodies[i].q_i_0)
+    for body in (b for bodies in builder.bodies for b in bodies):
+        body.q_i_0 = wp.mul(offset, body.q_i_0)
 
 
 def set_uniform_body_twist_offset(builder: ModelBuilderKamino, offset: vec6f):
@@ -152,8 +152,8 @@ def set_uniform_body_twist_offset(builder: ModelBuilderKamino, offset: vec6f):
         builder (ModelBuilderKamino): The model builder containing the bodies to offset.
         offset (vec6f): The twist offset to apply to each body in the builder in the form of a :class:`vec6f`.
     """
-    for i in range(builder.num_bodies):
-        builder.bodies[i].u_i_0 += offset
+    for body in (b for bodies in builder.bodies for b in bodies):
+        body.u_i_0 += offset
 
 
 ###

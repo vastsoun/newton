@@ -56,6 +56,7 @@ class ProblemDimensions:
     num_joint_dofs: int = -1
     min_delassus_dim: int = -1
     max_delassus_dim: int = -1
+    num_worlds: int = -1
 
 
 @dataclass
@@ -73,13 +74,13 @@ class CameraConfig:
     yaw: float
 
 
-ProblemConfig = tuple[ModelBuilderKamino | Callable, ControlConfig | None, CameraConfig | None]
+ProblemConfig = tuple[Callable[[int], ModelBuilderKamino], ControlConfig | None, CameraConfig | None]
 """
 Defines the configurations for a single benchmark problem.
 
 This contains:
-- A model builder that constructs the simulation worlds for the benchmark problem, or a callable
-  taking no arguments returning such a builder (for deferred loading of the problem assets).
+- A callable taking the number of worlds, and returning a model builder that constructs the simulation
+  worlds for the benchmark problem.
 - Optional control configurations for perturbing the benchmark problem.
 - Optional camera configurations for visualizing the benchmark problem.
 """
@@ -101,11 +102,10 @@ optional camera configurations for visualization.
 
 
 def make_benchmark_problem_fourbar(
-    num_worlds: int = 1,
     gravity: bool = True,
     ground: bool = True,
 ) -> ProblemConfig:
-    def builder_fn():
+    def builder_fn(num_worlds: int):
         builder = make_homogeneous_builder(
             num_worlds=num_worlds,
             build_fn=basics.build_boxes_fourbar,
@@ -125,7 +125,6 @@ def make_benchmark_problem_fourbar(
 
 
 def make_benchmark_problem_dr_legs(
-    num_worlds: int = 1,
     gravity: bool = True,
     ground: bool = True,
 ) -> ProblemConfig:
@@ -133,7 +132,7 @@ def make_benchmark_problem_dr_legs(
     asset_path = newton.utils.download_asset("disneyresearch")
     asset_file = str(asset_path / "dr_legs/usd" / "dr_legs_with_meshes_and_boxes.usda")
 
-    def builder_fn():
+    def builder_fn(num_worlds: int):
         # Create a model builder from the imported USD
         msg.notif("Constructing builder from imported USD ...")
         importer = USDImporter()
@@ -185,7 +184,6 @@ corresponding problem configuration generator functions.
 
 def make_benchmark_problems(
     names: list[str],
-    num_worlds: int = 1,
     gravity: bool = True,
     ground: bool = True,
 ) -> ProblemSet:
@@ -194,7 +192,7 @@ def make_benchmark_problems(
         raise ValueError("Problem names must be provided as a list of strings.")
 
     # Define common generator kwargs for all problems to avoid repetition
-    generator_kwargs = {"num_worlds": num_worlds, "gravity": gravity, "ground": ground}
+    generator_kwargs = {"gravity": gravity, "ground": ground}
 
     # Generate the problem configurations for each specified problem name
     problems: ProblemSet = {}
@@ -215,3 +213,4 @@ def save_problem_dimensions_to_hdf5(problem_dims: dict[str, ProblemDimensions], 
         datafile[f"{scope}/num_joint_dofs"] = dims.num_joint_dofs
         datafile[f"{scope}/min_delassus_dim"] = dims.min_delassus_dim
         datafile[f"{scope}/max_delassus_dim"] = dims.max_delassus_dim
+        datafile[f"{scope}/num_worlds"] = dims.num_worlds

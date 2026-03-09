@@ -67,6 +67,7 @@ from .keying import build_pair_key2
 __all__ = [
     "DEFAULT_GEOM_PAIR_CONTACT_GAP",
     "DEFAULT_GEOM_PAIR_MAX_CONTACTS",
+    "DEFAULT_TRIANGLE_MAX_PAIRS",
     "DEFAULT_WORLD_MAX_CONTACTS",
     "ContactMode",
     "ContactsKamino",
@@ -109,6 +110,13 @@ The global default for maximum number of contacts per geom-pair.\n
 Used when allocating contact data without a specified capacity.\n
 Ignored for mesh-based collisions.\n
 Set to `12` (with box-box collisions being a prototypical case).
+"""
+
+DEFAULT_TRIANGLE_MAX_PAIRS: int = 1_000_000
+"""
+The global default for maximum number of triangle pairs to consider in the narrow-phase.\n
+Used only when the model contains triangle meshes or heightfields.\n
+Defaults to `1_000_000`.
 """
 
 DEFAULT_GEOM_PAIR_CONTACT_GAP: float = 1e-5

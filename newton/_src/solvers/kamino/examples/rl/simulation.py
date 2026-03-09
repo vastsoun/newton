@@ -292,13 +292,14 @@ class RigidBodySim:
         # ----- Viewer -----
         self.viewer: ViewerGL | None = None
         self._newton_state: newton.State | None = None
+        self._render_config = render_config or RenderConfig()
         if not headless:
             msg.notif("Creating the 3D viewer ...")
-            self.viewer = ViewerGL()
+            self.viewer = ViewerGL(width=self._render_config.render_width, height=self._render_config.render_height)
             self.viewer.set_model(self._newton_model)
             # Newton state used only for rendering (body_q synced from Kamino each frame)
             self._newton_state = self._newton_model.state()
-            self._apply_render_config(render_config or RenderConfig())
+            self._apply_render_config(self._render_config)
 
         # ----- CUDA graphs -----
         self._reset_graph = None
@@ -341,6 +342,22 @@ class RigidBodySim:
             renderer.shadow_extents = cfg.shadow_extents
         if cfg.spotlight_enabled is not None:
             renderer.spotlight_enabled = cfg.spotlight_enabled
+
+        # Background brightness (sky + ground plane colors)
+        if cfg.background_brightness_scale is not None:
+            s = cfg.background_brightness_scale
+            renderer.sky_upper = tuple(min(c * s, 1.0) for c in renderer.sky_upper)
+            renderer.sky_lower = tuple(min(c * s, 1.0) for c in renderer.sky_lower)
+            # Also brighten ground plane shape colors
+            model = self._newton_model
+            shape_body = model.shape_body.numpy()
+            ground_colors: dict[int, Color3] = {}
+            for s_idx in range(model.shape_count):
+                if int(shape_body[s_idx]) < 0:
+                    cur = viewer.model_shape_color.numpy()[int(viewer._shape_to_slot[s_idx])]
+                    ground_colors[s_idx] = tuple(min(float(c) * s, 1.0) for c in cur)
+            if ground_colors:
+                viewer.update_shape_colors(ground_colors)
 
     # ------------------------------------------------------------------
     # RL interface wiring

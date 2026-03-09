@@ -60,3 +60,12 @@ class RenderConfig:
 
     spotlight_enabled: bool | None = None
     """Use cone spotlight (True) or uniform directional light (False).  ``None`` keeps default (True)."""
+
+    background_brightness_scale: float | None = None
+    """Scale factor for sky/background and ground plane brightness.  ``None`` keeps default (1.0)."""
+
+    render_width: int = 1920
+    """Viewer / recording width in pixels."""
+
+    render_height: int = 1080
+    """Viewer / recording height in pixels."""

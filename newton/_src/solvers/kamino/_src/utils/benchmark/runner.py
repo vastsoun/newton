@@ -57,9 +57,9 @@ class BenchmarkSim:
         self.use_cuda_graph: bool = use_cuda_graph
         self.max_steps: int = max_steps
 
-        # Override the default compute_metrics toggle in the
+        # Override the default compute_solution_metrics toggle in the
         # simulator configs based on the benchmark configuration
-        configs.solver.compute_metrics = physics_metrics
+        configs.solver.compute_solution_metrics = physics_metrics
 
         # Create a simulator
         msg.info("Building the simulator...")

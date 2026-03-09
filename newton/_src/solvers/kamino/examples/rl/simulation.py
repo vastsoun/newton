@@ -295,7 +295,7 @@ class RigidBodySim:
         self._render_config = render_config or RenderConfig()
         if not headless:
             msg.notif("Creating the 3D viewer ...")
-            self.viewer = ViewerGL(width=self._render_config.render_width, height=self._render_config.render_height)
+            self.viewer = ViewerGL()
             self.viewer.set_model(self._newton_model)
             # Newton state used only for rendering (body_q synced from Kamino each frame)
             self._newton_state = self._newton_model.state()
@@ -343,10 +343,17 @@ class RigidBodySim:
         if cfg.spotlight_enabled is not None:
             renderer.spotlight_enabled = cfg.spotlight_enabled
 
-        # Background brightness (sky + ground plane colors)
+        # Sky color (renderer.sky_upper = "Sky Color" in viewer GUI)
+        if cfg.sky_color is not None:
+            renderer.sky_upper = cfg.sky_color
+
+        # Directional light color
+        if cfg.light_color is not None:
+            renderer._light_color = cfg.light_color
+
+        # Background brightness — scales ground color (renderer.sky_lower) and ground plane shapes
         if cfg.background_brightness_scale is not None:
             s = cfg.background_brightness_scale
-            renderer.sky_upper = tuple(min(c * s, 1.0) for c in renderer.sky_upper)
             renderer.sky_lower = tuple(min(c * s, 1.0) for c in renderer.sky_lower)
             # Also brighten ground plane shape colors
             model = self._newton_model
@@ -569,16 +576,44 @@ class RigidBodySim:
                 self._capture_frame()
 
     def _capture_frame(self):
-        """Capture and save the current rendered frame as a PNG."""
+        """Capture and save the current rendered frame as a PNG.
+
+        If ``render_width``/``render_height`` in the render config differ from
+        the viewer's native resolution, the renderer is temporarily resized to
+        the target resolution, re-rendered, captured, then restored — giving
+        true high-res capture without affecting the display window.
+        """
         try:
             from PIL import Image
         except ImportError:
             msg.warning("PIL not installed. Install with: pip install pillow")
             return
 
+        renderer = self.viewer.renderer
+        target_w = self._render_config.render_width
+        target_h = self._render_config.render_height
+        native_w = renderer._screen_width
+        native_h = renderer._screen_height
+        needs_hires = target_w != native_w or target_h != native_h
+
+        if needs_hires:
+            # Resize FBOs to target resolution and re-render the scene
+            renderer.resize(target_w, target_h)
+            renderer.render(self.viewer.camera, self.viewer.objects, self.viewer.lines)
+            # Invalidate PBO and cached buffer so they get reallocated at new size
+            self.viewer._pbo = None
+            self.viewer._wp_pbo = None
+            self._frame_buffer = None
+
         frame = self.viewer.get_frame(target_image=self._frame_buffer)
         if self._frame_buffer is None:
             self._frame_buffer = frame
+
+        if needs_hires:
+            # Restore native (window) resolution and invalidate PBO again
+            renderer.resize()
+            self.viewer._pbo = None
+            self.viewer._wp_pbo = None
 
         frame_np = frame.numpy()
         image = Image.fromarray(frame_np, mode="RGB")
@@ -616,24 +651,34 @@ class RigidBodySim:
             msg.warning(f"No PNG frames found in {self._video_folder}")
             return False
 
-        # Read first frame to get dimensions
+        # Read first frame to get dimensions; ensure even for libx264 yuv420p
         first_img = Image.open(frame_files[0])
-        size = first_img.size  # (width, height)
+        w, h = first_img.size
+        # libx264 with yuv420p requires even width and height
+        even_w = w if w % 2 == 0 else w + 1
+        even_h = h if h % 2 == 0 else h + 1
+        needs_pad = even_w != w or even_h != h
+        size = (even_w, even_h)
 
-        msg.info(f"Generating video from {len(frame_files)} frames...")
+        msg.info(f"Generating video from {len(frame_files)} frames at {even_w}x{even_h}...")
         try:
             writer = ffmpeg.write_frames(
                 output_filename,
                 size=size,
                 fps=fps,
                 codec="libx264",
-                macro_block_size=8,
+                macro_block_size=1,
                 quality=5,
             )
             writer.send(None)
             for frame_path in frame_files:
                 img = Image.open(frame_path)
-                writer.send(np.array(img))
+                frame = np.array(img)
+                if needs_pad:
+                    padded = np.zeros((even_h, even_w, frame.shape[2]), dtype=frame.dtype)
+                    padded[:h, :w] = frame
+                    frame = padded
+                writer.send(frame)
             writer.close()
             msg.info(f"Video generated: {output_filename}")
 

@@ -30,7 +30,8 @@ from newton._src.sim import Control, Model, ModelBuilder, State
 from newton._src.solvers.kamino._src.core.bodies import convert_body_com_to_origin, convert_body_origin_to_com
 from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino._src.core.control import ControlKamino
-from newton._src.solvers.kamino._src.core.model import MaterialDescriptor, ModelKamino
+from newton._src.solvers.kamino._src.core.materials import MaterialDescriptor
+from newton._src.solvers.kamino._src.core.model import ModelKamino
 from newton._src.solvers.kamino._src.core.state import StateKamino
 from newton._src.solvers.kamino._src.models import basics as basics_kamino
 from newton._src.solvers.kamino._src.models import basics_newton, get_basics_usd_assets_path

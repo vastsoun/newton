@@ -29,7 +29,6 @@ import warp as wp
 
 import newton
 import newton.examples
-from newton._src.solvers.kamino._src.geometry import CollisionDetector
 from newton._src.solvers.kamino._src.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino._src.utils import logger as msg
 
@@ -76,27 +75,27 @@ class Example:
         msg.notif("Creating the model from the builder...")
         self.model = builder.finalize(skip_validation_joints=True)
 
-        # Create and configure settings for SolverKamino and the collision detector
-        collision_detector_config = CollisionDetector.Config()
-        collision_detector_config.pipeline = "unified"
-        collision_detector_config.max_contacts = 32 * self.num_worlds
-        solver_config = newton.solvers.SolverKamino.Config.from_model(self.model)
-        solver_config.problem.preconditioning = True
-        solver_config.padmm.primal_tolerance = 1e-4
-        solver_config.padmm.dual_tolerance = 1e-4
-        solver_config.padmm.compl_tolerance = 1e-4
-        solver_config.padmm.max_iterations = 200
-        solver_config.padmm.rho_0 = 0.1
-        solver_config.use_solver_acceleration = True
-        solver_config.warmstart_mode = "containers"
-        solver_config.contact_warmstart_method = "geom_pair_net_force"
+        # # Create and configure settings for SolverKamino and the collision detector
+        # collision_detector_config = CollisionDetector.Config()
+        # collision_detector_config.pipeline = "unified"
+        # collision_detector_config.max_contacts = 32 * self.num_worlds
+        # solver_config = newton.solvers.SolverKamino.Config.from_model(self.model)
+        # solver_config.problem.preconditioning = True
+        # solver_config.padmm.primal_tolerance = 1e-4
+        # solver_config.padmm.dual_tolerance = 1e-4
+        # solver_config.padmm.compl_tolerance = 1e-4
+        # solver_config.padmm.max_iterations = 200
+        # solver_config.padmm.rho_0 = 0.1
+        # solver_config.use_solver_acceleration = True
+        # solver_config.warmstart_mode = "containers"
+        # solver_config.contact_warmstart_method = "geom_pair_net_force"
 
         # Create the Kamino solver for the given model
         msg.notif("Creating the Kamino solver for the given model...")
         self.solver = newton.solvers.SolverKamino(
             model=self.model,
-            solver_config=solver_config,
-            collision_detector_config=collision_detector_config,
+            # solver_config=solver_config,
+            # collision_detector_config=collision_detector_config,
         )
 
         # Create state, control, and contacts data containers

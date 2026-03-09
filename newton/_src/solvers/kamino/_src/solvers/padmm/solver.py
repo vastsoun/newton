@@ -103,40 +103,6 @@ class PADMMSolver:
     class Config:
         """
         A container to bundle PADMM solver config.
-
-        Attributes:
-            primal_tolerance (float): The target tolerance on the total primal residual `r_primal`.\n
-                Must be greater than zero. Defaults to `1e-6`.
-            dual_tolerance (float): The target tolerance on the total dual residual `r_dual`.\n
-                Must be greater than zero. Defaults to `1e-6`.
-            compl_tolerance (float): The target tolerance on the total complementarity residual `r_compl`.\n
-                Must be greater than zero. Defaults to `1e-6`.
-            restart_tolerance (float): The tolerance on the total combined primal-dual
-                residual `r_comb`, for determining when gradient acceleration should be restarted.\n
-                Must be greater than zero. Defaults to `0.999`.
-            eta (float): The proximal regularization parameter.\n
-                Must be greater than zero. Defaults to `1e-5`.
-            rho_0 (float): The initial value of the ALM penalty parameter.\n
-                Must be greater than zero. Defaults to `1.0`.
-            rho_min (float): The lower-bound applied to the ALM penalty parameter.\n
-                Used to ensure numerical stability when adaptive penalty updates are used.\n
-                Must be greater than zero. Defaults to `1e-5`.
-            a_0 (float): The initial value of the acceleration parameter.\n
-                Must be greater than zero. Defaults to `1.0`.
-            alpha (float): The threshold on primal-dual residual ratios,
-                used to determine when penalty updates should occur.\n
-                Must be greater than `1.0`. Defaults to `10.0`.
-            tau (float): The factor by which the penalty is increased/decreased
-                when the primal-dual residual ratios exceed the threshold `alpha`.\n
-                Must be greater than `1.0`. Defaults to `1.5`.
-            max_iterations (int): The maximum number of solver iterations.\n
-                Must be greater than zero. Defaults to `200`.
-            penalty_update_freq (int): The permitted frequency of penalty updates.\n
-                If zero, no updates are performed. Otherwise, updates are performed every
-                `penalty_update_freq` iterations. Defaults to `10`.
-            penalty_update_method (str): The penalty update method used to adapt the penalty parameter.\n
-                Defaults to `fixed`. See :class:`PADMMPenaltyUpdate` for details.
-
         """
 
         primal_tolerance: float = 1e-6

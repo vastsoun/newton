@@ -368,10 +368,20 @@ class SolverKaminoImpl(SolverBase):
         super().__init__(model=model)
         self._model = model
 
-        # Cache solver config: If no config is provided, use default
+        # If no explicit config is provided, attempt to create a config
+        # from the model attributes (e.g. if imported from USD assets).
+        if config is None:
+            config = self.Config.from_model(model)
+
+        # If the config is still None (e.g. if the model did not
+        # have any relevant attributes), create a default config.
         if config is None:
             config = SolverKaminoImpl.Config()
+
+        # Validate the solver configurations and raise errors early if invalid
         config.check()
+
+        # Cache the solver config and parse relevant options for internal use
         self._config: SolverKaminoImpl.Config = config
         self._warmstart_mode: PADMMWarmStartMode = PADMMWarmStartMode.from_string(config.warmstart_mode)
         self._rotation_correction: JointCorrectionMode = JointCorrectionMode.from_string(config.rotation_correction)

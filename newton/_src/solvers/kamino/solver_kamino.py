@@ -21,7 +21,8 @@ simulating constrained multi-body systems for arbitrary mechanical assemblies.
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+from typing import Any, Literal
 
 import warp as wp
 
@@ -36,10 +37,12 @@ from ...sim import (
 )
 from ..flags import SolverNotifyFlags
 from ..solver import SolverBase
-
-if TYPE_CHECKING:
-    from ._src.geometry.detector import CollisionDetector
-    from ._src.solver_kamino_impl import SolverKaminoImpl
+from .config import (
+    CollisionDetectorConfig,
+    ConstrainedDynamicsConfig,
+    ForwardKinematicsSolverConfig,
+    PADMMSolverConfig,
+)
 
 ###
 # Module interface
@@ -96,18 +99,158 @@ class SolverKamino(SolverBase):
             state_in, state_out = state_out, state_in
     """
 
-    # Class variables to cache the imported module
-    _kamino = None
+    @dataclass
+    class Config:
+        """
+        A container to hold all configurations of the :class:`SolverKamino` solver.
+        """
 
-    # Placeholder for the SolverKamino.Config class
-    # which is defined in _src/solver_kamino_impl.py
-    Config: type[SolverKaminoImpl.Config] | None = None
+        sparse_jacobian: bool = False
+        """
+        Flag to indicate whether the solver should use sparse data representations for the Jacobian.
+        """
+
+        sparse_dynamics: bool = False
+        """
+        Flag to indicate whether the solver should use sparse data representations for the dynamics.
+        """
+
+        use_collision_detector: bool = False
+        """
+        Flag to indicate whether the Kamino-provided collision detector should be used.
+        """
+
+        use_fk_solver: bool = False
+        """
+        Flag to indicate whether the Kamino-provided FK solver should be enabled.\n
+
+        The FK solver is used for computing consistent initial states given input
+        joint positions, joint velocities and optional base body poses and twists.
+
+        It is specifically designed to handle the presence of:
+        - kinematic loops
+        - passive joints
+        - over/under-actuation
+        """
+
+        collision_detector: CollisionDetectorConfig | None = None
+        """
+        Configurations for the collision detector.\n
+        See :class:`CollisionDetectorConfig` for more details.\n
+        If `None`, the default configuration will be used.
+        """
+
+        dynamics: ConstrainedDynamicsConfig | None = None
+        """
+        Configurations for the constrained dynamics problem.\n
+        See :class:`ConstrainedDynamicsConfig` for more details.\n
+        If `None`, default values will be used.
+        """
+
+        padmm: PADMMSolverConfig | None = None
+        """
+        Configurations for the dynamics solver.\n
+        See :class:`PADMMSolverConfig` for more details.\n
+        If `None`, default values will be used.
+        """
+
+        fk: ForwardKinematicsSolverConfig | None = None
+        """
+        Configurations for the forward kinematics solver.\n
+        See :class:`ForwardKinematicsSolverConfig` for more details.\n
+        If `None`, default values will be used.
+        """
+
+        linear_solver_type: Literal["LLTB", "CR"] = "LLTB"
+        """
+        The type of linear solver to use for the dynamics problem.\n
+        See :class:`LinearSolverType` for available options.\n
+        Defaults to 'LLTB', which will use the :class:`LLTBlockedSolver`.
+        """
+
+        linear_solver_kwargs: dict[str, Any] = field(default_factory=dict)
+        """
+        Additional keyword arguments to pass to the linear solver.\n
+        Defaults to an empty dictionary.
+        """
+
+        warmstart_mode: Literal["none", "internal", "containers"] = "containers"
+        """
+        Warmstart mode to be used for the dynamics solver.\n
+        See :class:`PADMMWarmStartMode` for the available options.\n
+        Defaults to `containers` to warmstart from the solver data containers.
+        """
+
+        contact_warmstart_method: Literal[
+            "key_and_position",
+            "geom_pair_net_force",
+            "geom_pair_net_wrench",
+            "key_and_position_with_net_force_backup",
+            "key_and_position_with_net_wrench_backup",
+        ] = "key_and_position"
+        """
+        Method to be used for warm-starting contacts.\n
+        See :class:`WarmstarterContacts.Method` for available options.\n
+        Defaults to `key_and_position`.
+        """
+
+        rotation_correction: Literal["twopi", "continuous", "none"] = "twopi"
+        """
+        The rotation correction mode to use for rotational DoFs.\n
+        See :class:`JointCorrectionMode` for available options.
+        Defaults to `twopi`.
+        """
+
+        integrator: Literal["euler", "moreau"] | None = "euler"
+        """
+        The time-integrator to use for state integration.\n
+        See available options in the `integrators` module.\n
+        Defaults to `"euler"`.
+        """
+
+        angular_velocity_damping: float = 0.0
+        """
+        A damping factor applied to the angular velocity of bodies during state integration.\n
+        This can help stabilize simulations with large time steps or high angular velocities.\n
+        Defaults to `0.0` (i.e. no damping).
+        """
+
+        use_solver_acceleration: bool = True
+        """
+        Enables Nesterov-type acceleration, i.e. use APADMM instead of standard PADMM.\n
+        Defaults to `True`.
+        """
+
+        use_graph_conditionals: bool = True
+        """
+        Enables use of CUDA graph conditional nodes in iterative solvers.\n
+        If `False`, replaces `wp.capture_while` with unrolled for-loops over max iterations.\n
+        Defaults to `True`.
+        """
+
+        collect_solver_info: bool = False
+        """
+        Enables collection of dynamics solver convergence and performance info at each simulation step.\n
+        Defaults to `False`.
+        """
+
+        compute_metrics: bool = False
+        """
+        Enables computation of solution metrics at each simulation step.\n
+        Defaults to `False`.
+        """
+
+    _kamino = None
+    """
+    Class variable storing the imported Kamino module.\n
+    The module is imported and cached on the first instantiation of
+    the solver to avoid import overhead if the solver is not used.
+    """
 
     def __init__(
         self,
         model: Model,
-        solver_config: SolverKaminoImpl.Config | None = None,
-        collision_detector_config: CollisionDetector.Config | None = None,
+        config: Config | None = None,
     ):
         """
         Constructs a Kamino solver for the given model and optional configurations.
@@ -133,25 +276,22 @@ class SolverKamino(SolverBase):
         # Create a Kamino model from the Newton model
         self._model_kamino = self._kamino.ModelKamino.from_newton(model)
 
+        # TODO: Gate the construction of the collision detector to only be created
+        # if `config.use_collision_detector` is True, and otherwise skip it
         # Create a collision detector
         self._collision_detector_kamino = self._kamino.CollisionDetector(
+            config=config.collision_detector if config is not None else None,
             model=self._model_kamino,
-            config=collision_detector_config,
         )
 
         # Capture a reference to the contacts container
         self._contacts_kamino = self._collision_detector_kamino.contacts
 
-        # Create solver config if none is provided. This will also parse any solver-specific
-        # attributes imported from USD.
-        if solver_config is None:
-            solver_config = self.Config.from_model(model)
-
         # Initialize the internal Kamino solver
         self._solver_kamino = self._kamino.SolverKaminoImpl(
             model=self._model_kamino,
             contacts=self._contacts_kamino,
-            config=solver_config,
+            config=config,
         )
 
     def reset(

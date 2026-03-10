@@ -29,10 +29,11 @@ import glob
 import os
 import threading
 
-# Thirdparty
-import newton
 import torch  # noqa: TID253
 import warp as wp
+
+# Thirdparty
+import newton
 from newton._src.solvers.kamino._src.core.bodies import convert_body_com_to_origin
 from newton._src.solvers.kamino._src.core.control import ControlKamino
 from newton._src.solvers.kamino._src.core.model import ModelKamino

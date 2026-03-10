@@ -45,7 +45,7 @@ import yaml
 import newton
 from newton._src.solvers.kamino._src.core.joints import JointActuationType
 from newton._src.solvers.kamino._src.utils import logger as msg
-from newton._src.solvers.kamino._src.utils.render_config import MeshColors, RenderConfig
+from newton._src.solvers.kamino._src.utils.viewer import MeshColors, ViewerConfig
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.examples.rl.joystick import JoystickConfig, JoystickController
 from newton._src.solvers.kamino.examples.rl.observations import DrlegsBaseObservation
@@ -147,7 +147,7 @@ class Example:
             headless=headless,
             body_pose_offset=(0.0, 0.0, config["body_pose_offset_z"], 0.0, 0.0, 0.0, 1.0),
             use_cuda_graph=True,
-            render_config=RenderConfig(
+            render_config=ViewerConfig(
                 diffuse_scale=1.0,
                 specular_scale=0.3,
                 shadow_radius=10.0,

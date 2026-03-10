@@ -163,37 +163,39 @@ class BatchedLinearOperator:
 # ---------------
 
 
-@functools.cache
-def make_termination_kernel(n_worlds):
-    @wp.kernel
-    def check_termination(
-        maxiter: wp.array(dtype=int),
-        cycle_size: int,
-        r_norm_sq: wp.array(dtype=Any),
-        atol_sq: wp.array(dtype=Any),
-        world_active: wp.array(dtype=wp.int32),
-        cur_iter: wp.array(dtype=int),
-        world_condition: wp.array(dtype=wp.int32),
-        batch_condition: wp.array(dtype=wp.int32),
-    ):
-        thread = wp.tid()
-        active = wp.tile_load(world_active, (n_worlds,))
-        condition = wp.tile_load(world_condition, (n_worlds,))
-        world_stepped = wp.tile_map(wp.mul, active, condition)
-        iter = world_stepped * cycle_size + wp.tile_load(cur_iter, (n_worlds,))
+@wp.func
+def lt_mask(a: Any, b: Any):
+    """Return 1 if a < b, else 0"""
+    return wp.where(a < b, type(a)(1), type(a)(0))
 
-        wp.tile_store(cur_iter, iter)
-        cont_norm = wp.tile_astype(
-            wp.tile_map(lt_mask, wp.tile_load(atol_sq, (n_worlds,)), wp.tile_load(r_norm_sq, (n_worlds,))), wp.int32
-        )
-        cont_iter = wp.tile_map(lt_mask, iter, wp.tile_load(maxiter, (n_worlds,)))
-        cont = wp.tile_map(wp.mul, wp.tile_map(wp.mul, cont_iter, cont_norm), world_stepped)
-        wp.tile_store(world_condition, cont)
-        batch_cont = wp.where(wp.tile_sum(cont)[0] > 0, 1, 0)
-        if thread == 0:
-            batch_condition[0] = batch_cont
 
-    return check_termination
+@wp.kernel
+def check_termination(
+    maxiter: wp.array(dtype=int),
+    cycle_size: int,
+    r_norm_sq: wp.array(dtype=Any),
+    atol_sq: wp.array(dtype=Any),
+    world_active: wp.array(dtype=wp.int32),
+    cur_iter: wp.array(dtype=int),
+    world_condition: wp.array(dtype=wp.int32),
+    batch_condition: wp.array(dtype=wp.int32),
+):
+    wid = wp.tid()
+
+    # Update iteration
+    active = world_active[wid]
+    condition = world_condition[wid]
+    world_stepped = active * condition
+    iter = world_stepped * cycle_size + cur_iter[wid]
+    cur_iter[wid] = iter
+
+    # Check convergence
+    cont_norm = wp.int32(lt_mask(atol_sq[wid], r_norm_sq[wid]))
+    cont_iter = wp.int32(lt_mask(iter, maxiter[wid]))
+    cont = cont_iter * cont_norm * world_stepped
+    world_condition[wid] = cont
+    if cont > 0:
+        batch_condition[0] = 1
 
 
 @wp.kernel
@@ -288,7 +290,6 @@ def _run_capturable_loop(
     avoid_graph_conditionals: bool = False,
     maxiter_host: int | None = None,
     cycle_size: int = 1,
-    termination_kernel=None,
 ):
     device = atol_sq.device
 
@@ -299,9 +300,8 @@ def _run_capturable_loop(
     world_condition, global_condition = conditions[:n_worlds], conditions[n_worlds:]
 
     update_condition_launch = wp.launch(
-        termination_kernel,
-        dim=(1, n_worlds),
-        block_dim=n_worlds,
+        check_termination,
+        dim=(n_worlds,),
         device=device,
         inputs=[maxiter, cycle_size, r_norm_sq, atol_sq, world_active, cur_iter],
         outputs=[world_condition, global_condition],
@@ -318,14 +318,15 @@ def _run_capturable_loop(
     # TODO: consider using a spinlock for fusing kernels
     # update_world_condition_launch.launch()
     # update_global_condition_launch.launch()
+    global_condition.zero_()
     update_condition_launch.launch()
 
     if callback_launch is not None:
         callback_launch.launch()
 
     def do_cycle_with_condition():
-        # print("Global cond:", global_condition.numpy())
         do_cycle()
+        global_condition.zero_()
         update_condition_launch.launch()
         if callback_launch is not None:
             callback_launch.launch()
@@ -344,12 +345,6 @@ def _run_capturable_loop(
                 break
 
     return cur_iter, r_norm_sq, atol_sq
-
-
-@wp.func
-def lt_mask(a: Any, b: Any):
-    """Return 1 if a < b, else 0"""
-    return wp.where(a < b, type(a)(1), type(a)(0))
 
 
 @wp.func
@@ -552,7 +547,6 @@ class ConjugateSolver:
         self.atol_sq = wp.empty(self.n_worlds, dtype=self.scalar_type, device=self.device)
         self.cur_iter = wp.empty(self.n_worlds, dtype=wp.int32, device=self.device)
         self.conditions = wp.empty(self.n_worlds + 1, dtype=wp.int32, device=self.device)
-        self.termination_kernel = make_termination_kernel(self.n_worlds)
 
     @property
     def tiled_dot_product(self):
@@ -672,7 +666,6 @@ class CGSolver(ConjugateSolver):
             self.atol_sq,
             self.callback,
             self.use_cuda_graph,
-            termination_kernel=self.termination_kernel,
             avoid_graph_conditionals=self.avoid_graph_conditionals,
             maxiter_host=self.maxiter_host,
         )
@@ -802,7 +795,6 @@ class CRSolver(ConjugateSolver):
             self.atol_sq,
             self.callback,
             self.use_cuda_graph,
-            termination_kernel=self.termination_kernel,
             avoid_graph_conditionals=self.avoid_graph_conditionals,
             maxiter_host=self.maxiter_host,
         )

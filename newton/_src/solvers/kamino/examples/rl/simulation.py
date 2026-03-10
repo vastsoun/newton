@@ -988,7 +988,7 @@ class RigidBodySim:
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4
         settings.solver.padmm.compl_tolerance = 1e-4
-        settings.solver.padmm.max_iterations = 80
+        settings.solver.padmm.max_iterations = 200
         settings.solver.padmm.eta = 1e-5
         settings.solver.padmm.rho_0 = 0.05
         settings.solver.sparse_jacobian = True

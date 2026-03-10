@@ -24,15 +24,15 @@
 
 from __future__ import annotations
 
+# Python
 import glob
 import os
 import threading
 
-import torch  # noqa: TID253
-import warp as wp
-
 # Thirdparty
 import newton
+import torch  # noqa: TID253
+import warp as wp
 from newton._src.solvers.kamino._src.core.bodies import convert_body_com_to_origin
 from newton._src.solvers.kamino._src.core.control import ControlKamino
 from newton._src.solvers.kamino._src.core.model import ModelKamino
@@ -42,8 +42,8 @@ from newton._src.solvers.kamino._src.geometry import CollisionDetector
 from newton._src.solvers.kamino._src.geometry.aggregation import ContactAggregation
 from newton._src.solvers.kamino._src.solver_kamino_impl import SolverKaminoImpl
 from newton._src.solvers.kamino._src.utils import logger as msg
-from newton._src.solvers.kamino._src.utils.render_config import Color3, RenderConfig
 from newton._src.solvers.kamino._src.utils.sim import Simulator
+from newton._src.solvers.kamino._src.utils.viewer import Color3, ViewerConfig
 from newton._src.viewer import ViewerGL
 
 
@@ -198,7 +198,7 @@ class RigidBodySim:
         video_folder: str | None = None,
         async_save: bool = True,
         max_contacts_per_pair: int | None = None,
-        render_config: RenderConfig | None = None,
+        render_config: ViewerConfig | None = None,
         collapse_fixed_joints: bool = False,
     ):
         # ----- Device setup -----
@@ -292,7 +292,7 @@ class RigidBodySim:
         # ----- Viewer -----
         self.viewer: ViewerGL | None = None
         self._newton_state: newton.State | None = None
-        self._render_config = render_config or RenderConfig()
+        self._render_config = render_config or ViewerConfig()
         if not headless:
             msg.notif("Creating the 3D viewer ...")
             self.viewer = ViewerGL()
@@ -315,7 +315,7 @@ class RigidBodySim:
     # Viewer appearance
     # ------------------------------------------------------------------
 
-    def _apply_render_config(self, cfg: RenderConfig):
+    def _apply_render_config(self, cfg: ViewerConfig):
         """Apply render configuration to the viewer."""
         viewer = self.viewer
         renderer = viewer.renderer
@@ -584,6 +584,7 @@ class RigidBodySim:
         true high-res capture without affecting the display window.
         """
         try:
+            # Thirdparty
             from PIL import Image
         except ImportError:
             msg.warning("PIL not installed. Install with: pip install pillow")
@@ -635,15 +636,18 @@ class RigidBodySim:
             keep_frames: If ``True``, keep PNG frames after video creation.
         """
         try:
+            # Thirdparty
             import imageio_ffmpeg as ffmpeg  # noqa: PLC0415
         except ImportError:
             msg.warning("imageio-ffmpeg not installed. Install with: pip install imageio-ffmpeg")
             return False
         try:
+            # Thirdparty
             from PIL import Image
         except ImportError:
             msg.warning("PIL not installed. Install with: pip install pillow")
             return False
+        # Thirdparty
         import numpy as np  # noqa: PLC0415
 
         frame_files = sorted(glob.glob(os.path.join(self._video_folder, "*.png")))

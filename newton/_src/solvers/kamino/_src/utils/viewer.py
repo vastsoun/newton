@@ -37,7 +37,7 @@ class MeshColors:
 
 
 @dataclasses.dataclass
-class RenderConfig:
+class ViewerConfig:
     """Viewer appearance settings for :class:`RigidBodySim`.
 
     All ``None`` defaults leave the standard Newton viewer appearance unchanged.

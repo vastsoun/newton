@@ -14,8 +14,7 @@
 # limitations under the License.
 
 """
-Defines the :class:`SolverKamino` class, providing a physics backend for
-simulating constrained multi-body systems for arbitrary mechanical assemblies.
+Defines configurations for :class:`SolverKamino`.
 """
 
 from __future__ import annotations

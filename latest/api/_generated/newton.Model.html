@@ -212,6 +212,13 @@
 
 
 <li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../concepts/mass_inertia.html">
+    Mass and Inertia
+  </a>
+</li>
+
+
+<li class=" ">
   <a class="nav-link dropdown-item nav-internal" href="../../concepts/sites.html">
     Sites
   </a>
@@ -510,6 +517,13 @@
 
 
 <li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../concepts/mass_inertia.html">
+    Mass and Inertia
+  </a>
+</li>
+
+
+<li class="nav-item ">
   <a class="nav-link nav-internal" href="../../concepts/sites.html">
     Sites
   </a>
@@ -715,6 +729,7 @@
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../../concepts/worlds.html">Worlds</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../concepts/articulations.html">Articulations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/mass_inertia.html">Mass and Inertia</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../concepts/sites.html">Sites</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../concepts/sensors.html">Sensors</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../concepts/conventions.html">Conventions</a></li>
@@ -1578,6 +1593,18 @@ world index <cite>-1</cite>) added to the end of the model, and the last element
 <dt>The total number of global equality constraints can be computed as:</dt><dd><p><cite>num_global_equality_constraints = equality_constraint_world_start[-1] - equality_constraint_world_start[-2] + equality_constraint_world_start[0]</cite>.</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="newton.Model.gaussians_count">
+<span class="sig-name descname"><span class="pre">gaussians_count</span></span><a class="headerlink" href="#newton.Model.gaussians_count" title="Link to this definition">#</a></dt>
+<dd><p>Number of gaussians.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="newton.Model.gaussians_data">
+<span class="sig-name descname"><span class="pre">gaussians_data</span></span><a class="headerlink" href="#newton.Model.gaussians_data" title="Link to this definition">#</a></dt>
+<dd><p>Data for Gaussian Splats, shape [gaussians_count], Gaussian.Data.</p>
 </dd></dl>
 
 <dl class="py attribute">
@@ -2599,6 +2626,8 @@ Stored per-element; kernels multiply by rest area internally.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.Model.equality_constraint_type"><code class="docutils literal notranslate"><span class="pre">Model.equality_constraint_type</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.Model.equality_constraint_world"><code class="docutils literal notranslate"><span class="pre">Model.equality_constraint_world</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.Model.equality_constraint_world_start"><code class="docutils literal notranslate"><span class="pre">Model.equality_constraint_world_start</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.Model.gaussians_count"><code class="docutils literal notranslate"><span class="pre">Model.gaussians_count</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.Model.gaussians_data"><code class="docutils literal notranslate"><span class="pre">Model.gaussians_data</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.Model.gravity"><code class="docutils literal notranslate"><span class="pre">Model.gravity</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.Model.heightfield_elevation_data"><code class="docutils literal notranslate"><span class="pre">Model.heightfield_elevation_data</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.Model.joint_X_c"><code class="docutils literal notranslate"><span class="pre">Model.joint_X_c</span></code></a></li>

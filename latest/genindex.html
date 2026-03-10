@@ -216,6 +216,13 @@ window.addEventListener("load", () => mermaid.run());
 
 
 <li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="concepts/mass_inertia.html">
+    Mass and Inertia
+  </a>
+</li>
+
+
+<li class=" ">
   <a class="nav-link dropdown-item nav-internal" href="concepts/sites.html">
     Sites
   </a>
@@ -512,6 +519,13 @@ window.addEventListener("load", () => mermaid.run());
 
 
 <li class="nav-item ">
+  <a class="nav-link nav-internal" href="concepts/mass_inertia.html">
+    Mass and Inertia
+  </a>
+</li>
+
+
+<li class="nav-item ">
   <a class="nav-link nav-internal" href="concepts/sites.html">
     Sites
   </a>
@@ -799,6 +813,7 @@ window.addEventListener("load", () => mermaid.run());
           <dl>
             <dt><a href="api/_generated/newton.Contacts.html#newton.Contacts.__init__">(newton.Contacts method)</a></dt>
             <dt><a href="api/_generated/newton.Control.html#newton.Control.__init__">(newton.Control method)</a></dt>
+            <dt><a href="api/_generated/newton.Gaussian.html#newton.Gaussian.__init__">(newton.Gaussian method)</a></dt>
             <dt><a href="api/_generated/newton.geometry.BroadPhaseAllPairs.html#newton.geometry.BroadPhaseAllPairs.__init__">(newton.geometry.BroadPhaseAllPairs method)</a></dt>
             <dt><a href="api/_generated/newton.geometry.BroadPhaseExplicit.html#newton.geometry.BroadPhaseExplicit.__init__">(newton.geometry.BroadPhaseExplicit method)</a></dt>
             <dt><a href="api/_generated/newton.geometry.BroadPhaseSAP.html#newton.geometry.BroadPhaseSAP.__init__">(newton.geometry.BroadPhaseSAP method)</a></dt>
@@ -830,6 +845,7 @@ window.addEventListener("load", () => mermaid.run());
             <dt><a href="api/_generated/newton.sensors.SensorIMU.html#newton.sensors.SensorIMU.__init__">(newton.sensors.SensorIMU method)</a></dt>
             <dt><a href="api/_generated/newton.sensors.SensorRaycast.html#newton.sensors.SensorRaycast.__init__">(newton.sensors.SensorRaycast method)</a></dt>
             <dt><a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.__init__">(newton.sensors.SensorTiledCamera method)</a></dt>
+            <dt><a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.ClearData.__init__">(newton.sensors.SensorTiledCamera.ClearData method)</a></dt>
             <dt><a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Config.__init__">(newton.sensors.SensorTiledCamera.Config method)</a></dt>
             <dt><a href="api/_generated/newton.solvers.SolverBase.html#newton.solvers.SolverBase.__init__">(newton.solvers.SolverBase method)</a></dt>
             <dt><a href="api/_generated/newton.solvers.SolverFeatherstone.html#newton.solvers.SolverFeatherstone.__init__">(newton.solvers.SolverFeatherstone method)</a></dt>
@@ -1037,6 +1053,9 @@ window.addEventListener("load", () => mermaid.run());
       <dl>
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.add_shape_ellipsoid">add_shape_ellipsoid() (newton.ModelBuilder method)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.add_shape_gaussian">add_shape_gaussian() (newton.ModelBuilder method)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.add_shape_heightfield">add_shape_heightfield() (newton.ModelBuilder method)</a>
@@ -1416,13 +1435,28 @@ window.addEventListener("load", () => mermaid.run());
           </dl>
         </dd>
         <dt>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.ClearData.clear_albedo">clear_albedo (newton.sensors.SensorTiledCamera.ClearData attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.ClearData.clear_color">clear_color (newton.sensors.SensorTiledCamera.ClearData attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.ClearData.clear_depth">clear_depth (newton.sensors.SensorTiledCamera.ClearData attribute)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.State.html#newton.State.clear_forces">clear_forces() (newton.State method)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.viewer.ViewerGL.html#newton.viewer.ViewerGL.clear_model">clear_model() (newton.viewer.ViewerGL method)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.ClearData.clear_normal">clear_normal (newton.sensors.SensorTiledCamera.ClearData attribute)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.Mesh.html#newton.Mesh.clear_sdf">clear_sdf() (newton.Mesh method)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.ClearData.clear_shape_index">clear_shape_index (newton.sensors.SensorTiledCamera.ClearData attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.viewer.ViewerFile.html#newton.viewer.ViewerFile.close">close() (newton.viewer.ViewerFile method)</a>
@@ -1535,6 +1569,9 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.Mesh.html#newton.Mesh.com">com (newton.Mesh attribute)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.Gaussian.html#newton.Gaussian.compute_aabb">compute_aabb() (newton.Gaussian method)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.Mesh.html#newton.Mesh.compute_convex_hull">compute_convex_hull() (newton.Mesh method)</a>
         </dt>
         <dt>
@@ -1562,6 +1599,9 @@ window.addEventListener("load", () => mermaid.run());
         </dd>
         <dt>
           <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.compute_pinhole_camera_rays">compute_pinhole_camera_rays() (newton.sensors.SensorTiledCamera method)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Gaussian.html#newton.Gaussian.compute_proxy_mesh">compute_proxy_mesh() (newton.Gaussian method)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.ik.IKObjective.html#newton.ik.IKObjective.compute_residuals">compute_residuals() (newton.ik.IKObjective method)</a>
@@ -1667,6 +1707,9 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.Mesh.html#newton.Mesh.copy">copy() (newton.Mesh method)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.Gaussian.html#newton.Gaussian.count">count (newton.Gaussian property)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.sensors.SensorContact.html#newton.sensors.SensorContact.counterparts">counterparts (newton.sensors.SensorContact attribute)</a>
         </dt>
         <dt>
@@ -1720,13 +1763,17 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.SDF.html#newton.SDF.create_from_mesh">create_from_mesh() (newton.SDF static method)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.Gaussian.html#newton.Gaussian.create_from_ply">create_from_ply() (newton.Gaussian static method)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.SDF.html#newton.SDF.create_from_points">create_from_points() (newton.SDF static method)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.Mesh.html#newton.Mesh.create_from_usd">create_from_usd() (newton.Mesh static method)</a>
+          <a href="api/_generated/newton.Gaussian.html#newton.Gaussian.create_from_usd">create_from_usd() (newton.Gaussian static method)</a>
         </dt>
         <dd>
           <dl>
+            <dt><a href="api/_generated/newton.Mesh.html#newton.Mesh.create_from_usd">(newton.Mesh static method)</a></dt>
             <dt><a href="api/_generated/newton.TetMesh.html#newton.TetMesh.create_from_usd">(newton.TetMesh static method)</a></dt>
           </dl>
         </dd>
@@ -1790,6 +1837,9 @@ window.addEventListener("load", () => mermaid.run());
         </dt>
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.default_body_armature">default_body_armature (newton.ModelBuilder attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.DEFAULT_CLEAR_DATA">DEFAULT_CLEAR_DATA (newton.sensors.SensorTiledCamera attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.default_edge_kd">default_edge_kd (newton.ModelBuilder attribute)</a>
@@ -2075,10 +2125,14 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.geometry.HydroelasticSDF.html#newton.geometry.HydroelasticSDF.ContactSurfaceData.face_contact_count">face_contact_count (newton.geometry.HydroelasticSDF.ContactSurfaceData attribute)</a>
         </dt>
         <dt>
-          <a href="api/_generated/newton.Heightfield.html#newton.Heightfield.finalize">finalize() (newton.Heightfield method)</a>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.GaussianRenderMode.FAST">FAST (newton.sensors.SensorTiledCamera.GaussianRenderMode attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Gaussian.html#newton.Gaussian.finalize">finalize() (newton.Gaussian method)</a>
         </dt>
         <dd>
           <dl>
+            <dt><a href="api/_generated/newton.Heightfield.html#newton.Heightfield.finalize">(newton.Heightfield method)</a></dt>
             <dt><a href="api/_generated/newton.Mesh.html#newton.Mesh.finalize">(newton.Mesh method)</a></dt>
             <dt><a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.finalize">(newton.ModelBuilder method)</a></dt>
           </dl>
@@ -2092,13 +2146,13 @@ window.addEventListener("load", () => mermaid.run());
         <dt>
           <a href="api/_generated/newton.JointType.html#newton.JointType.FIXED">FIXED (newton.JointType attribute)</a>
         </dt>
-        <dt>
-          <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.ShapeConfig.flags">flags (newton.ModelBuilder.ShapeConfig property)</a>
-        </dt>
       </dl>
     </td>
     <td style="width: 33%; vertical-align: top;">
       <dl>
+        <dt>
+          <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.ShapeConfig.flags">flags (newton.ModelBuilder.ShapeConfig property)</a>
+        </dt>
         <dt>
           <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.flatten_color_image_to_rgba">flatten_color_image_to_rgba() (newton.sensors.SensorTiledCamera method)</a>
         </dt>
@@ -2144,6 +2198,18 @@ window.addEventListener("load", () => mermaid.run());
       <dl>
         <dt>
           <a href="api/_generated/newton.ik.IKSampler.html#newton.ik.IKSampler.GAUSS">GAUSS (newton.ik.IKSampler attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Gaussian.html#newton.Gaussian">Gaussian (class in newton)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.GeoType.html#newton.GeoType.GAUSSIAN">GAUSSIAN (newton.GeoType attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Model.html#newton.Model.gaussians_count">gaussians_count (newton.Model attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Model.html#newton.Model.gaussians_data">gaussians_data (newton.Model attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo.CtrlType.GENERAL">GENERAL (newton.solvers.SolverMuJoCo.CtrlType attribute)</a>
@@ -2201,16 +2267,16 @@ window.addEventListener("load", () => mermaid.run());
         <dt>
           <a href="api/_generated/newton.selection.ArticulationView.html#newton.selection.ArticulationView.get_dof_velocities">get_dof_velocities() (newton.selection.ArticulationView method)</a>
         </dt>
+      </dl>
+    </td>
+    <td style="width: 33%; vertical-align: top;">
+      <dl>
         <dt>
           <a href="api/_generated/newton.usd.get_float.html#newton.usd.get_float">get_float() (in module newton.usd)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.viewer.ViewerGL.html#newton.viewer.ViewerGL.get_frame">get_frame() (newton.viewer.ViewerGL method)</a>
         </dt>
-      </dl>
-    </td>
-    <td style="width: 33%; vertical-align: top;">
-      <dl>
         <dt>
           <a href="api/_generated/newton.viewer.ViewerFile.html#newton.viewer.ViewerFile.get_frame_count">get_frame_count() (newton.viewer.ViewerFile method)</a>
         </dt>
@@ -2261,6 +2327,9 @@ window.addEventListener("load", () => mermaid.run());
         </dt>
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.gravity">gravity (newton.Model attribute)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.GRAY_CLEAR_DATA">GRAY_CLEAR_DATA (newton.sensors.SensorTiledCamera attribute)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.solvers.SolverImplicitMPM.html#newton.solvers.SolverImplicitMPM.Config.grid_padding">grid_padding (newton.solvers.SolverImplicitMPM.Config attribute)</a>
@@ -2781,6 +2850,9 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.viewer.ViewerGL.html#newton.viewer.ViewerGL.log_capsules">log_capsules() (newton.viewer.ViewerGL method)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.viewer.ViewerGL.html#newton.viewer.ViewerGL.log_gaussian">log_gaussian() (newton.viewer.ViewerGL method)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.viewer.ViewerRerun.html#newton.viewer.ViewerRerun.log_geo">log_geo() (newton.viewer.ViewerRerun method)</a>
         </dt>
         <dd>
@@ -2930,6 +3002,9 @@ window.addEventListener("load", () => mermaid.run());
         </dt>
         <dt>
           <a href="api/_generated/newton.utils.MeshAdjacency.html#newton.utils.MeshAdjacency.Edge">MeshAdjacency.Edge (class in newton.utils)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Gaussian.html#newton.Gaussian.min_response">min_response (newton.Gaussian property)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.ik.IKJacobianType.html#newton.ik.IKJacobianType.MIXED">MIXED (newton.ik.IKJacobianType attribute)</a>
@@ -3164,6 +3239,9 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.Model.html#newton.Model.AttributeFrequency.ONCE">ONCE (newton.Model.AttributeFrequency attribute)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.Gaussian.html#newton.Gaussian.opacities">opacities (newton.Gaussian property)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.math.orthonormal_basis.html#newton.math.orthonormal_basis">orthonormal_basis() (in module newton.math)</a>
         </dt>
         <dt>
@@ -3304,6 +3382,9 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.JointTargetMode.html#newton.JointTargetMode.POSITION_VELOCITY">POSITION_VELOCITY (newton.JointTargetMode attribute)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.Gaussian.html#newton.Gaussian.positions">positions (newton.Gaussian property)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.geometry.HydroelasticSDF.html#newton.geometry.HydroelasticSDF.Config.pre_prune_accumulate_all_penetrating_aggregates">pre_prune_accumulate_all_penetrating_aggregates (newton.geometry.HydroelasticSDF.Config attribute)</a>
         </dt>
         <dt>
@@ -3325,6 +3406,9 @@ window.addEventListener("load", () => mermaid.run());
   <tr>
     <td style="width: 33%; vertical-align: top;">
       <dl>
+        <dt>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.GaussianRenderMode.QUALITY">QUALITY (newton.sensors.SensorTiledCamera.GaussianRenderMode attribute)</a>
+        </dt>
         <dt>
           <a href="api/_generated/newton.math.quat_between_axes.html#newton.math.quat_between_axes">quat_between_axes() (in module newton.math)</a>
         </dt>
@@ -3418,10 +3502,6 @@ window.addEventListener("load", () => mermaid.run());
             <dt><a href="api/_generated/newton.State.html#newton.State.requires_grad">(newton.State property)</a></dt>
           </dl>
         </dd>
-      </dl>
-    </td>
-    <td style="width: 33%; vertical-align: top;">
-      <dl>
         <dt>
           <a href="api/_generated/newton.ik.IKObjective.html#newton.ik.IKObjective.residual_dim">residual_dim() (newton.ik.IKObjective method)</a>
         </dt>
@@ -3432,6 +3512,10 @@ window.addEventListener("load", () => mermaid.run());
             <dt><a href="api/_generated/newton.ik.IKObjectiveRotation.html#newton.ik.IKObjectiveRotation.residual_dim">(newton.ik.IKObjectiveRotation method)</a></dt>
           </dl>
         </dd>
+      </dl>
+    </td>
+    <td style="width: 33%; vertical-align: top;">
+      <dl>
         <dt>
           <a href="api/_generated/newton.ModelBuilder.html#newton.ModelBuilder.ShapeConfig.restitution">restitution (newton.ModelBuilder.ShapeConfig attribute)</a>
         </dt>
@@ -3483,6 +3567,9 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.ik.IKSampler.html#newton.ik.IKSampler.ROBERTS">ROBERTS (newton.ik.IKSampler attribute)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.Gaussian.html#newton.Gaussian.rotations">rotations (newton.Gaussian property)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.utils.run_benchmark.html#newton.utils.run_benchmark">run_benchmark() (in module newton.utils)</a>
         </dt>
       </dl>
@@ -3512,6 +3599,9 @@ window.addEventListener("load", () => mermaid.run());
             <dt><a href="api/_generated/newton.viewer.ViewerViser.html#newton.viewer.ViewerViser.save_recording">(newton.viewer.ViewerViser method)</a></dt>
           </dl>
         </dd>
+        <dt>
+          <a href="api/_generated/newton.Gaussian.html#newton.Gaussian.scales">scales (newton.Gaussian property)</a>
+        </dt>
         <dt>
           <a href="api/_generated/newton.usd.PrimType.html#newton.usd.PrimType.SCENE">SCENE (newton.usd.PrimType attribute)</a>
         </dt>
@@ -3597,7 +3687,13 @@ window.addEventListener("load", () => mermaid.run());
           <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera">SensorTiledCamera (class in newton.sensors)</a>
         </dt>
         <dt>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.ClearData">SensorTiledCamera.ClearData (class in newton.sensors)</a>
+        </dt>
+        <dt>
           <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.Config">SensorTiledCamera.Config (class in newton.sensors)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.GaussianRenderMode">SensorTiledCamera.GaussianRenderMode (class in newton.sensors)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.sensors.SensorTiledCamera.html#newton.sensors.SensorTiledCamera.RenderLightType">SensorTiledCamera.RenderLightType (class in newton.sensors)</a>
@@ -3659,6 +3755,12 @@ window.addEventListener("load", () => mermaid.run());
         </dt>
         <dt>
           <a href="api/_generated/newton.solvers.SolverImplicitMPM.html#newton.solvers.SolverImplicitMPM.setup_collider">setup_collider() (newton.solvers.SolverImplicitMPM method)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Gaussian.html#newton.Gaussian.sh_coeffs">sh_coeffs (newton.Gaussian property)</a>
+        </dt>
+        <dt>
+          <a href="api/_generated/newton.Gaussian.html#newton.Gaussian.sh_degree">sh_degree (newton.Gaussian property)</a>
         </dt>
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.AttributeFrequency.SHAPE">SHAPE (newton.Model.AttributeFrequency attribute)</a>
@@ -3730,6 +3832,10 @@ window.addEventListener("load", () => mermaid.run());
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.shape_material_ka">shape_material_ka (newton.Model attribute)</a>
         </dt>
+      </dl>
+    </td>
+    <td style="width: 33%; vertical-align: top;">
+      <dl>
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.shape_material_kd">shape_material_kd (newton.Model attribute)</a>
         </dt>
@@ -3739,10 +3845,6 @@ window.addEventListener("load", () => mermaid.run());
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.shape_material_kf">shape_material_kf (newton.Model attribute)</a>
         </dt>
-      </dl>
-    </td>
-    <td style="width: 33%; vertical-align: top;">
-      <dl>
         <dt>
           <a href="api/_generated/newton.Model.html#newton.Model.shape_material_kh">shape_material_kh (newton.Model attribute)</a>
         </dt>

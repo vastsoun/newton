@@ -69,6 +69,13 @@ class SolverKamino(SolverBase):
     as a Nonlinear Complementarity Problem (NCP) over the set of bilateral kinematic joint
     constraints and unilateral constraints that include joint-limits and contacts.
 
+    .. note::
+        Currently still in `Beta`, so we do not recommend using this solver for
+        production use cases yet, as we expect many things to change in future releases.
+        This includes both the public API and internal implementation; adding support for
+        more simulation features (e.g. joints, constraints, actuators), performance
+        optimizations, and bug fixes.
+
     References:
         - Tsounis, Vassilios, Ruben Grandia, and Moritz Bächer.
           On Solving the Dynamics of Constrained Rigid Multi-Body Systems with Kinematic Loops.
@@ -92,9 +99,8 @@ class SolverKamino(SolverBase):
 
     .. code-block:: python
 
-        contacts = ...
         config = newton.solvers.SolverKamino.Config()
-        solver = newton.solvers.SolverKamino(model, contacts, config)
+        solver = newton.solvers.SolverKamino(model, config)
 
         # simulation loop
         for i in range(100):

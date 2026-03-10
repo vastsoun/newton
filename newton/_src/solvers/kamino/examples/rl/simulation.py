@@ -29,10 +29,11 @@ import glob
 import os
 import threading
 
-# Thirdparty
-import newton
 import torch  # noqa: TID253
 import warp as wp
+
+# Thirdparty
+import newton
 from newton._src.solvers.kamino._src.core.bodies import convert_body_com_to_origin
 from newton._src.solvers.kamino._src.core.control import ControlKamino
 from newton._src.solvers.kamino._src.core.model import ModelKamino
@@ -446,9 +447,7 @@ class RigidBodySim:
     # ------------------------------------------------------------------
 
     def _extract_metadata(self):
-        """Extract joint/body names, actuated DOF indices, and joint limits from the builder."""
-        import torch
-
+        """Extract joint/body names, actuated DOF indices, and joint limits from the Kamino model."""
         max_joints = self.sim.model.size.max_of_num_joints
         max_bodies = self.sim.model.size.max_of_num_bodies
 

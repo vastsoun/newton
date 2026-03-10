@@ -917,10 +917,8 @@ class WarmstarterContacts:
         """
 
         @classmethod
-        def from_string(cls, s: str | WarmstarterContacts.Method) -> WarmstarterContacts.Method:
+        def from_string(cls, s: str) -> WarmstarterContacts.Method:
             """Converts a string to a WarmstarterContacts.Method enum value."""
-            if isinstance(s, cls):
-                return s
             try:
                 return cls[s.upper()]
             except KeyError as e:

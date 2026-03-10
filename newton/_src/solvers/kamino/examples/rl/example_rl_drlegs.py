@@ -34,14 +34,18 @@
 ###########################################################################
 
 import argparse
+from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import torch  # noqa: TID253
 import warp as wp
+import yaml
 
 import newton
 from newton._src.solvers.kamino._src.core.joints import JointActuationType
 from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.render_config import MeshColors, RenderConfig
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.examples.rl.joystick import JoystickConfig, JoystickController
 from newton._src.solvers.kamino.examples.rl.observations import DrlegsBaseObservation
@@ -65,23 +69,46 @@ from newton._src.solvers.kamino.examples.rl.utils import (
 wp.set_module_options({"enable_backward": False})
 
 # ---------------------------------------------------------------------------
-# Walk task constants
+# Walk task config
 # ---------------------------------------------------------------------------
-_ACTION_SCALE = 0.4  # joint position scale (rad) for walk policy
-_CONTACT_DURATION = 0.35  # seconds per foot contact phase
-_PHASE_RATE = 1.0 / (2.0 * _CONTACT_DURATION)  # ~1.4286 Hz gait frequency
-_PHASE_EMBEDDING_K = 2  # periodic encoding order -> 4D embedding
-_VEL_CMD_MAX = 0.3  # m/s max velocity command
-_YAW_CMD_MAX = 0.8  # rad/s max yaw rate command
-_PD_KP = 15.0  # proportional gain (N·m/rad) for actuated joints
-_PD_KD = 0.6  # derivative gain (N·m·s/rad) for actuated joints
-_PD_ARMATURE = 0.01  # rotor inertia (kg·m²) for actuated joints
-_PATH_DEVIATION_SCALE = 0.1  # scaling for path deviation observations
-_LINEAR_PATH_ERROR_LIMIT = 0.1  # max path-to-root deviation before clipping (m)
-_STANDING_HEIGHT = 0.265  # m, default pelvis Z from body_pose_offset
-_HEIGHT_CMD_MIN = 0.18  # m, minimum pelvis height command (must match training)
-_HEIGHT_CMD_MAX = 0.27  # m, maximum pelvis height command (must match training)
-_HEIGHT_ERROR_SCALE = 0.05  # scaling for height error observation (must match training)
+
+_DEFAULTS = {
+    "action_scale": 0.4,
+    "contact_duration": 0.3,
+    "phase_embedding_k": 2,
+    "vel_cmd_max": 0.3,
+    "yaw_cmd_max": 0.8,
+    "pd_kp": 15.0,
+    "pd_kd": 0.6,
+    "pd_armature": 0.01,
+    "path_deviation_scale": 0.1,
+    "linear_path_error_limit": 0.1,
+    "standing_height": 0.265,
+    "height_cmd_min": 0.16,
+    "height_cmd_max": 0.27,
+    "height_error_scale": 0.05,
+    "sim_dt": 0.004,
+    "control_decimation": 5,
+    "body_pose_offset_z": 0.265,
+    "usd_model": "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda",
+    "policy_file": "drlegs_walk.pt",
+}
+
+
+def _load_drlegs_config(asset_path: Path) -> dict:
+    """Load walk config YAML from assets, falling back to built-in defaults."""
+    cfg = dict(_DEFAULTS)
+    yaml_path = asset_path / "dr_legs" / "rl_policies" / "drlegs_walk.yaml"
+    if yaml_path.exists():
+        with open(yaml_path, encoding="utf-8") as f:
+            overrides = yaml.safe_load(f) or {}
+        cfg.update(overrides)
+        msg.info(f"Loaded config from {yaml_path}")
+    else:
+        msg.info("No YAML config found, using built-in defaults")
+    # Derived constant
+    cfg["phase_rate"] = 1.0 / (2.0 * cfg["contact_duration"])
+    return cfg
 
 
 ###
@@ -92,34 +119,44 @@ _HEIGHT_ERROR_SCALE = 0.05  # scaling for height error observation (must match t
 class Example:
     def __init__(
         self,
+        config: dict,
         device: wp.DeviceLike = None,
         policy=None,
         headless: bool = False,
-        sim_dt: float = 0.01,
-        control_decimation: int = 1,
         max_steps: int = 10000,
     ):
+        self.cfg = config
+
         # Timing
-        self.sim_dt = sim_dt
-        self.control_decimation = control_decimation
-        self.env_dt = sim_dt * control_decimation
+        self.sim_dt = config["sim_dt"]
+        self.control_decimation = config["control_decimation"]
+        self.env_dt = self.sim_dt * self.control_decimation
         self.max_steps = max_steps
         num_worlds = 1
 
         # USD model path
         asset_path = newton.utils.download_asset("disneyresearch")
-        USD_MODEL_PATH = str(asset_path / "dr_legs/usd/dr_legs_with_meshes_and_boxes.usda")
+        usd_model_path = str(asset_path / config["usd_model"])
 
         # Create generic articulated body simulator
         self.sim_wrapper = RigidBodySim(
-            usd_model_path=USD_MODEL_PATH,
+            usd_model_path=usd_model_path,
             num_worlds=num_worlds,
             sim_dt=self.sim_dt,
             device=device,
             headless=headless,
-            body_pose_offset=(0.0, 0.0, 0.265, 0.0, 0.0, 0.0, 1.0),
+            body_pose_offset=(0.0, 0.0, config["body_pose_offset_z"], 0.0, 0.0, 0.0, 1.0),
             use_cuda_graph=True,
+            render_config=RenderConfig(
+                diffuse_scale=1.0,
+                specular_scale=0.3,
+                shadow_radius=10.0,
+            ),
         )
+
+        # Apply per-body-group colors for visual distinction
+        if not headless and self.sim_wrapper.viewer is not None:
+            self._apply_body_group_colors()
 
         # Override implicit PD gains to match training config exactly
         act_type = wp.to_torch(self.sim_wrapper.sim.model.joints.act_type)
@@ -128,27 +165,26 @@ class Example:
         a_j = wp.to_torch(self.sim_wrapper.sim.model.joints.a_j)
         b_j = wp.to_torch(self.sim_wrapper.sim.model.joints.b_j)
         actuated_mask = act_type != JointActuationType.PASSIVE
-        k_p[actuated_mask] = _PD_KP
-        k_d[actuated_mask] = _PD_KD
-        a_j[actuated_mask] = _PD_ARMATURE
+        k_p[actuated_mask] = config["pd_kp"]
+        k_d[actuated_mask] = config["pd_kd"]
+        a_j[actuated_mask] = config["pd_armature"]
         k_p[~actuated_mask] = 0.0
         k_d[~actuated_mask] = 0.0
         b_j.fill_(0.0)
 
         # Observation builder (63D base: root_pos(3) + joints(36) + action_hist(24))
-        # action_scale=_ACTION_SCALE so that history stores scale*actions = 0.4*output,
-        # matching training where action_scale=1.0 but setpoints are already 0.4*output.
         self.obs_builder = DrlegsBaseObservation(
             body_sim=self.sim_wrapper,
-            action_scale=_ACTION_SCALE,
+            action_scale=config["action_scale"],
         )
 
         # Phase clock for gait timing
+        phase_k = config["phase_embedding_k"]
         self._phase = torch.zeros(num_worlds, device=self.torch_device, dtype=torch.float32)
-        freq_2pi, offset = periodic_encoding(k=_PHASE_EMBEDDING_K)
+        freq_2pi, offset = periodic_encoding(k=phase_k)
         self._freq_2pi = torch.from_numpy(freq_2pi).float().to(self.torch_device)
         self._offset = torch.from_numpy(offset).float().to(self.torch_device)
-        self._phase_enc = torch.zeros(num_worlds, _PHASE_EMBEDDING_K * 2, device=self.torch_device, dtype=torch.float32)
+        self._phase_enc = torch.zeros(num_worlds, phase_k * 2, device=self.torch_device, dtype=torch.float32)
 
         # Path frame state
         self._path_heading = torch.zeros(num_worlds, device=self.torch_device, dtype=torch.float32)
@@ -160,7 +196,9 @@ class Example:
         self._cmd_yaw_rate = torch.zeros(num_worlds, 1, device=self.torch_device, dtype=torch.float32)
 
         # Height command buffer (default = standing height, adjustable via keyboard Y/N)
-        self._cmd_height = torch.full((num_worlds, 1), _STANDING_HEIGHT, device=self.torch_device, dtype=torch.float32)
+        self._cmd_height = torch.full(
+            (num_worlds, 1), config["standing_height"], device=self.torch_device, dtype=torch.float32
+        )
 
         # Zero column for 2D->3D padding
         self._zeros = torch.zeros(num_worlds, 1, device=self.torch_device, dtype=torch.float32)
@@ -185,17 +223,49 @@ class Example:
             num_worlds=num_worlds,
             device=self.torch_device,
             config=JoystickConfig(
-                forward_velocity_base=_VEL_CMD_MAX,
+                forward_velocity_base=config["vel_cmd_max"],
                 forward_velocity_turbo=0.0,
-                lateral_velocity_base=_VEL_CMD_MAX,
+                lateral_velocity_base=config["vel_cmd_max"],
                 lateral_velocity_turbo=0.0,
-                angular_velocity_base=_YAW_CMD_MAX,
+                angular_velocity_base=config["yaw_cmd_max"],
                 angular_velocity_turbo=0.0,
             ),
         )
 
         # Policy (None = random actions)
         self.policy = policy
+
+    # Body name prefix to color mapping
+    BODY_GROUP_COLORS: ClassVar[dict] = {
+        "pelvis": MeshColors.BONE,
+        "hip_servos": MeshColors.DARK,
+        "upperleg_link": MeshColors.SAGEGREY,
+        "lowerleg_link": MeshColors.BONE,
+        "ankle_bracket": MeshColors.SAGEGREY,
+        "foot": MeshColors.DARK,
+        "servohorn": MeshColors.DARK,
+        "upperleg_rod": MeshColors.DARK,
+    }
+
+    def _apply_body_group_colors(self):
+        """Color robot shapes by body group for visual distinction."""
+        model = self.sim_wrapper._newton_model
+        shape_body = model.shape_body.numpy()
+        body_labels = model.body_label
+
+        color_overrides = {}
+        for s_idx in range(model.shape_count):
+            bid = int(shape_body[s_idx])
+            if bid < 0:
+                continue
+            name = body_labels[bid].rsplit("/", 1)[-1]
+            for prefix, color in self.BODY_GROUP_COLORS.items():
+                if name.startswith(prefix):
+                    color_overrides[s_idx] = color
+                    break
+
+        if color_overrides:
+            self.sim_wrapper.viewer.update_shape_colors(color_overrides)
 
     # Convenience accessors
     @property
@@ -211,7 +281,9 @@ class Example:
     def _apply_actions(self):
         """Convert policy actions to implicit PD joint position references."""
         self.sim_wrapper.q_j_ref.zero_()
-        self.sim_wrapper.q_j_ref[:, self.sim_wrapper.actuated_dof_indices_tensor] = _ACTION_SCALE * self.actions
+        self.sim_wrapper.q_j_ref[:, self.sim_wrapper.actuated_dof_indices_tensor] = (
+            self.cfg["action_scale"] * self.actions
+        )
         self.sim_wrapper.dq_j_ref.zero_()
 
     def _advance_path(self):
@@ -230,7 +302,7 @@ class Example:
         # Clip path position to stay near robot (prevent drift)
         root_pos_2d = self.sim_wrapper.q_i[:, 0, :2]
         diff = self._path_position - root_pos_2d
-        clipped = diff.renorm(p=2, dim=0, maxnorm=_LINEAR_PATH_ERROR_LIMIT)
+        clipped = diff.renorm(p=2, dim=0, maxnorm=self.cfg["linear_path_error_limit"])
         self._path_position[:] = root_pos_2d + clipped
 
     def reset(self):
@@ -241,7 +313,7 @@ class Example:
         self._phase.zero_()
         self._cmd_vel.zero_()
         self._cmd_yaw_rate.zero_()
-        self._cmd_height.fill_(_STANDING_HEIGHT)
+        self._cmd_height.fill_(self.cfg["standing_height"])
         self._path_heading.zero_()
         self._path_position[:] = self.sim_wrapper.q_i[:, 0, :2]
         self.sim_wrapper.q_j_ref.zero_()
@@ -263,15 +335,19 @@ class Example:
             pitch = self.joystick.head_pitch  # right stick Y, positive = up
             if pitch >= 0:
                 t = min(1.0, pitch / self.joystick._cfg.head_pitch_up)
-                self._cmd_height[0, 0] = _STANDING_HEIGHT + t * (_HEIGHT_CMD_MAX - _STANDING_HEIGHT)
+                self._cmd_height[0, 0] = self.cfg["standing_height"] + t * (
+                    self.cfg["height_cmd_max"] - self.cfg["standing_height"]
+                )
             else:
                 t = min(1.0, -pitch / self.joystick._cfg.head_pitch_down)
-                self._cmd_height[0, 0] = _STANDING_HEIGHT - t * (_STANDING_HEIGHT - _HEIGHT_CMD_MIN)
+                self._cmd_height[0, 0] = self.cfg["standing_height"] - t * (
+                    self.cfg["standing_height"] - self.cfg["height_cmd_min"]
+                )
         elif self.viewer is not None and hasattr(self.viewer, "is_key_down"):
             if self.viewer.is_key_down("y"):
-                self._cmd_height[0, 0] = min(self._cmd_height[0, 0].item() + 0.001, _HEIGHT_CMD_MAX)
+                self._cmd_height[0, 0] = min(self._cmd_height[0, 0].item() + 0.001, self.cfg["height_cmd_max"])
             if self.viewer.is_key_down("n"):
-                self._cmd_height[0, 0] = max(self._cmd_height[0, 0].item() - 0.001, _HEIGHT_CMD_MIN)
+                self._cmd_height[0, 0] = max(self._cmd_height[0, 0].item() - 0.001, self.cfg["height_cmd_min"])
 
     def sim_step(self):
         """Observations -> policy inference -> actions -> physics step.
@@ -284,7 +360,7 @@ class Example:
             + joints(36) + action_hist(24)
         """
         # Advance phase clock
-        self._phase.add_(self.env_dt * _PHASE_RATE).remainder_(1.0)
+        self._phase.add_(self.env_dt * self.cfg["phase_rate"]).remainder_(1.0)
 
         # Advance path frame
         self._advance_path()
@@ -305,7 +381,7 @@ class Example:
         diff_xy = self.sim_wrapper.q_i[:, 0, :2] - self._path_position  # (N, 2)
         diff_3d = torch.cat([diff_xy, self._zeros], dim=-1)  # (N, 3)
         dev_in_path = quat_rotate_inv(path_quat, diff_3d)[:, :2]  # (N, 2)
-        inv_scale = 1.0 / _PATH_DEVIATION_SCALE
+        inv_scale = 1.0 / self.cfg["path_deviation_scale"]
         path_dev = dev_in_path * inv_scale
 
         # --- Path deviation in heading frame (2D, scaled) ---
@@ -335,7 +411,7 @@ class Example:
 
         # --- Pelvis height command and error (2D) ---
         actual_height = self.sim_wrapper.q_i[:, 0, 2:3]  # (N, 1)
-        height_error = (actual_height - self._cmd_height) / _HEIGHT_ERROR_SCALE  # (N, 1)
+        height_error = (actual_height - self._cmd_height) / self.cfg["height_error_scale"]  # (N, 1)
 
         # --- Build full 94D observation ---
         i = 0
@@ -408,11 +484,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--control-decimation",
         type=int,
-        default=5,
-        help="Number of physics substeps per RL step",
+        default=None,
+        help="Number of physics substeps per RL step (overrides YAML)",
     )
-    parser.add_argument("--sim-dt", type=float, default=0.004, help="Physics substep duration in seconds")
-    parser.add_argument("--policy", type=str, default=None, help="Path to an rsl_rl checkpoint .pt file")
+    parser.add_argument(
+        "--sim-dt", type=float, default=None, help="Physics substep duration in seconds (overrides YAML)"
+    )
+    parser.add_argument(
+        "--policy", type=str, default=None, help="Path to an rsl_rl checkpoint .pt file (overrides asset default)"
+    )
     parser.add_argument(
         "--mode",
         choices=["sync", "async"],
@@ -441,20 +521,34 @@ if __name__ == "__main__":
     # Convert warp device to torch device string
     torch_device = "cuda" if device.is_cuda else "cpu"
 
-    # Load trained policy if provided
+    # Load config from YAML (with hardcoded fallback defaults)
+    asset_path = newton.utils.download_asset("disneyresearch")
+    config = _load_drlegs_config(asset_path)
+
+    # CLI overrides
+    if args.sim_dt is not None:
+        config["sim_dt"] = args.sim_dt
+    if args.control_decimation is not None:
+        config["control_decimation"] = args.control_decimation
+
+    # Load policy: explicit --policy flag > asset default > random actions
     policy = None
     if args.policy:
         policy = _load_policy_checkpoint(args.policy, device=torch_device)
         msg.info(f"Loaded policy from: {args.policy}")
     else:
-        msg.info("No policy provided -- using random actions")
+        default_policy = asset_path / "dr_legs" / "rl_policies" / config["policy_file"]
+        if default_policy.exists():
+            policy = _load_policy_checkpoint(str(default_policy), device=torch_device)
+            msg.info(f"Loaded default policy from: {default_policy}")
+        else:
+            msg.info(f"No policy at {default_policy} -- using random actions")
 
     example = Example(
+        config=config,
         device=device,
         policy=policy,
         headless=args.headless,
-        sim_dt=args.sim_dt,
-        control_decimation=args.control_decimation,
         max_steps=args.num_steps,
     )
 

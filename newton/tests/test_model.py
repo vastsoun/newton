@@ -758,6 +758,43 @@ class TestModelJoints(unittest.TestCase):
             builder_4.collapse_fixed_joints(joints_to_keep=["fixed_1"])
         self.assertIn("Skipped joint fixed_1 has a child body_2 with zero or negative mass", str(cm.warning))
 
+    def test_collapse_fixed_joints_preserves_loop_closure(self):
+        """Test that collapse_fixed_joints retains loop-closing joints."""
+        builder = ModelBuilder()
+
+        # world --(free)--> b0 --(revolute)--> b1 --(fixed)--> b2 --(revolute, loop)--> b0
+        b0 = builder.add_link(mass=1.0)
+        j0 = builder.add_joint_free(parent=-1, child=b0)
+        b1 = builder.add_link(mass=1.0)
+        j1 = builder.add_joint_revolute(parent=b0, child=b1, axis=wp.vec3(0, 0, 1))
+        b2 = builder.add_link(mass=1.0)
+        j2 = builder.add_joint_fixed(parent=b1, child=b2)
+        _j_loop = builder.add_joint_revolute(parent=b2, child=b0, axis=wp.vec3(0, 0, 1))
+        builder.add_articulation([j0, j1, j2])
+
+        self.assertEqual(builder.joint_count, 4)
+        self.assertEqual(builder.body_count, 3)
+
+        builder.collapse_fixed_joints()
+
+        # fixed b1->b2 collapsed, b2 merged into b1 -> 2 bodies, 3 joints
+        self.assertEqual(builder.body_count, 2)
+        self.assertEqual(builder.joint_count, 3)
+        self.assertEqual(
+            builder.joint_type.count(newton.JointType.REVOLUTE), 2, "Loop-closing revolute joint was dropped"
+        )
+
+        # loop joint parent must be re-mapped from b2 to b1 (now body index 1)
+        loop_parent = builder.joint_parent[-1]
+        self.assertEqual(loop_parent, 1, "Loop joint parent was not re-mapped to the merged body")
+
+        # expected DOFs: free(6) + revolute(1) + revolute(1) = 8
+        self.assertEqual(builder.joint_dof_count, 8)
+        self.assertEqual(len(builder.joint_qd), 8)
+        self.assertEqual(len(builder.joint_velocity_limit), 8)
+        self.assertEqual(len(builder.joint_friction), 8)
+        self.assertEqual(builder.joint_coord_count, len(builder.joint_q))
+
     def test_articulation_validation_contiguous(self):
         """Test that articulation requires contiguous joint indices"""
         builder = ModelBuilder()

@@ -33,8 +33,8 @@ import os
 import numpy as np
 import torch  # noqa: TID253
 import warp as wp
-
 from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino._src.utils.viewer import ViewerConfig
 from newton._src.solvers.kamino.examples import run_headless
 from newton._src.solvers.kamino.examples.rl.joystick import JoystickController
 from newton._src.solvers.kamino.examples.rl.observations import BipedalObservation
@@ -122,7 +122,7 @@ class Example:
         self.env_dt = self.sim_dt * self.control_decimation
 
         # USD model path
-        USD_MODEL_PATH = os.path.join(_ASSETS_DIR, "bipedal", "bdx_merged.usda")
+        USD_MODEL_PATH = os.path.join(_ASSETS_DIR, "bipedal", "bipedal_with_textures.usda")
 
         # Create generic articulated body simulator
         self.sim_wrapper = RigidBodySim(
@@ -133,6 +133,11 @@ class Example:
             headless=headless,
             body_pose_offset=(0.0, 0.0, 0.33, 0.0, 0.0, 0.0, 1.0),
             use_cuda_graph=True,
+            render_config=ViewerConfig(
+                diffuse_scale=1.0,
+                specular_scale=0.3,
+                shadow_radius=10.0,
+            ),
         )
 
         # Override PD gains

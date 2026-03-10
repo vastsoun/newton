@@ -66,6 +66,18 @@ class CameraFollowRobot:
 
         self._viewer.set_camera(wp.vec3(*self._cam_pos.tolist()), self._pitch, self._yaw)
 
+    def set_offset(self, offset: tuple[float, float, float]):
+        """Change the camera offset from the robot."""
+        self._offset = np.array(offset, dtype=np.float32)
+
+    def set_pitch(self, pitch: float):
+        """Change the camera pitch angle in degrees."""
+        self._pitch = pitch
+
+    def set_yaw(self, yaw: float):
+        """Change the camera yaw angle in degrees."""
+        self._yaw = yaw
+
     def reset(self):
         """Reset smoothing state (e.g. after a simulation reset)."""
         self._cam_pos = None

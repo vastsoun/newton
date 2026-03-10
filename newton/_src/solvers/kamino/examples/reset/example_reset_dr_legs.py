@@ -146,7 +146,7 @@ class Example:
         # Set solver config
         config = Simulator.Config()
         config.dt = self.sim_dt
-        config.solver.problem.alpha = 0.1
+        config.solver.constraints.alpha = 0.1
         config.solver.padmm.primal_tolerance = 1e-4
         config.solver.padmm.dual_tolerance = 1e-4
         config.solver.padmm.compl_tolerance = 1e-4
@@ -154,11 +154,11 @@ class Example:
         config.solver.padmm.eta = 1e-5
         config.solver.padmm.rho_0 = 0.02
         config.solver.padmm.rho_min = 0.01
-        config.solver.use_solver_acceleration = True
-        config.solver.warmstart_mode = "containers"
-        config.solver.contact_warmstart_method = "geom_pair_net_force"
+        config.solver.padmm.use_acceleration = True
+        config.solver.padmm.warmstart_mode = "containers"
+        config.solver.padmm.contact_warmstart_method = "geom_pair_net_force"
         config.solver.collect_solver_info = False
-        config.solver.compute_metrics = False
+        config.solver.compute_solution_metrics = False
         config.solver.use_fk_solver = True
 
         # Create a simulator

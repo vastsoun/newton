@@ -183,7 +183,7 @@ class Example:
         logging: bool = False,
         linear_solver: str = "LLTB",
         linear_solver_maxiter: int = 0,
-        avoid_graph_conditionals: bool = False,
+        use_graph_conditionals: bool = False,
         headless: bool = False,
         record_video: bool = False,
         async_save: bool = False,
@@ -241,6 +241,9 @@ class Example:
                 assert abs(joint.k_p_j[0] - 50.0) < 1e-4
                 assert abs(joint.k_d_j[0] - 1.0) < 1e-4
 
+        # Parse the linear solver max iterations for iterative solvers from the command-line arguments
+        linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
+
         # Set solver config
         config = Simulator.Config()
         config.dt = self.sim_dt
@@ -248,9 +251,9 @@ class Example:
         config.solver.sparse_jacobian = False
         config.solver.sparse_dynamics = False
         config.solver.integrator = "moreau"  # Select from {"euler", "moreau"}
-        config.solver.problem.alpha = 0.1
-        config.solver.problem.beta = 0.011
-        config.solver.problem.gamma = 0.05
+        config.solver.constraints.alpha = 0.1
+        config.solver.constraints.beta = 0.011
+        config.solver.constraints.gamma = 0.05
         config.solver.padmm.primal_tolerance = 1e-4
         config.solver.padmm.dual_tolerance = 1e-4
         config.solver.padmm.compl_tolerance = 1e-4
@@ -259,15 +262,14 @@ class Example:
         config.solver.padmm.rho_0 = 0.02  # try 0.02 for Balanced update
         config.solver.padmm.rho_min = 0.05
         config.solver.padmm.penalty_update_method = "fixed"  # try "balanced"
-        config.solver.use_solver_acceleration = True
-        config.solver.warmstart_mode = "containers"
-        config.solver.contact_warmstart_method = "geom_pair_net_force"
+        config.solver.padmm.use_acceleration = True
+        config.solver.padmm.warmstart_mode = "containers"
+        config.solver.padmm.contact_warmstart_method = "geom_pair_net_force"
         config.solver.collect_solver_info = False
-        config.solver.compute_metrics = logging and not use_cuda_graph
-        linear_solver_cls = {v: k for k, v in LinearSolverShorthand.items()}[linear_solver.upper()]
-        config.solver.linear_solver_type = linear_solver_cls
-        config.solver.linear_solver_kwargs = {"maxiter": linear_solver_maxiter} if linear_solver_maxiter > 0 else {}
-        config.solver.avoid_graph_conditionals = avoid_graph_conditionals
+        config.solver.compute_solution_metrics = logging and not use_cuda_graph
+        config.solver.dynamics.linear_solver_type = linear_solver
+        config.solver.dynamics.linear_solver_kwargs = linear_solver_kwargs
+        config.solver.padmm.use_graph_conditionals = use_graph_conditionals
         config.solver.angular_velocity_damping = 0.0
 
         # Create a simulator
@@ -510,10 +512,10 @@ if __name__ == "__main__":
         "--linear-solver-maxiter", default=0, type=int, help="Max number of iterations for iterative linear solvers"
     )
     parser.add_argument(
-        "--avoid-graph-conditionals",
+        "--use-graph-conditionals",
         action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Avoid CUDA graph conditional nodes in iterative solvers",
+        default=True,
+        help="Use CUDA graph conditional nodes in iterative solvers",
     )
     args = parser.parse_args()
 
@@ -550,7 +552,7 @@ if __name__ == "__main__":
         num_worlds=args.num_worlds,
         linear_solver=args.linear_solver,
         linear_solver_maxiter=args.linear_solver_maxiter,
-        avoid_graph_conditionals=args.avoid_graph_conditionals,
+        use_graph_conditionals=args.use_graph_conditionals,
         max_steps=args.num_steps,
         implicit_pd=args.implicit_pd,
         gravity=args.gravity,

@@ -24,12 +24,10 @@ See the :mod:`newton._src.solvers.kamino.solvers.padmm` module for a detailed de
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
-from typing import Any, Literal
 
 import warp as wp
 
-from ......sim import Model, ModelBuilder
+from ....config import PADMMSolverConfig
 from ...core.data import DataKamino
 from ...core.model import ModelKamino
 from ...core.size import SizeKamino
@@ -61,15 +59,19 @@ from .kernels import (
     make_initialize_solver_kernel,
     make_update_dual_variables_and_compute_primal_dual_residuals,
 )
-from .types import PADMMConfigStruct, PADMMData, PADMMPenaltyUpdate, PADMMWarmStartMode
+from .types import (
+    PADMMConfigStruct,
+    PADMMData,
+    PADMMPenaltyUpdate,
+    PADMMWarmStartMode,
+    convert_config_to_struct,
+)
 
 ###
 # Module interface
 ###
 
-__all__ = [
-    "PADMMSolver",
-]
+__all__ = ["PADMMSolver"]
 
 ###
 # Module configs
@@ -99,299 +101,13 @@ class PADMMSolver:
     - can be configured with various tolerances, penalty parameters, and other settings.
     """
 
-    @dataclass
-    class Config:
-        """
-        A container to bundle PADMM solver config.
+    Config = PADMMSolverConfig
+    """
+    Defines a type alias of the PADMM solver configurations container, including convergence
+    criteria, maximum iterations, and options for the linear solver and preconditioning.
 
-        Attributes:
-            primal_tolerance (float): The target tolerance on the total primal residual `r_primal`.\n
-                Must be greater than zero. Defaults to `1e-6`.
-            dual_tolerance (float): The target tolerance on the total dual residual `r_dual`.\n
-                Must be greater than zero. Defaults to `1e-6`.
-            compl_tolerance (float): The target tolerance on the total complementarity residual `r_compl`.\n
-                Must be greater than zero. Defaults to `1e-6`.
-            restart_tolerance (float): The tolerance on the total combined primal-dual
-                residual `r_comb`, for determining when gradient acceleration should be restarted.\n
-                Must be greater than zero. Defaults to `0.999`.
-            eta (float): The proximal regularization parameter.\n
-                Must be greater than zero. Defaults to `1e-5`.
-            rho_0 (float): The initial value of the ALM penalty parameter.\n
-                Must be greater than zero. Defaults to `1.0`.
-            rho_min (float): The lower-bound applied to the ALM penalty parameter.\n
-                Used to ensure numerical stability when adaptive penalty updates are used.\n
-                Must be greater than zero. Defaults to `1e-5`.
-            a_0 (float): The initial value of the acceleration parameter.\n
-                Must be greater than zero. Defaults to `1.0`.
-            alpha (float): The threshold on primal-dual residual ratios,
-                used to determine when penalty updates should occur.\n
-                Must be greater than `1.0`. Defaults to `10.0`.
-            tau (float): The factor by which the penalty is increased/decreased
-                when the primal-dual residual ratios exceed the threshold `alpha`.\n
-                Must be greater than `1.0`. Defaults to `1.5`.
-            max_iterations (int): The maximum number of solver iterations.\n
-                Must be greater than zero. Defaults to `200`.
-            penalty_update_freq (int): The permitted frequency of penalty updates.\n
-                If zero, no updates are performed. Otherwise, updates are performed every
-                `penalty_update_freq` iterations. Defaults to `10`.
-            penalty_update_method (str): The penalty update method used to adapt the penalty parameter.\n
-                Defaults to `fixed`. See :class:`PADMMPenaltyUpdate` for details.
-
-        """
-
-        primal_tolerance: float = 1e-6
-        """
-        The target tolerance on the total primal residual `r_primal`.\n
-        Must be greater than zero. Defaults to `1e-6`.
-        """
-
-        dual_tolerance: float = 1e-6
-        """
-        The target tolerance on the total dual residual `r_dual`.\n
-        Must be greater than zero. Defaults to `1e-6`.
-        """
-
-        compl_tolerance: float = 1e-6
-        """
-        The target tolerance on the total complementarity residual `r_compl`.\n
-        Must be greater than zero. Defaults to `1e-6`.
-        """
-
-        restart_tolerance: float = 0.999
-        """
-        The tolerance on the total combined primal-dual residual `r_comb`,
-        for determining when gradient acceleration should be restarted.\n
-        Must be greater than zero. Defaults to `0.999`.
-        """
-
-        eta: float = 1e-5
-        """
-        The proximal regularization parameter.\n
-        Must be greater than zero. Defaults to `1e-5`.
-        """
-
-        rho_0: float = 1.0
-        """
-        The initial value of the ALM penalty parameter.\n
-        Must be greater than zero. Defaults to `1.0`.
-        """
-
-        rho_min: float = 1e-5
-        """
-        The lower-bound applied to the ALM penalty parameter.\n
-        Used to ensure numerical stability when adaptive penalty updates are used.\n
-        Must be greater than zero. Defaults to `1e-5`.
-        """
-
-        a_0: float = 1.0
-        """
-        The initial value of the acceleration parameter.\n
-        Must be greater than zero. Defaults to `1.0`.
-        """
-
-        alpha: float = 10.0
-        """
-        The primal-dual residual threshold used to determine when penalty updates are needed.
-        Must be greater than one. Defaults to `10.0`.
-        """
-
-        tau: float = 1.5
-        """
-        The factor by which the ALM penalty is increased/decreased when
-        the primal-dual residual ratios exceed the threshold `alpha`.\n
-        Must be greater than `1.0`. Defaults to `1.5`.
-        """
-
-        max_iterations: int = 200
-        """
-        The maximum number of solver iterations.\n
-        Must be greater than zero. Defaults to `200`.
-        """
-
-        penalty_update_freq: int = 1
-        """
-        The permitted frequency of penalty updates.\n
-        If zero, no updates are performed. Otherwise, updates are performed every
-        `penalty_update_freq` iterations. Defaults to `1`.
-        """
-
-        penalty_update_method: Literal["fixed", "balanced"] = "fixed"
-        """
-        The penalty update method used to adapt the penalty parameter.\n
-        Defaults to `fixed`. See :class:`PADMMPenaltyUpdate` for details.
-        """
-
-        linear_solver_tolerance: float = 0.0
-        """
-        The default absolute tolerance for the iterative linear solver.\n
-        When positive, the iterative solver's atol is initialized to this value
-        at the start of each ADMM solve.\n
-        When zero, the iterative solver's own tolerance is left unchanged.\n
-        Must be non-negative. Defaults to `0.0`.
-        """
-
-        linear_solver_tolerance_ratio: float = 0.0
-        """
-        The ratio used to adapt the iterative linear solver tolerance from the ADMM primal residual.\n
-        When positive, the linear solver absolute tolerance is set to
-        `ratio * ||r_primal||_2` at each ADMM iteration.\n
-        When zero, the linear solver tolerance is not adapted (fixed tolerance).\n
-        Must be non-negative. Defaults to `0.0`.
-        """
-
-        def check(self):
-            """
-            Checks the validity of PADMM solver config.
-            """
-            if self.primal_tolerance < 0.0:
-                raise ValueError(f"Invalid primal tolerance: {self.primal_tolerance}. Must be non-negative.")
-            if self.dual_tolerance < 0.0:
-                raise ValueError(f"Invalid dual tolerance: {self.dual_tolerance}. Must be non-negative.")
-            if self.compl_tolerance < 0.0:
-                raise ValueError(f"Invalid complementarity tolerance: {self.compl_tolerance}. Must be non-negative.")
-            if not (0.0 <= self.restart_tolerance < 1.0):
-                raise ValueError(
-                    f"Invalid restart tolerance: {self.restart_tolerance}. Must be in the range [0.0, 1.0)."
-                )
-            if self.eta <= 0.0:
-                raise ValueError(f"Invalid proximal parameter: {self.eta}. Must be greater than zero.")
-            if self.rho_0 <= 0.0:
-                raise ValueError(f"Invalid initial ALM penalty: {self.rho_0}. Must be greater than zero.")
-            if self.rho_min <= 0.0:
-                raise ValueError(f"Invalid minimum ALM penalty: {self.rho_min}. Must be greater than zero.")
-            if self.a_0 <= 0.0:
-                raise ValueError(f"Invalid initial acceleration parameter: {self.a_0}. Must be greater than zero.")
-            if self.alpha <= 1.0:
-                raise ValueError(f"Invalid penalty threshold: {self.alpha}. Must be greater than one.")
-            if self.tau <= 1.0:
-                raise ValueError(f"Invalid penalty increment factor: {self.tau}. Must be greater than one.")
-            if self.max_iterations <= 0:
-                raise ValueError(f"Invalid maximum iterations: {self.max_iterations}. Must be a positive integer.")
-            if self.penalty_update_freq < 0:
-                raise ValueError(f"Invalid penalty update frequency: {self.penalty_update_freq}. Must be non-negative.")
-            # Conversion to PADMMPenaltyUpdate will raise an error if the input string is invalid.
-            PADMMPenaltyUpdate.from_string(self.penalty_update_method)
-            if self.linear_solver_tolerance < 0.0:
-                raise ValueError(
-                    f"Invalid linear solver tolerance: {self.linear_solver_tolerance}. Must be non-negative."
-                )
-            if self.linear_solver_tolerance_ratio < 0.0:
-                raise ValueError(
-                    f"Invalid linear solver tolerance ratio: {self.linear_solver_tolerance_ratio}. Must be non-negative."
-                )
-
-        def to_struct(self) -> PADMMConfigStruct:
-            """
-            Converts the host-side config to the corresponding device-side object.
-
-            Returns:
-                PADMMConfigStruct: The solver config as a warp struct.
-            """
-            config_struct = PADMMConfigStruct()
-            config_struct.primal_tolerance = self.primal_tolerance
-            config_struct.dual_tolerance = self.dual_tolerance
-            config_struct.compl_tolerance = self.compl_tolerance
-            config_struct.restart_tolerance = self.restart_tolerance
-            config_struct.eta = self.eta
-            config_struct.rho_0 = self.rho_0
-            config_struct.rho_min = self.rho_min
-            config_struct.a_0 = self.a_0
-            config_struct.alpha = self.alpha
-            config_struct.tau = self.tau
-            config_struct.max_iterations = self.max_iterations
-            config_struct.penalty_update_freq = self.penalty_update_freq
-            config_struct.penalty_update_method = PADMMPenaltyUpdate.from_string(self.penalty_update_method)
-            config_struct.linear_solver_tolerance = self.linear_solver_tolerance
-            config_struct.linear_solver_tolerance_ratio = self.linear_solver_tolerance_ratio
-            return config_struct
-
-        def __post_init__(self):
-            """Post-initialization to validate config."""
-            self.check()
-
-        @classmethod
-        def register_custom_attributes(cls, builder: ModelBuilder) -> None:
-            """
-            Register custom attributes for this config.
-
-            Args:
-                builder (ModelBuilder): The model builder to register the custom attributes to.
-            """
-
-            # Register KaminoSceneAPI attributes so the USD importer will store them on the model
-            builder.add_custom_attribute(
-                ModelBuilder.CustomAttribute(
-                    name="padmm_primal_tolerance",
-                    frequency=Model.AttributeFrequency.ONCE,
-                    assignment=Model.AttributeAssignment.MODEL,
-                    dtype=wp.float32,
-                    default=1e-6,
-                    namespace="kamino",
-                    usd_attribute_name="newton:kamino:padmm:primalTolerance",
-                )
-            )
-            builder.add_custom_attribute(
-                ModelBuilder.CustomAttribute(
-                    name="padmm_dual_tolerance",
-                    frequency=Model.AttributeFrequency.ONCE,
-                    assignment=Model.AttributeAssignment.MODEL,
-                    dtype=wp.float32,
-                    default=1e-6,
-                    namespace="kamino",
-                    usd_attribute_name="newton:kamino:padmm:dualTolerance",
-                )
-            )
-            builder.add_custom_attribute(
-                ModelBuilder.CustomAttribute(
-                    name="padmm_complementarity_tolerance",
-                    frequency=Model.AttributeFrequency.ONCE,
-                    assignment=Model.AttributeAssignment.MODEL,
-                    dtype=wp.float32,
-                    default=1e-6,
-                    namespace="kamino",
-                    usd_attribute_name="newton:kamino:padmm:complementarityTolerance",
-                )
-            )
-
-            # Separately register `newton:maxSolverIterations` from `KaminoSceneAPI` so we have access
-            # to it through the model.
-            builder.add_custom_attribute(
-                ModelBuilder.CustomAttribute(
-                    name="max_solver_iterations",
-                    frequency=Model.AttributeFrequency.ONCE,
-                    assignment=Model.AttributeAssignment.MODEL,
-                    dtype=wp.int32,
-                    default=-1,
-                    namespace="kamino",
-                    usd_attribute_name="newton:maxSolverIterations",
-                )
-            )
-
-        @staticmethod
-        def from_model(model: Model, **kwargs: dict[str, Any]) -> PADMMSolver.Config:
-            """Creates a config based on a model, using any config parameters that might be stored in
-            the model if it was imported from USD.
-
-            Args:
-                model: Newton model.
-            """
-            config = PADMMSolver.Config(**kwargs)
-
-            # Parse solver-specific attributes imported from USD
-            kamino_attrs = getattr(model, "kamino", None)
-            if kamino_attrs is not None:
-                if hasattr(kamino_attrs, "padmm_primal_tolerance"):
-                    config.primal_tolerance = float(kamino_attrs.padmm_primal_tolerance.numpy()[0])
-                if hasattr(kamino_attrs, "padmm_dual_tolerance"):
-                    config.dual_tolerance = float(kamino_attrs.padmm_dual_tolerance.numpy()[0])
-                if hasattr(kamino_attrs, "padmm_complementarity_tolerance"):
-                    config.compl_tolerance = float(kamino_attrs.padmm_complementarity_tolerance.numpy()[0])
-                if hasattr(kamino_attrs, "max_solver_iterations"):
-                    max_iterations = kamino_attrs.max_solver_iterations.numpy()[0]
-                    if max_iterations >= 0:
-                        config.max_iterations = max_iterations
-
-            return config
+    See :class:`PADMMSolverConfig` for the full list of configuration options and their descriptions.
+    """
 
     def __init__(
         self,
@@ -399,8 +115,8 @@ class PADMMSolver:
         config: list[PADMMSolver.Config] | PADMMSolver.Config | None = None,
         warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE,
         use_acceleration: bool = True,
+        use_graph_conditionals: bool = True,
         collect_info: bool = False,
-        avoid_graph_conditionals: bool = False,
         device: wp.DeviceLike = None,
     ):
         """
@@ -414,22 +130,23 @@ class PADMMSolver:
             limits (LimitsKamino | None): The limits container associated with the model.
             contacts (ContactsKamino | None): The contacts container associated with the model.
             config (list[PADMMSolver.Config] | PADMMSolver.Config | None): The solver config to use.
+            warmstart (PADMMWarmStartMode): The warm-start mode to use for the solver.\n
             use_acceleration (bool): Set to `True` to enable Nesterov acceleration.
+            use_graph_conditionals (bool): Set to `False` to disable CUDA graph conditional nodes.\n
+                When disabled, replaces `wp.capture_while` with an unrolled for-loop over max iterations.
             collect_info (bool): Set to `True` to enable collection of solver convergence info.\n
                 This setting is intended only for analysis and debugging purposes, as it
                 will increase memory consumption and reduce wall-clock time.
-            avoid_graph_conditionals (bool): Set to `True` to avoid CUDA graph conditional nodes.\n
-                When enabled, replaces `wp.capture_while` with an unrolled for-loop over max iterations.
             device (wp.DeviceLike | None): The target device on which to allocate the solver data.
         """
 
         # Declare the internal solver config cache
-        self._warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE
         self._config: list[PADMMSolver.Config] = []
-        self._use_acceleration: bool = False
+        self._warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE
+        self._use_acceleration: bool = True
+        self._use_adaptive_penalty: bool = False
+        self._use_graph_conditionals: bool = True
         self._collect_info: bool = False
-        self._avoid_graph_conditionals: bool = False
-        self._uses_adaptive_penalty: bool = False
 
         # Declare the model size cache
         self._size: SizeKamino | None = None
@@ -447,8 +164,8 @@ class PADMMSolver:
                 config=config,
                 warmstart=warmstart,
                 use_acceleration=use_acceleration,
+                use_graph_conditionals=use_graph_conditionals,
                 collect_info=collect_info,
-                avoid_graph_conditionals=avoid_graph_conditionals,
                 device=device,
             )
 
@@ -497,8 +214,8 @@ class PADMMSolver:
         config: list[PADMMSolver.Config] | PADMMSolver.Config | None = None,
         warmstart: PADMMWarmStartMode = PADMMWarmStartMode.NONE,
         use_acceleration: bool = True,
+        use_graph_conditionals: bool = True,
         collect_info: bool = False,
-        avoid_graph_conditionals: bool = False,
         device: wp.DeviceLike = None,
     ):
         """
@@ -509,12 +226,13 @@ class PADMMSolver:
             limits (LimitsKamino | None): The limits container associated with the model.
             contacts (ContactsKamino | None): The contacts container associated with the model.
             config (list[PADMMSolver.Config] | PADMMSolver.Config | None): The solver config to use.
+            warmstart (PADMMWarmStartMode): The warm-start mode to use for the solver.\n
             use_acceleration (bool): Set to `True` to enable Nesterov acceleration.
+            use_graph_conditionals (bool): Set to `False` to disable CUDA graph conditional nodes.\n
+                When disabled, replaces `wp.capture_while` with an unrolled for-loop over max iterations.
             collect_info (bool): Set to `True` to enable collection of solver convergence info.\n
                 This setting is intended only for analysis and debugging purposes, as it
                 will increase memory consumption and reduce wall-clock time.
-            avoid_graph_conditionals (bool): Set to `True` to avoid CUDA graph conditional nodes.\n
-                When enabled, replaces `wp.capture_while` with an unrolled for-loop over max iterations.
             device (wp.DeviceLike | None): The target device on which to allocate the solver data.
         """
 
@@ -527,23 +245,25 @@ class PADMMSolver:
         # Cache a reference to the model size meta-data container
         self._size = model.size
 
-        # Cache high-level solver options
-        self._warmstart = warmstart
-        self._use_acceleration = use_acceleration
-        self._collect_info = collect_info
-        self._avoid_graph_conditionals = avoid_graph_conditionals
-
         # Set the target device if specified, otherwise use the model device
         self._device = device if device is not None else model.device
 
-        # Cache the solver config
+        # Cache solver configs and validate them against the model size
+        # NOTE: These are configurations which could potentially be different across
+        # worlds, so we cache them in a list and write to device memory as an array
         if config is not None:
             self._config = self._check_config(model, config)
         elif len(self._config) == 0:
             self._config = self._check_config(model, None)
 
+        # Cache high-level solver options shared across all worlds
+        self._warmstart = warmstart
+        self._use_acceleration = use_acceleration
+        self._use_graph_conditionals = use_graph_conditionals
+        self._collect_info = collect_info
+
         # Check if any world uses adaptive penalty updates (requiring per-step regularization updates)
-        self._uses_adaptive_penalty = any(
+        self._use_adaptive_penalty = any(
             PADMMPenaltyUpdate.from_string(c.penalty_update_method) != PADMMPenaltyUpdate.FIXED for c in self._config
         )
 
@@ -563,16 +283,16 @@ class PADMMSolver:
         )
 
         # Write algorithm configs into device memory
-        configs = [c.to_struct() for c in self._config]
+        configs = [convert_config_to_struct(c) for c in self._config]
         with wp.ScopedDevice(self._device):
             self._data.config = wp.array(configs, dtype=PADMMConfigStruct)
 
         # Specialize certain solver kernels depending on whether acceleration is enabled
-        self._initialize_solver_kernel = make_initialize_solver_kernel(use_acceleration)
-        self._collect_solver_info_kernel = make_collect_solver_info_kernel(use_acceleration)
-        self._collect_solver_info_kernel_sparse = make_collect_solver_info_kernel_sparse(use_acceleration)
+        self._initialize_solver_kernel = make_initialize_solver_kernel(self._use_acceleration)
+        self._collect_solver_info_kernel = make_collect_solver_info_kernel(self._use_acceleration)
+        self._collect_solver_info_kernel_sparse = make_collect_solver_info_kernel_sparse(self._use_acceleration)
         self._update_dual_variables_and_compute_primal_dual_residuals_kernel = (
-            make_update_dual_variables_and_compute_primal_dual_residuals(use_acceleration)
+            make_update_dual_variables_and_compute_primal_dual_residuals(self._use_acceleration)
         )
 
     def reset(self, problem: DualProblem | None = None, world_mask: wp.array | None = None):
@@ -677,11 +397,11 @@ class PADMMSolver:
 
         # Iterate until convergence or maximum number of iterations is reached
         step_fn = self._step_accel if self._use_acceleration else self._step
-        if self._avoid_graph_conditionals:
+        if self._use_graph_conditionals:
+            wp.capture_while(self._data.state.done, while_body=step_fn, problem=problem)
+        else:
             for _ in range(self._max_of_max_iters):
                 step_fn(problem)
-        else:
-            wp.capture_while(self._data.state.done, while_body=step_fn, problem=problem)
 
         # Update the final solution from the terminal PADMM state
         self._update_solution(problem)
@@ -699,8 +419,8 @@ class PADMMSolver:
         of config objects corresponding to each world in the model.
 
         Args:
-            model (ModelKamino | None): The model for which to validate the config.
-            config (list[PADMMSolver.Config] | PADMMSolver.Config | None): The solver config to validate.
+            model: The model for which to validate the config.
+            config: The solver configurations container to validate.
         """
         # If no config is provided, use defaults
         if config is None:
@@ -725,6 +445,8 @@ class PADMMSolver:
                 raise ValueError(f"Expected {model.info.num_worlds} configs, got {len(config)}")
             if not all(isinstance(s, PADMMSolver.Config) for s in config):
                 raise TypeError("All configs must be instances of PADMMSolver.Config")
+        else:
+            raise TypeError(f"Expected a single object or list of `PADMMSolver.Config`, got {type(config)}")
 
         # Return the validated config
         return config
@@ -829,7 +551,7 @@ class PADMMSolver:
         self._update_convergence_check(problem)
 
         # Update sparse Delassus regularization if penalty was updated adaptively
-        if problem.sparse and self._uses_adaptive_penalty:
+        if problem.sparse and self._use_adaptive_penalty:
             self._update_sparse_regularization(problem)
 
         # Optionally record internal solver info
@@ -868,7 +590,7 @@ class PADMMSolver:
         self._update_convergence_check_accel(problem)
 
         # Update sparse Delassus regularization if penalty was updated adaptively
-        if problem.sparse and self._uses_adaptive_penalty:
+        if problem.sparse and self._use_adaptive_penalty:
             self._update_sparse_regularization(problem)
 
         # Optionally update Nesterov acceleration states from the current iteration

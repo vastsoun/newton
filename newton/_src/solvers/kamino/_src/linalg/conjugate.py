@@ -285,7 +285,7 @@ def _run_capturable_loop(
     atol_sq: wp.array,
     callback: Callable | None,
     use_cuda_graph: bool,
-    avoid_graph_conditionals: bool = False,
+    use_graph_conditionals: bool = True,
     maxiter_host: int | None = None,
     cycle_size: int = 1,
     termination_kernel=None,
@@ -331,7 +331,7 @@ def _run_capturable_loop(
             callback_launch.launch()
 
     if use_cuda_graph and device.is_cuda and device.is_capturing:
-        if not avoid_graph_conditionals:
+        if use_graph_conditionals:
             wp.capture_while(global_condition, do_cycle_with_condition)
         else:
             for _ in range(0, int(maxiter_host), cycle_size):
@@ -495,7 +495,7 @@ class ConjugateSolver:
         Mi: BatchedLinearOperator | None = None,
         callback: Callable | None = None,
         use_cuda_graph: bool = True,
-        avoid_graph_conditionals: bool = False,
+        use_graph_conditionals: bool = True,
     ):
         if not isinstance(A, BatchedLinearOperator):
             raise ValueError("A must be a BatchedLinearOperator")
@@ -509,7 +509,7 @@ class ConjugateSolver:
         self.Mi = Mi
         self.device = A.device
         self.active_dims = active_dims if active_dims is not None else A.active_dims
-        self.avoid_graph_conditionals = avoid_graph_conditionals
+        self.use_graph_conditionals = use_graph_conditionals
 
         self.world_active = world_active
         self.atol = atol
@@ -673,7 +673,7 @@ class CGSolver(ConjugateSolver):
             self.callback,
             self.use_cuda_graph,
             termination_kernel=self.termination_kernel,
-            avoid_graph_conditionals=self.avoid_graph_conditionals,
+            use_graph_conditionals=self.use_graph_conditionals,
             maxiter_host=self.maxiter_host,
         )
 
@@ -803,7 +803,7 @@ class CRSolver(ConjugateSolver):
             self.callback,
             self.use_cuda_graph,
             termination_kernel=self.termination_kernel,
-            avoid_graph_conditionals=self.avoid_graph_conditionals,
+            use_graph_conditionals=self.use_graph_conditionals,
             maxiter_host=self.maxiter_host,
         )
 

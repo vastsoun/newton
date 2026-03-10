@@ -27,7 +27,9 @@ from .linear import (
     DirectSolver,
     IterativeSolver,
     LinearSolver,
+    LinearSolverNameToType,
     LinearSolverType,
+    LinearSolverTypeToName,
     LLTBlockedSolver,
     LLTSequentialSolver,
 )
@@ -47,6 +49,8 @@ __all__ = [
     "LLTBlockedSolver",
     "LLTSequentialSolver",
     "LinearSolver",
+    "LinearSolverNameToType",
     "LinearSolverType",
+    "LinearSolverTypeToName",
     "utils",
 ]

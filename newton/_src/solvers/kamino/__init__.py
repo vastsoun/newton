@@ -24,6 +24,4 @@ from .solver_kamino import SolverKamino
 # Kamino API
 ###
 
-__all__ = [
-    "SolverKamino",
-]
+__all__ = ["SolverKamino"]

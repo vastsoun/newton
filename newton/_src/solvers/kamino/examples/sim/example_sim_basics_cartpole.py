@@ -24,10 +24,7 @@ import warp as wp
 import newton
 import newton.examples
 from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino._src.core.data import DataKamino
-from newton._src.solvers.kamino._src.core.math import I_3, R_x, screw
-from newton._src.solvers.kamino._src.core.model import ModelKamino
-from newton._src.solvers.kamino._src.core.types import float32, int32, mat33f, transformf, uint32, vec3f, vec6f
+from newton._src.solvers.kamino._src.core.types import float32, uint32
 from newton._src.solvers.kamino._src.models import get_basics_usd_assets_path
 from newton._src.solvers.kamino._src.models.builders.basics import build_cartpole
 from newton._src.solvers.kamino._src.models.builders.utils import add_ground_box, make_homogeneous_builder
@@ -35,222 +32,6 @@ from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
 from newton._src.solvers.kamino._src.utils.sim import SimulationLogger, Simulator, ViewerKamino
 from newton._src.solvers.kamino.examples import get_examples_output_path, run_headless
-
-###
-# Module configs
-###
-
-wp.set_module_options({"enable_backward": False})
-
-
-###
-# Kernels
-###
-
-
-@wp.kernel
-def _reset_select_worlds_to_dof_state(
-    # Inputs:
-    mask: wp.array(dtype=int32),
-    # Inputs:
-    model_info_body_offset: wp.array(dtype=int32),
-    model_info_joint_offset: wp.array(dtype=int32),
-    model_info_joint_coords_offset: wp.array(dtype=int32),
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_cts_offset: wp.array(dtype=int32),
-    model_body_i_I_i: wp.array(dtype=mat33f),
-    model_body_inv_i_I_i: wp.array(dtype=mat33f),
-    model_joint_B_r_Bj: wp.array(dtype=vec3f),
-    model_joint_F_r_Fj: wp.array(dtype=vec3f),
-    model_joint_X_j: wp.array(dtype=mat33f),
-    state_q_j: wp.array(dtype=float32),
-    state_dq_j: wp.array(dtype=float32),
-    # Outputs:
-    data_time: wp.array(dtype=float32),
-    data_steps: wp.array(dtype=int32),
-    data_body_q_i: wp.array(dtype=transformf),
-    data_body_u_i: wp.array(dtype=vec6f),
-    data_body_I_i: wp.array(dtype=mat33f),
-    data_body_inv_I_i: wp.array(dtype=mat33f),
-    data_body_w_i: wp.array(dtype=vec6f),
-    data_body_w_a_i: wp.array(dtype=vec6f),
-    data_body_w_j_i: wp.array(dtype=vec6f),
-    data_body_w_l_i: wp.array(dtype=vec6f),
-    data_body_w_c_i: wp.array(dtype=vec6f),
-    data_body_w_e_i: wp.array(dtype=vec6f),
-    data_joint_p_j: wp.array(dtype=transformf),
-    data_joint_r_j: wp.array(dtype=float32),
-    data_joint_dr_j: wp.array(dtype=float32),
-    data_joint_q_j: wp.array(dtype=float32),
-    data_joint_dq_j: wp.array(dtype=float32),
-    data_joint_lambda_j: wp.array(dtype=float32),
-    data_joint_j_w_j: wp.array(dtype=vec6f),
-    data_joint_j_w_a_j: wp.array(dtype=vec6f),
-    data_joint_j_w_c_j: wp.array(dtype=vec6f),
-    data_joint_j_w_l_j: wp.array(dtype=vec6f),
-):
-    # Retrieve the body index from the 1D thread index
-    wid = wp.tid()
-
-    # Retrieve the reset flag for the corresponding world
-    world_has_reset = mask[wid]
-
-    # Skip resetting this body if the world has not been marked for reset
-    if not world_has_reset:
-        return
-
-    # Reset both the physical time and step count to zero
-    data_time[wid] = 0.0
-    data_steps[wid] = 0
-
-    # Retrieve model info index ranges for this world
-    bodies_start = model_info_body_offset[wid]
-    joints_start = model_info_joint_offset[wid]
-    joints_coords_start = model_info_joint_coords_offset[wid]
-    joints_coords_end = joints_coords_start + 2
-    joints_dofs_start = model_info_joint_dofs_offset[wid]
-    joints_dofs_end = joints_dofs_start + 2
-    joints_cts_start = model_info_joint_cts_offset[wid]
-
-    # Retrieve the joint states for this world
-    q_j = state_q_j[joints_coords_start:joints_coords_end]
-    dq_j = state_dq_j[joints_dofs_start:joints_dofs_end]
-    r_j = wp.zeros(shape=(5,), dtype=float32)
-
-    # Retrieve joint model parameters
-    B_r_Bj_cart_to_pole = model_joint_B_r_Bj[joints_start + 1]
-    F_r_Fj_cart_to_pole = model_joint_F_r_Fj[joints_start + 1]
-    X_j_cart_to_pole = model_joint_X_j[joints_start + 1]
-
-    # Initialize state-dependent relative body quantities
-    R_cart = I_3
-    q_cart = wp.quat_identity()
-    omega_cart = vec3f(0.0, 0.0, 0.0)
-    r_cart = vec3f(0.0, q_j[0], 0.0)
-    v_cart = vec3f(0.0, dq_j[0], 0.0)
-    R_cart_to_pole = R_x(q_j[1])
-    omega_cart_to_pole = vec3f(dq_j[1], 0.0, 0.0)
-
-    # Compute body poses and twists in world coordinates
-    r_pole = r_cart + R_cart * (
-        B_r_Bj_cart_to_pole - X_j_cart_to_pole @ R_cart_to_pole @ wp.transpose(X_j_cart_to_pole) @ F_r_Fj_cart_to_pole
-    )
-    R_pole = R_cart @ X_j_cart_to_pole @ R_cart_to_pole @ wp.transpose(X_j_cart_to_pole)
-    q_pole = wp.quat_from_matrix(R_pole)
-    omega_pole = omega_cart + R_cart @ X_j_cart_to_pole @ omega_cart_to_pole
-    v_pole = v_cart + wp.cross(omega_cart, -R_pole @ F_r_Fj_cart_to_pole)
-
-    # Compute world-frame inertia tensors of each body
-    I_cart = R_cart @ model_body_i_I_i[bodies_start + 0] @ wp.transpose(R_cart)
-    I_pole = R_pole @ model_body_i_I_i[bodies_start + 1] @ wp.transpose(R_pole)
-    inv_I_cart = R_cart @ model_body_inv_i_I_i[bodies_start + 0] @ wp.transpose(R_cart)
-    inv_I_pole = R_pole @ model_body_inv_i_I_i[bodies_start + 1] @ wp.transpose(R_pole)
-
-    # Compute joint-frame poses in world coordinates
-    q_j_world_to_cart = q_cart
-    r_j_world_to_cart = r_cart
-    R_j_cart_to_pole = R_cart @ X_j_cart_to_pole
-    q_j_cart_to_pole = wp.quat_from_matrix(R_j_cart_to_pole)
-    r_j_cart_to_pole = r_cart + R_cart @ B_r_Bj_cart_to_pole
-
-    # Define a zero screw vector constant
-    ZEROS6 = vec6f(0.0)
-
-    # Set per-body data
-    data_body_q_i[bodies_start + 0] = wp.transformf(r_cart, q_cart)
-    data_body_u_i[bodies_start + 0] = screw(v_cart, omega_cart)
-    data_body_I_i[bodies_start + 0] = I_cart
-    data_body_w_i[bodies_start + 0] = ZEROS6
-    data_body_w_a_i[bodies_start + 0] = ZEROS6
-    data_body_w_j_i[bodies_start + 0] = ZEROS6
-    data_body_w_l_i[bodies_start + 0] = ZEROS6
-    data_body_w_c_i[bodies_start + 0] = ZEROS6
-    data_body_w_e_i[bodies_start + 0] = ZEROS6
-    data_body_inv_I_i[bodies_start + 0] = inv_I_cart
-    data_body_q_i[bodies_start + 1] = wp.transformf(r_pole, q_pole)
-    data_body_u_i[bodies_start + 1] = screw(v_pole, omega_pole)
-    data_body_I_i[bodies_start + 1] = I_pole
-    data_body_inv_I_i[bodies_start + 1] = inv_I_pole
-    data_body_w_i[bodies_start + 1] = ZEROS6
-    data_body_w_a_i[bodies_start + 1] = ZEROS6
-    data_body_w_j_i[bodies_start + 1] = ZEROS6
-    data_body_w_l_i[bodies_start + 1] = ZEROS6
-    data_body_w_c_i[bodies_start + 1] = ZEROS6
-    data_body_w_e_i[bodies_start + 1] = ZEROS6
-
-    # Set per-joint data
-    for j in range(2):
-        data_joint_q_j[joints_coords_start + j] = q_j[j]
-        data_joint_dq_j[joints_dofs_start + j] = dq_j[j]
-    for j in range(5):
-        data_joint_r_j[joints_cts_start + j] = r_j[j]
-        data_joint_dr_j[joints_cts_start + j] = r_j[j]
-        data_joint_lambda_j[joints_cts_start + j] = r_j[j]
-    data_joint_p_j[joints_start + 0] = wp.transformf(r_j_world_to_cart, q_j_world_to_cart)
-    data_joint_p_j[joints_start + 1] = wp.transformf(r_j_cart_to_pole, q_j_cart_to_pole)
-
-
-###
-# Launchers
-###
-
-
-def reset_select_worlds_to_dof_state(
-    model: ModelKamino,
-    q_j: wp.array,
-    dq_j: wp.array,
-    mask: wp.array,
-    data: DataKamino,
-):
-    """
-    Reset the state of the selected worlds given an array of per-world flags.
-
-    Args:
-        model: Input model container holding the time-invariant data of the system.
-        state: Input state container specifying the target state to be reset to.
-        mask: Array of per-world flags indicating which worlds should be reset.
-        data: Output solver data to be configured for the target state.
-    """
-    wp.launch(
-        _reset_select_worlds_to_dof_state,
-        dim=model.size.num_worlds,
-        inputs=[
-            # Inputs:
-            mask,
-            model.info.bodies_offset,
-            model.info.joints_offset,
-            model.info.joint_coords_offset,
-            model.info.joint_dofs_offset,
-            model.info.joint_cts_offset,
-            model.bodies.i_I_i,
-            model.bodies.inv_i_I_i,
-            model.joints.B_r_Bj,
-            model.joints.F_r_Fj,
-            model.joints.X_j,
-            q_j,
-            dq_j,
-            # Outputs:
-            data.time.time,
-            data.time.steps,
-            data.bodies.q_i,
-            data.bodies.u_i,
-            data.bodies.I_i,
-            data.bodies.inv_I_i,
-            data.bodies.w_i,
-            data.bodies.w_a_i,
-            data.bodies.w_j_i,
-            data.bodies.w_l_i,
-            data.bodies.w_c_i,
-            data.bodies.w_e_i,
-            data.joints.p_j,
-            data.joints.r_j,
-            data.joints.dr_j,
-            data.joints.q_j,
-            data.joints.dq_j,
-            data.joints.lambda_j,
-        ],
-    )
-
 
 ###
 # RL Interfaces
@@ -384,18 +165,19 @@ class Example:
         # Set solver config
         config = Simulator.Config()
         config.dt = self.sim_dt
-        config.solver.problem.alpha = 0.1
-        config.solver.problem.beta = 0.1
+        config.solver.use_fk_solver = True
+        config.solver.use_collision_detector = True
+        config.solver.constraints.alpha = 0.1
+        config.solver.constraints.beta = 0.1
         config.solver.padmm.primal_tolerance = 1e-6
         config.solver.padmm.dual_tolerance = 1e-6
         config.solver.padmm.compl_tolerance = 1e-6
         config.solver.padmm.max_iterations = 200
         config.solver.padmm.rho_0 = 0.05
-        config.solver.use_fk_solver = True
-        config.solver.use_solver_acceleration = True
-        config.solver.warmstart_mode = "containers"
+        config.solver.padmm.use_acceleration = True
+        config.solver.padmm.warmstart_mode = "containers"
         config.solver.collect_solver_info = False
-        config.solver.compute_metrics = logging and not use_cuda_graph
+        config.solver.compute_solution_metrics = logging and not use_cuda_graph
 
         # Create a simulator
         msg.notif("Building the simulator...")

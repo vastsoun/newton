@@ -29,10 +29,11 @@ import glob
 import os
 import threading
 
+# Thirdparty
 import torch  # noqa: TID253
 import warp as wp
 
-# Thirdparty
+# Kamino
 import newton
 from newton._src.solvers.kamino._src.core.bodies import convert_body_com_to_origin
 from newton._src.solvers.kamino._src.core.control import ControlKamino
@@ -406,24 +407,9 @@ class RigidBodySim:
         self._update_base_q = False
         self._update_base_u = False
 
-        # Contact aggregation — find ground collision geoms by label.
-        # We identify ground geoms by their GLOBAL indices (not per-world gid)
-        # because gid can collide with robot geom IDs (e.g., gid=0 for both
-        # the pelvis mesh and the ground plane).
-        geom_labels = self.sim.model.geoms.label
-        geom_group = wp.to_torch(self.sim.model.geoms.group).tolist()
-        ground_geom_global_indices = [
-            i for i, lbl in enumerate(geom_labels) if "ground" in lbl.lower() and int(geom_group[i]) > 0
-        ]
-        if not ground_geom_global_indices:
-            msg.warning("No ground collision geometry found by label, falling back to geom index 0")
-            ground_geom_global_indices = [0]
-        msg.info(f"Ground geom global indices: {ground_geom_global_indices}")
+        # Contact aggregation
         self._contact_aggregation = ContactAggregation(
-            model=self.sim.model,
-            contacts=self.sim.contacts,
-            static_geom_ids=ground_geom_global_indices,
-            device=self._device,
+            model=self.sim.model, contacts=self.sim.contacts, device=self._device
         )
         self._contact_flags = wp.to_torch(self._contact_aggregation.body_contact_flag).reshape(nw, nb)
         self._ground_contact_flags = wp.to_torch(self._contact_aggregation.body_static_contact_flag).reshape(nw, nb)
@@ -986,22 +972,23 @@ class RigidBodySim:
         """Return sensible default solver settings for RL."""
         settings = Simulator.Config()
         settings.dt = sim_dt
+        settings.solver.sparse_jacobian = True
+        settings.solver.use_fk_solver = False
+        settings.solver.use_collision_detector = True
         settings.collision_detector.pipeline = "unified"
         settings.collision_detector.max_contacts_per_pair = 8
         settings.solver.integrator = "moreau"
-        settings.solver.problem.alpha = 0.1
+        settings.solver.constraints.alpha = 0.1
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4
         settings.solver.padmm.compl_tolerance = 1e-4
         settings.solver.padmm.max_iterations = 200
         settings.solver.padmm.eta = 1e-5
         settings.solver.padmm.rho_0 = 0.05
-        settings.solver.sparse_jacobian = True
-        settings.solver.use_fk_solver = False
-        settings.solver.use_solver_acceleration = True
-        settings.solver.warmstart_mode = "containers"
-        settings.solver.contact_warmstart_method = "geom_pair_net_force"
+        settings.solver.padmm.use_acceleration = True
+        settings.solver.padmm.warmstart_mode = "containers"
+        settings.solver.padmm.contact_warmstart_method = "geom_pair_net_force"
         settings.solver.collect_solver_info = False
-        settings.solver.compute_metrics = False
-        settings.solver.avoid_graph_conditionals = True
+        settings.solver.compute_solution_metrics = False
+        settings.solver.padmm.use_graph_conditionals = False
         return settings

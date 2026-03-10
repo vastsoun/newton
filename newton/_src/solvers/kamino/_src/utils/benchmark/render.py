@@ -423,17 +423,22 @@ def render_solver_configs_table(
         if "cts" in groups:
             cfg_row.extend(
                 [
-                    f"{cfg.problem.alpha}",
-                    f"{cfg.problem.beta}",
-                    f"{cfg.problem.gamma}",
-                    f"{cfg.problem.delta}",
-                    str(cfg.problem.preconditioning),
+                    f"{cfg.constraints.alpha}",
+                    f"{cfg.constraints.beta}",
+                    f"{cfg.constraints.gamma}",
+                    f"{cfg.constraints.delta}",
+                    str(cfg.dynamics.preconditioning),
                 ]
             )
         if "sparse" in groups:
             cfg_row.extend([str(cfg.sparse_jacobian), str(cfg.sparse_dynamics)])
         if "linear" in groups:
-            cfg_row.extend([str(LinearSolverTypeToName[cfg.linear_solver_type]), str(cfg.linear_solver_kwargs)])
+            cfg_row.extend(
+                [
+                    str(LinearSolverTypeToName[cfg.dynamics.linear_solver_type]),
+                    str(cfg.dynamics.linear_solver_kwargs),
+                ]
+            )
         if "padmm" in groups:
             cfg_row.extend(
                 [
@@ -447,11 +452,11 @@ def render_solver_configs_table(
                     f"{cfg.padmm.rho_min}",
                     cfg.padmm.penalty_update_method,
                     str(cfg.padmm.penalty_update_freq),
-                    str(cfg.use_solver_acceleration),
+                    str(cfg.padmm.use_acceleration),
                 ]
             )
         if "warmstart" in groups:
-            cfg_row.extend([cfg.warmstart_mode, cfg.contact_warmstart_method])
+            cfg_row.extend([cfg.padmm.warmstart_mode, cfg.padmm.contact_warmstart_method])
         table.add_row(name, *cfg_row)
 
     # Render the table to the console and/or save to file

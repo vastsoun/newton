@@ -67,6 +67,7 @@ from .keying import build_pair_key2
 __all__ = [
     "DEFAULT_GEOM_PAIR_CONTACT_GAP",
     "DEFAULT_GEOM_PAIR_MAX_CONTACTS",
+    "DEFAULT_TRIANGLE_MAX_PAIRS",
     "DEFAULT_WORLD_MAX_CONTACTS",
     "ContactMode",
     "ContactsKamino",
@@ -109,6 +110,13 @@ The global default for maximum number of contacts per geom-pair.\n
 Used when allocating contact data without a specified capacity.\n
 Ignored for mesh-based collisions.\n
 Set to `12` (with box-box collisions being a prototypical case).
+"""
+
+DEFAULT_TRIANGLE_MAX_PAIRS: int = 1_000_000
+"""
+The global default for maximum number of triangle pairs to consider in the narrow-phase.\n
+Used only when the model contains triangle meshes or heightfields.\n
+Defaults to `1_000_000`.
 """
 
 DEFAULT_GEOM_PAIR_CONTACT_GAP: float = 1e-5
@@ -887,7 +895,7 @@ def _convert_contacts_newton_to_kamino(
 @wp.kernel
 def _convert_contacts_kamino_to_newton(
     max_output: int32,
-    n_active: wp.array(dtype=int32),
+    model_active_contacts: wp.array(dtype=int32),
     kamino_gid_AB: wp.array(dtype=vec2i),
     kamino_position_A: wp.array(dtype=vec3f),
     kamino_position_B: wp.array(dtype=vec3f),
@@ -903,43 +911,37 @@ def _convert_contacts_kamino_to_newton(
     rigid_contact_normal: wp.array(dtype=vec3f),
 ):
     """Converts Kamino's internal contact representation to Newton's Contacts format."""
-    tid = wp.tid()
-    n = wp.min(n_active[0], max_output)
+    # Retrieve the contact index for this thread
+    cid = wp.tid()
 
-    if tid == 0:
-        rigid_contact_count[0] = n
+    # Determine the total number of contacts to convert, which is the smaller
+    # of the number of active contacts and the maximum output capacity.
+    ncmax = wp.min(model_active_contacts[0], max_output)
 
-    if tid >= n:
+    # The first thread stores the model-wide number of active contacts
+    if cid == 0:
+        rigid_contact_count[0] = ncmax
+
+    # Skip conversion if this contact index exceeds the
+    # number of active contacts or the output capacity
+    if cid >= ncmax:
         return
 
-    gids = kamino_gid_AB[tid]
-    shape0 = gids[0]
-    shape1 = gids[1]
+    # Retrieve contact-specific data
+    gid_AB = kamino_gid_AB[cid]
+    position_A = kamino_position_A[cid]
+    position_B = kamino_position_B[cid]
+    gapfunc = kamino_gapfunc[cid]
 
-    rigid_contact_shape0[tid] = shape0
-    rigid_contact_shape1[tid] = shape1
-
-    normal = vec3f(
-        float(kamino_gapfunc[tid][0]),
-        float(kamino_gapfunc[tid][1]),
-        float(kamino_gapfunc[tid][2]),
-    )
-    rigid_contact_normal[tid] = normal
-
-    pos_a = vec3f(
-        float(kamino_position_A[tid][0]),
-        float(kamino_position_A[tid][1]),
-        float(kamino_position_A[tid][2]),
-    )
-    pos_b = vec3f(
-        float(kamino_position_B[tid][0]),
-        float(kamino_position_B[tid][1]),
-        float(kamino_position_B[tid][2]),
-    )
-
+    # Retrieve the geometry indices for this contact and use
+    # them to look up the corresponding shapes and bodies.
+    shape0 = gid_AB[0]
+    shape1 = gid_AB[1]
     body_a = shape_body[shape0]
     body_b = shape_body[shape1]
 
+    # Transform the world-space contact positions
+    # back to body-local coordinates for Newton.
     X_inv_a = wp.transform_identity()
     if body_a >= 0:
         X_inv_a = wp.transform_inverse(body_q[body_a])
@@ -947,8 +949,12 @@ def _convert_contacts_kamino_to_newton(
     if body_b >= 0:
         X_inv_b = wp.transform_inverse(body_q[body_b])
 
-    rigid_contact_point0[tid] = wp.transform_point(X_inv_a, pos_a)
-    rigid_contact_point1[tid] = wp.transform_point(X_inv_b, pos_b)
+    # Store the converted contact data in the Newton format
+    rigid_contact_shape0[cid] = shape0
+    rigid_contact_shape1[cid] = shape1
+    rigid_contact_normal[cid] = vec3f(gapfunc[0], gapfunc[1], gapfunc[2])
+    rigid_contact_point0[cid] = wp.transform_point(X_inv_a, position_A)
+    rigid_contact_point1[cid] = wp.transform_point(X_inv_b, position_B)
 
 
 ###

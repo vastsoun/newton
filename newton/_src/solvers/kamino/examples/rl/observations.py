@@ -204,6 +204,7 @@ class PhaseRate(torch.nn.Module):
         path_cmd = input[:, self.obs_cmd_idx]
         return self._phase_rate(path_cmd)
 
+
 # ---------------------------------------------------------------------------
 # Warp helpers for BipedalObservation
 # ---------------------------------------------------------------------------

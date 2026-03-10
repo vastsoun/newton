@@ -38,23 +38,17 @@ Usage example:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import IntEnum
-from typing import Literal
 
 import warp as wp
 
+from .....core.types import override
+from ...config import CollisionDetectorConfig
 from ..core.data import DataKamino
 from ..core.model import ModelKamino
 from ..core.state import StateKamino
-from ..core.types import override
-from ..geometry.contacts import (
-    DEFAULT_GEOM_PAIR_CONTACT_GAP,
-    DEFAULT_GEOM_PAIR_MAX_CONTACTS,
-    DEFAULT_MODEL_MAX_CONTACTS,
-    ContactsKamino,
-)
-from ..geometry.primitive import BoundingVolumeType, CollisionPipelinePrimitive
+from ..geometry.contacts import ContactsKamino
+from ..geometry.primitive import CollisionPipelinePrimitive
 from ..geometry.unified import CollisionPipelineUnifiedKamino
 
 ###
@@ -189,80 +183,15 @@ class CollisionDetector:
     collision geometries, including meshes and SDFs.
     """
 
-    @dataclass
-    class Config:
-        """Defines the config for a CollisionDetector."""
+    Config = CollisionDetectorConfig
+    """
+    The configuration dataclass for the CollisionDetector, which includes parameters
+    for selecting the collision pipeline type, broad-phase mode, bounding volume type,
+    contact generation parameters, and other settings related to collision detection.
 
-        pipeline: Literal["primitive", "unified"] = "unified"
-        """
-        The type of collision-detection pipeline to use, either `primitive` or `unified`.\n
-        Defaults to `unified`.
-        """
-
-        broadphase: Literal["nxn", "sap", "explicit"] = "explicit"
-        """
-        The broad-phase collision-detection to use (`nxn`, `sap`, or `explicit`).\n
-        Defaults to `explicit`.
-        """
-
-        bvtype: Literal["aabb", "bs"] = "aabb"
-        """
-        The type of bounding volume to use in the broad-phase.\n
-        Defaults to `aabb`.
-        """
-
-        max_contacts: int = DEFAULT_MODEL_MAX_CONTACTS
-        """
-        The maximum number of contacts to generate over the entire model.\n
-        Used to compute the total maximum contacts allocated for the model,
-        in conjunction with the total number of candidate geom-pairs.\n
-        Defaults to `DEFAULT_MODEL_MAX_CONTACTS` (`1000`).
-        """
-
-        max_contacts_per_world: int | None = None
-        """
-        The per-world maximum contacts allocation override.\n
-        If specified, it will override the per-world maximum number of contacts
-        computed according to the candidate geom-pairs represented in the model.\n
-        Defaults to `None`, allowing contact allocations to occur according to the model.
-        """
-
-        max_contacts_per_pair: int = DEFAULT_GEOM_PAIR_MAX_CONTACTS
-        """
-        The maximum number of contacts to generate per candidate geom-pair.\n
-        Used to compute the total maximum contacts allocated for the model,
-        in conjunction with the total number of candidate geom-pairs.\n
-        Defaults to `DEFAULT_GEOM_PAIR_MAX_CONTACTS` (`12`).
-        """
-
-        max_triangle_pairs: int = 1_000_000
-        """
-        The maximum number of triangle-primitive shape pairs to consider in the narrow-phase.\n
-        Used only when the model contains triangle meshes or heightfields.\n
-        Defaults to `1_000_000`.
-        """
-
-        default_gap: float = DEFAULT_GEOM_PAIR_CONTACT_GAP
-        """
-        The default detection gap [m] applied as a floor to per-geometry gaps.\n
-        Defaults to `1e-5`.
-        """
-
-        def __post_init__(self):
-            """Post-initialization processing to check if string literals correspond to supported enum types."""
-            pipelines_supported = [e.name.lower() for e in CollisionPipelineType]
-            if self.pipeline not in pipelines_supported:
-                raise ValueError(f"Invalid CD pipeline type: {self.pipeline}. Valid options are: {pipelines_supported}")
-            broadphases_supported = [e.name.lower() for e in BroadPhaseType]
-            if self.broadphase not in broadphases_supported:
-                raise ValueError(
-                    f"Invalid CD broad-phase type: {self.broadphase}. Valid options are: {broadphases_supported}"
-                )
-            bvtypes_supported = [e.name.lower() for e in BoundingVolumeType]
-            if self.bvtype not in bvtypes_supported:
-                raise ValueError(
-                    f"Invalid CD bounding-volume type: {self.bvtype}. Valid options are: {bvtypes_supported}"
-                )
+    See :class:`CollisionDetectorConfig` for the full
+    list of configuration options and their descriptions.
+    """
 
     def __init__(
         self,

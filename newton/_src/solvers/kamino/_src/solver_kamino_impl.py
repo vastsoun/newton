@@ -21,17 +21,16 @@ simulating constrained multi-body systems for arbitrary mechanical assemblies.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import Any, Literal
 
 import warp as wp
 
 # Newton imports
 from ....core.types import override
-from ....sim import Contacts, Model, ModelBuilder
+from ....sim import Contacts
 from ...solver import SolverBase
 
 # Kamino imports
+from ..solver_kamino import SolverKamino
 from .core.bodies import update_body_inertias, update_body_wrenches
 from .core.control import ControlKamino
 from .core.data import DataKamino
@@ -68,8 +67,8 @@ from .kinematics.resets import (
     reset_state_to_model_default,
     reset_time,
 )
-from .linalg import ConjugateResidualSolver, IterativeSolver, LinearSolverType, LLTBlockedSolver
-from .solvers.fk import ForwardKinematicsSolver, ForwardKinematicsSolverConfig
+from .linalg import ConjugateResidualSolver, IterativeSolver, LinearSolverNameToType
+from .solvers.fk import ForwardKinematicsSolver
 from .solvers.metrics import SolutionMetrics
 from .solvers.padmm import PADMMSolver, PADMMWarmStartMode
 from .solvers.warmstart import WarmstarterContacts, WarmstarterLimits
@@ -101,230 +100,13 @@ class SolverKaminoImpl(SolverBase):
     the :class:`SolverKamino` class.
     """
 
-    @dataclass
-    class Config:
-        """
-        A container to hold configurations for :class:`SolverKaminoImpl`.
-        """
+    Config = SolverKamino.Config
+    """
+    Defines a type alias of the PADMM solver configurations container, including convergence
+    criteria, maximum iterations, and options for the linear solver and preconditioning.
 
-        integrator: Literal["euler", "moreau"] | None = "euler"
-        """
-        The time-integrator to use for state integration.\n
-        See available options in the `integrators` module.\n
-        Defaults to `"euler"`.
-        """
-
-        problem: DualProblem.Config = field(default_factory=DualProblem.Config)
-        """
-        Config for the dynamics problem.\n
-        See :class:`DualProblem.Config` for more details.
-        """
-
-        padmm: PADMMSolver.Config = field(default_factory=PADMMSolver.Config)
-        """
-        Config for the dynamics solver.\n
-        See :class:`PADMMSolver.Config` for more details.
-        """
-
-        fk: ForwardKinematicsSolverConfig = field(default_factory=ForwardKinematicsSolverConfig)
-        """
-        Config for the forward kinematics solver.\n
-        See :class:`ForwardKinematicsSolverConfig` for more details.
-        """
-
-        warmstart_mode: Literal["none", "internal", "containers"] = "containers"
-        """
-        Warmstart mode to be used for the dynamics solver.\n
-        See :class:`PADMMWarmStartMode` for the available options.\n
-        Defaults to `containers` to warmstart from the solver data containers.
-        """
-
-        contact_warmstart_method: Literal[
-            "key_and_position",
-            "geom_pair_net_force",
-            "geom_pair_net_wrench",
-            "key_and_position_with_net_force_backup",
-            "key_and_position_with_net_wrench_backup",
-        ] = "key_and_position"
-        """
-        Method to be used for warm-starting contacts.\n
-        See :class:`WarmstarterContacts.Method` for available options.\n
-        Defaults to `key_and_position`.
-        """
-
-        use_solver_acceleration: bool = True
-        """
-        Enables Nesterov-type acceleration, i.e. use APADMM instead of standard PADMM.\n
-        Defaults to `True`.
-        """
-
-        collect_solver_info: bool = False
-        """
-        Enables collection of dynamics solver convergence and performance info at each simulation step.\n
-        Defaults to `False`.
-        """
-
-        compute_metrics: bool = False
-        """
-        Enables computation of solution metrics at each simulation step.\n
-        Defaults to `False`.
-        """
-
-        avoid_graph_conditionals: bool = False
-        """
-        Avoids CUDA graph conditional nodes in iterative solvers.\n
-        When enabled, replaces `wp.capture_while` with unrolled for-loops over max iterations.\n
-        Defaults to `False`.
-        """
-
-        linear_solver_type: type[LinearSolverType] = LLTBlockedSolver
-        """
-        The type of linear solver to use for the dynamics problem.\n
-        See :class:`LinearSolverType` for available options.\n
-        Defaults to :class:`LLTBlockedSolver`.
-        """
-
-        linear_solver_kwargs: dict[str, Any] = field(default_factory=dict)
-        """
-        Additional keyword arguments to pass to the linear solver.\n
-        Defaults to an empty dictionary.
-        """
-
-        rotation_correction: Literal["twopi", "continuous", "none"] = "twopi"
-        """
-        The rotation correction mode to use for rotational DoFs.\n
-        See :class:`JointCorrectionMode` for available options.\n
-        Defaults to `twopi`.
-        """
-
-        angular_velocity_damping: float = 0.0
-        """
-        A damping factor applied to the angular velocity of bodies during state integration.\n
-        This can help stabilize simulations with large time steps or high angular velocities.\n
-        Defaults to `0.0` (i.e. no damping).
-        """
-
-        sparse_dynamics: bool = False
-        """
-        Flag to indicate whether the solver should use sparse data representations for the dynamics.
-        """
-
-        sparse_jacobian: bool = False
-        """
-        Flag to indicate whether the solver should use sparse data representations for the Jacobian.
-        """
-
-        use_fk_solver: bool = False
-        """
-        Flag to indicate that the FK solver, allowing for resets using joint angles, should be enabled.
-        """
-
-        def check(self) -> None:
-            """Validates relevant solver config."""
-            if not issubclass(self.linear_solver_type, LinearSolverType):
-                raise TypeError(
-                    "Invalid linear solver type: Expected a subclass of `LinearSolverType`, "
-                    f"but got {type(self.linear_solver_type)}."
-                )
-            # Conversion to PADMMWarmStartMode will raise an error if the input string is invalid.
-            PADMMWarmStartMode.from_string(self.warmstart_mode)
-            # Conversion to WarmstarterContacts.Method will raise an error if the input string is invalid.
-            WarmstarterContacts.Method.from_string(self.contact_warmstart_method)
-            # Conversion to JointCorrectionMode will raise an error if the input string is invalid.
-            JointCorrectionMode.from_string(self.rotation_correction)
-            if self.sparse_dynamics and not self.sparse_jacobian:
-                raise ValueError(
-                    "Sparsity setting mismatch: `sparse_dynamics` solver "
-                    "option requires that `sparse_jacobian` is set to `True`."
-                )
-            self.problem.check()
-            self.padmm.check()
-            self.fk.check()
-
-        def __post_init__(self):
-            """Post-initialization to validate config."""
-            self.check()
-
-        @staticmethod
-        def register_custom_attributes(builder: ModelBuilder) -> None:
-            """
-            Register custom attributes for this config.
-
-            Args:
-                builder (ModelBuilder): The model builder to register the custom attributes to.
-            """
-
-            # Register KaminoSceneAPI attributes so the USD importer will store them on the model
-            builder.add_custom_attribute(
-                ModelBuilder.CustomAttribute(
-                    name="padmm_warmstarting",
-                    frequency=Model.AttributeFrequency.ONCE,
-                    assignment=Model.AttributeAssignment.MODEL,
-                    dtype=str,
-                    default="containers",
-                    namespace="kamino",
-                    usd_attribute_name="newton:kamino:padmm:warmstarting",
-                    usd_value_transformer=PADMMWarmStartMode.parse_usd_attribute,
-                )
-            )
-            builder.add_custom_attribute(
-                ModelBuilder.CustomAttribute(
-                    name="padmm_use_acceleration",
-                    frequency=Model.AttributeFrequency.ONCE,
-                    assignment=Model.AttributeAssignment.MODEL,
-                    dtype=wp.bool,
-                    default=True,
-                    namespace="kamino",
-                    usd_attribute_name="newton:kamino:padmm:useAcceleration",
-                )
-            )
-            builder.add_custom_attribute(
-                ModelBuilder.CustomAttribute(
-                    name="joint_correction",
-                    frequency=Model.AttributeFrequency.ONCE,
-                    assignment=Model.AttributeAssignment.MODEL,
-                    dtype=str,
-                    default="twopi",
-                    namespace="kamino",
-                    usd_attribute_name="newton:kamino:jointCorrection",
-                    usd_value_transformer=JointCorrectionMode.parse_usd_attribute,
-                )
-            )
-
-            DualProblem.Config.register_custom_attributes(builder)
-            PADMMSolver.Config.register_custom_attributes(builder)
-
-        @staticmethod
-        def from_model(model: Model, **kwargs: dict[str, Any]) -> SolverKaminoImpl.Config:
-            """Creates a config based on a model, using any config parameters that might be stored in
-            the model if it was imported from USD.
-
-            Args:
-                model: Newton model.
-            """
-            config = SolverKaminoImpl.Config(**kwargs)
-
-            # Parse solver-specific attributes imported from USD
-            kamino_attrs = getattr(model, "kamino", None)
-            if kamino_attrs is not None:
-                if hasattr(kamino_attrs, "padmm_warmstarting"):
-                    config.warmstart_mode = kamino_attrs.padmm_warmstarting[0]
-                if hasattr(kamino_attrs, "padmm_use_acceleration"):
-                    config.use_solver_acceleration = bool(kamino_attrs.padmm_use_acceleration.numpy()[0])
-                if hasattr(kamino_attrs, "joint_correction"):
-                    config.rotation_correction = kamino_attrs.joint_correction[0]
-
-            problem_kwargs = {}
-            if "problem" in kwargs.keys():
-                problem_kwargs = kwargs["problem"].__dict__
-            config.problem = DualProblem.Config.from_model(model, **problem_kwargs)
-
-            padmm_kwargs = {}
-            if "padmm" in kwargs.keys():
-                padmm_kwargs = kwargs["padmm"].__dict__
-            config.padmm = PADMMSolver.Config.from_model(model, **padmm_kwargs)
-
-            return config
+    See :class:`PADMMSolverConfig` for the full list of configuration options and their descriptions.
+    """
 
     ResetCallbackType = Callable[["SolverKaminoImpl", StateKamino], None]
     """Defines the type signature for reset callback functions."""
@@ -368,24 +150,58 @@ class SolverKaminoImpl(SolverBase):
         super().__init__(model=model)
         self._model = model
 
-        # Cache solver config: If no config is provided, use default
+        # If no explicit config is provided, attempt to create a config
+        # from the model attributes (e.g. if imported from USD assets).
+        # NOTE: `Config.from_model` will default-initialize if no relevant custom attributes were
+        # found on the model, so `self._config` will always be fully initialized after this step.
         if config is None:
-            config = SolverKaminoImpl.Config()
-        config.check()
+            config = self.Config.from_model(model._model)
+
+        # Validate the solver configurations and raise errors early if invalid
+        config.validate()
+
+        # Cache the solver config and parse relevant options for internal use
         self._config: SolverKaminoImpl.Config = config
-        self._warmstart_mode: PADMMWarmStartMode = PADMMWarmStartMode.from_string(config.warmstart_mode)
+        self._warmstart_mode: PADMMWarmStartMode = PADMMWarmStartMode.from_string(config.padmm.warmstart_mode)
         self._rotation_correction: JointCorrectionMode = JointCorrectionMode.from_string(config.rotation_correction)
 
-        # TODO: We need to rework these checks and potentially handle this check with the dynamics problem
-        # TODO: Also consider raising an error here instead of a warning
+        # ---------------------------------------------------------------------------
+        # TODO: Migrate this entire section into the constructor of `DualProblem`
+
+        # Convert the linear solver type from the config literal to the concrete class, raising an error if invalid
+        linear_solver_type = LinearSolverNameToType.get(self._config.dynamics.linear_solver_type, None)
+        if linear_solver_type is None:
+            raise ValueError(
+                "Invalid linear solver type: Expected one of "
+                f"{list(LinearSolverNameToType.keys())}, got '{linear_solver_type}'."
+            )
+
         # Override the linear solver type to an iterative solver if
         # sparsity is enabled but the provided solver is not iterative
-        if self._config.sparse_dynamics and not issubclass(self._config.linear_solver_type, IterativeSolver):
+        if self._config.sparse_dynamics and not issubclass(linear_solver_type, IterativeSolver):
             msg.warning(
-                f"Sparse dynamics requires an iterative solver, but got '{self._config.linear_solver_type.__name__}'."
+                f"Sparse dynamics requires an iterative solver, but got '{linear_solver_type.__name__}'."
                 " Defaulting to 'ConjugateResidualSolver' as the PADMM linear solver."
             )
-            self._config.linear_solver_type = ConjugateResidualSolver
+            linear_solver_type = ConjugateResidualSolver
+
+        # If graph conditionals are disabled in the PADMM solver, ensure that they
+        # are also disabled in the linear solver if it is an iterative solver.
+        linear_solver_kwargs = dict(self._config.dynamics.linear_solver_kwargs)
+        if not self._config.padmm.use_graph_conditionals and issubclass(linear_solver_type, IterativeSolver):
+            linear_solver_kwargs.setdefault("use_graph_conditionals", False)
+
+        # Bundle both constraint stabilization and forward-
+        # dynamics problem configurations into a single object
+        problem_fd_config = DualProblem.Config(
+            constraints=self._config.constraints,
+            dynamics=self._config.dynamics,
+            # TODO: linear_solver_type=linear_solver_type,
+            # TODO: linear_solver_kwargs=linear_solver_kwargs,
+            # TODO: sparse=bool(self._config.sparse_dynamics),
+        )
+
+        # ---------------------------------------------------------------------------
 
         # Allocate internal time-varying solver data
         self._data = self._model.data()
@@ -413,19 +229,16 @@ class SolverKaminoImpl(SolverBase):
             )
 
         # Allocate the dual problem data on the device
-        linear_solver_kwargs = dict(self._config.linear_solver_kwargs)
-        if self._config.avoid_graph_conditionals and issubclass(self._config.linear_solver_type, IterativeSolver):
-            linear_solver_kwargs.setdefault("avoid_graph_conditionals", True)
         self._problem_fd = DualProblem(
             model=self._model,
             data=self._data,
             limits=self._limits,
             contacts=contacts,
-            solver=self._config.linear_solver_type,
+            config=problem_fd_config,
+            solver=linear_solver_type,
             solver_kwargs=linear_solver_kwargs,
-            config=self._config.problem,
-            device=self._model.device,
             sparse=self._config.sparse_dynamics,
+            device=self._model.device,
         )
 
         # Allocate the forward dynamics solver on the device
@@ -433,9 +246,9 @@ class SolverKaminoImpl(SolverBase):
             model=self._model,
             config=self._config.padmm,
             warmstart=self._warmstart_mode,
-            use_acceleration=self._config.use_solver_acceleration,
+            use_acceleration=self._config.padmm.use_acceleration,
+            use_graph_conditionals=self._config.padmm.use_graph_conditionals,
             collect_info=self._config.collect_solver_info,
-            avoid_graph_conditionals=self._config.avoid_graph_conditionals,
             device=self._model.device,
         )
 
@@ -470,12 +283,12 @@ class SolverKaminoImpl(SolverBase):
             self._ws_limits = WarmstarterLimits(limits=self._limits)
             self._ws_contacts = WarmstarterContacts(
                 contacts=contacts,
-                method=WarmstarterContacts.Method.from_string(self._config.contact_warmstart_method),
+                method=WarmstarterContacts.Method.from_string(self._config.padmm.contact_warmstart_method),
             )
 
         # Allocate the solution metrics evaluator if enabled
         self._metrics: SolutionMetrics | None = None
-        if self._config.compute_metrics:
+        if self._config.compute_solution_metrics:
             self._metrics = SolutionMetrics(model=self._model)
 
         # Initialize callbacks
@@ -792,16 +605,16 @@ class SolverKaminoImpl(SolverBase):
 
     @override
     def notify_model_changed(self, flags: int):
-        pass  # TODO
+        pass  # TODO: Migrate implementation when we fully integrate with Newton
 
     @override
     def update_contacts(self, contacts: Contacts) -> None:
-        pass  # TODO
+        pass  # TODO: Migrate implementation when we fully integrate with Newton
 
     @override
     @classmethod
     def register_custom_attributes(cls, flags: int):
-        pass  # TODO
+        pass  # TODO: Migrate implementation when we fully integrate with Newton
 
     ###
     # Internals - Callback Operations
@@ -943,15 +756,22 @@ class SolverKaminoImpl(SolverBase):
         self,
         state_out: StateKamino,
         world_mask: wp.array,
-        base_q: wp.array | None = None,
+        base_q: wp.array,
         base_u: wp.array | None = None,
     ):
         """
         Resets the simulation to the given base body states by
         uniformly applying the necessary transform across all bodies.
         """
-        # First determine the effective base states to use
-        _base_q = base_q if base_q is not None else self._base_q
+        # Ensure that the base pose reset targets are valid
+        if base_q is None:
+            raise ValueError("Base pose targets must be provided for base state resets.")
+        if base_q.shape[0] != self._model.size.num_worlds:
+            raise ValueError(
+                f"Invalid base_q shape: Expected ({self._model.size.num_worlds},), but got {base_q.shape}."
+            )
+
+        # Determine the effective base twists to use
         _base_u = base_u if base_u is not None else self._base_u
 
         # Uniformly reset all bodies according to the transform between the given
@@ -960,7 +780,7 @@ class SolverKaminoImpl(SolverBase):
             model=self._model,
             state_out=state_out,
             world_mask=world_mask,
-            base_q=_base_q,
+            base_q=base_q,
             base_u=_base_u,
         )
 
@@ -1248,12 +1068,31 @@ class SolverKaminoImpl(SolverBase):
         state_in: StateKamino,
         state_out: StateKamino,
         control: ControlKamino,
-        limits: LimitsKamino | None = None,  # TODO: Fix this interface
+        limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
         detector: CollisionDetector | None = None,
     ):
         """
-        TODO
+        Solves the forward dynamics sub-problem to compute constraint reactions
+        and total effective body wrenches applied to each body of the system.
+
+        Args:
+            state_in (`StateKamino`):
+                State of the system at the current time-step.
+            state_out (`StateKamino`):
+                State of the system at the next time-step.
+            control (`ControlKamino`):
+                Input controls applied to the system.
+            limits (`LimitsKamino`, optional):
+                Optional container for joint limits.
+                If `None`, joint limit handling is skipped.
+            contacts (`ContactsKamino`, optional):
+                Optional container of active contacts.
+                If `None`, the solver will use the internal collision detector
+                if the model admits contacts, or skip contact handling if not.
+            detector (`CollisionDetector`, optional):
+                Optional collision detector.
+                If `None`, collision detection is skipped.
         """
         # Update intermediate quantities of the bodies and joints
         # NOTE: We update the intermediate joint and body data here
@@ -1298,7 +1137,7 @@ class SolverKaminoImpl(SolverBase):
         """
         Computes performance metrics measuring the physical fidelity of the dynamics solver solution.
         """
-        if self._config.compute_metrics:
+        if self._config.compute_solution_metrics:
             self.metrics.reset()
             self._metrics.evaluate(
                 sigma=self._solver_fd.data.state.sigma,

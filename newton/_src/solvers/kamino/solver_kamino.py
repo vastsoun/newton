@@ -62,7 +62,8 @@ __all__ = ["SolverKamino"]
 
 class SolverKamino(SolverBase):
     """
-    A physics solver for simulating constrained multi-body systems for arbitrary mechanical assemblies.
+    A physics solver for simulating constrained multi-body systems containing kinematic loops,
+    under-/overactuation, joint-limits, hard frictional contacts and restitutive impacts.
 
     This solver uses the Proximal-ADMM algorithm to solve the forward dynamics formulated
     as a Nonlinear Complementarity Problem (NCP) over the set of bilateral kinematic joint

@@ -67,7 +67,7 @@ Supported Features
      - ❌
      - ❌
    * - :class:`~newton.solvers.SolverKamino`
-     - Euler (Semi-implicit), Moreau-Jean (Semi-implicit)
+     - Semi-implicit: Euler, Moreau-Jean
      - ✅ maximal coordinates
      - ✅ maximal coordinates
      - ❌
@@ -131,11 +131,10 @@ The tables below document which joint features each solver handles.
 Only :class:`~newton.solvers.SolverFeatherstone` and :class:`~newton.solvers.SolverMuJoCo`
 operate on :ref:`articulations <Articulations>` (generalized/reduced coordinates).
 The maximal-coordinate solvers (:class:`~newton.solvers.SolverSemiImplicit`,
-:class:`~newton.solvers.SolverXPBD`) enforce joints as pairwise body constraints
-but do not use the articulation kinematic-tree structure.
-:class:`~newton.solvers.SolverVBD` supports a subset of joint types via soft
-constraints (AVBD). :class:`~newton.solvers.SolverStyle3D` and
-:class:`~newton.solvers.SolverImplicitMPM` do not support joints.
+:class:`~newton.solvers.SolverXPBD`, and :class:`~newton.solvers.SolverKamino`)
+enforce joints as pairwise body constraints but do not use the articulation kinematic-tree structure.
+:class:`~newton.solvers.SolverVBD` supports a subset of joint types via soft constraints (AVBD).
+:class:`~newton.solvers.SolverStyle3D` and :class:`~newton.solvers.SolverImplicitMPM` do not support joints.
 
 **Joint types**
 
@@ -150,19 +149,23 @@ constraints (AVBD). :class:`~newton.solvers.SolverStyle3D` and
      - :class:`~newton.solvers.SolverXPBD`
      - :class:`~newton.solvers.SolverMuJoCo`
      - :class:`~newton.solvers.SolverVBD`
+     - :class:`~newton.solvers.SolverKamino`
    * - PRISMATIC
      - |yes|
      - |yes|
      - |yes|
      - |yes|
      - |no|
+     - |yes|
    * - REVOLUTE
      - |yes|
      - |yes|
      - |yes|
      - |yes|
      - |no|
+     - |yes|
    * - BALL
+     - |yes|
      - |yes|
      - |yes|
      - |yes|
@@ -174,7 +177,9 @@ constraints (AVBD). :class:`~newton.solvers.SolverStyle3D` and
      - |yes|
      - |yes|
      - |yes|
+     - |yes|
    * - FREE
+     - |yes|
      - |yes|
      - |yes|
      - |yes|
@@ -186,11 +191,13 @@ constraints (AVBD). :class:`~newton.solvers.SolverStyle3D` and
      - |yes|
      - |no|
      - |no|
+     - |no|
    * - D6
      - |yes|
      - |yes|
      - |yes|
      - |yes|
+     - |no|
      - |no|
    * - CABLE
      - |no|
@@ -198,6 +205,7 @@ constraints (AVBD). :class:`~newton.solvers.SolverStyle3D` and
      - |no|
      - |no|
      - |yes|
+     - |no|
 
 | :sup:`1` DISTANCE joints are treated as FREE (no distance constraint enforcement).
 
@@ -214,10 +222,12 @@ constraints (AVBD). :class:`~newton.solvers.SolverStyle3D` and
      - :class:`~newton.solvers.SolverXPBD`
      - :class:`~newton.solvers.SolverMuJoCo`
      - :class:`~newton.solvers.SolverVBD`
+     - :class:`~newton.solvers.SolverKamino`
    * - :attr:`~newton.Model.joint_enabled`
      - |no|
      - |yes|
      - |yes|
+     - |no|
      - |no|
      - |no|
    * - :attr:`~newton.Model.joint_armature`
@@ -226,11 +236,13 @@ constraints (AVBD). :class:`~newton.solvers.SolverStyle3D` and
      - |no|
      - |yes|
      - |no|
+     - |yes|
    * - :attr:`~newton.Model.joint_friction`
      - |no|
      - |no|
      - |no|
      - |yes|
+     - |no|
      - |no|
    * - :attr:`~newton.Model.joint_limit_lower` / :attr:`~newton.Model.joint_limit_upper`
      - |yes|
@@ -238,11 +250,13 @@ constraints (AVBD). :class:`~newton.solvers.SolverStyle3D` and
      - |yes|
      - |yes|
      - |no|
+     - |yes|
    * - :attr:`~newton.Model.joint_limit_ke` / :attr:`~newton.Model.joint_limit_kd`
      - |yes|
      - |yes| :sup:`2`
      - |no|
      - |yes|
+     - |no|
      - |no|
    * - :attr:`~newton.Model.joint_effort_limit`
      - |no|
@@ -250,7 +264,9 @@ constraints (AVBD). :class:`~newton.solvers.SolverStyle3D` and
      - |no|
      - |yes|
      - |no|
+     - |no|
    * - :attr:`~newton.Model.joint_velocity_limit`
+     - |no|
      - |no|
      - |no|
      - |no|
@@ -272,24 +288,28 @@ constraints (AVBD). :class:`~newton.solvers.SolverStyle3D` and
      - :class:`~newton.solvers.SolverXPBD`
      - :class:`~newton.solvers.SolverMuJoCo`
      - :class:`~newton.solvers.SolverVBD`
+     - :class:`~newton.solvers.SolverKamino`
    * - :attr:`~newton.Model.joint_target_ke` / :attr:`~newton.Model.joint_target_kd`
      - |yes|
      - |yes| :sup:`2`
      - |yes|
      - |yes|
      - 🟨 :sup:`4`
+     - |yes|
    * - :attr:`~newton.Model.joint_target_mode`
      - |no|
      - |no|
      - |no|
      - |yes|
      - |no|
+     - |yes|
    * - :attr:`~newton.Control.joint_f` (feedforward forces)
      - |yes|
      - |yes|
      - |yes|
      - |yes|
      - |no|
+     - |yes|
 
 **Constraints**
 
@@ -304,17 +324,20 @@ constraints (AVBD). :class:`~newton.solvers.SolverStyle3D` and
      - :class:`~newton.solvers.SolverXPBD`
      - :class:`~newton.solvers.SolverMuJoCo`
      - :class:`~newton.solvers.SolverVBD`
+     - :class:`~newton.solvers.SolverKamino`
    * - Equality constraints (CONNECT, WELD, JOINT)
      - |no|
      - |no|
      - |no|
      - |yes|
      - |no|
+     - |no|
    * - Mimic constraints
      - |no|
      - |no|
      - |no|
      - |yes| :sup:`3`
+     - |no|
      - |no|
 
 | :sup:`3` Mimic constraints in MuJoCo are supported for REVOLUTE and PRISMATIC joints only.

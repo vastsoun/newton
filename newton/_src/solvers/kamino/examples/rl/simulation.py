@@ -24,11 +24,15 @@
 
 from __future__ import annotations
 
-import torch  # noqa: TID253
-import warp as wp
+# Python
+import glob
+import os
+import threading
 
 # Thirdparty
 import newton
+import torch  # noqa: TID253
+import warp as wp
 from newton._src.solvers.kamino._src.core.bodies import convert_body_com_to_origin
 from newton._src.solvers.kamino._src.core.control import ControlKamino
 from newton._src.solvers.kamino._src.core.model import ModelKamino
@@ -39,6 +43,7 @@ from newton._src.solvers.kamino._src.geometry.aggregation import ContactAggregat
 from newton._src.solvers.kamino._src.solver_kamino_impl import SolverKaminoImpl
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino._src.utils.sim import Simulator
+from newton._src.solvers.kamino._src.utils.viewer import Color3, ViewerConfig
 from newton._src.viewer import ViewerGL
 
 
@@ -174,6 +179,7 @@ class RigidBodySim:
         settings: Simulator settings.  ``None`` uses ``default_settings(sim_dt)``.
         use_cuda_graph: Capture CUDA graphs for step and reset (requires
             CUDA device with memory pool enabled).
+        render_config: Viewer appearance settings.  ``None`` uses defaults.
     """
 
     def __init__(
@@ -192,12 +198,23 @@ class RigidBodySim:
         video_folder: str | None = None,
         async_save: bool = True,
         max_contacts_per_pair: int | None = None,
+        render_config: ViewerConfig | None = None,
+        collapse_fixed_joints: bool = False,
     ):
         # ----- Device setup -----
         self._device = wp.get_device(device)
         self._torch_device: str = "cuda" if self._device.is_cuda else "cpu"
         self._use_cuda_graph = use_cuda_graph
         self._sim_dt = sim_dt
+
+        # ----- Video recording -----
+        self._record_video = record_video
+        self._video_folder = video_folder or "./frames"
+        self._async_save = async_save
+        self._frame_buffer = None
+        self._img_idx = 0
+        if self._record_video:
+            os.makedirs(self._video_folder, exist_ok=True)
 
         # Resolve settings (subclass override via default_settings)
         if settings is None:
@@ -215,7 +232,7 @@ class RigidBodySim:
             joint_ordering=None,
             force_show_colliders=True,
             force_position_velocity_actuation=True,
-            collapse_fixed_joints=False,
+            collapse_fixed_joints=collapse_fixed_joints,
             enable_self_collisions=False,
             hide_collision_shapes=True,
         )
@@ -275,12 +292,14 @@ class RigidBodySim:
         # ----- Viewer -----
         self.viewer: ViewerGL | None = None
         self._newton_state: newton.State | None = None
+        self._render_config = render_config or ViewerConfig()
         if not headless:
             msg.notif("Creating the 3D viewer ...")
             self.viewer = ViewerGL()
             self.viewer.set_model(self._newton_model)
             # Newton state used only for rendering (body_q synced from Kamino each frame)
             self._newton_state = self._newton_model.state()
+            self._apply_render_config(self._render_config)
 
         # ----- CUDA graphs -----
         self._reset_graph = None
@@ -291,6 +310,61 @@ class RigidBodySim:
         msg.notif("Warming up simulator ...")
         self.step()
         self.reset()
+
+    # ------------------------------------------------------------------
+    # Viewer appearance
+    # ------------------------------------------------------------------
+
+    def _apply_render_config(self, cfg: ViewerConfig):
+        """Apply render configuration to the viewer."""
+        viewer = self.viewer
+        renderer = viewer.renderer
+
+        # Shape colors (robot only)
+        if cfg.robot_color is not None:
+            model = self._newton_model
+            shape_body = model.shape_body.numpy()
+            color_overrides: dict[int, Color3] = {}
+            for s in range(model.shape_count):
+                if int(shape_body[s]) >= 0:
+                    color_overrides[s] = cfg.robot_color
+            if color_overrides:
+                viewer.update_shape_colors(color_overrides)
+
+        # Lighting settings
+        if cfg.diffuse_scale is not None:
+            renderer.diffuse_scale = cfg.diffuse_scale
+        if cfg.specular_scale is not None:
+            renderer.specular_scale = cfg.specular_scale
+        if cfg.shadow_radius is not None:
+            renderer.shadow_radius = cfg.shadow_radius
+        if cfg.shadow_extents is not None:
+            renderer.shadow_extents = cfg.shadow_extents
+        if cfg.spotlight_enabled is not None:
+            renderer.spotlight_enabled = cfg.spotlight_enabled
+
+        # Sky color (renderer.sky_upper = "Sky Color" in viewer GUI)
+        if cfg.sky_color is not None:
+            renderer.sky_upper = cfg.sky_color
+
+        # Directional light color
+        if cfg.light_color is not None:
+            renderer._light_color = cfg.light_color
+
+        # Background brightness — scales ground color (renderer.sky_lower) and ground plane shapes
+        if cfg.background_brightness_scale is not None:
+            s = cfg.background_brightness_scale
+            renderer.sky_lower = tuple(min(c * s, 1.0) for c in renderer.sky_lower)
+            # Also brighten ground plane shape colors
+            model = self._newton_model
+            shape_body = model.shape_body.numpy()
+            ground_colors: dict[int, Color3] = {}
+            for s_idx in range(model.shape_count):
+                if int(shape_body[s_idx]) < 0:
+                    cur = viewer.model_shape_color.numpy()[int(viewer._shape_to_slot[s_idx])]
+                    ground_colors[s_idx] = tuple(min(float(c) * s, 1.0) for c in cur)
+            if ground_colors:
+                viewer.update_shape_colors(ground_colors)
 
     # ------------------------------------------------------------------
     # RL interface wiring
@@ -498,6 +572,129 @@ class RigidBodySim:
             )
             self.viewer.log_state(self._newton_state)
             self.viewer.end_frame()
+            if self._record_video:
+                self._capture_frame()
+
+    def _capture_frame(self):
+        """Capture and save the current rendered frame as a PNG.
+
+        If ``render_width``/``render_height`` in the render config differ from
+        the viewer's native resolution, the renderer is temporarily resized to
+        the target resolution, re-rendered, captured, then restored — giving
+        true high-res capture without affecting the display window.
+        """
+        try:
+            # Thirdparty
+            from PIL import Image
+        except ImportError:
+            msg.warning("PIL not installed. Install with: pip install pillow")
+            return
+
+        renderer = self.viewer.renderer
+        target_w = self._render_config.render_width
+        target_h = self._render_config.render_height
+        native_w = renderer._screen_width
+        native_h = renderer._screen_height
+        needs_hires = target_w != native_w or target_h != native_h
+
+        if needs_hires:
+            # Resize FBOs to target resolution and re-render the scene
+            renderer.resize(target_w, target_h)
+            renderer.render(self.viewer.camera, self.viewer.objects, self.viewer.lines)
+            # Invalidate PBO and cached buffer so they get reallocated at new size
+            self.viewer._pbo = None
+            self.viewer._wp_pbo = None
+            self._frame_buffer = None
+
+        frame = self.viewer.get_frame(target_image=self._frame_buffer)
+        if self._frame_buffer is None:
+            self._frame_buffer = frame
+
+        if needs_hires:
+            # Restore native (window) resolution and invalidate PBO again
+            renderer.resize()
+            self.viewer._pbo = None
+            self.viewer._wp_pbo = None
+
+        frame_np = frame.numpy()
+        image = Image.fromarray(frame_np, mode="RGB")
+        filename = os.path.join(self._video_folder, f"{self._img_idx:05d}.png")
+
+        if self._async_save:
+            threading.Thread(target=image.save, args=(filename,), daemon=False).start()
+        else:
+            image.save(filename)
+
+        self._img_idx += 1
+
+    def generate_video(self, output_filename: str = "recording.mp4", fps: int = 60, keep_frames: bool = True) -> bool:
+        """Generate MP4 video from recorded PNG frames using imageio-ffmpeg.
+
+        Args:
+            output_filename: Name of output video file.
+            fps: Frames per second for video.
+            keep_frames: If ``True``, keep PNG frames after video creation.
+        """
+        try:
+            # Thirdparty
+            import imageio_ffmpeg as ffmpeg  # noqa: PLC0415
+        except ImportError:
+            msg.warning("imageio-ffmpeg not installed. Install with: pip install imageio-ffmpeg")
+            return False
+        try:
+            # Thirdparty
+            from PIL import Image
+        except ImportError:
+            msg.warning("PIL not installed. Install with: pip install pillow")
+            return False
+        # Thirdparty
+        import numpy as np  # noqa: PLC0415
+
+        frame_files = sorted(glob.glob(os.path.join(self._video_folder, "*.png")))
+        if not frame_files:
+            msg.warning(f"No PNG frames found in {self._video_folder}")
+            return False
+
+        # Read first frame to get dimensions; ensure even for libx264 yuv420p
+        first_img = Image.open(frame_files[0])
+        w, h = first_img.size
+        # libx264 with yuv420p requires even width and height
+        even_w = w if w % 2 == 0 else w + 1
+        even_h = h if h % 2 == 0 else h + 1
+        needs_pad = even_w != w or even_h != h
+        size = (even_w, even_h)
+
+        msg.info(f"Generating video from {len(frame_files)} frames at {even_w}x{even_h}...")
+        try:
+            writer = ffmpeg.write_frames(
+                output_filename,
+                size=size,
+                fps=fps,
+                codec="libx264",
+                macro_block_size=1,
+                quality=5,
+            )
+            writer.send(None)
+            for frame_path in frame_files:
+                img = Image.open(frame_path)
+                frame = np.array(img)
+                if needs_pad:
+                    padded = np.zeros((even_h, even_w, frame.shape[2]), dtype=frame.dtype)
+                    padded[:h, :w] = frame
+                    frame = padded
+                writer.send(frame)
+            writer.close()
+            msg.info(f"Video generated: {output_filename}")
+
+            if not keep_frames:
+                for frame_path in frame_files:
+                    os.remove(frame_path)
+                msg.info("Frames deleted")
+
+            return True
+        except Exception as e:
+            msg.warning(f"Failed to generate video: {e}")
+            return False
 
     @property
     def time(self) -> float:
@@ -795,11 +992,11 @@ class RigidBodySim:
         settings.solver.padmm.primal_tolerance = 1e-4
         settings.solver.padmm.dual_tolerance = 1e-4
         settings.solver.padmm.compl_tolerance = 1e-4
-        settings.solver.padmm.max_iterations = 100
+        settings.solver.padmm.max_iterations = 200
         settings.solver.padmm.eta = 1e-5
         settings.solver.padmm.rho_0 = 0.05
         settings.solver.sparse_jacobian = True
-        settings.solver.use_fk_solver = True
+        settings.solver.use_fk_solver = False
         settings.solver.use_solver_acceleration = True
         settings.solver.warmstart_mode = "containers"
         settings.solver.contact_warmstart_method = "geom_pair_net_force"

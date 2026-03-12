@@ -62,26 +62,33 @@ def parse_benchmark_arguments():
     parser.add_argument(
         "--max-num-worlds",
         type=int,
-        default=200,
+        default=8192,
         help="Sets the maximum number of parallel simulation worlds to run. Defaults to `8192`.",
     )
     parser.add_argument(
         "--num-points",
         type=int,
-        default=3,
+        default=20,
         help="Sets the number of points to sample on the profiling curve. Defaults to `20`.",
     )
     parser.add_argument(
         "--problem",
         type=str,
         choices=BenchmarkProblemNameToConfigFn.keys(),
-        default="dr_legs",
+        default="olaf",
         help="Name of the problem to run on. Defaults to `dr_legs`",
     )
     parser.add_argument(
         "--config",
         type=str,
-        choices=BenchmarkProblemNameToConfigFn.keys(),
+        choices=[
+            "Dense Jacobian LLT accurate",
+            "Dense Jacobian LLT fast",
+            "Sparse Jacobian LLT accurate",
+            "Sparse Jacobian LLT fast",
+            "Sparse Delassus CR accurate",
+            "Sparse Delassus CR fast",
+        ],
         default="Sparse Delassus CR fast",
         help="Name of the solver config to run on. Defaults to `Sparse Delassus CR fast`",
     )

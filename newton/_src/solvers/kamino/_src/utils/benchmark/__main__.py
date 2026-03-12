@@ -327,8 +327,8 @@ def benchmark_run(args: argparse.Namespace):
 
             # Construct simulator configurations based on the solver
             # configurations for the current benchmark configuration
-            sim_configs = Simulator.Config(dt=args.dt, solver=config)
-            sim_configs.solver.use_fk_solver = False
+            sim_config = Simulator.Config(dt=args.dt, solver=config)
+            sim_config.solver.use_fk_solver = False
 
             # Execute the benchmark for the current problem and settings
             run_single_benchmark(

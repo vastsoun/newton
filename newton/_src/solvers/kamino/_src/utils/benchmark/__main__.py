@@ -368,7 +368,9 @@ def benchmark_run(args: argparse.Namespace):
     return metrics, RUN_OUTPUT_PATH
 
 
-def run_throughput_profiling(args: argparse.Namespace, problem_idx: int, config_idx: int):
+def run_throughput_profiling(
+    args: argparse.Namespace, problem_idx: int, config_idx: int, num_worlds_max: int | None = None, num_points: int = 6
+):
     # Print the git commit hash and repository info to the
     # console for traceability and reproducibility of benchmark runs
     codeinfo = CodeInfo()
@@ -438,25 +440,24 @@ def run_throughput_profiling(args: argparse.Namespace, problem_idx: int, config_
     sim_config.solver.enable_fk_solver = False
 
     # Estimate max number of worlds that fit on the GPU
-    num_worlds_max = estimate_max_num_worlds(
-        args=args,
-        builder_fn=builder_fn,
-        config=sim_config,
-        control=control,
-        camera=camera,
-        device=device,
-        use_cuda_graph=use_cuda_graph,
-        physics_metrics=False,
-    )
+    if num_worlds_max is None:
+        num_worlds_max = estimate_max_num_worlds(
+            args=args,
+            builder_fn=builder_fn,
+            config=sim_config,
+            control=control,
+            camera=camera,
+            device=device,
+            use_cuda_graph=use_cuda_graph,
+            physics_metrics=False,
+        )
 
     # Collect timings and memory usage for various number of worlds
-    num_measurements = 6
     num_worlds_min = 1
-    for measurement_id in range(num_measurements):
+    for point_id in range(num_points):
         # Determine number of worlds
         num_worlds = int(
-            num_worlds_min
-            + (num_measurements - measurement_id - 1) * (num_worlds_max - num_worlds_min) / (num_measurements - 1)
+            num_worlds_min + (num_points - point_id - 1) * (num_worlds_max - num_worlds_min) / (num_points - 1)
         )
         msg.notif("Running with %d worlds", num_worlds)
 

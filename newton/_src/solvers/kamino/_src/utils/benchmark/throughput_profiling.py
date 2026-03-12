@@ -62,13 +62,13 @@ def parse_benchmark_arguments():
     parser.add_argument(
         "--max-num-worlds",
         type=int,
-        default=200,
+        default=8192,
         help="Sets the maximum number of parallel simulation worlds to run. Defaults to `8192`.",
     )
     parser.add_argument(
         "--num-points",
         type=int,
-        default=3,
+        default=20,
         help="Sets the number of points to sample on the profiling curve. Defaults to `20`.",
     )
     parser.add_argument(

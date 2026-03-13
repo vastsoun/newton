@@ -18,8 +18,22 @@ KAMINO: Utilities: Message Logging
 """
 
 import logging
+import sys
 from enum import IntEnum
 from typing import ClassVar
+
+# Fix rich console output on Windows
+if sys.platform == "win32":
+    import ctypes
+
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+
+    mode = ctypes.c_uint()
+    kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+
+    mode.value |= 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    kernel32.SetConsoleMode(handle, mode)
 
 
 class LogLevel(IntEnum):

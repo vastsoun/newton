@@ -31,7 +31,10 @@ from .math import FLOAT32_MAX, FLOAT32_MIN, PI, TWO_PI
 from .types import (
     ArrayLike,
     Descriptor,
+    float32,
+    int32,
     mat33f,
+    mat63f,
     override,
     quatf,
     transformf,
@@ -44,6 +47,7 @@ from .types import (
     vec4f,
     vec4i,
     vec5i,
+    vec6f,
     vec6i,
     vec7f,
 )
@@ -59,6 +63,11 @@ __all__ = [
     "JointDoFType",
     "JointsData",
     "JointsModel",
+    "joint_actuation_mode_from_newton",
+    "joint_dof_type_from_newton",
+    "num_coords_from_dof_type",
+    "num_cts_from_dof_type",
+    "num_dofs_from_dof_type",
 ]
 
 
@@ -246,6 +255,20 @@ class JointCorrectionMode(IntEnum):
         if lower_value not in mapping:
             raise ValueError(f"Joint correction parameter '{value}' is not a valid option.")
         return mapping[lower_value]
+
+
+@wp.func
+def _axis_rotmatn_from_vec3f(vec: vec3f) -> mat33f:
+    n = wp.norm_l2(vec)
+    assert n >= 1e-12, "Joint axis cannot have near-zero length"
+    ax = vec / n
+    dominant = int32(wp.argmax(wp.abs(ax)))
+    ref = vec3f(0.0, 0.0, 0.0)
+    ref[(dominant + 2) % 3] = 1.0
+    ay = wp.cross(ref, ax)
+    ay = wp.normalize(ay)
+    az = wp.cross(ax, ay)
+    return wp.matrix_from_cols(ax, ay, az)
 
 
 class JointDoFType(IntEnum):
@@ -791,86 +814,261 @@ class JointDoFType(IntEnum):
         return dof_type
 
     @staticmethod
+    @wp.func
     def axes_matrix_from_joint_type(
-        dof_type: JointDoFType,
-        dof_dim: tuple[int, int],
-        dof_axes: np.ndarray,
-    ) -> wp.mat33f | None:
+        dof_type: int,
+        dof_axes: mat63f,
+    ) -> wp.mat33f:
         """
         Returns the joint axes rotation matrix `R_axis_j` for the
         specified joint DoF type, based on the provided DoF axes.
 
         Args:
-            dof_type (JointDoFType):
+            dof_type:
                 The joint DoF type for which to compute the axes matrix.
-            dof_dim (tuple[int, int]):
-                A tuple containing the number of translational and rotational DoFs, respectively.
-            dof_axes (np.ndarray):
-                A 2D array of shape `(num_dofs, 3)` containing the local
-                axes of the joint's DoFs in the order they are defined.
+            dof_axes:
+                A 2D array of shape `(6, 3)`, of which the initial block of
+                shape `(num_dofs, 3)` contains the local axes of the joint's
+                DoFs in the order they are defined.
 
         Returns:
-            wp.mat33f | None:
-                The joint axes rotation matrix `R_axis_j` if applicable, or
-                `None` if the joint type does not require an axes matrix.
+            The joint axes rotation matrix `R_axis_j` if applicable, or the
+            identity matrix if the joint type does not require an axes matrix.
         """
         # Initialize the joint axes rotation matrix to identity by default
-        R_axis_j = wp.quat_to_matrix(wp.quat_identity())
-
-        def _axis_rotmatn_from_vec3f(vec: np.ndarray) -> wp.mat33f:
-            n = np.linalg.norm(vec)
-            if n < 1e-12:
-                raise ValueError(f"Joint axis vector has near-zero length: {vec}")
-            ax = vec / n
-            dominant = np.argmax(np.abs(ax))
-            ref = np.zeros(3)
-            ref[(dominant + 2) % 3] = 1.0
-            ay = np.cross(ref, ax)
-            ay /= np.linalg.norm(ay)
-            az = np.cross(ax, ay)
-            return wp.matrix_from_cols(wp.vec3f(ax), wp.vec3f(ay), wp.vec3f(az))
-
-        # Ensure that dof_axes has the correct shape based on the number of DoFs
-        if dof_axes.shape != (dof_dim[0] + dof_dim[1], 3):
-            raise ValueError(f"Invalid shape of dof_axes: {dof_axes.shape}. Expected: {(dof_dim[0] + dof_dim[1], 3)}.")
-
-        # Retrieve the number of DoFs for the joint type
-        # num_dofs = dof_dim[0] + dof_dim[1]
-        # print(f"{dof_type} with {num_dofs} DoFs and axis:\n{dof_axes}")
+        R_axis_j = wp.identity(3, dtype=float32)
 
         # Determine the joint axes matrix based on the DoF type and axes
         if dof_type == JointDoFType.FIXED:
             pass  # R_axis_j is already set to identity
-        elif dof_type in (JointDoFType.REVOLUTE, JointDoFType.PRISMATIC, JointDoFType.CYLINDRICAL):
-            R_axis_j = _axis_rotmatn_from_vec3f(dof_axes[0, :])
+        elif dof_type == JointDoFType.REVOLUTE:
+            R_axis_j = _axis_rotmatn_from_vec3f(dof_axes[0])
+        elif dof_type == JointDoFType.PRISMATIC:
+            R_axis_j = _axis_rotmatn_from_vec3f(dof_axes[0])
+        elif dof_type == JointDoFType.CYLINDRICAL:
+            R_axis_j = _axis_rotmatn_from_vec3f(dof_axes[0])
         elif dof_type == JointDoFType.UNIVERSAL:
-            ax = dof_axes[0, :]
-            ay = dof_axes[1, :]
-            az = np.cross(ax, ay)
-            R_axis_j = wp.mat33f(*ax.tolist(), *ay.tolist(), *az.tolist())
-        elif dof_type in (JointDoFType.SPHERICAL, JointDoFType.CARTESIAN):
-            R_axis_j = wp.mat33f(*dof_axes.tolist())
-        elif dof_type in (JointDoFType.FIXED, JointDoFType.FREE):
-            ax_lin = dof_axes[0, :]
-            ay_lin = dof_axes[1, :]
-            az_lin = dof_axes[2, :]
-            ax_rot = dof_axes[3, :]
-            ay_rot = dof_axes[4, :]
-            az_rot = dof_axes[5, :]
-            if not np.allclose(ax_lin, ax_rot) or not np.allclose(ay_lin, ay_rot) or not np.allclose(az_lin, az_rot):
-                raise ValueError(
-                    f"For FREE joints, the first 3 axes (linear) must match the last 3 axes (rotational), got:"
-                    f"\nax_lin: {ax_lin}, ax_rot: {ax_rot}\nay_lin: {ay_lin}, "
-                    f"ay_rot: {ay_rot}\naz_lin: {az_lin}, az_rot: {az_rot}"
-                )
-            R_axis_j = wp.mat33f(*ax_lin.tolist(), *ay_lin.tolist(), *az_lin.tolist())
-        else:
-            raise ValueError(f"Unsupported joint DOF type: {dof_type}")
-        # print(f"R_axis_j for {dof_type}:\n{R_axis_j}")
+            ax = dof_axes[0]
+            ay = dof_axes[1]
+            az = wp.cross(ax, ay)
+            R_axis_j = wp.matrix_from_cols(ax, ay, az)
+        elif dof_type == JointDoFType.SPHERICAL:
+            R_axis_j = wp.matrix_from_cols(dof_axes[0], dof_axes[1], dof_axes[2])
+        elif dof_type == JointDoFType.CARTESIAN:
+            R_axis_j = wp.matrix_from_cols(dof_axes[0], dof_axes[1], dof_axes[2])
 
-        # Return the computed joint axes rotation matrix or None
-        # if the joint type does not require an axes matrix
+        elif dof_type == JointDoFType.FIXED:
+            assert wp.norm_l2(dof_axes[0] - dof_axes[3]) < 1e-6, "Linear and rotational axes for fixed joint must match"
+            assert wp.norm_l2(dof_axes[1] - dof_axes[4]) < 1e-6, "Linear and rotational axes for fixed joint must match"
+            assert wp.norm_l2(dof_axes[2] - dof_axes[5]) < 1e-6, "Linear and rotational axes for fixed joint must match"
+            R_axis_j = wp.matrix_from_cols(dof_axes[0], dof_axes[1], dof_axes[2])
+        elif dof_type == JointDoFType.FREE:
+            assert wp.norm_l2(dof_axes[0] - dof_axes[3]) < 1e-6, "Linear and rotational axes for fixed joint must match"
+            assert wp.norm_l2(dof_axes[1] - dof_axes[4]) < 1e-6, "Linear and rotational axes for fixed joint must match"
+            assert wp.norm_l2(dof_axes[2] - dof_axes[5]) < 1e-6, "Linear and rotational axes for fixed joint must match"
+            R_axis_j = wp.matrix_from_cols(dof_axes[0], dof_axes[1], dof_axes[2])
+
+        # Return the computed joint axes rotation matrix
         return R_axis_j
+
+
+###
+# Routines
+###
+
+
+@wp.func
+def joint_dof_type_from_newton(
+    joint_type: int,
+    q_count: int,
+    qd_count: int,
+    dof_dim: vec2i,
+    limit_lower: vec6f,
+    limit_upper: vec6f,
+) -> int32:
+    """
+    Converts a Newton `JointType` to the corresponding Kamino `JointDoFType`.
+
+    Note:
+        This is the warp-compatible equivalent to `JointDoFType.from_newton()`.
+
+    Args:
+        type: The Newton joint type to convert, see `JointType`.
+
+    Returns:
+        The corresponding joint DoF type (see `JointDoFType`), or -1 if the
+        joint type is not supported.
+    """
+    # First try directly mapping the trivially supported types
+    if joint_type == JointType.PRISMATIC:
+        return JointDoFType.PRISMATIC
+    elif joint_type == JointType.REVOLUTE:
+        return JointDoFType.REVOLUTE
+    elif joint_type == JointType.BALL:
+        return JointDoFType.SPHERICAL
+    elif joint_type == JointType.FIXED:
+        return JointDoFType.FIXED
+    elif joint_type == JointType.FREE:
+        return JointDoFType.FREE
+
+    # If the type is not directly supported, attempt to infer the DoF type based
+    # on the dimensions of the joint and number of DoFs.
+    if q_count == 0 and qd_count == 0 and dof_dim == vec2i(0, 0):
+        return JointDoFType.FIXED
+    elif q_count == 1 and qd_count == 1 and dof_dim == vec2i(1, 0):
+        return JointDoFType.PRISMATIC
+    elif q_count == 1 and qd_count == 1 and dof_dim == vec2i(0, 1):
+        return JointDoFType.REVOLUTE
+    elif q_count == 2 and qd_count == 2 and dof_dim == vec2i(0, 2):
+        return JointDoFType.UNIVERSAL
+    elif q_count == 2 and qd_count == 2 and dof_dim == vec2i(1, 1):
+        return JointDoFType.CYLINDRICAL
+    elif q_count == 3 and qd_count == 3 and dof_dim == vec2i(3, 0):
+        return JointDoFType.CARTESIAN
+    elif q_count == 3 and qd_count == 3 and dof_dim == vec2i(0, 3):
+        # TODO: dof_type = JointDoFType.GIMBAL
+        return -1
+    elif q_count == 4 and qd_count == 3 and dof_dim == vec2i(0, 3):
+        return JointDoFType.SPHERICAL
+    elif q_count == 7 and qd_count == 6:
+        for i in range(qd_count):
+            if limit_lower[i] <= JOINT_QMIN or limit_upper[i] >= JOINT_QMAX:
+                return JointDoFType.FREE
+        # Unsupported joint type with 7 coordinates and 6 DoFs but unrecognized limits
+        return -1
+
+    # Return invalid DoF type
+    return -1
+
+
+@wp.func
+def joint_actuation_mode_from_newton(target_mode: int) -> int:
+    """
+    Converts a Newton `JointTargetMode` to the corresponding Kamino
+    `JointActuationType`.
+
+    Note:
+        This is the warp-compatible equivalent to `JointActuationType.from_newton()`.
+
+    Args:
+        type: The Newton target mode to convert, see `JointTargetMode`.
+
+    Returns:
+        The corresponding joint actuation type (see `JointActuationType`), or -1
+        if the target mode is not supported.
+    """
+    if target_mode == JointTargetMode.NONE:
+        return JointActuationType.PASSIVE
+    if target_mode == JointTargetMode.EFFORT:
+        return JointActuationType.FORCE
+    if target_mode == JointTargetMode.POSITION:
+        return JointActuationType.POSITION
+    if target_mode == JointTargetMode.VELOCITY:
+        return JointActuationType.VELOCITY
+    if target_mode == JointTargetMode.POSITION_VELOCITY:
+        return JointActuationType.POSITION_VELOCITY
+
+    # Return invalid actuation mode
+    return -1
+
+
+@wp.func
+def num_coords_from_dof_type(dof_type: int) -> int:
+    """
+    Returns the number of generalized coordinates defined by the joint DoF type.
+
+    Note:
+        This is the warp-compatible equivalent to `JointDoFType.num_coords()'.
+
+    Returns:
+        The number of coordinates for the given type, or `-1` if the DoF type is
+        invalid.
+    """
+    if dof_type == JointDoFType.FREE:
+        return 7  # 3D position + 4D quaternion
+    elif dof_type == JointDoFType.REVOLUTE:
+        return 1  # 1D angle
+    elif dof_type == JointDoFType.PRISMATIC:
+        return 1  # 1D distance
+    elif dof_type == JointDoFType.CYLINDRICAL:
+        return 2  # 2D vector of angle + distance
+    elif dof_type == JointDoFType.UNIVERSAL:
+        return 2  # 2D angles
+    elif dof_type == JointDoFType.SPHERICAL:
+        return 4  # 4D unit-quaternion
+    elif dof_type == JointDoFType.GIMBAL:
+        return 3  # 3D euler angles
+    elif dof_type == JointDoFType.CARTESIAN:
+        return 3  # 3D distances
+    elif dof_type == JointDoFType.FIXED:
+        return 0  # None
+    return -1
+
+
+@wp.func
+def num_dofs_from_dof_type(dof_type: int) -> int:
+    """
+    Returns the number of DoFs defined by the joint DoF type.
+
+    Note:
+        This is the warp-compatible equivalent to `JointDoFType.num_dofs()'.
+
+    Returns:
+        The number of DoFs for the given type, or `-1` if the DoF type is
+        invalid.
+    """
+    if dof_type == JointDoFType.FREE:
+        return 6  # 3D angular velocity + 3D linear velocity
+    elif dof_type == JointDoFType.REVOLUTE:
+        return 1  # 1D angular velocity
+    elif dof_type == JointDoFType.PRISMATIC:
+        return 1  # 1D linear velocity
+    elif dof_type == JointDoFType.CYLINDRICAL:
+        return 2  # 1D angular velocity + 1D linear velocity
+    elif dof_type == JointDoFType.UNIVERSAL:
+        return 2  # 2D angular velocities
+    elif dof_type == JointDoFType.SPHERICAL:
+        return 3  # 3D angular velocities
+    elif dof_type == JointDoFType.GIMBAL:
+        return 3  # 3D angular velocities
+    elif dof_type == JointDoFType.CARTESIAN:
+        return 3  # 3D linear velocities
+    elif dof_type == JointDoFType.FIXED:
+        return 0  # None
+    return -1
+
+
+@wp.func
+def num_cts_from_dof_type(dof_type: int) -> int:
+    """
+    Returns the number of constraints defined by the joint DoF type.
+
+    Note:
+        This is the warp-compatible equivalent to `JointDoFType.num_cts()'.
+
+    Returns:
+        The number of constraints for the given type, or `-1` if the DoF type is
+        invalid.
+    """
+    if dof_type == JointDoFType.FREE:
+        return 0  # None
+    elif dof_type == JointDoFType.REVOLUTE:
+        return 5  # 5D vector for `{T_x, T_y, T_z, R_y, R_z}`
+    elif dof_type == JointDoFType.PRISMATIC:
+        return 5  # 5D vector for `{T_x, T_y, T_z, R_y, R_z}`
+    elif dof_type == JointDoFType.CYLINDRICAL:
+        return 4  # 4D vector for `{T_x, T_y, R_y, R_z}`
+    elif dof_type == JointDoFType.UNIVERSAL:
+        return 4  # 4D vector for `{R_x, R_y, R_z, R_w}`
+    elif dof_type == JointDoFType.SPHERICAL:
+        return 3  # 3D vector for `{R_x, R_y, R_z}`
+    elif dof_type == JointDoFType.GIMBAL:
+        return 3  # 3D vector for `{R_x, R_y, R_z}`
+    elif dof_type == JointDoFType.CARTESIAN:
+        return 3  # 3D vector for `{T_x, T_y, T_z}`
+    elif dof_type == JointDoFType.FIXED:
+        return 6  # 6D vector for `{T_x, T_y, T_z, R_x, R_y, R_z}`
+    return -1
 
 
 ###

@@ -932,6 +932,7 @@ ShapeDescriptorType = (
 ###
 
 
+@wp.func
 def max_contacts_for_shape_pair(type_a: int, type_b: int) -> tuple[int, int]:
     """
     Count the number of potential contact points for a collision pair in both

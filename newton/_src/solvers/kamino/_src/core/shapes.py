@@ -932,6 +932,7 @@ ShapeDescriptorType = (
 ###
 
 
+@wp.func
 def max_contacts_for_shape_pair(type_a: int, type_b: int) -> tuple[int, int]:
     """
     Count the number of potential contact points for a collision pair in both
@@ -950,75 +951,75 @@ def max_contacts_for_shape_pair(type_a: int, type_b: int) -> tuple[int, int]:
     if type_a > type_b:
         type_a, type_b = type_b, type_a
 
-    if type_a == ShapeType.SPHERE:
+    if type_a == wp.static(ShapeType.SPHERE):
         return 1, 0
 
-    elif type_a == ShapeType.CYLINDER:
-        if type_b == ShapeType.CYLINDER:
+    elif type_a == wp.static(ShapeType.CYLINDER):
+        if type_b == wp.static(ShapeType.CYLINDER):
             return 4, 4
-        elif type_b == ShapeType.CONE:
+        elif type_b == wp.static(ShapeType.CONE):
             return 4, 4
-        elif type_b == ShapeType.CAPSULE:
+        elif type_b == wp.static(ShapeType.CAPSULE):
             return 4, 4
-        elif type_b == ShapeType.BOX:
+        elif type_b == wp.static(ShapeType.BOX):
             return 8, 8
-        elif type_b == ShapeType.ELLIPSOID:
+        elif type_b == wp.static(ShapeType.ELLIPSOID):
             return 4, 4
-        elif type_b == ShapeType.PLANE:
+        elif type_b == wp.static(ShapeType.PLANE):
             return 6, 6
-        elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+        elif type_b == wp.static(ShapeType.MESH) or type_b == wp.static(ShapeType.CONVEX):
             pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
 
-    elif type_a == ShapeType.CONE:
-        if type_b == ShapeType.CONE:
+    elif type_a == wp.static(ShapeType.CONE):
+        if type_b == wp.static(ShapeType.CONE):
             return 4, 4
-        elif type_b == ShapeType.CAPSULE:
+        elif type_b == wp.static(ShapeType.CAPSULE):
             return 4, 4
-        elif type_b == ShapeType.BOX:
+        elif type_b == wp.static(ShapeType.BOX):
             return 8, 8
-        elif type_b == ShapeType.ELLIPSOID:
+        elif type_b == wp.static(ShapeType.ELLIPSOID):
             return 8, 8
-        elif type_b == ShapeType.PLANE:
+        elif type_b == wp.static(ShapeType.PLANE):
             return 8, 8
-        elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+        elif type_b == wp.static(ShapeType.MESH) or type_b == wp.static(ShapeType.CONVEX):
             pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
 
-    elif type_a == ShapeType.CAPSULE:
-        if type_b == ShapeType.CAPSULE:
+    elif type_a == wp.static(ShapeType.CAPSULE):
+        if type_b == wp.static(ShapeType.CAPSULE):
             return 2, 2
-        elif type_b == ShapeType.BOX:
+        elif type_b == wp.static(ShapeType.BOX):
             return 8, 8
-        elif type_b == ShapeType.ELLIPSOID:
+        elif type_b == wp.static(ShapeType.ELLIPSOID):
             return 8, 8
-        elif type_b == ShapeType.PLANE:
+        elif type_b == wp.static(ShapeType.PLANE):
             return 8, 8
-        elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+        elif type_b == wp.static(ShapeType.MESH) or type_b == wp.static(ShapeType.CONVEX):
             pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
 
-    elif type_a == ShapeType.BOX:
-        if type_b == ShapeType.BOX:
+    elif type_a == wp.static(ShapeType.BOX):
+        if type_b == wp.static(ShapeType.BOX):
             return 12, 12
-        elif type_b == ShapeType.ELLIPSOID:
+        elif type_b == wp.static(ShapeType.ELLIPSOID):
             return 8, 8
-        elif type_b == ShapeType.PLANE:
+        elif type_b == wp.static(ShapeType.PLANE):
             return 12, 12
-        elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+        elif type_b == wp.static(ShapeType.MESH) or type_b == wp.static(ShapeType.CONVEX):
             pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
 
-    elif type_a == ShapeType.ELLIPSOID:
-        if type_b == ShapeType.ELLIPSOID:
+    elif type_a == wp.static(ShapeType.ELLIPSOID):
+        if type_b == wp.static(ShapeType.ELLIPSOID):
             return 4, 4
-        elif type_b == ShapeType.PLANE:
+        elif type_b == wp.static(ShapeType.PLANE):
             return 4, 4
-        elif type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+        elif type_b == wp.static(ShapeType.MESH) or type_b == wp.static(ShapeType.CONVEX):
             pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
 
-    elif type_a == ShapeType.PLANE:
-        if type_b == ShapeType.MESH or type_b == ShapeType.CONVEX:
+    elif type_a == wp.static(ShapeType.PLANE):
+        if type_b == wp.static(ShapeType.MESH) or type_b == wp.static(ShapeType.CONVEX):
             pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
 
-    elif type_a == ShapeType.MESH or type_a == ShapeType.CONVEX:
-        if type_a == ShapeType.HFIELD:
+    elif type_a == wp.static(ShapeType.MESH) or type_a == wp.static(ShapeType.CONVEX):
+        if type_a == wp.static(ShapeType.HFIELD):
             pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?
         else:
             pass  # TODO: WHAT TO RETURN WHEN MESH SUPPORT IS ADDED?

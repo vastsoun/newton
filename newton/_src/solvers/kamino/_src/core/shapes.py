@@ -43,6 +43,8 @@ __all__ = [
     "ShapeDescriptor",
     "ShapeType",
     "SphereShape",
+    "shape_from_newton",
+    "shape_type_from_newton",
 ]
 
 
@@ -447,6 +449,113 @@ class ShapeDescriptor(ABC, Descriptor):
     @abstractmethod
     def data(self) -> ShapeDataLike:
         return None
+
+
+###
+# Routines
+###
+
+
+@wp.func
+def shape_type_from_newton(geo_type: int) -> int:
+    """
+    Converts Newton :class:`GeoType` to Kamino :class:`ShapeType`.
+
+    Note:
+        This is the warp-compatible equivalent to `ShapeType.from_newton()`
+        without the scale parameter.
+
+    Args:
+        geo_type: The Newton GeoType to convert, see :class:`GeoType`.
+
+    Returns:
+        A tuple containing the corresponding Kamino shape type (see
+        :class:`ShapeType`).
+    """
+    if geo_type == wp.static(GeoType.NONE):
+        return wp.static(ShapeType.EMPTY)
+    if geo_type == wp.static(GeoType.SPHERE):
+        return wp.static(ShapeType.SPHERE)
+    if geo_type == wp.static(GeoType.CYLINDER):
+        return wp.static(ShapeType.CYLINDER)
+    if geo_type == wp.static(GeoType.CONE):
+        return wp.static(ShapeType.CONE)
+    if geo_type == wp.static(GeoType.CAPSULE):
+        return wp.static(ShapeType.CAPSULE)
+    if geo_type == wp.static(GeoType.BOX):
+        return wp.static(ShapeType.BOX)
+    if geo_type == wp.static(GeoType.ELLIPSOID):
+        return wp.static(ShapeType.ELLIPSOID)
+    if geo_type == wp.static(GeoType.PLANE):
+        return wp.static(ShapeType.PLANE)
+    if geo_type == wp.static(GeoType.MESH):
+        return wp.static(ShapeType.MESH)
+    if geo_type == wp.static(GeoType.CONVEX_MESH):
+        return wp.static(ShapeType.CONVEX)
+    if geo_type == wp.static(GeoType.HFIELD):
+        return wp.static(ShapeType.HFIELD)
+    return -1
+
+
+@wp.func
+def shape_from_newton(geo_type: int, shape_scale: vec3f) -> tuple[int, vec4f]:
+    """
+    Converts Newton :class:`GeoType` to Kamino :class:`ShapeType` and converts
+    Newton shape scale to Kamino geometry parameters.
+
+    Note:
+        This is the warp-compatible equivalent to `ShapeType.from_newton()`
+        with the scale parameter.
+
+    Args:
+        geo_type: The Newton GeoType to convert, see :class:`GeoType`.
+        shape_scale: Newton shape scale as an iterable of floats. See
+            `ShapeType.from_newton()` for expected formats per shape type.
+
+    Returns:
+        A tuple containing the corresponding Kamino shape type (see
+        :class:`ShapeType`) and parameters.
+    """
+    # Convert the newton.GeoType to the corresponding Kamino ShapeType
+    shape_type = shape_type_from_newton(geo_type)
+    if shape_type < 0:
+        return -1, vec4f()
+
+    # Then attempt to convert the geometry parameters to the corresponding Newton shape scale
+    # Convert the Newton shape scale to the corresponding Kamino geometry parameters based on the shape type
+    shape_params = vec4f()
+    if geo_type == wp.static(GeoType.SPHERE):
+        # Newton: (radius, ?, ?) -> Kamino: (radius, 0, 0, 0)
+        shape_params = vec4f(shape_scale[0], 0.0, 0.0, 0.0)
+    elif geo_type == wp.static(GeoType.BOX):
+        # Newton: half-extents -> Kamino: (depth, width, height) full size
+        shape_params = vec4f(shape_scale[0] * 2.0, shape_scale[1] * 2.0, shape_scale[2] * 2.0, 0.0)
+    elif geo_type == wp.static(GeoType.CAPSULE):
+        # Newton: (radius, half-height, ?) -> Kamino: (radius, height, _, _)
+        shape_params = vec4f(shape_scale[0], shape_scale[1] * 2.0, 0.0, 0.0)
+    elif geo_type == wp.static(GeoType.CYLINDER):
+        # Newton: (radius, half-height, ?) -> Kamino: (radius, height, _, _)
+        shape_params = vec4f(shape_scale[0], shape_scale[1] * 2.0, 0.0, 0.0)
+    elif geo_type == wp.static(GeoType.CONE):
+        # Newton: (radius, half-height, ?) -> Kamino: (radius, height, _, _)
+        shape_params = vec4f(shape_scale[0], shape_scale[1] * 2.0, 0.0, 0.0)
+    elif geo_type == wp.static(GeoType.ELLIPSOID):
+        # Newton: (a, b, c) semi-axes -> Kamino: (a, b, c, _)
+        shape_params = vec4f(shape_scale[0], shape_scale[1], shape_scale[2], 0.0)
+    elif geo_type == wp.static(GeoType.PLANE):
+        # NOTE: For an infinite plane, we use (0, 0, _) to signal an infinite extents
+        shape_params = vec4f(0.0, 0.0, 1.0, 0.0)  # Default normal and distance
+    elif (
+        geo_type == wp.static(GeoType.MESH)
+        or geo_type == wp.static(GeoType.CONVEX_MESH)
+        or geo_type == wp.static(GeoType.HFIELD)
+    ):
+        # For mesh, convex mesh, and heightfield, parameters are not directly convertible
+        shape_params = vec4f(shape_scale[0], shape_scale[1], shape_scale[2], 0.0)
+
+    # Return the mapped ShapeType and the
+    # converted parameters (if applicable)
+    return shape_type, shape_params
 
 
 ###

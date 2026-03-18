@@ -733,14 +733,14 @@ class ModelKamino:
         # ----------------------------------------------------------------------------
 
         # Unpack converted quantities
-        body_q_np = converted["body_q"]
-        body_qd_np = converted["body_qd"]
-        body_com_np = converted["body_com"]
-        body_inertia_np = converted["body_inertia"]
-        body_inv_inertia_np = converted["body_inv_inertia"]
-        shape_transform_np = converted["shape_transform"]
-        joint_X_p_np = converted["joint_X_p"]
-        joint_X_c_np = converted["joint_X_c"]
+        body_q = converted["body_q"]
+        body_qd = converted["body_qd"]
+        body_com = converted["body_com"]
+        body_inertia = converted["body_inertia"]
+        body_inv_inertia = converted["body_inv_inertia"]
+        shape_transform = converted["shape_transform"]
+        joint_X_p = converted["joint_X_p"]
+        joint_X_c = converted["joint_X_c"]
 
         # Initialize materials manager
         materials_manager = MaterialManager()
@@ -768,14 +768,14 @@ class ModelKamino:
 
             # Bodies
             model_bodies = convert_rigid_bodies(
-                model, model_size, model_info, body_com_np, body_q_np, body_qd_np, body_inertia_np, body_inv_inertia_np
+                model, model_size, model_info, body_com, body_q, body_qd, body_inertia, body_inv_inertia
             )
 
             # Joints
-            model_joints = convert_joints(model, model_size, model_info, body_com_np, joint_X_p_np, joint_X_c_np)
+            model_joints = convert_joints(model, model_size, model_info, body_com, joint_X_p, joint_X_c)
 
             # Geometries
-            model_geoms = convert_geometries(model, model_size, materials_manager, shape_transform_np)
+            model_geoms = convert_geometries(model, model_size, materials_manager, shape_transform)
 
             # Materials
             model_materials = materials_manager.create_materials_model()
@@ -788,17 +788,17 @@ class ModelKamino:
         # Modify the model's body COM and shape transform properties in-place to convert from body-frame-relative
         # NOTE: These are modified only so that the visualizer correctly
         # shows the shape poses, joints frames and body inertial properties
-        model.body_com.assign(body_com_np)
-        model.body_inertia.assign(body_inertia_np)
-        model.shape_transform.assign(shape_transform_np)
-        model.joint_X_p.assign(joint_X_p_np)
-        model.joint_X_c.assign(joint_X_c_np)
+        wp.copy(model.body_com, body_com)
+        wp.copy(model.body_inertia, body_inertia)
+        wp.copy(model.shape_transform, shape_transform)
+        wp.copy(model.joint_X_p, joint_X_p)
+        wp.copy(model.joint_X_c, joint_X_c)
 
         # Convert shape offsets from body-frame-relative to COM-relative
         convert_geom_offset_origin_to_com(
             model_bodies.i_r_com_i,
             model.shape_body,
-            wp.array(shape_transform_np, dtype=wp.transformf, device=model.device),
+            shape_transform,
             model_geoms.offset,
         )
 

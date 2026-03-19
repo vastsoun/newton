@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import functools
 import math
+import os
 from collections.abc import Callable
 from typing import Any
 
@@ -233,6 +234,27 @@ def _cg_kernel_2(
     beta = wp.where(cond and rz_old[e] > 0.0, rz_new[e] / rz_old[e], rz_old.dtype(0.0))
 
     p[e, i] = z[e, i] + beta * p[e, i]
+
+
+@wp.kernel
+def _cg_initialize_residual_and_guess(
+    use_extrapolation: int,
+    omega: float,
+    b: wp.array2d(dtype=Any),
+    x_prev: wp.array2d(dtype=Any),
+    active_dims: wp.array(dtype=wp.int32),
+    world_active: wp.array(dtype=wp.int32),
+    x: wp.array2d(dtype=Any),
+    r: wp.array2d(dtype=Any),
+):
+    world, i = wp.tid()
+    if world_active[world] == 0 or i >= active_dims[world]:
+        return
+    r[world, i] = b[world, i]
+    if use_extrapolation != 0:
+        # Extrapolate from last accepted solution to reduce initial residual.
+        x_cur = x[world, i]
+        x[world, i] = x_cur + omega * (x_cur - x_prev[world, i])
 
 
 @wp.kernel
@@ -514,7 +536,9 @@ class ConjugateSolver:
         self.callback = callback
         self.use_cuda_graph = use_cuda_graph
 
-        self.dot_tile_size = min(2048, 2 ** math.ceil(math.log(self.maxdims, 2)))
+        dot_tile_size_cap = max(1, int(os.getenv("NEWTON_KAMINO_DOT_TILE_SIZE_CAP", "2048")))
+        self.dot_tile_size = min(dot_tile_size_cap, 2 ** math.ceil(math.log(self.maxdims, 2)))
+        self.dot_block_dim = max(1, int(os.getenv("NEWTON_KAMINO_DOT_BLOCK_DIM", "64")))
         self.tiled_dot_kernel = make_dot_kernel(self.dot_tile_size, self.maxdims)
         self._allocate()
 
@@ -587,9 +611,13 @@ class CGSolver(ConjugateSolver):
 
     def _allocate(self):
         super()._allocate()
+        self.cg_cycle_size = max(1, int(os.getenv("NEWTON_KAMINO_CG_CYCLE_SIZE", "2")))
+        self.cg_extrapolation = float(os.getenv("NEWTON_KAMINO_CG_EXTRAPOLATION", "0.0"))
+        self._has_prev_solution = False
 
         # Temp storage
         self.r_and_z = wp.zeros((2, self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
+        self._x_prev = wp.zeros((self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
         self.p_and_Ap = wp.zeros_like(self.r_and_z)
 
         # (r, r) -- so we can compute r.z and r.r at once
@@ -637,11 +665,17 @@ class CGSolver(ConjugateSolver):
             inputs=[self.rtol, self.atol, self.dot_product[0]],
             outputs=[self.atol_sq],
         )
-        r.assign(b)
+        use_extrapolation = int(self.cg_extrapolation != 0.0 and self._has_prev_solution)
+        wp.launch(
+            kernel=_cg_initialize_residual_and_guess,
+            dim=(self.n_worlds, self.maxdims),
+            inputs=[use_extrapolation, self.cg_extrapolation, b, self._x_prev, active_dims, world_active],
+            outputs=[x, r],
+            device=self.device,
+        )
         self.A.gemv(x, r, world_active, alpha=-1.0, beta=1.0)
         self.update_rr_rz(r, z, self.r_repeated, active_dims, world_active)
         p.assign(z)
-
         do_iteration = functools.partial(
             self.do_iteration,
             p=p,
@@ -655,9 +689,14 @@ class CGSolver(ConjugateSolver):
             active_dims=active_dims,
             world_active=world_active,
         )
+        cycle_size = min(self.cg_cycle_size, self.maxiter_host)
 
-        return _run_capturable_loop(
-            do_iteration,
+        def do_cycle():
+            for _ in range(cycle_size):
+                do_iteration()
+
+        result = _run_capturable_loop(
+            do_cycle,
             r_norm_sq,
             world_active,
             self.cur_iter,
@@ -668,7 +707,12 @@ class CGSolver(ConjugateSolver):
             self.use_cuda_graph,
             use_graph_conditionals=self.use_graph_conditionals,
             maxiter_host=self.maxiter_host,
+            cycle_size=cycle_size,
         )
+        if self.cg_extrapolation != 0.0:
+            self._x_prev.assign(x)
+            self._has_prev_solution = True
+        return result
 
     def do_iteration(self, p, Ap, rz_old, rz_new, z, x, r, r_norm_sq, active_dims, world_active):
         rz_old.assign(rz_new)

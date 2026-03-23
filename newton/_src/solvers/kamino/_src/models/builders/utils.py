@@ -24,11 +24,12 @@ homogeneous multi-world builders and import
 USD models.
 """
 
-import sys
+import time
 from collections.abc import Callable
 
 import warp as wp
 
+from ....examples import print_progress_bar
 from ...core.builder import ModelBuilderKamino
 from ...core.shapes import BoxShape, PlaneShape
 from ...core.types import transformf, vec3f, vec6f
@@ -197,31 +198,6 @@ def build_usd(
     return _builder
 
 
-def print_progress_bar(iteration, total, length=40, prefix="", suffix=""):
-    """
-    Display a progress bar with current/total iterations.
-
-    Args:
-        iteration (int) : Current iteration
-        total (int) : Total iterations
-        length (int) : Character length of the bar
-        prefix (str) : Prefix string
-        suffix (str) : Suffix string
-    """
-    progress = iteration / total
-    filled_length = int(length * progress)
-    if sys.stdout.encoding == "cp1252":  # Fix for Windows terminal
-        bar = "x" * filled_length + "-" * (length - filled_length)
-    else:
-        bar = "█" * filled_length + "-" * (length - filled_length)
-
-    sys.stdout.write(f"\r{prefix} |{bar}| {iteration}/{total} {suffix}")
-    sys.stdout.flush()
-
-    if iteration == total:
-        sys.stdout.write("\n")
-
-
 def make_homogeneous_builder(num_worlds: int, build_fn: Callable, **kwargs) -> ModelBuilderKamino:
     """
     Utility factory function to create a multi-world builder with identical worlds replicated across the model.
@@ -241,7 +217,8 @@ def make_homogeneous_builder(num_worlds: int, build_fn: Callable, **kwargs) -> M
 
     # Then replicate it across the specified number of worlds
     builder = ModelBuilderKamino(default_world=False)
+    start_time = time.time()
     for i in range(num_worlds):
-        print_progress_bar(i + 1, num_worlds, prefix="Adding builders", suffix="")
+        print_progress_bar(i + 1, num_worlds, start_time, prefix="Adding builders", suffix="")
         builder.add_builder(single)
     return builder

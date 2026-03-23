@@ -1604,6 +1604,8 @@ class ModelBuilderKamino:
             num_bodies = self.worlds[wid].num_bodies
             adjacent_bodies = [[0 for _ in range(num_bodies + 1)] for _ in range(num_bodies + 1)]
             for joint in self.joints[wid]:
+                if joint.dof_type == JointDoFType.FREE:
+                    continue
                 adjacent_bodies[joint.bid_B + 1][joint.bid_F + 1] = 1
                 adjacent_bodies[joint.bid_F + 1][joint.bid_B + 1] = 1
 

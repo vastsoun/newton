@@ -87,31 +87,43 @@ def assert_model_matches_builder(test: unittest.TestCase, builder: ModelBuilderK
         test.assertEqual(model.info.joint_dynamic_cts_offset.numpy()[w], world.joint_dynamic_cts_idx_offset)
         test.assertEqual(model.info.joint_kinematic_cts_offset.numpy()[w], world.joint_kinematic_cts_idx_offset)
 
-    for i in range(model.size.sum_of_num_bodies):
-        test.assertEqual(model.bodies.wid.numpy()[i], builder.bodies[i].wid)
-        test.assertEqual(model.bodies.bid.numpy()[i], builder.bodies[i].bid)
+    bid_tot = 0
+    for wid in range(builder.num_worlds):
+        for bid_loc in range(len(builder.bodies[wid])):
+            test.assertEqual(model.bodies.wid.numpy()[bid_tot], builder.bodies[wid][bid_loc].wid)
+            test.assertEqual(model.bodies.bid.numpy()[bid_tot], builder.bodies[wid][bid_loc].bid)
+            bid_tot += 1
+    test.assertEqual(bid_tot, model.size.sum_of_num_bodies)
 
-    for i in range(model.size.sum_of_num_joints):
-        wid = builder.joints[i].wid
+    jid_tot = 0
+    for wid in range(builder.num_worlds):
         bid_offset = builder.worlds[wid].bodies_idx_offset
-        test.assertEqual(model.joints.wid.numpy()[i], builder.joints[i].wid)
-        test.assertEqual(model.joints.jid.numpy()[i], builder.joints[i].jid)
-        test.assertEqual(
-            model.joints.bid_B.numpy()[i], builder.joints[i].bid_B + bid_offset if builder.joints[i].bid_B >= 0 else -1
-        )
-        test.assertEqual(
-            model.joints.bid_F.numpy()[i], builder.joints[i].bid_F + bid_offset if builder.joints[i].bid_F >= 0 else -1
-        )
+        for jid_loc in range(len(builder.joints[wid])):
+            test.assertEqual(model.joints.wid.numpy()[jid_tot], builder.joints[wid][jid_loc].wid)
+            test.assertEqual(model.joints.jid.numpy()[jid_tot], builder.joints[wid][jid_loc].jid)
+            test.assertEqual(
+                model.joints.bid_B.numpy()[jid_tot],
+                builder.joints[wid][jid_loc].bid_B + bid_offset if builder.joints[wid][jid_loc].bid_B >= 0 else -1,
+            )
+            test.assertEqual(
+                model.joints.bid_F.numpy()[jid_tot],
+                builder.joints[wid][jid_loc].bid_F + bid_offset if builder.joints[wid][jid_loc].bid_F >= 0 else -1,
+            )
+            jid_tot += 1
+    test.assertEqual(jid_tot, model.size.sum_of_num_joints)
 
-    for i in range(model.size.sum_of_num_geoms):
-        wid = builder.geoms[i].wid
+    gid_tot = 0
+    for wid in range(builder.num_worlds):
         bid_offset = builder.worlds[wid].bodies_idx_offset
-        test.assertEqual(model.geoms.wid.numpy()[i], builder.geoms[i].wid)
-        test.assertEqual(model.geoms.gid.numpy()[i], builder.geoms[i].gid)
-        test.assertEqual(
-            model.geoms.bid.numpy()[i],
-            builder.geoms[i].body + bid_offset if builder.geoms[i].body >= 0 else -1,
-        )
+        for gid_loc in range(len(builder.geoms[wid])):
+            test.assertEqual(model.geoms.wid.numpy()[gid_tot], builder.geoms[wid][gid_loc].wid)
+            test.assertEqual(model.geoms.gid.numpy()[gid_tot], builder.geoms[wid][gid_loc].gid)
+            test.assertEqual(
+                model.geoms.bid.numpy()[gid_tot],
+                builder.geoms[wid][gid_loc].body + bid_offset if builder.geoms[wid][gid_loc].body >= 0 else -1,
+            )
+            gid_tot += 1
+    test.assertEqual(gid_tot, model.size.sum_of_num_geoms)
 
     # Optional printout for debugging
     msg.info("model.bodies.wid: %s", model.bodies.wid)
@@ -194,9 +206,12 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.num_passive_joint_dofs, 0)
         self.assertEqual(builder.num_actuated_joint_dofs, 0)
         self.assertEqual(builder.num_joint_cts, 0)
-        self.assertEqual(len(builder.bodies), 0)
-        self.assertEqual(len(builder.joints), 0)
-        self.assertEqual(len(builder.geoms), 0)
+        self.assertEqual(len(builder.bodies), 1)
+        self.assertEqual(len(builder.bodies[0]), 0)
+        self.assertEqual(len(builder.joints), 1)
+        self.assertEqual(len(builder.joints[0]), 0)
+        self.assertEqual(len(builder.geoms), 1)
+        self.assertEqual(len(builder.geoms[0]), 0)
         self.assertEqual(len(builder.materials), 1)  # Default material is always created
 
     def test_02_add_world(self):
@@ -226,13 +241,13 @@ class TestModelBuilder(unittest.TestCase):
 
         self.assertEqual(builder.num_bodies, 1)
         self.assertEqual(bid, 0)
-        self.assertEqual(bid, builder.bodies[bid].bid)
-        self.assertEqual(builder.bodies[bid].name, "test_rigid_body")
-        self.assertEqual(builder.bodies[bid].wid, wid)
-        self.assertEqual(builder.bodies[bid].m_i, 1.0)
-        np.testing.assert_array_equal(builder.bodies[bid].i_I_i, np.eye(3, dtype=np.float32).flatten())
-        np.testing.assert_array_equal(builder.bodies[bid].q_i_0, np.array(transformf(), dtype=np.float32))
-        np.testing.assert_array_equal(builder.bodies[bid].u_i_0, np.zeros(6, dtype=np.float32))
+        self.assertEqual(bid, builder.bodies[wid][bid].bid)
+        self.assertEqual(builder.bodies[wid][bid].name, "test_rigid_body")
+        self.assertEqual(builder.bodies[wid][bid].wid, wid)
+        self.assertEqual(builder.bodies[wid][bid].m_i, 1.0)
+        np.testing.assert_array_equal(builder.bodies[wid][bid].i_I_i, np.eye(3, dtype=np.float32).flatten())
+        np.testing.assert_array_equal(builder.bodies[wid][bid].q_i_0, np.array(transformf(), dtype=np.float32))
+        np.testing.assert_array_equal(builder.bodies[wid][bid].u_i_0, np.zeros(6, dtype=np.float32))
 
     def test_04_add_rigid_body_descriptor(self):
         builder = ModelBuilderKamino()
@@ -249,13 +264,13 @@ class TestModelBuilder(unittest.TestCase):
 
         self.assertEqual(builder.num_bodies, 1)
         self.assertEqual(bid, 0)
-        self.assertEqual(bid, builder.bodies[bid].bid)
-        self.assertEqual(builder.bodies[bid].name, "test_rigid_body")
-        self.assertEqual(builder.bodies[bid].wid, wid)
-        self.assertEqual(builder.bodies[bid].m_i, 2.0)
-        np.testing.assert_array_equal(builder.bodies[bid].i_I_i, 2.0 * np.eye(3, dtype=np.float32).flatten())
-        np.testing.assert_array_equal(builder.bodies[bid].q_i_0, np.array(transformf(), dtype=np.float32))
-        np.testing.assert_array_equal(builder.bodies[bid].u_i_0, np.zeros(6, dtype=np.float32))
+        self.assertEqual(bid, builder.bodies[wid][bid].bid)
+        self.assertEqual(builder.bodies[wid][bid].name, "test_rigid_body")
+        self.assertEqual(builder.bodies[wid][bid].wid, wid)
+        self.assertEqual(builder.bodies[wid][bid].m_i, 2.0)
+        np.testing.assert_array_equal(builder.bodies[wid][bid].i_I_i, 2.0 * np.eye(3, dtype=np.float32).flatten())
+        np.testing.assert_array_equal(builder.bodies[wid][bid].q_i_0, np.array(transformf(), dtype=np.float32))
+        np.testing.assert_array_equal(builder.bodies[wid][bid].u_i_0, np.zeros(6, dtype=np.float32))
 
     def test_05_add_duplicate_rigid_body(self):
         builder = ModelBuilderKamino()
@@ -310,18 +325,18 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.num_bodies, 2)
         self.assertEqual(builder.num_joints, 1)
         self.assertEqual(jid, 0)
-        self.assertEqual(jid, builder.joints[jid].jid)
-        self.assertEqual(builder.joints[jid].name, "test_joint")
-        self.assertEqual(builder.joints[jid].wid, wid)
-        self.assertEqual(builder.joints[jid].bid_B, bid_0)
-        self.assertEqual(builder.joints[jid].bid_F, bid_1)
-        self.assertEqual(builder.joints[jid].dof_type, JointDoFType.PRISMATIC)
-        self.assertEqual(builder.joints[jid].act_type, JointActuationType.FORCE)
-        self.assertEqual(builder.joints[jid].a_j, [1.0])
-        self.assertEqual(builder.joints[jid].b_j, [1.0])
-        self.assertTrue(builder.joints[jid].is_dynamic)
-        self.assertTrue(builder.joints[jid].num_kinematic_cts, 5)
-        self.assertTrue(builder.joints[jid].num_dynamic_cts, 1)
+        self.assertEqual(jid, builder.joints[wid][jid].jid)
+        self.assertEqual(builder.joints[wid][jid].name, "test_joint")
+        self.assertEqual(builder.joints[wid][jid].wid, wid)
+        self.assertEqual(builder.joints[wid][jid].bid_B, bid_0)
+        self.assertEqual(builder.joints[wid][jid].bid_F, bid_1)
+        self.assertEqual(builder.joints[wid][jid].dof_type, JointDoFType.PRISMATIC)
+        self.assertEqual(builder.joints[wid][jid].act_type, JointActuationType.FORCE)
+        self.assertEqual(builder.joints[wid][jid].a_j, [1.0])
+        self.assertEqual(builder.joints[wid][jid].b_j, [1.0])
+        self.assertTrue(builder.joints[wid][jid].is_dynamic)
+        self.assertTrue(builder.joints[wid][jid].num_kinematic_cts, 5)
+        self.assertTrue(builder.joints[wid][jid].num_dynamic_cts, 1)
 
     def test_07_add_duplicate_joint(self):
         builder = ModelBuilderKamino()
@@ -384,11 +399,11 @@ class TestModelBuilder(unittest.TestCase):
         )
         self.assertEqual(builder.num_geoms, 1)
         self.assertEqual(gid, 0)
-        self.assertEqual(gid, builder.geoms[gid].gid)
-        self.assertEqual(builder.geoms[gid].name, "test_geom")
-        self.assertEqual(builder.geoms[gid].body, -1)
-        self.assertEqual(builder.geoms[gid].wid, wid)
-        self.assertEqual(builder.geoms[gid].mid, 0)
+        self.assertEqual(gid, builder.geoms[wid][gid].gid)
+        self.assertEqual(builder.geoms[wid][gid].name, "test_geom")
+        self.assertEqual(builder.geoms[wid][gid].body, -1)
+        self.assertEqual(builder.geoms[wid][gid].wid, wid)
+        self.assertEqual(builder.geoms[wid][gid].mid, 0)
 
     def test_10_add_geometry_descriptors(self):
         builder = ModelBuilderKamino()
@@ -400,11 +415,11 @@ class TestModelBuilder(unittest.TestCase):
         gid = builder.add_geometry_descriptor(geom, world_index=wid)
         self.assertEqual(builder.num_geoms, 1)
         self.assertEqual(gid, 0)
-        self.assertEqual(gid, builder.geoms[gid].gid)
-        self.assertEqual(builder.geoms[gid].name, "test_geom")
-        self.assertEqual(builder.geoms[gid].body, -1)
-        self.assertEqual(builder.geoms[gid].wid, wid)
-        self.assertEqual(builder.geoms[gid].mid, -1)
+        self.assertEqual(gid, builder.geoms[wid][gid].gid)
+        self.assertEqual(builder.geoms[wid][gid].name, "test_geom")
+        self.assertEqual(builder.geoms[wid][gid].body, -1)
+        self.assertEqual(builder.geoms[wid][gid].wid, wid)
+        self.assertEqual(builder.geoms[wid][gid].mid, -1)
 
     def test_11_add_material(self):
         builder = ModelBuilderKamino()
@@ -437,20 +452,20 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.worlds[0].wid, 0)
 
         # Extract the IDs of bodies, joints, and collision geometries
-        bids = [body.bid for body in builder.bodies]
-        jids = [joint.jid for joint in builder.joints]
-        gids = [geom.gid for geom in builder.geoms]
+        bids = [body.bid for body in builder.bodies[0]]
+        jids = [joint.jid for joint in builder.joints[0]]
+        gids = [geom.gid for geom in builder.geoms[0]]
 
         # Check the number of bodies, joints, and collision geometries
         for i, bid in enumerate(bids):
             self.assertEqual(bid, i)
-            self.assertEqual(bid, builder.bodies[i].bid)
+            self.assertEqual(bid, builder.bodies[0][i].bid)
         for i, jid in enumerate(jids):
             self.assertEqual(jid, i)
-            self.assertEqual(jid, builder.joints[i].jid)
+            self.assertEqual(jid, builder.joints[0][i].jid)
         for i, gid in enumerate(gids):
             self.assertEqual(gid, i)
-            self.assertEqual(gid, builder.geoms[i].gid)
+            self.assertEqual(gid, builder.geoms[0][i].gid)
 
         # Build the model
         model = builder.finalize(self.default_device)
@@ -471,20 +486,20 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.worlds[0].wid, 0)
 
         # Extract the IDs of bodies, joints, and collision geometries
-        bids = [body.bid for body in builder.bodies]
-        jids = [joint.jid for joint in builder.joints]
-        gids = [geom.gid for geom in builder.geoms]
+        bids = [body.bid for body in builder.bodies[0]]
+        jids = [joint.jid for joint in builder.joints[0]]
+        gids = [geom.gid for geom in builder.geoms[0]]
 
         # Check the number of bodies, joints, and collision geometries
         for i, bid in enumerate(bids):
             self.assertEqual(bid, i)
-            self.assertEqual(bid, builder.bodies[i].bid)
+            self.assertEqual(bid, builder.bodies[0][i].bid)
         for i, jid in enumerate(jids):
             self.assertEqual(jid, i)
-            self.assertEqual(jid, builder.joints[i].jid)
+            self.assertEqual(jid, builder.joints[0][i].jid)
         for i, gid in enumerate(gids):
             self.assertEqual(gid, i)
-            self.assertEqual(gid, builder.geoms[i].gid)
+            self.assertEqual(gid, builder.geoms[0][i].gid)
 
         # Build the model
         model = builder.finalize(self.default_device)
@@ -505,20 +520,20 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.worlds[0].wid, 0)
 
         # Extract the IDs of bodies, joints, and collision geometries
-        bids = [body.bid for body in builder.bodies]
-        jids = [joint.jid for joint in builder.joints]
-        gids = [geom.gid for geom in builder.geoms]
+        bids = [body.bid for body in builder.bodies[0]]
+        jids = [joint.jid for joint in builder.joints[0]]
+        gids = [geom.gid for geom in builder.geoms[0]]
 
         # Check the number of bodies, joints, and collision geometries
         for i, bid in enumerate(bids):
             self.assertEqual(bid, i)
-            self.assertEqual(bid, builder.bodies[i].bid)
+            self.assertEqual(bid, builder.bodies[0][i].bid)
         for i, jid in enumerate(jids):
             self.assertEqual(jid, i)
-            self.assertEqual(jid, builder.joints[i].jid)
+            self.assertEqual(jid, builder.joints[0][i].jid)
         for i, gid in enumerate(gids):
             self.assertEqual(gid, i)
-            self.assertEqual(gid, builder.geoms[i].gid)
+            self.assertEqual(gid, builder.geoms[0][i].gid)
 
         # Build the model
         model = builder.finalize(self.default_device)
@@ -539,20 +554,20 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.worlds[0].wid, 0)
 
         # Extract the IDs of bodies, joints, and collision geometries
-        bids = [body.bid for body in builder.bodies]
-        jids = [joint.jid for joint in builder.joints]
-        gids = [geom.gid for geom in builder.geoms]
+        bids = [body.bid for body in builder.bodies[0]]
+        jids = [joint.jid for joint in builder.joints[0]]
+        gids = [geom.gid for geom in builder.geoms[0]]
 
         # Check the number of bodies, joints, and collision geometries
         for i, bid in enumerate(bids):
             self.assertEqual(bid, i)
-            self.assertEqual(bid, builder.bodies[i].bid)
+            self.assertEqual(bid, builder.bodies[0][i].bid)
         for i, jid in enumerate(jids):
             self.assertEqual(jid, i)
-            self.assertEqual(jid, builder.joints[i].jid)
+            self.assertEqual(jid, builder.joints[0][i].jid)
         for i, gid in enumerate(gids):
             self.assertEqual(gid, i)
-            self.assertEqual(gid, builder.geoms[i].gid)
+            self.assertEqual(gid, builder.geoms[0][i].gid)
 
         # Build the model
         model = builder.finalize(self.default_device)
@@ -572,30 +587,35 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.worlds[0].wid, 0)
 
         # Extract the IDs of bodies, joints, and collision geometries
-        bids = [body.bid for body in builder.bodies]
-        jids = [joint.jid for joint in builder.joints]
-        gids = [geom.gid for geom in builder.geoms]
+        bids = [body.bid for body in builder.bodies[0]]
+        jids = [joint.jid for joint in builder.joints[0]]
+        gids = [geom.gid for geom in builder.geoms[0]]
 
         # Check the number of bodies, joints, and collision geometries
         for i, bid in enumerate(bids):
             self.assertEqual(bid, i)
-            self.assertEqual(bid, builder.bodies[i].bid)
+            self.assertEqual(bid, builder.bodies[0][i].bid)
         for i, jid in enumerate(jids):
             self.assertEqual(jid, i)
-            self.assertEqual(jid, builder.joints[i].jid)
+            self.assertEqual(jid, builder.joints[0][i].jid)
         for i, gid in enumerate(gids):
             self.assertEqual(gid, i)
-            self.assertEqual(gid, builder.geoms[i].gid)
+            self.assertEqual(gid, builder.geoms[0][i].gid)
 
         # Generate meta-data for collision detection and contacts allocation
-        model_candidate_pairs = builder.make_collision_candidate_pairs(allow_neighbors=False)
+        model_candidate_pairs, pair_offsets = builder.make_collision_candidate_pairs(allow_neighbors=False)
         model_excluded_pairs = builder.make_collision_excluded_pairs(allow_neighbors=False)
-        world_num_collidables, model_num_collidables = builder.compute_num_collidable_geoms(model_candidate_pairs)
-        model_min_contacts, world_min_contacts = builder.compute_required_contact_capacity(model_candidate_pairs)
+        world_num_collidables, model_num_collidables = builder.compute_num_collidable_geoms(
+            model_candidate_pairs, pair_offsets
+        )
+        model_min_contacts, world_min_contacts = builder.compute_required_contact_capacity(
+            model_candidate_pairs, pair_offsets
+        )
 
         # Optional printouts for debugging
         msg.info("model_candidate_pairs: %s", model_candidate_pairs)
         msg.info("model_candidate_pairs_count: %s", len(model_candidate_pairs))
+        msg.info("pair_offsets: %s", pair_offsets)
         msg.info("model_excluded_pairs: %s", model_excluded_pairs)
         msg.info("model_excluded_pairs_count: %s", len(model_excluded_pairs))
         msg.info("world_num_collidables: %s", world_num_collidables)
@@ -630,30 +650,35 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.worlds[0].wid, 0)
 
         # Extract the IDs of bodies, joints, and collision geometries
-        bids = [body.bid for body in builder.bodies]
-        jids = [joint.jid for joint in builder.joints]
-        gids = [geom.gid for geom in builder.geoms]
+        bids = [body.bid for body in builder.bodies[0]]
+        jids = [joint.jid for joint in builder.joints[0]]
+        gids = [geom.gid for geom in builder.geoms[0]]
 
         # Check the number of bodies, joints, and collision geometries
         for i, bid in enumerate(bids):
             self.assertEqual(bid, i)
-            self.assertEqual(bid, builder.bodies[i].bid)
+            self.assertEqual(bid, builder.bodies[0][i].bid)
         for i, jid in enumerate(jids):
             self.assertEqual(jid, i)
-            self.assertEqual(jid, builder.joints[i].jid)
+            self.assertEqual(jid, builder.joints[0][i].jid)
         for i, gid in enumerate(gids):
             self.assertEqual(gid, i)
-            self.assertEqual(gid, builder.geoms[i].gid)
+            self.assertEqual(gid, builder.geoms[0][i].gid)
 
         # Generate meta-data for collision detection and contacts allocation
-        model_candidate_pairs = builder.make_collision_candidate_pairs(allow_neighbors=False)
+        model_candidate_pairs, pair_offsets = builder.make_collision_candidate_pairs(allow_neighbors=False)
         model_excluded_pairs = builder.make_collision_excluded_pairs(allow_neighbors=False)
-        world_num_collidables, model_num_collidables = builder.compute_num_collidable_geoms(model_candidate_pairs)
-        model_min_contacts, world_min_contacts = builder.compute_required_contact_capacity(model_candidate_pairs)
+        world_num_collidables, model_num_collidables = builder.compute_num_collidable_geoms(
+            model_candidate_pairs, pair_offsets
+        )
+        model_min_contacts, world_min_contacts = builder.compute_required_contact_capacity(
+            model_candidate_pairs, pair_offsets
+        )
 
         # Optional printouts for debugging
         msg.info("model_candidate_pairs: %s", model_candidate_pairs)
         msg.info("model_candidate_pairs_count: %s", len(model_candidate_pairs))
+        msg.info("pair_offsets: %s", pair_offsets)
         msg.info("model_excluded_pairs: %s", model_excluded_pairs)
         msg.info("model_excluded_pairs_count: %s", len(model_excluded_pairs))
         msg.info("world_num_collidables: %s", world_num_collidables)
@@ -737,14 +762,19 @@ class TestModelBuilder(unittest.TestCase):
         self.assertEqual(builder.num_geoms, 15)
 
         # Generate meta-data for collision detection and contacts allocation
-        model_candidate_pairs = builder.make_collision_candidate_pairs(allow_neighbors=False)
+        model_candidate_pairs, pair_offsets = builder.make_collision_candidate_pairs(allow_neighbors=False)
         model_excluded_pairs = builder.make_collision_excluded_pairs(allow_neighbors=False)
-        world_num_collidables, model_num_collidables = builder.compute_num_collidable_geoms(model_candidate_pairs)
-        model_min_contacts, world_min_contacts = builder.compute_required_contact_capacity(model_candidate_pairs)
+        world_num_collidables, model_num_collidables = builder.compute_num_collidable_geoms(
+            model_candidate_pairs, pair_offsets
+        )
+        model_min_contacts, world_min_contacts = builder.compute_required_contact_capacity(
+            model_candidate_pairs, pair_offsets
+        )
 
         # Optional printouts for debugging
         msg.info("model_candidate_pairs: %s", model_candidate_pairs)
         msg.info("model_candidate_pairs_count: %s", len(model_candidate_pairs))
+        msg.info("pair_offsets: %s", pair_offsets)
         msg.info("model_excluded_pairs: %s", model_excluded_pairs)
         msg.info("model_excluded_pairs_count: %s", len(model_excluded_pairs))
         msg.info("world_num_collidables: %s", world_num_collidables)

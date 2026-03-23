@@ -626,6 +626,9 @@ class ModelBuilderKamino:
             material=geom.material,
             group=geom.group,
             collides=geom.collides,
+            max_contacts=geom.max_contacts,
+            gap=geom.gap,
+            margin=geom.margin,
             mid=geom.mid,
             flags=geom.flags,
         )
@@ -1469,7 +1472,7 @@ class ModelBuilderKamino:
     # Utilities
     ###
 
-    def make_collision_candidate_pairs(self, allow_neighbors: bool = False) -> list[tuple[int, int]]:
+    def make_collision_candidate_pairs(self, allow_neighbors: bool = False) -> tuple[list[tuple[int, int]], list[int]]:
         """
         Constructs the collision pair candidates.
 
@@ -1487,7 +1490,10 @@ class ModelBuilderKamino:
                 bodies that are neighbors via joints with DoF.
 
         Returns:
-            A sorted list of geom index pairs (gid1, gid2) that are candidates for collision detection.
+            model_collidable_pairs: A sorted list of geom index pairs (gid1, gid2) that are candidates for
+                collision detection
+            collidable_pairs_offset: A list of per-world offsets into model_collidable_pairs (with one
+                extra entry giving the total length of model_collidable_pairs)
         """
         # Retrieve the number of worlds
         nw = self.num_worlds
@@ -1515,6 +1521,8 @@ class ModelBuilderKamino:
 
                 # Get references to the geometries
                 geom1, geom2 = self.geoms[wid][gid1_], self.geoms[wid][gid2_]
+                assert geom1.wid == wid
+                assert geom2.wid == wid
 
                 # Skip if either geometry is non-collidable
                 if not geom1.is_collidable or not geom2.is_collidable:
@@ -1523,26 +1531,20 @@ class ModelBuilderKamino:
                 # Get body indices of each geom
                 bid1, bid2 = geom1.body, geom2.body
 
-                # Get world indices of each geom
-                wid1, wid2 = geom1.wid, geom2.wid
-
                 # 2. Check for same-body collision
                 is_self_collision = bid1 == bid2
-
-                # 3. Check for different-world collision
-                in_same_world = wid1 == wid2
 
                 # 4. Check for collision according to the collision groupings
                 are_collidable = ((geom1.group & geom2.collides) != 0) and ((geom2.group & geom1.collides) != 0)
 
                 # Skip this pair if it does not pass the first round of filtering
-                if is_self_collision or not in_same_world or not are_collidable:
+                if is_self_collision or not are_collidable:
                     continue
 
                 # 5. Check for neighbor collision for fixed and DoF joints
                 are_fixed_neighbors = False
                 are_dof_neighbors = False
-                for joint in self.joints[wid1]:
+                for joint in self.joints[wid]:
                     if (joint.bid_B == bid1 and joint.bid_F == bid2) or (joint.bid_B == bid2 and joint.bid_F == bid1):
                         if joint.dof_type == JointDoFType.FIXED:
                             are_fixed_neighbors = True
@@ -1660,6 +1662,11 @@ class ModelBuilderKamino:
                 A list of geom-pair indices `(gid1, gid2)` (absolute w.r.t the model).\n
                 If `None`, the number of collidable geometries will
                 be extracted by exhaustively checking all geometries.
+            collidable_pairs_offset: (list[int], optional):
+                A list of per-world offsets into collidable_geom_pairs (with one
+                extra entry giving the total length of collidable_geom_pairs).
+                Cannot be `None` if collidable_geom_pairs is provided.
+
 
         Returns:
             (world_num_collidables, model_num_collidables):
@@ -1669,6 +1676,7 @@ class ModelBuilderKamino:
         # If an explicit list of collidable geometry pairs is provided,
         # compute the number of unique collidable geometries from the pairs
         if collidable_geom_pairs is not None:
+            assert collidable_pairs_offset is not None
             world_num_collidables = [0] * self.num_worlds
             for wid in range(self.num_worlds):
                 collidable_geoms: set[int] = set()
@@ -1677,7 +1685,7 @@ class ModelBuilderKamino:
                     collidable_geoms.add(pair[0])
                     collidable_geoms.add(pair[1])
                 world_num_collidables[wid] = len(collidable_geoms)
-            return world_num_collidables, len(collidable_geoms)
+            return world_num_collidables, sum(world_num_collidables)
 
         # Otherwise, compute the number of collidable geometries by checking all geometries
         world_num_collidables = [0] * self.num_worlds
@@ -1701,6 +1709,8 @@ class ModelBuilderKamino:
         # Generate the collision candidate pairs if not provided
         if collidable_geom_pairs is None:
             collidable_geom_pairs, collidable_pairs_offset = self.make_collision_candidate_pairs()
+        else:
+            assert collidable_pairs_offset is not None
 
         # Generate the cumsum of geometries per world, to convert global to local geom indices
         num_geoms = np.array([self.worlds[i].num_geoms for i in range(self.num_worlds)])

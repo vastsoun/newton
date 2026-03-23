@@ -1599,7 +1599,15 @@ class ModelBuilderKamino:
         model_excluded_pairs: list[tuple[int, int]] = []
         ncg_offset = 0
         for wid in range(self.num_worlds):
-            ncg = self._worlds[wid].num_geoms
+            # Precompute body adjacency matrix for this world
+            # Note: for convenience we shift body indices by 1 to account for the -1 body of unary joints
+            num_bodies = self.worlds[wid].num_bodies
+            adjacent_bodies = [[0 for _ in range(num_bodies + 1)] for _ in range(num_bodies + 1)]
+            for joint in self.joints[wid]:
+                adjacent_bodies[joint.bid_B + 1][joint.bid_F + 1] = 1
+                adjacent_bodies[joint.bid_F + 1][joint.bid_B + 1] = 1
+
+            ncg = self.worlds[wid].num_geoms
             for idx1 in range(ncg):
                 gid1 = idx1 + ncg_offset
                 geom1 = self.geoms[wid][idx1]
@@ -1625,19 +1633,9 @@ class ModelBuilderKamino:
                         continue
 
                     # Fixed-joint / DoF-joint neighbour check
-                    # is_excluded_neighbour = False
-                    # for joint in self.joints[wid]:
-                    #     is_pair = (joint.bid_B == geom1.body and joint.bid_F == geom2.body) or (
-                    #         joint.bid_B == geom2.body and joint.bid_F == geom1.body
-                    #     )
-                    #     if is_pair:
-                    #         if joint.dof_type == JointDoFType.FIXED:
-                    #             is_excluded_neighbour = True
-                    #         elif joint.bid_B >= 0:
-                    #             is_excluded_neighbour = True
-                    #         break
-                    # if is_excluded_neighbour:
-                    #     model_excluded_pairs.append(candidate_pair)
+                    if adjacent_bodies[geom1.body + 1][geom2.body + 1]:
+                        model_excluded_pairs.append(candidate_pair)
+                        continue
 
             ncg_offset += ncg
 

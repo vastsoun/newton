@@ -112,7 +112,7 @@ class SimulationLogger:
             )
         else:
             dof_offset = 0
-            for joint in self._builder.joints:
+            for joint in (joint_ for joints in self._builder.joints for joint_ in joints):
                 if joint.is_actuated:
                     for dof in range(joint.num_dofs):
                         self._actuated_dofs.append(dof_offset + dof)

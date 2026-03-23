@@ -168,7 +168,7 @@ class Example:
         # Create a list of actuated joint indices from the model and builder
         self.actuated_joint_idx_np = np.zeros(shape=(self.sim.model.size.sum_of_num_actuated_joints,), dtype=np.int32)
         jidx = 0
-        for j, joint in enumerate(self.builder.joints):
+        for j, joint in enumerate(joint_ for joints in self.builder.joints for joint_ in joints):
             if joint.is_actuated:
                 self.actuated_joint_idx_np[jidx] = j
                 jidx += 1

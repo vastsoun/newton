@@ -106,7 +106,7 @@ class ModelBuilderKamino:
         self._worlds: list[WorldDescriptor] = []
         self._gravity: list[GravityDescriptor] = []
         self._bodies: list[list[RigidBodyDescriptor]] = []
-        self._joints: list[JointDescriptor] = []
+        self._joints: list[list[JointDescriptor]] = []
         self._geoms: list[list[GeometryDescriptor]] = []
         self._shapes: dict[str, ShapeDescriptorType] = {}
 
@@ -225,8 +225,9 @@ class ModelBuilderKamino:
         return self._bodies
 
     @property
-    def joints(self) -> list[JointDescriptor]:
-        """Returns the list of joint descriptors contained in the model."""
+    def joints(self) -> list[list[JointDescriptor]]:
+        """Returns the list of joint descriptors contained in the model,
+        indexed first by world and then by geometry."""
         return self._joints
 
     @property
@@ -276,6 +277,7 @@ class ModelBuilderKamino:
 
         # Extend lists of entities
         self._bodies.append([])
+        self._joints.append([])
         self._geoms.append([])
 
         # Set up axis
@@ -479,7 +481,7 @@ class ModelBuilderKamino:
 
         # Append joint model data
         world.add_joint(joint)
-        self._insert_entity(self._joints, joint, world_index=world_index)
+        self._joints[world_index].append(joint)
 
         # Update model-wide counters
         self._num_joints += 1
@@ -719,7 +721,7 @@ class ModelBuilderKamino:
             # Update world indices of the other builders entities
             for body in self._bodies[w]:
                 body.wid = w
-            for joint in self._joints[self._num_joints : self._num_joints + world.num_joints]:
+            for joint in self._joints[w]:
                 joint.wid = w
             for geom in self._geoms[w]:
                 geom.wid = w
@@ -877,7 +879,7 @@ class ModelBuilderKamino:
             world.set_base_joint(joint_key)
             return
         elif isinstance(joint_key, str):
-            for joint in self.joints:
+            for joint in (joint_ for joints in self.joints for joint_ in joints):
                 if joint.wid == world_index and joint.name == joint_key:
                     world.set_base_joint(joint.jid)
                     return
@@ -930,8 +932,7 @@ class ModelBuilderKamino:
         # Validate base body/joint data for each world, and fill in missing data if possible
         for w, world in enumerate(self._worlds):
             if world.has_base_joint:
-                joint_idx = world.joints_idx_offset + world.base_joint_idx
-                follower_idx = self._joints[joint_idx].bid_F  # Note: index among world bodies
+                follower_idx = self._joints[w][world.base_joint_idx].bid_F  # Note: index among world bodies
                 if world.has_base_body:  # Ensure base joint & body are compatible if both were set
                     if world.base_body_idx != follower_idx:
                         raise ValueError(
@@ -941,9 +942,7 @@ class ModelBuilderKamino:
                     world.set_base_body(follower_idx)
             elif not world.has_base_body and base_auto:
                 world.set_base_body(0)  # Set the base body as the first body
-                for jt_idx, joint in enumerate(
-                    self._joints[world.joints_idx_offset : world.joints_idx_offset + world.num_joints]
-                ):
+                for jt_idx, joint in enumerate(self._joints[w]):
                     if joint.wid == w and joint.is_unary and joint.is_connected_to_body(world.base_body_idx):
                         # If we find a unary joint connecting the base body to the world, we set this as the base joint
                         world.set_base_joint(jt_idx)
@@ -1134,7 +1133,7 @@ class ModelBuilderKamino:
 
         # A helper function to collect model joints data
         def collect_joint_model_data():
-            for joint in self._joints:
+            for joint in (j for joints in self._joints for j in joints):
                 world_bio = self._worlds[joint.wid].bodies_idx_offset
                 joints_label.append(joint.name)
                 joints_wid.append(joint.wid)
@@ -1217,7 +1216,7 @@ class ModelBuilderKamino:
         collect_material_pairs_model_data()
 
         # Post-processing of reference coords of FREE joints to match body frames
-        for joint in self._joints:
+        for joint in (j for joints in self._joints for j in joints):
             if joint.dof_type == JointDoFType.FREE:
                 body = self._bodies[joint.wid][joint.bid_F]
                 qj_start = joint.coords_offset + self._worlds[joint.wid].joint_coords_idx_offset
@@ -1500,12 +1499,6 @@ class ModelBuilderKamino:
         model_candidate_pairs = []
         first_candidate_pair_id = []
 
-        joint_idx_min = [len(self.joints)] * nw
-        joint_idx_max = [0] * nw
-        for i, joint in enumerate(self.joints):
-            joint_idx_min[joint.wid] = min(i, joint_idx_min[joint.wid])
-            joint_idx_max[joint.wid] = max(i, joint_idx_max[joint.wid])
-
         # Iterate over each world and construct the collision geometry pairs info
         ncg_offset = 0
         for wid in range(nw):
@@ -1549,7 +1542,7 @@ class ModelBuilderKamino:
                 # 5. Check for neighbor collision for fixed and DoF joints
                 are_fixed_neighbors = False
                 are_dof_neighbors = False
-                for joint in self.joints[joint_idx_min[wid1] : joint_idx_max[wid1] + 1]:
+                for joint in self.joints[wid1]:
                     if (joint.bid_B == bid1 and joint.bid_F == bid2) or (joint.bid_B == bid2 and joint.bid_F == bid1):
                         if joint.dof_type == JointDoFType.FIXED:
                             are_fixed_neighbors = True
@@ -1600,16 +1593,6 @@ class ModelBuilderKamino:
         Returns:
             A sorted list of geom index pairs (gid1, gid2) that should be excluded from collision detection.
         """
-        # Pre-index joints per world for fast lookup
-        # joint_ranges: list[tuple[int, int]] = []
-        # for w in range(self.num_worlds):
-        #     lo = len(self.joints)
-        #     hi = 0
-        #     for i, j in enumerate(self.joints):
-        #         if j.wid == w:
-        #             lo = min(lo, i)
-        #             hi = max(hi, i)
-        #     joint_ranges.append((lo, hi))
 
         model_excluded_pairs: list[tuple[int, int]] = []
         ncg_offset = 0
@@ -1640,9 +1623,8 @@ class ModelBuilderKamino:
                         continue
 
                     # Fixed-joint / DoF-joint neighbour check
-                    # jlo, jhi = joint_ranges[wid]
                     # is_excluded_neighbour = False
-                    # for joint in self.joints[jlo : jhi + 1]:
+                    # for joint in self.joints[wid]:
                     #     is_pair = (joint.bid_B == geom1.body and joint.bid_F == geom2.body) or (
                     #         joint.bid_B == geom2.body and joint.bid_F == geom1.body
                     #     )
@@ -1844,30 +1826,6 @@ class ModelBuilderKamino:
 
     EntityDescriptorType = RigidBodyDescriptor | JointDescriptor | GeometryDescriptor
     """A type alias for model entity descriptors."""
-
-    @staticmethod
-    def _insert_entity(entity_list: list[EntityDescriptorType], entity: EntityDescriptorType, world_index: int = 0):
-        """
-        Inserts an entity descriptor into the provided entity list at
-        the end of the entities belonging to the specified world index.
-
-        Insertion preserves the order of entities per world.
-
-        Args:
-            entity_list (list[EntityDescriptorType]): The list of entity descriptors.
-            entity (EntityDescriptorType): The entity descriptor to be inserted.
-            world_index (int): The world index to insert the entity into.
-        """
-        # NOTE: We initialize the last entity index to the length of the list
-        # so that if no entities belong to the specified world, the new entity
-        # is simply appended to the end of the list.
-        last_entity_index = len(entity_list)
-        for i, e in enumerate(entity_list):
-            if e.wid == world_index:
-                last_entity_index = i
-        # NOTE: Insert the entity after the last entity of the specified
-        # world so that the order of entities per world is preserved.
-        entity_list.insert(last_entity_index + 1, entity)
 
     @staticmethod
     def _check_body_inertia(m_i: float, i_I_i: mat33f):

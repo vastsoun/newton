@@ -285,6 +285,7 @@ class IterativeSolver(LinearSolver):
         maxiter: int | wp.array | None = None,
         world_active: wp.array | None = None,
         preconditioner: Any = None,
+        cycle_size: int = 1,
         **kwargs: dict[str, Any],
     ):
         self._maxiter: int | wp.array | None = maxiter
@@ -297,6 +298,7 @@ class IterativeSolver(LinearSolver):
         self._max_dim: int | None = None
         self._batched_operator: conjugate.BatchedLinearOperator | None = None
         self._use_graph_conditionals: bool = kwargs.pop("use_graph_conditionals", True)
+        self.cycle_size = cycle_size
 
         # Sparse discovery settings (via kwargs)
         self._discover_sparse: bool = kwargs.pop("discover_sparse", False)
@@ -745,6 +747,7 @@ class ConjugateGradientSolver(IterativeSolver):
             callback=None,
             use_cuda_graph=True,
             use_graph_conditionals=self._use_graph_conditionals,
+            cycle_size=self.cycle_size,
         )
 
         if self._discover_sparse and self._sparse_operator is not None:
@@ -758,6 +761,7 @@ class ConjugateGradientSolver(IterativeSolver):
                 callback=None,
                 use_cuda_graph=True,
                 use_graph_conditionals=self._use_graph_conditionals,
+                cycle_size=self.cycle_size,
             )
 
     @override
@@ -854,6 +858,7 @@ class ConjugateResidualSolver(IterativeSolver):
             callback=None,
             use_cuda_graph=True,
             use_graph_conditionals=self._use_graph_conditionals,
+            cycle_size=self.cycle_size,
         )
 
         if self._discover_sparse and self._sparse_operator is not None:
@@ -867,6 +872,7 @@ class ConjugateResidualSolver(IterativeSolver):
                 callback=None,
                 use_cuda_graph=True,
                 use_graph_conditionals=self._use_graph_conditionals,
+                cycle_size=self.cycle_size,
             )
 
     @override

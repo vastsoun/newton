@@ -221,13 +221,13 @@ class ModelBuilderKamino:
     @property
     def bodies(self) -> list[list[RigidBodyDescriptor]]:
         """Returns the list of lists of body descriptors contained in the model,
-        indexed first by world and then by geometry."""
+        indexed first by world and then by body."""
         return self._bodies
 
     @property
     def joints(self) -> list[list[JointDescriptor]]:
         """Returns the list of joint descriptors contained in the model,
-        indexed first by world and then by geometry."""
+        indexed first by world and then by joint."""
         return self._joints
 
     @property
@@ -602,8 +602,6 @@ class ModelBuilderKamino:
         Args:
             geom (GeometryDescriptor):
                 The geometry descriptor to be added.
-            shape (ShapeDescriptorType):
-                The underlyling geometry
             world_index (int):
                 The index of the world to which the geometry will be added.\n
                 Defaults to the first world with index `0`.
@@ -1602,12 +1600,12 @@ class ModelBuilderKamino:
             # Precompute body adjacency matrix for this world
             # Note: for convenience we shift body indices by 1 to account for the -1 body of unary joints
             num_bodies = self.worlds[wid].num_bodies
-            adjacent_bodies = [[0 for _ in range(num_bodies + 1)] for _ in range(num_bodies + 1)]
+            adjacent_bodies = np.zeros((num_bodies + 1, num_bodies + 1), dtype=np.int32)
             for joint in self.joints[wid]:
                 if joint.dof_type == JointDoFType.FREE:
                     continue
-                adjacent_bodies[joint.bid_B + 1][joint.bid_F + 1] = 1
-                adjacent_bodies[joint.bid_F + 1][joint.bid_B + 1] = 1
+                adjacent_bodies[joint.bid_B + 1, joint.bid_F + 1] = 1
+                adjacent_bodies[joint.bid_F + 1, joint.bid_B + 1] = 1
 
             ncg = self.worlds[wid].num_geoms
             for idx1 in range(ncg):
@@ -1635,7 +1633,7 @@ class ModelBuilderKamino:
                         continue
 
                     # Fixed-joint / DoF-joint neighbour check
-                    if adjacent_bodies[geom1.body + 1][geom2.body + 1]:
+                    if adjacent_bodies[geom1.body + 1, geom2.body + 1]:
                         model_excluded_pairs.append(candidate_pair)
                         continue
 

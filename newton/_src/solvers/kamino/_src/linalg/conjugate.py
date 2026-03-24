@@ -278,7 +278,7 @@ def _cr_kernel_2(
 
 
 def _run_capturable_loop(
-    do_cycle: Callable,
+    do_iteration: Callable,
     r_norm_sq: wp.array,
     world_active: wp.array(dtype=wp.int32),
     cur_iter: wp.array(dtype=wp.int32),
@@ -325,7 +325,8 @@ def _run_capturable_loop(
         callback_launch.launch()
 
     def do_cycle_with_condition():
-        do_cycle()
+        for _ in range(0, cycle_size):
+            do_iteration()
         global_condition.zero_()
         update_condition_launch.launch()
         if callback_launch is not None:
@@ -477,6 +478,7 @@ class ConjugateSolver:
         Mi: Operator applying the inverse preconditioner M^-1, such that Mi @ A has a smaller condition number than A.
         callback: Optional callback kernel invoked each iteration.
         use_cuda_graph: Whether to use CUDA graph capture for the solve loop.
+        cycle_size: Number of iterations before termination criteria are checked.
     """
 
     def __init__(
@@ -491,6 +493,7 @@ class ConjugateSolver:
         callback: Callable | None = None,
         use_cuda_graph: bool = True,
         use_graph_conditionals: bool = True,
+        cycle_size: int = 1,
     ):
         if not isinstance(A, BatchedLinearOperator):
             raise ValueError("A must be a BatchedLinearOperator")
@@ -510,6 +513,7 @@ class ConjugateSolver:
         self.atol = atol
         self.rtol = rtol
         self.maxiter = maxiter
+        self.cycle_size = cycle_size
 
         self.callback = callback
         self.use_cuda_graph = use_cuda_graph
@@ -668,6 +672,7 @@ class CGSolver(ConjugateSolver):
             self.use_cuda_graph,
             use_graph_conditionals=self.use_graph_conditionals,
             maxiter_host=self.maxiter_host,
+            cycle_size=min(self.cycle_size, self.maxiter_host),
         )
 
     def do_iteration(self, p, Ap, rz_old, rz_new, z, x, r, r_norm_sq, active_dims, world_active):
@@ -797,6 +802,7 @@ class CRSolver(ConjugateSolver):
             self.use_cuda_graph,
             use_graph_conditionals=self.use_graph_conditionals,
             maxiter_host=self.maxiter_host,
+            cycle_size=min(self.cycle_size, self.maxiter_host),
         )
 
     def do_iteration(self, p, Ap, Az, zAz_old, zAz_new, z, y, x, r, r_copy, r_norm_sq, active_dims, world_active):

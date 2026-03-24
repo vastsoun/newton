@@ -52,12 +52,14 @@ __all__ = [
     "_compute_desaxce_correction",
     "_compute_final_desaxce_correction",
     "_compute_projection_argument",
+    "_compute_projection_argument_and_project",
     "_compute_solution_vectors",
     "_compute_velocity_bias",
     "_make_compute_infnorm_residuals_accel_kernel",
     "_make_compute_infnorm_residuals_kernel",
     "_project_to_feasible_cone",
     "_reset_solver_data",
+    "_update_acceleration_and_cache_previous",
     "_update_delassus_proximal_regularization",
     "_update_delassus_proximal_regularization_sparse",
     "_update_state_with_acceleration",
@@ -68,6 +70,7 @@ __all__ = [
     "make_collect_solver_info_kernel",
     "make_collect_solver_info_kernel_sparse",
     "make_initialize_solver_kernel",
+    "make_update_dual_and_all_residuals",
     "make_update_dual_variables_and_compute_primal_dual_residuals",
     "make_update_proximal_regularization_kernel",
 ]
@@ -748,6 +751,81 @@ def _project_to_feasible_cone(
         solver_y[ccio_j + 2] = y_proj[2]
 
 
+@wp.kernel
+def _compute_projection_argument_and_project(
+    # Inputs:
+    problem_dim: wp.array(dtype=int32),
+    problem_nl: wp.array(dtype=int32),
+    problem_nc: wp.array(dtype=int32),
+    problem_cio: wp.array(dtype=int32),
+    problem_lcgo: wp.array(dtype=int32),
+    problem_ccgo: wp.array(dtype=int32),
+    problem_vio: wp.array(dtype=int32),
+    problem_mu: wp.array(dtype=float32),
+    solver_penalty: wp.array(dtype=PADMMPenalty),
+    solver_status: wp.array(dtype=PADMMStatus),
+    solver_z_hat: wp.array(dtype=float32),
+    solver_x: wp.array(dtype=float32),
+    # Outputs:
+    solver_y: wp.array(dtype=float32),
+):
+    """Fused kernel: compute projection argument and project to feasible set.
+
+    Combines _compute_projection_argument and _project_to_feasible_cone into a single kernel
+    to reduce kernel launch overhead. Iterates over max_total_cts and conditionally applies
+    the cone projection for unilateral constraints (limits and contacts).
+    """
+    wid, tid = wp.tid()
+
+    ncts = problem_dim[wid]
+    status = solver_status[wid]
+
+    if tid >= ncts or status.converged > 0:
+        return
+
+    vio = problem_vio[wid]
+    rho = solver_penalty[wid].rho
+    thread_offset = vio + tid
+
+    # Step 1: Compute projection argument y = x - (1/rho) * z_hat
+    z_hat = solver_z_hat[thread_offset]
+    x = solver_x[thread_offset]
+    y_val = x - (1.0 / rho) * z_hat
+    solver_y[thread_offset] = y_val
+
+    # Step 2: Project unilateral constraints to the feasible set
+    nl = problem_nl[wid]
+    nc = problem_nc[wid]
+    lcgo = problem_lcgo[wid]
+    ccgo = problem_ccgo[wid]
+
+    # Check if this constraint index falls within the limit range
+    limit_start = lcgo
+    limit_end = lcgo + nl
+    if nl > 0 and tid >= limit_start and tid < limit_end:
+        solver_y[thread_offset] = wp.max(y_val, 0.0)
+
+    # Check if this constraint index falls within a contact block
+    # Contact constraints are 3D blocks: [tx, ty, n] at offsets ccgo + 3*cid + {0,1,2}
+    elif nc > 0 and tid >= ccgo:
+        local_offset = tid - ccgo
+        cid = local_offset // 3
+        component = local_offset - 3 * cid
+        if cid < nc and component == 0:
+            # This thread handles the first component of a contact — do the full 3D projection
+            # Recompute y for all 3 components locally to avoid inter-thread race conditions
+            cio = problem_cio[wid]
+            ccio_j = vio + ccgo + 3 * cid
+            inv_rho = 1.0 / rho
+            y0 = solver_x[ccio_j] - inv_rho * solver_z_hat[ccio_j]
+            y1 = solver_x[ccio_j + 1] - inv_rho * solver_z_hat[ccio_j + 1]
+            y2 = solver_x[ccio_j + 2] - inv_rho * solver_z_hat[ccio_j + 2]
+            y_proj = project_to_coulomb_cone(vec3f(y0, y1, y2), problem_mu[cio + cid])
+            solver_y[ccio_j] = y_proj[0]
+            solver_y[ccio_j + 1] = y_proj[1]
+            solver_y[ccio_j + 2] = y_proj[2]
+
+
 def make_update_dual_variables_and_compute_primal_dual_residuals(use_acceleration: bool = False):
     """
     Creates a kernel to update the dual variables and compute the primal and dual residuals.
@@ -836,6 +914,114 @@ def make_update_dual_variables_and_compute_primal_dual_residuals(use_acceleratio
 
     # Return the dual update and residual computation kernel
     return _update_dual_variables_and_compute_primal_dual_residuals
+
+
+def make_update_dual_and_all_residuals(use_acceleration: bool = False):
+    """Creates a fused kernel: dual variable update + primal/dual residuals + complementarity residuals.
+
+    Combines make_update_dual_variables_and_compute_primal_dual_residuals and
+    _compute_complementarity_residuals into a single kernel to reduce launch overhead.
+    The complementarity residual is computed inline for unilateral constraint indices.
+    """
+
+    @wp.kernel
+    def _update_dual_and_all_residuals(
+        # Inputs:
+        problem_dim: wp.array(dtype=int32),
+        problem_nl: wp.array(dtype=int32),
+        problem_nc: wp.array(dtype=int32),
+        problem_cio: wp.array(dtype=int32),
+        problem_lcgo: wp.array(dtype=int32),
+        problem_ccgo: wp.array(dtype=int32),
+        problem_vio: wp.array(dtype=int32),
+        problem_uio: wp.array(dtype=int32),
+        problem_P: wp.array(dtype=float32),
+        solver_config: wp.array(dtype=PADMMConfigStruct),
+        solver_penalty: wp.array(dtype=PADMMPenalty),
+        solver_status: wp.array(dtype=PADMMStatus),
+        solver_x: wp.array(dtype=float32),
+        solver_y: wp.array(dtype=float32),
+        solver_x_p: wp.array(dtype=float32),
+        solver_y_p: wp.array(dtype=float32),
+        solver_z_p: wp.array(dtype=float32),
+        # Outputs:
+        solver_z: wp.array(dtype=float32),
+        solver_r_prim: wp.array(dtype=float32),
+        solver_r_dual: wp.array(dtype=float32),
+        solver_r_compl: wp.array(dtype=float32),
+        solver_r_dx: wp.array(dtype=float32),
+        solver_r_dy: wp.array(dtype=float32),
+        solver_r_dz: wp.array(dtype=float32),
+    ):
+        wid, tid = wp.tid()
+
+        ncts = problem_dim[wid]
+        status = solver_status[wid]
+
+        if tid >= ncts or status.converged > 0:
+            return
+
+        vio = problem_vio[wid]
+
+        eta = solver_config[wid].eta
+        rho = solver_penalty[wid].rho
+
+        thread_offset = vio + tid
+
+        P_i = problem_P[thread_offset]
+
+        x = solver_x[thread_offset]
+        y = solver_y[thread_offset]
+        x_p = solver_x_p[thread_offset]
+        y_p = solver_y_p[thread_offset]
+        z_p = solver_z_p[thread_offset]
+
+        # Dual variable update
+        z = z_p + rho * (y - x)
+        solver_z[thread_offset] = z
+
+        # Primal residual
+        solver_r_prim[thread_offset] = P_i * (x - y)
+
+        # Dual residual
+        solver_r_dual[thread_offset] = (1.0 / P_i) * (eta * (x - x_p) + rho * (y - y_p))
+
+        # Iterate residuals for acceleration restart
+        if wp.static(use_acceleration):
+            solver_r_dx[thread_offset] = P_i * (x - x_p)
+            solver_r_dy[thread_offset] = P_i * (y - y_p)
+            solver_r_dz[thread_offset] = (1.0 / P_i) * (z - z_p)
+
+        # Complementarity residuals for unilateral constraints
+        nl = problem_nl[wid]
+        nc = problem_nc[wid]
+        lcgo = problem_lcgo[wid]
+        ccgo = problem_ccgo[wid]
+
+        # Limit constraints: scalar complementarity x_j * z_j
+        limit_start = lcgo
+        if nl > 0 and tid >= limit_start and tid < limit_start + nl:
+            uio = problem_uio[wid]
+            uid = tid - limit_start
+            solver_r_compl[uio + uid] = x * z
+
+        # Contact constraints: dot product of 3D vectors x_c dot z_c
+        # Recompute z locally for all 3 components to avoid inter-thread race
+        elif nc > 0 and tid >= ccgo:
+            local_offset = tid - ccgo
+            cid = local_offset // 3
+            component = local_offset - 3 * cid
+            if cid < nc and component == 0:
+                uio = problem_uio[wid]
+                ccio_j = vio + ccgo + 3 * cid
+                x_c = vec3f(solver_x[ccio_j], solver_x[ccio_j + 1], solver_x[ccio_j + 2])
+                # Recompute z for all 3 components locally
+                z0 = solver_z_p[ccio_j] + rho * (solver_y[ccio_j] - solver_x[ccio_j])
+                z1 = solver_z_p[ccio_j + 1] + rho * (solver_y[ccio_j + 1] - solver_x[ccio_j + 1])
+                z2 = solver_z_p[ccio_j + 2] + rho * (solver_y[ccio_j + 2] - solver_x[ccio_j + 2])
+                solver_r_compl[uio + nl + cid] = wp.dot(x_c, vec3f(z0, z1, z2))
+
+    return _update_dual_and_all_residuals
 
 
 @wp.kernel
@@ -1343,6 +1529,72 @@ def _update_state_with_acceleration(
         # If restarting, reset the auxiliary primal-dual state to the previous-step values
         solver_state_y_hat[vid] = solver_state_y_p[vid]
         solver_state_z_hat[vid] = solver_state_z_p[vid]
+
+
+@wp.kernel
+def _update_acceleration_and_cache_previous(
+    # Inputs:
+    problem_dim: wp.array(dtype=int32),
+    problem_vio: wp.array(dtype=int32),
+    solver_status: wp.array(dtype=PADMMStatus),
+    solver_state_a: wp.array(dtype=float32),
+    solver_state_x: wp.array(dtype=float32),
+    solver_state_y: wp.array(dtype=float32),
+    solver_state_z: wp.array(dtype=float32),
+    solver_state_a_p: wp.array(dtype=float32),
+    solver_state_y_p: wp.array(dtype=float32),
+    solver_state_z_p: wp.array(dtype=float32),
+    # Outputs:
+    solver_state_y_hat: wp.array(dtype=float32),
+    solver_state_z_hat: wp.array(dtype=float32),
+    solver_state_x_p_out: wp.array(dtype=float32),
+    solver_state_y_p_out: wp.array(dtype=float32),
+    solver_state_z_p_out: wp.array(dtype=float32),
+    solver_state_a_p_out: wp.array(dtype=float32),
+):
+    """Fused kernel: Nesterov acceleration update + cache previous state.
+
+    Combines _update_state_with_acceleration and wp.copy(x to x_p, y to y_p, z to z_p, a to a_p)
+    into a single kernel to reduce kernel launch overhead.
+    """
+    wid, tid = wp.tid()
+
+    ncts = problem_dim[wid]
+    status = solver_status[wid]
+
+    if tid >= ncts or status.converged > 0:
+        return
+
+    vio = problem_vio[wid]
+    vid = vio + tid
+
+    # Read current state
+    x = solver_state_x[vid]
+    y = solver_state_y[vid]
+    z = solver_state_z[vid]
+
+    # Cache current → previous
+    solver_state_x_p_out[vid] = x
+    solver_state_y_p_out[vid] = y
+    solver_state_z_p_out[vid] = z
+
+    # Nesterov acceleration update
+    if status.restart == 0:
+        a = solver_state_a[wid]
+        a_p = solver_state_a_p[wid]
+        y_p = solver_state_y_p[vid]
+        z_p = solver_state_z_p[vid]
+
+        factor = (a_p - 1.0) / a
+        solver_state_y_hat[vid] = y + factor * (y - y_p)
+        solver_state_z_hat[vid] = z + factor * (z - z_p)
+    else:
+        solver_state_y_hat[vid] = solver_state_y_p[vid]
+        solver_state_z_hat[vid] = solver_state_z_p[vid]
+
+    # Cache acceleration parameter (only first thread per world)
+    if tid == 0:
+        solver_state_a_p_out[wid] = solver_state_a[wid]
 
 
 def make_collect_solver_info_kernel(use_acceleration: bool):

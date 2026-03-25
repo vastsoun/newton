@@ -69,6 +69,7 @@ __all__ = [
     "_warmstart_limit_constraints",
     "make_collect_solver_info_kernel",
     "make_collect_solver_info_kernel_sparse",
+    "make_desaxce_correction_and_velocity_bias_kernel",
     "make_initialize_solver_kernel",
     "make_update_dual_and_all_residuals",
     "make_update_dual_variables_and_compute_primal_dual_residuals",
@@ -646,6 +647,77 @@ def _compute_velocity_bias(
 
     # Compute the total velocity bias for the thread_offset-th constraint
     solver_v[thread_offset] = -v_f - s + eta * x_p + rho * y_p + z_p
+
+
+@functools.cache
+def make_desaxce_correction_and_velocity_bias_kernel(has_contacts: bool):
+    """Factory for fused De Saxce correction + velocity bias kernel.
+
+    Specialized at compile time on whether contacts are present, eliminating
+    runtime branches for the common no-contacts case.
+
+    Args:
+        has_contacts: Whether the problem has contact constraints.
+    """
+
+    @wp.kernel
+    def _compute_desaxce_correction_and_velocity_bias(
+        # Inputs:
+        problem_dim: wp.array(dtype=int32),
+        problem_nc: wp.array(dtype=int32),
+        problem_cio: wp.array(dtype=int32),
+        problem_ccgo: wp.array(dtype=int32),
+        problem_vio: wp.array(dtype=int32),
+        problem_mu: wp.array(dtype=float32),
+        problem_v_f: wp.array(dtype=float32),
+        solver_config: wp.array(dtype=PADMMConfigStruct),
+        solver_penalty: wp.array(dtype=PADMMPenalty),
+        solver_status: wp.array(dtype=PADMMStatus),
+        solver_x_p: wp.array(dtype=float32),
+        solver_y_p: wp.array(dtype=float32),
+        solver_z_p: wp.array(dtype=float32),
+        # Outputs:
+        solver_v: wp.array(dtype=float32),
+    ):
+        wid, tid = wp.tid()
+
+        ncts = problem_dim[wid]
+        status = solver_status[wid]
+
+        if tid >= ncts or status.converged > 0:
+            return
+
+        vio = problem_vio[wid]
+        thread_offset = vio + tid
+
+        eta = solver_config[wid].eta
+        rho = solver_penalty[wid].rho
+
+        v_f = problem_v_f[thread_offset]
+        x_p = solver_x_p[thread_offset]
+        y_p = solver_y_p[thread_offset]
+        z_p = solver_z_p[thread_offset]
+
+        s = float32(0.0)
+
+        if wp.static(has_contacts):
+            nc = problem_nc[wid]
+            if nc > 0:
+                ccgo = problem_ccgo[wid]
+                local_offset = tid - ccgo
+                if local_offset >= 0 and local_offset < 3 * nc:
+                    cid = local_offset // 3
+                    component = local_offset - 3 * cid
+                    if component == 2:
+                        cio = problem_cio[wid]
+                        ccio_k = vio + ccgo + 3 * cid
+                        vtx = solver_z_p[ccio_k]
+                        vty = solver_z_p[ccio_k + 1]
+                        s = problem_mu[cio + cid] * wp.sqrt(vtx * vtx + vty * vty)
+
+        solver_v[thread_offset] = -v_f - s + eta * x_p + rho * y_p + z_p
+
+    return _compute_desaxce_correction_and_velocity_bias
 
 
 @wp.kernel

@@ -88,8 +88,13 @@ def make_store_joint_jacobian_dense_func(axes: Any):
         JT: mat66f,
         J_data: wp.array(dtype=float32),
     ):
-        for i in range(6):
-            J_data[idx + i] = JT[i, axis]
+        # Extract column as vec6f and write components consecutively
+        J_data[idx] = JT[0, axis]
+        J_data[idx + 1] = JT[1, axis]
+        J_data[idx + 2] = JT[2, axis]
+        J_data[idx + 3] = JT[3, axis]
+        J_data[idx + 4] = JT[4, axis]
+        J_data[idx + 5] = JT[5, axis]
 
     @wp.func
     def store_joint_jacobian_dense(

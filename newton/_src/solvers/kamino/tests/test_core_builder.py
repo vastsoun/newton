@@ -87,43 +87,30 @@ def assert_model_matches_builder(test: unittest.TestCase, builder: ModelBuilderK
         test.assertEqual(model.info.joint_dynamic_cts_offset.numpy()[w], world.joint_dynamic_cts_idx_offset)
         test.assertEqual(model.info.joint_kinematic_cts_offset.numpy()[w], world.joint_kinematic_cts_idx_offset)
 
-    bid_tot = 0
-    for wid in range(builder.num_worlds):
-        for bid_loc in range(len(builder.bodies[wid])):
-            test.assertEqual(model.bodies.wid.numpy()[bid_tot], builder.bodies[wid][bid_loc].wid)
-            test.assertEqual(model.bodies.bid.numpy()[bid_tot], builder.bodies[wid][bid_loc].bid)
-            bid_tot += 1
-    test.assertEqual(bid_tot, model.size.sum_of_num_bodies)
+    test.assertEqual(builder.num_bodies, model.size.sum_of_num_bodies)
+    for i, body in enumerate(builder.all_bodies):
+        test.assertEqual(model.bodies.wid.numpy()[i], body.wid)
+        test.assertEqual(model.bodies.bid.numpy()[i], body.bid)
 
-    jid_tot = 0
-    for wid in range(builder.num_worlds):
+    test.assertEqual(builder.num_joints, model.size.sum_of_num_joints)
+    for i, joint in enumerate(builder.all_joints):
+        wid = joint.wid
         bid_offset = builder.worlds[wid].bodies_idx_offset
-        for jid_loc in range(len(builder.joints[wid])):
-            test.assertEqual(model.joints.wid.numpy()[jid_tot], builder.joints[wid][jid_loc].wid)
-            test.assertEqual(model.joints.jid.numpy()[jid_tot], builder.joints[wid][jid_loc].jid)
-            test.assertEqual(
-                model.joints.bid_B.numpy()[jid_tot],
-                builder.joints[wid][jid_loc].bid_B + bid_offset if builder.joints[wid][jid_loc].bid_B >= 0 else -1,
-            )
-            test.assertEqual(
-                model.joints.bid_F.numpy()[jid_tot],
-                builder.joints[wid][jid_loc].bid_F + bid_offset if builder.joints[wid][jid_loc].bid_F >= 0 else -1,
-            )
-            jid_tot += 1
-    test.assertEqual(jid_tot, model.size.sum_of_num_joints)
+        test.assertEqual(model.joints.wid.numpy()[i], joint.wid)
+        test.assertEqual(model.joints.jid.numpy()[i], joint.jid)
+        test.assertEqual(model.joints.bid_B.numpy()[i], joint.bid_B + bid_offset if joint.bid_B >= 0 else -1)
+        test.assertEqual(model.joints.bid_F.numpy()[i], joint.bid_F + bid_offset if joint.bid_F >= 0 else -1)
 
-    gid_tot = 0
-    for wid in range(builder.num_worlds):
+    test.assertEqual(builder.num_geoms, model.size.sum_of_num_geoms)
+    for i, geom in enumerate(builder.all_geoms):
+        wid = geom.wid
         bid_offset = builder.worlds[wid].bodies_idx_offset
-        for gid_loc in range(len(builder.geoms[wid])):
-            test.assertEqual(model.geoms.wid.numpy()[gid_tot], builder.geoms[wid][gid_loc].wid)
-            test.assertEqual(model.geoms.gid.numpy()[gid_tot], builder.geoms[wid][gid_loc].gid)
-            test.assertEqual(
-                model.geoms.bid.numpy()[gid_tot],
-                builder.geoms[wid][gid_loc].body + bid_offset if builder.geoms[wid][gid_loc].body >= 0 else -1,
-            )
-            gid_tot += 1
-    test.assertEqual(gid_tot, model.size.sum_of_num_geoms)
+        test.assertEqual(model.geoms.wid.numpy()[i], geom.wid)
+        test.assertEqual(model.geoms.gid.numpy()[i], geom.gid)
+        test.assertEqual(
+            model.geoms.bid.numpy()[i],
+            geom.body + bid_offset if geom.body >= 0 else -1,
+        )
 
     # Optional printout for debugging
     msg.info("model.bodies.wid: %s", model.bodies.wid)

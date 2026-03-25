@@ -234,7 +234,7 @@ class Example:
             self.builder.gravity[w].enabled = gravity
 
         # Set joint armatures, and verify that correct gains were loaded from the USD file
-        for joint in (joint_ for joints in self.builder.joints for joint_ in joints):
+        for joint in self.builder.all_joints:
             if joint.is_dynamic or joint.is_implicit_pd:
                 joint.a_j = [0.011]  # Set joint armature according to Dynamixel XH540-V150 specs
                 joint.b_j = [0.044]  # Set joint damping according to Dynamixel XH540-V150 specs

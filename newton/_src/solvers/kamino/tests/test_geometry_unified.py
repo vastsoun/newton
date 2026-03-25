@@ -584,7 +584,7 @@ class TestUnifiedWriterContactDataRegression(unittest.TestCase):
             shapes=("sphere", "sphere"),
             distance=separation,
         )
-        for geom in (geom_ for geoms in builder.geoms for geom_ in geoms):
+        for geom in builder.all_geoms:
             geom.gap = 0.01
         contacts = self._run_pipeline(builder)
         active = contacts.model_active_contacts.numpy()[0]
@@ -597,7 +597,7 @@ class TestUnifiedWriterContactDataRegression(unittest.TestCase):
             shapes=("sphere", "sphere"),
             distance=separation,
         )
-        for geom in (geom_ for geoms in builder.geoms for geom_ in geoms):
+        for geom in builder.all_geoms:
             geom.gap = 0.001
         contacts = self._run_pipeline(builder)
         active = contacts.model_active_contacts.numpy()[0]

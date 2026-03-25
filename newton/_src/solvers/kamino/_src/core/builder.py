@@ -20,6 +20,7 @@ KAMINO: Constrained Rigid Multi-Body Model Builder
 from __future__ import annotations
 
 import copy
+from collections.abc import Iterable
 
 import numpy as np
 import warp as wp
@@ -225,16 +226,31 @@ class ModelBuilderKamino:
         return self._bodies
 
     @property
+    def all_bodies(self) -> Iterable[RigidBodyDescriptor]:
+        """Returns the collection of all body descriptors contained in the model."""
+        return (body for bodies in self._bodies for body in bodies)
+
+    @property
     def joints(self) -> list[list[JointDescriptor]]:
         """Returns the list of joint descriptors contained in the model,
         indexed first by world and then by joint."""
         return self._joints
 
     @property
+    def all_joints(self) -> Iterable[JointDescriptor]:
+        """Returns the collection of all joint descriptors contained in the model."""
+        return (joint for joints in self._joints for joint in joints)
+
+    @property
     def geoms(self) -> list[list[GeometryDescriptor]]:
         """Returns the list of lists of geometry descriptors contained in the model,
         indexed first by world and then by geometry."""
         return self._geoms
+
+    @property
+    def all_geoms(self) -> Iterable[GeometryDescriptor]:
+        """Returns the collection of all geometry descriptors contained in the model."""
+        return (geom for geoms in self._geoms for geom in geoms)
 
     @property
     def shapes(self) -> dict[str, ShapeDescriptorType]:
@@ -856,8 +872,8 @@ class ModelBuilderKamino:
             world.set_base_body(body_key)
             return
         elif isinstance(body_key, str):
-            for body in (b for bodies in self.bodies for b in bodies):
-                if body.wid == world_index and body.name == body_key:
+            for body in self.bodies[world_index]:
+                if body.name == body_key:
                     world.set_base_body(body.bid)
                     return
         raise ValueError(f"Failed to identify the base body in world `{world_index}` given key `{body_key}`.")
@@ -880,8 +896,8 @@ class ModelBuilderKamino:
             world.set_base_joint(joint_key)
             return
         elif isinstance(joint_key, str):
-            for joint in (joint_ for joints in self.joints for joint_ in joints):
-                if joint.wid == world_index and joint.name == joint_key:
+            for joint in self.joints[world_index]:
+                if joint.name == joint_key:
                     world.set_base_joint(joint.jid)
                     return
         raise ValueError(f"Failed to identify the base joint in world `{world_index}` given key `{joint_key}`.")
@@ -1120,7 +1136,7 @@ class ModelBuilderKamino:
 
         # A helper function to collect model bodies data
         def collect_body_model_data():
-            for body in (b for bodies in self._bodies for b in bodies):
+            for body in self.all_bodies:
                 bodies_label.append(body.name)
                 bodies_wid.append(body.wid)
                 bodies_bid.append(body.bid)
@@ -1134,7 +1150,7 @@ class ModelBuilderKamino:
 
         # A helper function to collect model joints data
         def collect_joint_model_data():
-            for joint in (j for joints in self._joints for j in joints):
+            for joint in self.all_joints:
                 world_bio = self._worlds[joint.wid].bodies_idx_offset
                 joints_label.append(joint.name)
                 joints_wid.append(joint.wid)
@@ -1182,7 +1198,7 @@ class ModelBuilderKamino:
                 # Otherwise, append a null (i.e. zero-valued) pointer
                 else:
                     shape_ptrs[uid] = 0
-            for geom in (g for geoms in self._geoms for g in geoms):
+            for geom in self.all_geoms:
                 shape = self._shapes[geom.uid]
                 geoms_label.append(geom.name)
                 geoms_wid.append(geom.wid)
@@ -1217,7 +1233,7 @@ class ModelBuilderKamino:
         collect_material_pairs_model_data()
 
         # Post-processing of reference coords of FREE joints to match body frames
-        for joint in (j for joints in self._joints for j in joints):
+        for joint in self.all_joints:
             if joint.dof_type == JointDoFType.FREE:
                 body = self._bodies[joint.wid][joint.bid_F]
                 qj_start = joint.coords_offset + self._worlds[joint.wid].joint_coords_idx_offset

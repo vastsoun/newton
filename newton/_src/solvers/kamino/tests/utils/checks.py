@@ -178,122 +178,113 @@ def assert_builders_equal(
     """
     Compares two ModelBuilderKamino instances for equality.
     """
-    test.assertEqual(builder1.num_worlds, builder2.num_worlds)
     test.assertEqual(builder1.num_bodies, builder2.num_bodies)
     test.assertEqual(builder1.num_joints, builder2.num_joints)
     test.assertEqual(builder1.num_geoms, builder2.num_geoms)
     test.assertEqual(builder1.num_materials, builder2.num_materials)
 
-    for wid in range(builder1.num_worlds):
-        test.assertEqual(len(builder1.bodies[wid]), len(builder2.bodies[wid]))
-        for i in range(len(builder1.bodies[wid])):
-            test.assertEqual(builder1.bodies[wid][i].wid, builder2.bodies[wid][i].wid)
-            test.assertEqual(builder1.bodies[wid][i].bid, builder2.bodies[wid][i].bid)
-            test.assertAlmostEqual(builder1.bodies[wid][i].m_i, builder2.bodies[wid][i].m_i)
-            test.assertTrue(matrices_equal(builder1.bodies[wid][i].i_I_i, builder2.bodies[wid][i].i_I_i))
-            test.assertTrue(vectors_equal(builder1.bodies[wid][i].q_i_0, builder2.bodies[wid][i].q_i_0))
-            test.assertTrue(vectors_equal(builder1.bodies[wid][i].u_i_0, builder2.bodies[wid][i].u_i_0))
+    for body1, body2 in zip(builder1.all_bodies, builder2.all_bodies, strict=True):
+        test.assertEqual(body1.wid, body2.wid)
+        test.assertEqual(body1.bid, body2.bid)
+        test.assertAlmostEqual(body1.m_i, body2.m_i)
+        test.assertTrue(matrices_equal(body1.i_I_i, body2.i_I_i))
+        test.assertTrue(vectors_equal(body1.q_i_0, body2.q_i_0))
+        test.assertTrue(vectors_equal(body1.u_i_0, body2.u_i_0))
 
-        test.assertEqual(len(builder1.joints[wid]), len(builder2.joints[wid]))
-        for j in range(len(builder1.joints[wid])):
-            test.assertEqual(builder1.joints[wid][j].wid, builder2.joints[wid][j].wid)
-            test.assertEqual(builder1.joints[wid][j].jid, builder2.joints[wid][j].jid)
-            test.assertEqual(builder1.joints[wid][j].act_type, builder2.joints[wid][j].act_type)
-            test.assertEqual(builder1.joints[wid][j].dof_type, builder2.joints[wid][j].dof_type)
-            test.assertEqual(builder1.joints[wid][j].bid_B, builder2.joints[wid][j].bid_B)
-            test.assertEqual(builder1.joints[wid][j].bid_F, builder2.joints[wid][j].bid_F)
-            test.assertTrue(
-                vectors_equal(builder1.joints[wid][j].B_r_Bj, builder2.joints[wid][j].B_r_Bj),
-                f"Joint {j} B_r_Bj:\nleft:\n{builder1.joints[wid][j].B_r_Bj}\nright:\n{builder2.joints[wid][j].B_r_Bj}",
-            )
-            test.assertTrue(
-                vectors_equal(builder1.joints[wid][j].F_r_Fj, builder2.joints[wid][j].F_r_Fj),
-                f"Joint {j} F_r_Fj:\nleft:\n{builder1.joints[wid][j].F_r_Fj}\nright:\n{builder2.joints[wid][j].F_r_Fj}",
-            )
-            test.assertTrue(
-                matrices_equal(builder1.joints[wid][j].X_j, builder2.joints[wid][j].X_j),
-                f"Joint {j} X_j:\nleft:\n{builder1.joints[wid][j].X_j}\nright:\n{builder2.joints[wid][j].X_j}",
-            )
-            test.assertTrue(
-                arrays_equal(builder1.joints[wid][j].q_j_min, builder2.joints[wid][j].q_j_min),
-                f"Joint {j} q_j_min:\nleft:\n{builder1.joints[wid][j].q_j_min}\nright:\n{builder2.joints[wid][j].q_j_min}",
-            )
-            test.assertTrue(
-                arrays_equal(builder1.joints[wid][j].q_j_max, builder2.joints[wid][j].q_j_max),
-                f"Joint {j} q_j_max:\nleft:\n{builder1.joints[wid][j].q_j_max}\nright:\n{builder2.joints[wid][j].q_j_max}",
-            )
-            test.assertTrue(
-                arrays_equal(builder1.joints[wid][j].dq_j_max, builder2.joints[wid][j].dq_j_max),
-                f"Joint {j} dq_j_max:\nleft:\n{builder1.joints[wid][j].dq_j_max}\nright:\n{builder2.joints[wid][j].dq_j_max}",
-            )
-            test.assertTrue(
-                arrays_equal(builder1.joints[wid][j].tau_j_max, builder2.joints[wid][j].tau_j_max),
-                f"Joint {j} tau_j_max:\nleft:\n{builder1.joints[wid][j].tau_j_max}\nright:\n{builder2.joints[wid][j].tau_j_max}",
-            )
-            test.assertTrue(
-                arrays_equal(builder1.joints[wid][j].a_j, builder2.joints[wid][j].a_j),
-                f"Joint {j} a_j:\nleft:\n{builder1.joints[wid][j].a_j}\nright:\n{builder2.joints[wid][j].a_j}",
-            )
-            test.assertTrue(
-                arrays_equal(builder1.joints[wid][j].b_j, builder2.joints[wid][j].b_j),
-                f"Joint {j} b_j:\nleft:\n{builder1.joints[wid][j].b_j}\nright:\n{builder2.joints[wid][j].b_j}",
-            )
-            test.assertTrue(
-                arrays_equal(builder1.joints[wid][j].k_p_j, builder2.joints[wid][j].k_p_j),
-                f"Joint {j} k_p_j:\nleft:\n{builder1.joints[wid][j].k_p_j}\nright:\n{builder2.joints[wid][j].k_p_j}",
-            )
-            test.assertTrue(
-                arrays_equal(builder1.joints[wid][j].k_d_j, builder2.joints[wid][j].k_d_j),
-                f"Joint {j} k_d_j:\nleft:\n{builder1.joints[wid][j].k_d_j}\nright:\n{builder2.joints[wid][j].k_d_j}",
-            )
-            test.assertEqual(builder1.joints[wid][j].num_coords, builder2.joints[wid][j].num_coords)
-            test.assertEqual(builder1.joints[wid][j].num_dofs, builder2.joints[wid][j].num_dofs)
-            test.assertEqual(builder1.joints[wid][j].num_passive_coords, builder2.joints[wid][j].num_passive_coords)
-            test.assertEqual(builder1.joints[wid][j].num_passive_dofs, builder2.joints[wid][j].num_passive_dofs)
-            test.assertEqual(builder1.joints[wid][j].num_actuated_coords, builder2.joints[wid][j].num_actuated_coords)
-            test.assertEqual(builder1.joints[wid][j].num_actuated_dofs, builder2.joints[wid][j].num_actuated_dofs)
-            test.assertEqual(builder1.joints[wid][j].num_actuated_dofs, builder2.joints[wid][j].num_actuated_dofs)
-            test.assertEqual(builder1.joints[wid][j].num_cts, builder2.joints[wid][j].num_cts)
-            test.assertEqual(builder1.joints[wid][j].num_dynamic_cts, builder2.joints[wid][j].num_dynamic_cts)
-            test.assertEqual(builder1.joints[wid][j].num_kinematic_cts, builder2.joints[wid][j].num_kinematic_cts)
-            test.assertEqual(builder1.joints[wid][j].coords_offset, builder2.joints[wid][j].coords_offset)
-            test.assertEqual(builder1.joints[wid][j].dofs_offset, builder2.joints[wid][j].dofs_offset)
-            test.assertEqual(
-                builder1.joints[wid][j].passive_coords_offset, builder2.joints[wid][j].passive_coords_offset
-            )
-            test.assertEqual(builder1.joints[wid][j].passive_dofs_offset, builder2.joints[wid][j].passive_dofs_offset)
-            test.assertEqual(
-                builder1.joints[wid][j].actuated_coords_offset, builder2.joints[wid][j].actuated_coords_offset
-            )
-            test.assertEqual(builder1.joints[wid][j].actuated_dofs_offset, builder2.joints[wid][j].actuated_dofs_offset)
-            test.assertEqual(builder1.joints[wid][j].cts_offset, builder2.joints[wid][j].cts_offset)
-            test.assertEqual(builder1.joints[wid][j].dynamic_cts_offset, builder2.joints[wid][j].dynamic_cts_offset)
-            test.assertEqual(builder1.joints[wid][j].kinematic_cts_offset, builder2.joints[wid][j].kinematic_cts_offset)
-            test.assertEqual(builder1.joints[wid][j].is_binary, builder2.joints[wid][j].is_binary)
-            test.assertEqual(builder1.joints[wid][j].is_passive, builder2.joints[wid][j].is_passive)
-            test.assertEqual(builder1.joints[wid][j].is_actuated, builder2.joints[wid][j].is_actuated)
-            test.assertEqual(builder1.joints[wid][j].is_dynamic, builder2.joints[wid][j].is_dynamic)
-            test.assertEqual(builder1.joints[wid][j].is_implicit_pd, builder2.joints[wid][j].is_implicit_pd)
+    for j, (joint1, joint2) in enumerate(zip(builder1.all_joints, builder2.all_joints, strict=True)):
+        test.assertEqual(joint1.wid, joint2.wid)
+        test.assertEqual(joint1.jid, joint2.jid)
+        test.assertEqual(joint1.act_type, joint2.act_type)
+        test.assertEqual(joint1.dof_type, joint2.dof_type)
+        test.assertEqual(joint1.bid_B, joint2.bid_B)
+        test.assertEqual(joint1.bid_F, joint2.bid_F)
+        test.assertTrue(
+            vectors_equal(joint1.B_r_Bj, joint2.B_r_Bj),
+            f"Joint {j} B_r_Bj:\nleft:\n{joint1.B_r_Bj}\nright:\n{joint2.B_r_Bj}",
+        )
+        test.assertTrue(
+            vectors_equal(joint1.F_r_Fj, joint2.F_r_Fj),
+            f"Joint {j} F_r_Fj:\nleft:\n{joint1.F_r_Fj}\nright:\n{joint2.F_r_Fj}",
+        )
+        test.assertTrue(
+            matrices_equal(joint1.X_j, joint2.X_j),
+            f"Joint {j} X_j:\nleft:\n{joint1.X_j}\nright:\n{joint2.X_j}",
+        )
+        test.assertTrue(
+            arrays_equal(joint1.q_j_min, joint2.q_j_min),
+            f"Joint {j} q_j_min:\nleft:\n{joint1.q_j_min}\nright:\n{joint2.q_j_min}",
+        )
+        test.assertTrue(
+            arrays_equal(joint1.q_j_max, joint2.q_j_max),
+            f"Joint {j} q_j_max:\nleft:\n{joint1.q_j_max}\nright:\n{joint2.q_j_max}",
+        )
+        test.assertTrue(
+            arrays_equal(joint1.dq_j_max, joint2.dq_j_max),
+            f"Joint {j} dq_j_max:\nleft:\n{joint1.dq_j_max}\nright:\n{joint2.dq_j_max}",
+        )
+        test.assertTrue(
+            arrays_equal(joint1.tau_j_max, joint2.tau_j_max),
+            f"Joint {j} tau_j_max:\nleft:\n{joint1.tau_j_max}\nright:\n{joint2.tau_j_max}",
+        )
+        test.assertTrue(
+            arrays_equal(joint1.a_j, joint2.a_j),
+            f"Joint {j} a_j:\nleft:\n{joint1.a_j}\nright:\n{joint2.a_j}",
+        )
+        test.assertTrue(
+            arrays_equal(joint1.b_j, joint2.b_j),
+            f"Joint {j} b_j:\nleft:\n{joint1.b_j}\nright:\n{joint2.b_j}",
+        )
+        test.assertTrue(
+            arrays_equal(joint1.k_p_j, joint2.k_p_j),
+            f"Joint {j} k_p_j:\nleft:\n{joint1.k_p_j}\nright:\n{joint2.k_p_j}",
+        )
+        test.assertTrue(
+            arrays_equal(joint1.k_d_j, joint2.k_d_j),
+            f"Joint {j} k_d_j:\nleft:\n{joint1.k_d_j}\nright:\n{joint2.k_d_j}",
+        )
+        test.assertEqual(joint1.num_coords, joint2.num_coords)
+        test.assertEqual(joint1.num_dofs, joint2.num_dofs)
+        test.assertEqual(joint1.num_passive_coords, joint2.num_passive_coords)
+        test.assertEqual(joint1.num_passive_dofs, joint2.num_passive_dofs)
+        test.assertEqual(joint1.num_actuated_coords, joint2.num_actuated_coords)
+        test.assertEqual(joint1.num_actuated_dofs, joint2.num_actuated_dofs)
+        test.assertEqual(joint1.num_actuated_dofs, joint2.num_actuated_dofs)
+        test.assertEqual(joint1.num_cts, joint2.num_cts)
+        test.assertEqual(joint1.num_dynamic_cts, joint2.num_dynamic_cts)
+        test.assertEqual(joint1.num_kinematic_cts, joint2.num_kinematic_cts)
+        test.assertEqual(joint1.coords_offset, joint2.coords_offset)
+        test.assertEqual(joint1.dofs_offset, joint2.dofs_offset)
+        test.assertEqual(joint1.passive_coords_offset, joint2.passive_coords_offset)
+        test.assertEqual(joint1.passive_dofs_offset, joint2.passive_dofs_offset)
+        test.assertEqual(joint1.actuated_coords_offset, joint2.actuated_coords_offset)
+        test.assertEqual(joint1.actuated_dofs_offset, joint2.actuated_dofs_offset)
+        test.assertEqual(joint1.cts_offset, joint2.cts_offset)
+        test.assertEqual(joint1.dynamic_cts_offset, joint2.dynamic_cts_offset)
+        test.assertEqual(joint1.kinematic_cts_offset, joint2.kinematic_cts_offset)
+        test.assertEqual(joint1.is_binary, joint2.is_binary)
+        test.assertEqual(joint1.is_passive, joint2.is_passive)
+        test.assertEqual(joint1.is_actuated, joint2.is_actuated)
+        test.assertEqual(joint1.is_dynamic, joint2.is_dynamic)
+        test.assertEqual(joint1.is_implicit_pd, joint2.is_implicit_pd)
 
-        test.assertEqual(len(builder1.geoms[wid]), len(builder2.geoms[wid]))
-        for k in range(len(builder1.geoms[wid])):
-            test.assertEqual(builder1.geoms[wid][k].wid, builder2.geoms[wid][k].wid)
-            test.assertEqual(builder1.geoms[wid][k].gid, builder2.geoms[wid][k].gid)
-            test.assertEqual(builder1.geoms[wid][k].mid, builder2.geoms[wid][k].mid)
-            test.assertEqual(builder1.geoms[wid][k].body, builder2.geoms[wid][k].body)
-            shape1 = builder1.shapes[builder1.geoms[wid][k].uid]
-            shape2 = builder2.shapes[builder2.geoms[wid][k].uid]
-            test.assertEqual(shape1.type, shape2.type)
-            test.assertEqual(shape1.num_params, shape2.num_params)
-            test.assertTrue(lists_equal(shape1.paramsvec, shape2.paramsvec))
-            if not skip_materials:
-                test.assertEqual(builder1.geoms[wid][k].material, builder2.geoms[wid][k].material)
-            if not skip_colliders:
-                test.assertEqual(builder1.geoms[wid][k].group, builder2.geoms[wid][k].group)
-                test.assertEqual(builder1.geoms[wid][k].collides, builder2.geoms[wid][k].collides)
-                test.assertEqual(builder1.geoms[wid][k].max_contacts, builder2.geoms[wid][k].max_contacts)
-                test.assertEqual(builder1.geoms[wid][k].gap, builder2.geoms[wid][k].gap)
-                test.assertEqual(builder1.geoms[wid][k].margin, builder2.geoms[wid][k].margin)
+    for geom1, geom2 in zip(builder1.all_geoms, builder2.all_geoms, strict=True):
+        test.assertEqual(geom1.wid, geom2.wid)
+        test.assertEqual(geom1.gid, geom2.gid)
+        test.assertEqual(geom1.mid, geom2.mid)
+        test.assertEqual(geom1.body, geom2.body)
+        shape1 = builder1.shapes[geom1.uid]
+        shape2 = builder2.shapes[geom2.uid]
+        test.assertEqual(shape1.type, shape2.type)
+        test.assertEqual(shape1.num_params, shape2.num_params)
+        test.assertTrue(lists_equal(shape1.paramsvec, shape2.paramsvec))
+        if not skip_materials:
+            test.assertEqual(geom1.material, geom2.material)
+        if not skip_colliders:
+            test.assertEqual(geom1.group, geom2.group)
+            test.assertEqual(geom1.collides, geom2.collides)
+            test.assertEqual(geom1.max_contacts, geom2.max_contacts)
+            test.assertEqual(geom1.gap, geom2.gap)
+            test.assertEqual(geom1.margin, geom2.margin)
 
     if not skip_materials:
         for m in range(builder1.num_materials):

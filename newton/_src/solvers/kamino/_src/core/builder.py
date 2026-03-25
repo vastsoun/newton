@@ -1522,6 +1522,19 @@ class ModelBuilderKamino:
         # Iterate over each world and construct the collision geometry pairs info
         ncg_offset = 0
         for wid in range(nw):
+            # Precompute body adjacency matrix for this world.
+            # If we allow neighbor collisions, adjacent bodies are only bodies connected by a fixed joint.
+            # Otherwise, they are all bodies connected by a non-free joint.
+            # Note: for convenience we shift body indices by 1 to account for the -1 body of unary joints
+            num_bodies = self.worlds[wid].num_bodies
+            adjacent_bodies = np.zeros((num_bodies + 1, num_bodies + 1), dtype=np.int32)
+            for joint in self.joints[wid]:
+                if joint.dof_type == JointDoFType.FREE:
+                    continue
+                if not allow_neighbors or joint.dof_type == JointDoFType.FIXED:
+                    adjacent_bodies[joint.bid_B + 1, joint.bid_F + 1] = 1
+                    adjacent_bodies[joint.bid_F + 1, joint.bid_B + 1] = 1
+
             # Initialize the lists to store the collision candidate pairs and their properties
             world_candidate_pairs = []
             first_candidate_pair_id.append(len(model_candidate_pairs))
@@ -1555,29 +1568,15 @@ class ModelBuilderKamino:
                 if is_self_collision or not are_collidable:
                     continue
 
-                # 5. Check for neighbor collision for fixed and DoF joints
-                are_fixed_neighbors = False
-                are_dof_neighbors = False
-                for joint in self.joints[wid]:
-                    if (joint.bid_B == bid1 and joint.bid_F == bid2) or (joint.bid_B == bid2 and joint.bid_F == bid1):
-                        if joint.dof_type == JointDoFType.FIXED:
-                            are_fixed_neighbors = True
-                        elif joint.bid_B < 0:
-                            pass
-                        else:
-                            are_dof_neighbors = True
-                        break
-
-                # Skip this pair if they are fixed-joint neighbors, or are DoF
-                # neighbor collisions and self-collisions are not allowed
-                if ((not allow_neighbors) and are_dof_neighbors) or are_fixed_neighbors:
+                # 5. and 6. Check for neighbor collision for fixed and DoF joints
+                if adjacent_bodies[bid1 + 1, bid2 + 1]:
                     continue
 
                 # Append the geometry pair to the list of world collision candidates
                 world_candidate_pairs.append((min(gid1, gid2), max(gid1, gid2)))
 
-            # Sort the excluded pairs list for efficient lookup
-            # on the device if there are any pairs to exclude
+            # Sort the candidate pairs list for efficient lookup
+            # on the device if there are any candidate pairs
             if len(world_candidate_pairs) > 0:
                 world_candidate_pairs.sort()
 
@@ -1613,15 +1612,18 @@ class ModelBuilderKamino:
         model_excluded_pairs: list[tuple[int, int]] = []
         ncg_offset = 0
         for wid in range(self.num_worlds):
-            # Precompute body adjacency matrix for this world
+            # Precompute body adjacency matrix for this world.
+            # If we allow neighbor collisions, adjacent bodies are only bodies connected by a fixed joint.
+            # Otherwise, they are all bodies connected by a non-free joint.
             # Note: for convenience we shift body indices by 1 to account for the -1 body of unary joints
             num_bodies = self.worlds[wid].num_bodies
             adjacent_bodies = np.zeros((num_bodies + 1, num_bodies + 1), dtype=np.int32)
             for joint in self.joints[wid]:
                 if joint.dof_type == JointDoFType.FREE:
                     continue
-                adjacent_bodies[joint.bid_B + 1, joint.bid_F + 1] = 1
-                adjacent_bodies[joint.bid_F + 1, joint.bid_B + 1] = 1
+                if not allow_neighbors or joint.dof_type == JointDoFType.FIXED:
+                    adjacent_bodies[joint.bid_B + 1, joint.bid_F + 1] = 1
+                    adjacent_bodies[joint.bid_F + 1, joint.bid_B + 1] = 1
 
             ncg = self.worlds[wid].num_geoms
             for idx1 in range(ncg):

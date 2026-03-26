@@ -36,11 +36,6 @@ from .joints import (
     JOINT_TAUMAX,
     JointDoFType,
     JointsModel,
-    joint_actuation_mode_from_newton,
-    joint_dof_type_from_newton,
-    num_coords_from_dof_type,
-    num_cts_from_dof_type,
-    num_dofs_from_dof_type,
 )
 from .materials import MaterialDescriptor, MaterialManager
 from .shapes import ShapeType, max_contacts_for_shape_pair, shape_from_newton, shape_type_from_newton
@@ -336,13 +331,13 @@ def joint_conversion_kernel(
     for i in range(qd_count_j):
         limit_upper_j[i] = joint_limit_upper[dofs_start_j + i]
         limit_lower_j[i] = joint_limit_lower[dofs_start_j + i]
-    dof_type_j = joint_dof_type_from_newton(type_j, q_count_j, qd_count_j, dof_dim_j, limit_lower_j, limit_upper_j)
+    dof_type_j = JointDoFType.from_newton_wp(type_j, q_count_j, qd_count_j, dof_dim_j, limit_lower_j, limit_upper_j)
     assert dof_type_j >= 0, "Joint DoF type must be valid"
 
     # Get joint type properties
-    ncoords_j = num_coords_from_dof_type(dof_type_j)
-    ndofs_j = num_dofs_from_dof_type(dof_type_j)
-    ncts_j = num_cts_from_dof_type(dof_type_j)
+    ncoords_j = JointDoFType.num_coords(dof_type_j)
+    ndofs_j = JointDoFType.num_dofs(dof_type_j)
+    ncts_j = JointDoFType.num_cts(dof_type_j)
     assert ncoords_j >= 0, "Number of joint coordinates must be valid"
     assert ndofs_j >= 0, "Number of joint DoFs must be valid"
     assert ncts_j >= 0, "Number of joint constraints must be valid"
@@ -354,7 +349,7 @@ def joint_conversion_kernel(
     joint_dofs_target_mode_j = int(0)
     for dof_id in range(ndofs_j):
         joint_dofs_target_mode_j = max(joint_dofs_target_mode_j, model_joint_target_mode[dofs_start_j + dof_id])
-    act_type_j = joint_actuation_mode_from_newton(joint_dofs_target_mode_j)
+    act_type_j = JointActuationType.from_newton_wp(joint_dofs_target_mode_j)
     assert act_type_j >= 0, "Joint actuation type must be valid"
     joint_act_type[joint_id] = act_type_j
 

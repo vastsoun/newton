@@ -631,21 +631,7 @@ class ModelBuilderKamino:
         assert geom.shape is not None
 
         # Create a copy of the descriptor without the shape (stored separately)
-        _geom = GeometryDescriptor(
-            name=geom.name,
-            uid=geom.uid,
-            body=geom.body,
-            shape=None,
-            offset=geom.offset,
-            material=geom.material,
-            group=geom.group,
-            collides=geom.collides,
-            max_contacts=geom.max_contacts,
-            gap=geom.gap,
-            margin=geom.margin,
-            mid=geom.mid,
-            flags=geom.flags,
-        )
+        _geom = GeometryDescriptor.copy_without_shape(geom)
 
         # Check if the world index is valid
         world = self._check_world_index(world_index)
@@ -1301,7 +1287,7 @@ class ModelBuilderKamino:
 
         # Generate the lists of collidable and excluded geometry pairs for the entire model
         model_collidable_pairs, collidable_pairs_offset = self.make_collision_candidate_pairs()
-        model_excluded_pairs = self.make_collision_excluded_pairs()
+        model_excluded_pairs, _ = self.make_collision_excluded_pairs()
 
         # Retrieve the number of collidable geoms for each world and
         # for the entire model based on the generated candidate pairs
@@ -1517,7 +1503,7 @@ class ModelBuilderKamino:
 
         # Initialize the lists to store the collision candidate pairs and their properties of each world
         model_candidate_pairs = []
-        first_candidate_pair_id = []
+        candidate_pairs_offset = []
 
         # Iterate over each world and construct the collision geometry pairs info
         ncg_offset = 0
@@ -1537,7 +1523,7 @@ class ModelBuilderKamino:
 
             # Initialize the lists to store the collision candidate pairs and their properties
             world_candidate_pairs = []
-            first_candidate_pair_id.append(len(model_candidate_pairs))
+            candidate_pairs_offset.append(len(model_candidate_pairs))
 
             # Iterate over each gid pair and filtering out pairs not viable for collision detection
             # NOTE: k=1 skips diagonal entries to exclude self-collisions
@@ -1586,12 +1572,12 @@ class ModelBuilderKamino:
             # Update the geometry index offset for the next world
             ncg_offset += ncg[wid]
 
-        first_candidate_pair_id.append(len(model_candidate_pairs))
+        candidate_pairs_offset.append(len(model_candidate_pairs))
 
         # Return the model total candidate pairs
-        return model_candidate_pairs, first_candidate_pair_id
+        return model_candidate_pairs, candidate_pairs_offset
 
-    def make_collision_excluded_pairs(self, allow_neighbors: bool = False) -> list[tuple[int, int]]:
+    def make_collision_excluded_pairs(self, allow_neighbors: bool = False) -> tuple[list[tuple[int, int]], list[int]]:
         """
         Builds a sorted array of shape pairs that the NXN/SAP broadphase should exclude.
 
@@ -1606,10 +1592,14 @@ class ModelBuilderKamino:
                 bodies that are neighbors via joints with DoF.
 
         Returns:
-            A sorted list of geom index pairs (gid1, gid2) that should be excluded from collision detection.
+            model_excluded_pairs: A sorted list of geom index pairs (gid1, gid2) that should be
+                excluded from collision detection.
+            excluded_pairs_offset: A list of per-world offsets into model_excluded_pairs (with one
+                extra entry giving the total length of model_excluded_pairs)
         """
 
         model_excluded_pairs: list[tuple[int, int]] = []
+        excluded_pairs_offset = []
         ncg_offset = 0
         for wid in range(self.num_worlds):
             # Precompute body adjacency matrix for this world.
@@ -1625,6 +1615,8 @@ class ModelBuilderKamino:
                     adjacent_bodies[joint.bid_B + 1, joint.bid_F + 1] = 1
                     adjacent_bodies[joint.bid_F + 1, joint.bid_B + 1] = 1
 
+            world_excluded_pairs = []
+            excluded_pairs_offset.append(len(model_excluded_pairs))
             ncg = self.worlds[wid].num_geoms
             for idx1 in range(ncg):
                 gid1 = idx1 + ncg_offset
@@ -1642,28 +1634,33 @@ class ModelBuilderKamino:
 
                     # Same-body collision
                     if geom1.body == geom2.body:
-                        model_excluded_pairs.append(candidate_pair)
+                        world_excluded_pairs.append(candidate_pair)
                         continue
 
                     # Group/collides bitmask check
                     if not ((geom1.group & geom2.collides) != 0 and (geom2.group & geom1.collides) != 0):
-                        model_excluded_pairs.append(candidate_pair)
+                        world_excluded_pairs.append(candidate_pair)
                         continue
 
                     # Fixed-joint / DoF-joint neighbour check
                     if adjacent_bodies[geom1.body + 1, geom2.body + 1]:
-                        model_excluded_pairs.append(candidate_pair)
+                        world_excluded_pairs.append(candidate_pair)
                         continue
+
+            # Sort the excluded pairs list for efficient lookup
+            # on the device if there are any excluded pairs
+            if len(world_excluded_pairs) > 0:
+                world_excluded_pairs.sort()
+
+            # Append the world excluded pairs to the model lists
+            model_excluded_pairs.extend(world_excluded_pairs)
 
             ncg_offset += ncg
 
-        # Sort the excluded pairs list for efficient lookup
-        # on the device if there are any pairs to exclude
-        if len(model_excluded_pairs) > 0:
-            model_excluded_pairs.sort()
+        excluded_pairs_offset.append(len(model_excluded_pairs))
 
         # Return the model total excluded pairs and their properties
-        return model_excluded_pairs
+        return model_excluded_pairs, excluded_pairs_offset
 
     def compute_num_collidable_geoms(
         self,

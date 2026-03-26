@@ -591,7 +591,7 @@ class TestModelBuilder(unittest.TestCase):
 
         # Generate meta-data for collision detection and contacts allocation
         model_candidate_pairs, pair_offsets = builder.make_collision_candidate_pairs(allow_neighbors=False)
-        model_excluded_pairs = builder.make_collision_excluded_pairs(allow_neighbors=False)
+        model_excluded_pairs, _ = builder.make_collision_excluded_pairs(allow_neighbors=False)
         world_num_collidables, model_num_collidables = builder.compute_num_collidable_geoms(
             model_candidate_pairs, pair_offsets
         )
@@ -654,7 +654,7 @@ class TestModelBuilder(unittest.TestCase):
 
         # Generate meta-data for collision detection and contacts allocation
         model_candidate_pairs, pair_offsets = builder.make_collision_candidate_pairs(allow_neighbors=False)
-        model_excluded_pairs = builder.make_collision_excluded_pairs(allow_neighbors=False)
+        model_excluded_pairs, _ = builder.make_collision_excluded_pairs(allow_neighbors=False)
         world_num_collidables, model_num_collidables = builder.compute_num_collidable_geoms(
             model_candidate_pairs, pair_offsets
         )
@@ -750,7 +750,7 @@ class TestModelBuilder(unittest.TestCase):
 
         # Generate meta-data for collision detection and contacts allocation
         model_candidate_pairs, pair_offsets = builder.make_collision_candidate_pairs(allow_neighbors=False)
-        model_excluded_pairs = builder.make_collision_excluded_pairs(allow_neighbors=False)
+        model_excluded_pairs, _ = builder.make_collision_excluded_pairs(allow_neighbors=False)
         world_num_collidables, model_num_collidables = builder.compute_num_collidable_geoms(
             model_candidate_pairs, pair_offsets
         )

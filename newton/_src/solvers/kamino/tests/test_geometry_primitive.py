@@ -179,9 +179,11 @@ def check_broadphase_allocations(
     broadphase: PrimitiveBroadPhaseType,
 ):
     # Calculate the maximum number of geometry pairs
-    model_candidate_pairs, _ = builder.make_collision_candidate_pairs()
+    model_candidate_pairs, candidate_pairs_offset = builder.make_collision_candidate_pairs()
     num_candidate_pairs = len(model_candidate_pairs)
     # Construct a broad-phase
+    testcase.assertEqual(len(candidate_pairs_offset), builder.num_worlds + 1)
+    testcase.assertEqual(candidate_pairs_offset[-1], num_candidate_pairs)
     testcase.assertEqual(broadphase._cmodel.num_model_geom_pairs, num_candidate_pairs)
     testcase.assertEqual(sum(broadphase._cmodel.num_world_geom_pairs), num_candidate_pairs)
     testcase.assertEqual(broadphase._cmodel.model_num_pairs.size, 1)

@@ -1693,8 +1693,8 @@ class ModelBuilderKamino:
                 g1, g2 = g2, g1
                 geom1, geom2 = geom2, geom1
             num_contacts_a, num_contacts_b = max_contacts_for_shape_pair(
-                type_a=geom1.shape.type,
-                type_b=geom2.shape.type,
+                type_a=int(geom1.shape.type),
+                type_b=int(geom2.shape.type),
             )
             num_contacts = num_contacts_a + num_contacts_b
             if max_contacts_per_pair is not None:

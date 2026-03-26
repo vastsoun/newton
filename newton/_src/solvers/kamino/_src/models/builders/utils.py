@@ -24,10 +24,12 @@ homogeneous multi-world builders and import
 USD models.
 """
 
+import time
 from collections.abc import Callable
 
 import warp as wp
 
+from ....examples import print_progress_bar
 from ...core.builder import ModelBuilderKamino
 from ...core.shapes import BoxShape, PlaneShape
 from ...core.types import transformf, vec3f, vec6f
@@ -139,8 +141,8 @@ def set_uniform_body_pose_offset(builder: ModelBuilderKamino, offset: transformf
         builder (ModelBuilderKamino): The model builder containing the bodies to offset.
         offset (transformf): The pose offset to apply to each body in the builder in the form of a :class:`transformf`.
     """
-    for i in range(builder.num_bodies):
-        builder.bodies[i].q_i_0 = wp.mul(offset, builder.bodies[i].q_i_0)
+    for body in builder.all_bodies:
+        body.q_i_0 = wp.mul(offset, body.q_i_0)
 
 
 def set_uniform_body_twist_offset(builder: ModelBuilderKamino, offset: vec6f):
@@ -151,8 +153,8 @@ def set_uniform_body_twist_offset(builder: ModelBuilderKamino, offset: vec6f):
         builder (ModelBuilderKamino): The model builder containing the bodies to offset.
         offset (vec6f): The twist offset to apply to each body in the builder in the form of a :class:`vec6f`.
     """
-    for i in range(builder.num_bodies):
-        builder.bodies[i].u_i_0 += offset
+    for body in builder.all_bodies:
+        body.u_i_0 += offset
 
 
 ###
@@ -196,13 +198,14 @@ def build_usd(
     return _builder
 
 
-def make_homogeneous_builder(num_worlds: int, build_fn: Callable, **kwargs) -> ModelBuilderKamino:
+def make_homogeneous_builder(num_worlds: int, build_fn: Callable, show_progress=False, **kwargs) -> ModelBuilderKamino:
     """
     Utility factory function to create a multi-world builder with identical worlds replicated across the model.
 
     Args:
         num_worlds (int): The number of worlds to create.
         build_fn (callable): The model builder function to use.
+        show_progress (bool): Whether to display a progress bar as the worlds are being replicated.
         **kwargs: Additional keyword arguments to pass to the builder function.
 
     Returns:
@@ -215,6 +218,9 @@ def make_homogeneous_builder(num_worlds: int, build_fn: Callable, **kwargs) -> M
 
     # Then replicate it across the specified number of worlds
     builder = ModelBuilderKamino(default_world=False)
-    for _ in range(num_worlds):
+    start_time = time.time()
+    for i in range(num_worlds):
+        if show_progress:
+            print_progress_bar(i + 1, num_worlds, start_time, prefix="Adding builders", suffix="")
         builder.add_builder(single)
     return builder

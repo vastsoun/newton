@@ -935,8 +935,8 @@ class TestModelConversions(unittest.TestCase):
                     dynamic_friction=mu[i],
                 )
             )
-            builder_1.geoms[i].material = mid
-            builder_1.geoms[i].mid = mid
+            builder_1.geoms[0][i].material = mid
+            builder_1.geoms[0][i].mid = mid
 
         # Duplicate the world to test multi-world handling
         builder_1.add_builder(copy.deepcopy(builder_1))

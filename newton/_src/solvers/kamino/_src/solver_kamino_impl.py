@@ -668,9 +668,12 @@ class SolverKaminoImpl(SolverBase):
     def _read_step_inputs(self, state_in: StateKamino, control_in: ControlKamino):
         """
         Updates the internal solver data from the input state and control.
+
+        Control inputs (tau_j, q_j_ref, dq_j_ref, tau_j_ref) are aliased
+        directly to avoid redundant device-to-device copies since they are
+        only read during a step. State arrays must still be copied because
+        the solver modifies them in-place.
         """
-        # TODO: Remove corresponding data copies
-        # by directly using the input containers
         wp.copy(self._data.bodies.q_i, state_in.q_i)
         wp.copy(self._data.bodies.u_i, state_in.u_i)
         wp.copy(self._data.bodies.w_i, state_in.w_i)
@@ -679,17 +682,16 @@ class SolverKaminoImpl(SolverBase):
         wp.copy(self._data.joints.q_j_p, state_in.q_j_p)
         wp.copy(self._data.joints.dq_j, state_in.dq_j)
         wp.copy(self._data.joints.lambda_j, state_in.lambda_j)
-        wp.copy(self._data.joints.tau_j, control_in.tau_j)
-        wp.copy(self._data.joints.q_j_ref, control_in.q_j_ref)
-        wp.copy(self._data.joints.dq_j_ref, control_in.dq_j_ref)
-        wp.copy(self._data.joints.tau_j_ref, control_in.tau_j_ref)
+        # Alias read-only control inputs
+        self._data.joints.tau_j = control_in.tau_j
+        self._data.joints.q_j_ref = control_in.q_j_ref
+        self._data.joints.dq_j_ref = control_in.dq_j_ref
+        self._data.joints.tau_j_ref = control_in.tau_j_ref
 
     def _write_step_output(self, state_out: StateKamino):
         """
         Updates the output state from the internal solver data.
         """
-        # TODO: Remove corresponding data copies
-        # by directly using the input containers
         wp.copy(state_out.q_i, self._data.bodies.q_i)
         wp.copy(state_out.u_i, self._data.bodies.u_i)
         wp.copy(state_out.w_i, self._data.bodies.w_i)

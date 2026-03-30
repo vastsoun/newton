@@ -16,6 +16,7 @@
 """The customized debug viewer of Kamino"""
 
 # Python
+import copy
 import glob
 import os
 import threading
@@ -238,7 +239,9 @@ class ViewerKamino(ViewerGL):
 
         # Declare and initialize geometry info cache
         self._worlds: list[WorldDescriptor] = builder.worlds
-        self._geometry: list[GeometryDescriptor] = builder.geoms
+        self._geometry: list[GeometryDescriptor] = copy.deepcopy(list(builder.all_geoms))
+        for geom in self._geometry:
+            geom.shape = builder.shapes[geom.uid]
 
         # Initialize video recording settings
         self._record_video = record_video

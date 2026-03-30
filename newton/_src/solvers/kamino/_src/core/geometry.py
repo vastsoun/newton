@@ -17,7 +17,7 @@
 KAMINO: Geometry Model Types & Containers
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import warp as wp
 
@@ -201,6 +201,11 @@ class GeometryDescriptor(Descriptor):
             f"mid: {self.mid},\n"
             f")"
         )
+
+    @staticmethod
+    def copy_without_shape(geom: "GeometryDescriptor") -> "GeometryDescriptor":
+        """Returns a copy of a descriptor, but with the shape field set to None"""
+        return replace(geom, shape=None)
 
 
 @dataclass

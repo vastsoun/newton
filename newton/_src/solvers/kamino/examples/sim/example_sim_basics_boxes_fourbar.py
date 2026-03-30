@@ -214,7 +214,7 @@ class Example:
             # Set joint armature and damping because the purely
             # UsdPhysics schema does not support these properties yet
             if implicit_pd:
-                for joint in self.builder.joints:
+                for joint in self.builder.all_joints:
                     if joint.is_dynamic or joint.is_implicit_pd:
                         joint.a_j = [0.1]
                         joint.b_j = [0.001]

@@ -65,7 +65,7 @@ class TestSetup:
         self.builder.gravity[0].enabled = gravity
         if perturb:
             u_0 = screw(vec3f(+10.0, 0.0, 0.0), vec3f(0.0, 0.0, 0.0))
-            for body in self.builder.bodies:
+            for body in self.builder.all_bodies:
                 body.u_i_0 = u_0
 
         # Create the model and containers from the builder

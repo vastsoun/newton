@@ -2060,7 +2060,7 @@ class USDImporter:
 
                 # If not, create a FREE joint descriptor to attach the root body to the
                 # world and insert it at the beginning of the joint descriptors list
-                root_body_name = builder.bodies[root_body_index].name
+                root_body_name = builder.bodies[0][root_body_index].name
 
                 joint_desc = JointDescriptor(
                     name=f"world_to_{root_body_name}"

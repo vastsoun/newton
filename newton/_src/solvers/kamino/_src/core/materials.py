@@ -925,3 +925,31 @@ class MaterialManager:
 
         # Return the friction matrix as a numpy array
         return dynamic_friction
+
+    ###
+    # Material Model Creation
+    ###
+
+    def make_materials_model(self) -> MaterialsModel:
+        # Construct the per-material properties
+        materials_rest = [self.restitution_vector()]
+        materials_static_fric = [self.static_friction_vector()]
+        materials_dynamic_fric = [self.dynamic_friction_vector()]
+        return MaterialsModel(
+            num_materials=self.num_materials,
+            restitution=wp.array(materials_rest[0], dtype=float32),
+            static_friction=wp.array(materials_static_fric[0], dtype=float32),
+            dynamic_friction=wp.array(materials_dynamic_fric[0], dtype=float32),
+        )
+
+    def make_material_pairs_model(self) -> MaterialPairsModel:
+        # Construct the per-material-pair properties
+        mpairs_rest = [self.restitution_matrix()]
+        mpairs_static_fric = [self.static_friction_matrix()]
+        mpairs_dynamic_fric = [self.dynamic_friction_matrix()]
+        return MaterialPairsModel(
+            num_material_pairs=self.num_material_pairs,
+            restitution=wp.array(mpairs_rest[0], dtype=float32),
+            static_friction=wp.array(mpairs_static_fric[0], dtype=float32),
+            dynamic_friction=wp.array(mpairs_dynamic_fric[0], dtype=float32),
+        )

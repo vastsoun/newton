@@ -172,7 +172,7 @@ def lt_mask(a: Any, b: Any):
 @wp.kernel
 def check_termination(
     maxiter: wp.array(dtype=int),
-    cycle_size: int,
+    loop_granularity: int,
     r_norm_sq: wp.array(dtype=Any),
     atol_sq: wp.array(dtype=Any),
     world_active: wp.array(dtype=wp.int32),
@@ -186,7 +186,7 @@ def check_termination(
     active = world_active[wid]
     condition = world_condition[wid]
     world_stepped = active * condition
-    iter = world_stepped * cycle_size + cur_iter[wid]
+    iter = world_stepped * loop_granularity + cur_iter[wid]
     cur_iter[wid] = iter
 
     # Check convergence
@@ -278,7 +278,7 @@ def _cr_kernel_2(
 
 
 def _run_capturable_loop(
-    do_cycle: Callable,
+    do_iteration: Callable,
     r_norm_sq: wp.array,
     world_active: wp.array(dtype=wp.int32),
     cur_iter: wp.array(dtype=wp.int32),
@@ -289,7 +289,7 @@ def _run_capturable_loop(
     use_cuda_graph: bool,
     use_graph_conditionals: bool = True,
     maxiter_host: int | None = None,
-    cycle_size: int = 1,
+    loop_granularity: int = 1,
 ):
     device = atol_sq.device
 
@@ -303,7 +303,7 @@ def _run_capturable_loop(
         check_termination,
         dim=(n_worlds,),
         device=device,
-        inputs=[maxiter, cycle_size, r_norm_sq, atol_sq, world_active, cur_iter],
+        inputs=[maxiter, loop_granularity, r_norm_sq, atol_sq, world_active, cur_iter],
         outputs=[world_condition, global_condition],
         record_cmd=True,
     )
@@ -325,7 +325,8 @@ def _run_capturable_loop(
         callback_launch.launch()
 
     def do_cycle_with_condition():
-        do_cycle()
+        for _ in range(0, loop_granularity):
+            do_iteration()
         global_condition.zero_()
         update_condition_launch.launch()
         if callback_launch is not None:
@@ -335,10 +336,10 @@ def _run_capturable_loop(
         if use_graph_conditionals:
             wp.capture_while(global_condition, do_cycle_with_condition)
         else:
-            for _ in range(0, int(maxiter_host), cycle_size):
+            for _ in range(0, int(maxiter_host), loop_granularity):
                 do_cycle_with_condition()
     else:
-        for _ in range(0, int(maxiter.numpy().max()), cycle_size):
+        for _ in range(0, int(maxiter.numpy().max()), loop_granularity):
             do_cycle_with_condition()
             if not global_condition.numpy()[0]:
                 # print("Exiting")
@@ -477,6 +478,7 @@ class ConjugateSolver:
         Mi: Operator applying the inverse preconditioner M^-1, such that Mi @ A has a smaller condition number than A.
         callback: Optional callback kernel invoked each iteration.
         use_cuda_graph: Whether to use CUDA graph capture for the solve loop.
+        loop_granularity: Number of iterations before termination criteria are checked.
     """
 
     def __init__(
@@ -491,6 +493,7 @@ class ConjugateSolver:
         callback: Callable | None = None,
         use_cuda_graph: bool = True,
         use_graph_conditionals: bool = True,
+        loop_granularity: int = 1,
     ):
         if not isinstance(A, BatchedLinearOperator):
             raise ValueError("A must be a BatchedLinearOperator")
@@ -510,6 +513,7 @@ class ConjugateSolver:
         self.atol = atol
         self.rtol = rtol
         self.maxiter = maxiter
+        self.loop_granularity = loop_granularity
 
         self.callback = callback
         self.use_cuda_graph = use_cuda_graph
@@ -668,6 +672,7 @@ class CGSolver(ConjugateSolver):
             self.use_cuda_graph,
             use_graph_conditionals=self.use_graph_conditionals,
             maxiter_host=self.maxiter_host,
+            loop_granularity=min(self.loop_granularity, self.maxiter_host),
         )
 
     def do_iteration(self, p, Ap, rz_old, rz_new, z, x, r, r_norm_sq, active_dims, world_active):
@@ -797,6 +802,7 @@ class CRSolver(ConjugateSolver):
             self.use_cuda_graph,
             use_graph_conditionals=self.use_graph_conditionals,
             maxiter_host=self.maxiter_host,
+            loop_granularity=min(self.loop_granularity, self.maxiter_host),
         )
 
     def do_iteration(self, p, Ap, Az, zAz_old, zAz_new, z, y, x, r, r_copy, r_norm_sq, active_dims, world_active):

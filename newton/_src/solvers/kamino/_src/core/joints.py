@@ -651,7 +651,7 @@ class JointDoFType(IntEnum):
     @property
     def reference_coords(self) -> list[float]:
         """
-        Returns the data type required to represent the joint's generalized coordinates.
+        Returns the joint's generalized coordinates in its neutral position.
         """
         if self.value == self.FREE:
             return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]

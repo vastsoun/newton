@@ -5407,19 +5407,20 @@ class ModelBuilder:
         self,
         body: int,
         xform: Transform | None = None,
-        a: float = 1.0,
-        b: float = 0.75,
-        c: float = 0.5,
+        rx: float = 1.0,
+        ry: float = 0.75,
+        rz: float = 0.5,
         cfg: ShapeConfig | None = None,
         as_site: bool = False,
         color: Vec3 | None = None,
         label: str | None = None,
         custom_attributes: dict[str, Any] | None = None,
+        **kwargs,
     ) -> int:
         """Adds an ellipsoid collision shape or site to a body.
 
         The ellipsoid is centered at its local origin as defined by `xform`, with semi-axes
-        `a`, `b`, `c` along the local X, Y, Z axes respectively.
+        `rx`, `ry`, `rz` along the local X, Y, Z axes respectively.
 
         Note:
             Ellipsoid collision is handled by the GJK/MPR collision pipeline,
@@ -5428,9 +5429,9 @@ class ModelBuilder:
         Args:
             body: The index of the parent body this shape belongs to. Use -1 for shapes not attached to any specific body.
             xform: The transform of the ellipsoid in the parent body's local frame. If `None`, the identity transform `wp.transform()` is used. Defaults to `None`.
-            a: The semi-axis of the ellipsoid along its local X-axis. Defaults to `1.0`.
-            b: The semi-axis of the ellipsoid along its local Y-axis. Defaults to `0.75`.
-            c: The semi-axis of the ellipsoid along its local Z-axis. Defaults to `0.5`.
+            rx: The semi-axis of the ellipsoid along its local X-axis [m]. Defaults to `1.0`.
+            ry: The semi-axis of the ellipsoid along its local Y-axis [m]. Defaults to `0.75`.
+            rz: The semi-axis of the ellipsoid along its local Z-axis [m]. Defaults to `0.5`.
             cfg: The configuration for the shape's properties. If `None`, uses :attr:`default_shape_cfg` (or :attr:`default_site_cfg` when `as_site=True`). If `as_site=True` and `cfg` is provided, a copy is made and site invariants are enforced via `mark_as_site()`. Defaults to `None`.
             as_site: If `True`, creates a site (non-colliding reference point) instead of a collision shape. Defaults to `False`.
             color: Optional display RGB color with values in [0, 1]. If `None`, uses the default per-shape display color.
@@ -5451,21 +5452,41 @@ class ModelBuilder:
                 # Add an ellipsoid with semi-axes 1.0, 0.5, 0.25
                 builder.add_shape_ellipsoid(
                     body=body,
-                    a=1.0,  # X semi-axis
-                    b=0.5,  # Y semi-axis
-                    c=0.25,  # Z semi-axis
+                    rx=1.0,  # X semi-axis
+                    ry=0.5,  # Y semi-axis
+                    rz=0.25,  # Z semi-axis
                 )
 
-                # A sphere is a special case where a = b = c
-                builder.add_shape_ellipsoid(body=body, a=0.5, b=0.5, c=0.5)
+                # A sphere is a special case where rx = ry = rz
+                builder.add_shape_ellipsoid(body=body, rx=0.5, ry=0.5, rz=0.5)
         """
+        # Backward compat: accept deprecated a, b, c parameter names
+        _deprecated_map = {"a": ("rx", rx, 1.0), "b": ("ry", ry, 0.75), "c": ("rz", rz, 0.5)}
+        for old_name, (new_name, new_val, default) in _deprecated_map.items():
+            if old_name in kwargs:
+                if new_val != default:
+                    raise TypeError(f"Cannot specify both '{old_name}' and '{new_name}'")
+                warnings.warn(
+                    f"Parameter '{old_name}' is deprecated, use '{new_name}' instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+        if "a" in kwargs:
+            rx = kwargs.pop("a")
+        if "b" in kwargs:
+            ry = kwargs.pop("b")
+        if "c" in kwargs:
+            rz = kwargs.pop("c")
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments: {set(kwargs)}")
+
         if cfg is None:
             cfg = self.default_site_cfg if as_site else self.default_shape_cfg
         elif as_site:
             cfg = cfg.copy()
             cfg.mark_as_site()
 
-        scale = wp.vec3(a, b, c)
+        scale = wp.vec3(rx, ry, rz)
         return self.add_shape(
             body=body,
             type=GeoType.ELLIPSOID,
@@ -5818,8 +5839,8 @@ class ModelBuilder:
     def add_shape_gaussian(
         self,
         body: int,
-        gaussian: Gaussian,
         xform: Transform | None = None,
+        gaussian: Gaussian | None = None,
         scale: Vec3 | None = None,
         cfg: ShapeConfig | None = None,
         collision_proxy: str | Mesh | None = None,
@@ -5835,8 +5856,8 @@ class ModelBuilder:
         Args:
             body: The index of the parent body this shape belongs to.
                 Use ``-1`` for static world geometry.
-            gaussian: The :class:`Gaussian` splat asset.
             xform: Transform in parent body's local frame. Defaults to identity.
+            gaussian: The :class:`Gaussian` splat asset.
             scale: 3D scale applied to Gaussian positions. Defaults to ``(1, 1, 1)``.
             cfg: Shape configuration. If ``None``, uses :attr:`default_shape_cfg`
                 with ``has_shape_collision=False`` (Gaussians are render-only by
@@ -5854,6 +5875,23 @@ class ModelBuilder:
         Returns:
             The index of the Gaussian shape.
         """
+        # Backward compat: detect Gaussian passed as second positional arg (old API
+        # had signature add_shape_gaussian(body, gaussian, xform=...)).
+        if isinstance(xform, Gaussian):
+            warnings.warn(
+                "Passing 'gaussian' as the second positional argument is deprecated. "
+                "Use add_shape_gaussian(body, xform=..., gaussian=...) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if gaussian is not None:
+                raise TypeError("Cannot pass 'gaussian' both as positional and keyword argument.")
+            gaussian = xform
+            xform = None
+
+        if gaussian is None:
+            raise TypeError("'gaussian' is required when adding a Gaussian shape.")
+
         if cfg is None:
             cfg = self.default_shape_cfg.copy()
         else:

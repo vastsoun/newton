@@ -26,6 +26,20 @@ def get_asset(filename: str) -> str:
     return os.path.join(get_asset_directory(), filename)
 
 
+def _enable_example_deprecation_warnings() -> None:
+    """Show Newton deprecations during example runs.
+
+    Skipped when ``PYTHONWARNINGS`` is already set so that
+    ``test_examples.py`` (or a user) can escalate warnings to errors
+    without this filter overriding their policy.
+    """
+    if "PYTHONWARNINGS" in os.environ or getattr(_enable_example_deprecation_warnings, "_installed", False):
+        return
+
+    warnings.filterwarnings("default", category=DeprecationWarning, module=r"newton(\.|$)")
+    _enable_example_deprecation_warnings._installed = True
+
+
 def download_external_git_folder(git_url: str, folder_path: str, force_refresh: bool = False):
     from newton._src.utils.download_assets import download_git_folder  # noqa: PLC0415
 
@@ -529,6 +543,8 @@ def init(parser=None):
 
     import newton.viewer  # noqa: PLC0415
 
+    _enable_example_deprecation_warnings()
+
     # parse args
     if parser is None:
         parser = create_parser()
@@ -595,6 +611,8 @@ def main():
     """Main entry point for running examples via 'python -m newton.examples <example_name>'."""
     import runpy  # noqa: PLC0415
     import sys  # noqa: PLC0415
+
+    _enable_example_deprecation_warnings()
 
     examples = get_examples()
 

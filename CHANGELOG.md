@@ -48,6 +48,7 @@
 - Replace verbose Apache 2.0 boilerplate with two-line SPDX-only license headers across all source and documentation files
 - Add `custom_attributes` argument to `ModelBuilder.add_shape_convex_hull()`
 - Improve wrench preservation in hydroelastic contacts with contact reduction.
+- Show Newton deprecation warnings during example runs started via `python -m newton.examples ...` or `python -m newton.examples.<category>.<module>`; pass `-W ignore::DeprecationWarning` if you need the previous quiet behavior.
 - Reorder `ModelBuilder.add_shape_gaussian()` parameters so `xform` precedes `gaussian`, in line with other `add_shape_*` methods. Callers using positional arguments should switch to keyword form (`gaussian=..., xform=...`); passing a `Gaussian` as the second positional argument still works but emits a `DeprecationWarning`
 - Rename `ModelBuilder.add_shape_ellipsoid()` parameters `a`, `b`, `c` to `rx`, `ry`, `rz`. Old names are still accepted as keyword arguments but emit a `DeprecationWarning`
 - Rename `collide_plane_cylinder()` parameter `cylinder_center` to `cylinder_pos` for consistency with other collide functions
@@ -56,6 +57,7 @@
 
 ### Deprecated
 
+- Deprecate `ModelBuilder.default_body_armature`, the `armature` argument on `ModelBuilder.add_link()` / `ModelBuilder.add_body()`, and USD-authored body armature via `newton:armature` in favor of adding any isotropic artificial inertia directly to `inertia`
 - Deprecate `SensorContact.net_force` in favor of `SensorContact.total_force` and `SensorContact.force_matrix`
 - Deprecate `SensorContact(include_total=...)` in favor of `SensorContact(measure_total=...)`
 - Deprecate `SensorContact.sensing_objs` in favor of `SensorContact.sensing_obj_idx`

@@ -302,7 +302,11 @@ class SimulationLogger:
         self.plt.rcParams["axes.axisbelow"] = True
         self.plt.grid(True, which="major", linestyle="--", linewidth=0.5)
         self.plt.grid(True, which="minor", linestyle=":", linewidth=0.25)
-        self.plt.hist(self.log_padmm_iters[: self._frames], bins=50)
+        num_iters_data = self.log_padmm_iters[: self._frames]
+        self.plt.hist(
+            num_iters_data - 0.5,  # Center histogram bar at integer values for readability
+            bins=np.max(num_iters_data) - np.min(num_iters_data),  # Ensure there is one bar per integer
+        )
         self.plt.yscale("log")  # Make Y-axis logarithmic
         self.plt.title("Histogram of PADMM Solver Iterations")
         self.plt.xlabel("Iterations")

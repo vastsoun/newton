@@ -402,6 +402,41 @@ def store_joint_dofs_jacobian_sparse(
         )
 
 
+@wp.func
+def compute_joint_relative_quaternion(T_B_j: transformf, T_F_j: transformf, X_j: mat33f) -> quatf:
+    """ "
+    Computes the relative quaternion mapping base to follower joint frame, from the current base
+    and follower pose, and the joint frame expressed in local body frame.
+    """
+    q_B_j = wp.transform_get_rotation(T_B_j)
+    q_F_j = wp.transform_get_rotation(T_F_j)
+    q_X_j = wp.quat_from_matrix(X_j)
+    q_Bj = q_B_j * q_X_j
+    q_Fj = q_F_j * q_X_j
+    return wp.quat_inverse(q_Bj) * q_Fj
+
+
+@wp.func
+def compute_intermediate_body_frame_universal_joint(
+    j_q_j: quatf,
+) -> mat33f:
+    """ "
+    Computes the frame of the intermediate body of a universal joint (i.e. x axis on the base,
+    y axis on the follower, and their cross product), from the relative quaternion mapping base to
+    follower joint frame, as a rotation matrix expressed in the joint frame on the base body.
+
+    The result is orthogonalized in case constraints are violated, and the x and y axes are not orthogonal.
+    """
+    e_x = vec3f(1.0, 0.0, 0.0)
+    e_y = vec3f(0.0, 1.0, 0.0)
+    a_x = e_x  # x axis on base
+    a_y_raw = wp.quat_rotate(j_q_j, e_y)  #  y axis on follower (constrained to be orthogonal to a_x)
+    a_y = a_y_raw - wp.dot(a_y_raw, a_x) * a_x  # orthogonalize (in case of constraint violations)
+    a_y = wp.normalize(a_y)
+    a_z = wp.cross(a_x, a_y)
+    return wp.matrix_from_cols(a_x, a_y, a_z)
+
+
 ###
 # Kernels
 ###
@@ -479,32 +514,13 @@ def _build_joint_jacobians_dense(
     W_j_F = screw_transform_matrix_from_points(r_j, r_F_j)
 
     # General case: Compute the effective projector to joint frame and expand to 6D
-    if dof_type != int(JointDoFType.UNIVERSAL):
+    if dof_type != JointDoFType.UNIVERSAL:
         R_X_bar_j = expand6d(R_X_j)
-    # Universal joint: replace R_X_j with the frame of the intermediary body for rotation constraints
+    # Universal joint: replace R_X_j with the frame of the intermediate body for rotation constraints
     else:
-        # Compute relative quaternion in joint frame on the base body
-        q_B_j = wp.transform_get_rotation(T_B_j)
-        q_F_j = wp.transform_get_rotation(T_F_j)
-        q_X_j = wp.quat_from_matrix(model_joints_X_j[jid])
-        q_Bj = q_B_j * q_X_j
-        q_Fj = q_F_j * q_X_j
-        j_q_j = wp.quat_inverse(q_Bj) * q_Fj
-
-        # Compute intermediary body axes, in the joint frame on the base body
-        e_x = vec3f(1.0, 0.0, 0.0)
-        e_y = vec3f(0.0, 1.0, 0.0)
-        a_x = e_x  # x axis on base
-        a_y_raw = wp.quat_rotate(j_q_j, e_y)  #  y axis on follower (constrained to be orthogonal to a_x)
-        a_y = a_y_raw - wp.dot(a_y_raw, a_x) * a_x  # orthogonalize (in case of constraint violations)
-        a_y = wp.normalize(a_y)
-        a_z = wp.cross(a_x, a_y)
-
-        # Compose with R_X_j for angular constraints
-        R_X_bar_j = concat6d(
-            R_X_j,
-            R_X_j @ mat33f(a_x[0], a_y[0], a_z[0], a_x[1], a_y[1], a_z[1], a_x[2], a_y[2], a_z[2]),
-        )
+        j_q_j = compute_joint_relative_quaternion(T_B_j, T_F_j, model_joints_X_j[jid])
+        R_intermediate = compute_intermediate_body_frame_universal_joint(j_q_j)
+        R_X_bar_j = concat6d(R_X_j, R_X_j @ R_intermediate)
 
     # Compute the extended jacobians, i.e. without the selection-matrix multiplication
     JT_B_j = -W_j_B @ R_X_bar_j  # Reaction is on the Base body body ; (6 x 6)
@@ -585,32 +601,13 @@ def _build_joint_jacobians_sparse(
     W_j_F = screw_transform_matrix_from_points(r_j, r_F_j)
 
     # General case: Compute the effective projector to joint frame and expand to 6D
-    if dof_type != int(JointDoFType.UNIVERSAL):
+    if dof_type != JointDoFType.UNIVERSAL:
         R_X_bar_j = expand6d(R_X_j)
-    # Universal joint: replace R_X_j with the frame of the intermediary body for rotation constraints
+    # Universal joint: replace R_X_j with the frame of the intermediate body for rotation constraints
     else:
-        # Compute relative quaternion in joint frame on the base body
-        q_B_j = wp.transform_get_rotation(T_B_j)
-        q_F_j = wp.transform_get_rotation(T_F_j)
-        q_X_j = wp.quat_from_matrix(model_joints_X_j[jid])
-        q_Bj = q_B_j * q_X_j
-        q_Fj = q_F_j * q_X_j
-        j_q_j = wp.quat_inverse(q_Bj) * q_Fj
-
-        # Compute intermediary body axes, in the joint frame on the base body
-        e_x = vec3f(1.0, 0.0, 0.0)
-        e_y = vec3f(0.0, 1.0, 0.0)
-        a_x = e_x  # x axis on base
-        a_y_raw = wp.quat_rotate(j_q_j, e_y)  #  y axis on follower (constrained to be orthogonal to a_x)
-        a_y = a_y_raw - wp.dot(a_y_raw, a_x) * a_x  # orthogonalize (in case of constraint violations)
-        a_y = wp.normalize(a_y)
-        a_z = wp.cross(a_x, a_y)
-
-        # Compose with R_X_j for angular constraints
-        R_X_bar_j = concat6d(
-            R_X_j,
-            R_X_j @ mat33f(a_x[0], a_y[0], a_z[0], a_x[1], a_y[1], a_z[1], a_x[2], a_y[2], a_z[2]),
-        )
+        j_q_j = compute_joint_relative_quaternion(T_B_j, T_F_j, model_joints_X_j[jid])
+        R_intermediate = compute_intermediate_body_frame_universal_joint(j_q_j)
+        R_X_bar_j = concat6d(R_X_j, R_X_j @ R_intermediate)
 
     # Compute the extended jacobians, i.e. without the selection-matrix multiplication
     JT_B_j = -W_j_B @ R_X_bar_j  # Reaction is on the Base body body ; (6 x 6)

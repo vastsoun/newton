@@ -595,12 +595,12 @@ class PADMMSolver:
         if problem.sparse and self._use_adaptive_penalty:
             self._update_sparse_regularization(problem)
 
-        # Fused: update Nesterov acceleration + cache previous state variables
-        self._update_acceleration_and_cache_previous(problem)
-
-        # Optionally record internal solver info
+        # Optionally record internal solver info (before caching previous state)
         if self._collect_info:
             self._update_solver_info(problem)
+
+        # Fused: update Nesterov acceleration + cache previous state variables
+        self._update_acceleration_and_cache_previous(problem)
 
     ###
     # Internals - Warm-starting

@@ -1640,29 +1640,29 @@ def _update_acceleration_and_cache_previous(
     vio = problem_vio[wid]
     vid = vio + tid
 
-    # Read current state
+    # Read current state and old previous state
     x = solver_state_x[vid]
     y = solver_state_y[vid]
     z = solver_state_z[vid]
+    y_p = solver_state_y_p[vid]
+    z_p = solver_state_z_p[vid]
 
     # Cache current → previous
     solver_state_x_p_out[vid] = x
     solver_state_y_p_out[vid] = y
     solver_state_z_p_out[vid] = z
 
-    # Nesterov acceleration update
+    # Nesterov acceleration update using saved old values
     if status.restart == 0:
         a = solver_state_a[wid]
         a_p = solver_state_a_p[wid]
-        y_p = solver_state_y_p[vid]
-        z_p = solver_state_z_p[vid]
 
         factor = (a_p - 1.0) / a
         solver_state_y_hat[vid] = y + factor * (y - y_p)
         solver_state_z_hat[vid] = z + factor * (z - z_p)
     else:
-        solver_state_y_hat[vid] = solver_state_y_p[vid]
-        solver_state_z_hat[vid] = solver_state_z_p[vid]
+        solver_state_y_hat[vid] = y_p
+        solver_state_z_hat[vid] = z_p
 
     # Cache acceleration parameter (only first thread per world)
     if tid == 0:

@@ -41,12 +41,14 @@ from .kernels import (
     _compute_desaxce_correction,
     _compute_final_desaxce_correction,
     _compute_projection_argument,
+    _compute_projection_argument_and_project,
     _compute_solution_vectors,
     _compute_velocity_bias,
     _make_compute_infnorm_residuals_accel_kernel,
     _make_compute_infnorm_residuals_kernel,
     _project_to_feasible_cone,
     _reset_solver_data,
+    _update_acceleration_and_cache_previous,
     _update_delassus_proximal_regularization,
     _update_delassus_proximal_regularization_sparse,
     _update_state_with_acceleration,
@@ -56,7 +58,9 @@ from .kernels import (
     _warmstart_limit_constraints,
     make_collect_solver_info_kernel,
     make_collect_solver_info_kernel_sparse,
+    make_desaxce_correction_and_velocity_bias_kernel,
     make_initialize_solver_kernel,
+    make_update_dual_and_all_residuals,
     make_update_dual_variables_and_compute_primal_dual_residuals,
 )
 from .types import (
@@ -294,6 +298,7 @@ class PADMMSolver:
         self._update_dual_variables_and_compute_primal_dual_residuals_kernel = (
             make_update_dual_variables_and_compute_primal_dual_residuals(self._use_acceleration)
         )
+        self._update_dual_and_all_residuals_kernel = make_update_dual_and_all_residuals(self._use_acceleration)
 
     def reset(self, problem: DualProblem | None = None, world_mask: wp.array | None = None):
         """
@@ -529,11 +534,8 @@ class PADMMSolver:
         Args:
             problem (DualProblem): The dual forward dynamics problem to be solved.
         """
-        # Compute De Saxce correction from the previous dual variables
-        self._update_desaxce_correction(problem, self._data.state.z_p)
-
-        # Compute the total velocity bias, i.e. rhs vector of the unconstrained linear system
-        self._update_velocity_bias(problem, self._data.state.y_p, self._data.state.z_p)
+        # Fused: De Saxce correction + velocity bias in a single kernel
+        self._update_desaxce_and_velocity_bias(problem, self._data.state.y_p, self._data.state.z_p)
 
         # Compute the unconstrained solution and store in the primal variables
         self._update_unconstrained_solution(problem)
@@ -565,26 +567,26 @@ class PADMMSolver:
         """
         Performs a single PADMM solver iteration with Nesterov acceleration.
 
+        Uses fused kernels to reduce kernel launch overhead:
+        - _compute_desaxce_correction_and_velocity_bias: fuses De Saxce + velocity bias
+        - _compute_projection_argument_and_project: fuses projection argument + cone projection
+        - _update_dual_and_all_residuals_kernel: fuses dual update + complementarity residuals
+        - _update_acceleration_and_cache_previous: fuses acceleration + previous state caching
+
         Args:
             problem (DualProblem): The dual forward dynamics problem to be solved.
         """
-        # Compute De Saxce correction from the previous dual variables
-        self._update_desaxce_correction(problem, self._data.state.z_hat)
-
-        # Compute the total velocity bias, i.e. rhs vector of the unconstrained linear system
-        self._update_velocity_bias(problem, self._data.state.y_hat, self._data.state.z_hat)
+        # Fused: De Saxce correction + velocity bias in a single kernel
+        self._update_desaxce_and_velocity_bias(problem, self._data.state.y_hat, self._data.state.z_hat)
 
         # Compute the unconstrained solution and store in the primal variables
         self._update_unconstrained_solution(problem)
 
-        # Project the over-relaxed primal variables to the feasible set
-        self._update_projection_argument(problem, self._data.state.z_hat)
+        # Fused: compute projection argument and project to feasible set
+        self._update_projection_argument_and_project(problem, self._data.state.z_hat)
 
-        # Project the over-relaxed primal variables to the feasible set
-        self._update_projection_to_feasible_set(problem)
-
-        # Update the dual variables and compute residuals from the current state
-        self._update_dual_variables_and_residuals_accel(problem)
+        # Fused: update dual variables, compute primal/dual/complementarity residuals
+        self._update_dual_variables_and_all_residuals_accel(problem)
 
         # Compute infinity-norm of all residuals and check for convergence
         self._update_convergence_check_accel(problem)
@@ -593,15 +595,12 @@ class PADMMSolver:
         if problem.sparse and self._use_adaptive_penalty:
             self._update_sparse_regularization(problem)
 
-        # Optionally update Nesterov acceleration states from the current iteration
-        self._update_acceleration(problem)
-
-        # Optionally record internal solver info
+        # Optionally record internal solver info (before caching previous state)
         if self._collect_info:
             self._update_solver_info(problem)
 
-        # Update caches of previous state variables
-        self._update_previous_state_accel()
+        # Fused: update Nesterov acceleration + cache previous state variables
+        self._update_acceleration_and_cache_previous(problem)
 
     ###
     # Internals - Warm-starting
@@ -907,6 +906,45 @@ class PADMMSolver:
             ],
         )
 
+    def _update_desaxce_and_velocity_bias(self, problem: DualProblem, y: wp.array, z: wp.array):
+        """Fused De Saxce correction + velocity bias in a single kernel launch.
+
+        Computes the De Saxce correction inline for contact constraints and the velocity
+        bias for all constraints.  Uses compile-time specialization: when no contacts
+        are present, the De Saxce branch is eliminated entirely.  When ``collect_info``
+        is disabled the intermediate De Saxce vector is kept as a register-only local;
+        when enabled it is also persisted to ``solver_s`` so that the info kernel can
+        read the original value.
+
+        Args:
+            problem (DualProblem): The dual forward dynamics problem to be solved.
+            y (wp.array): The primal variable array from the previous iteration.
+            z (wp.array): The dual variable array from the previous iteration.
+        """
+        has_contacts = self._size.max_of_max_contacts > 0
+        kernel = make_desaxce_correction_and_velocity_bias_kernel(has_contacts, self._collect_info)
+        wp.launch(
+            kernel=kernel,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                problem.data.dim,
+                problem.data.nc,
+                problem.data.cio,
+                problem.data.ccgo,
+                problem.data.vio,
+                problem.data.mu,
+                problem.data.v_f,
+                self._data.config,
+                self._data.penalty,
+                self._data.status,
+                self._data.state.x_p,
+                y,
+                z,
+                self._data.state.v,
+                self._data.state.s,
+            ],
+        )
+
     def _update_unconstrained_solution(self, problem: DualProblem):
         """
         Launches a kernel to solve the unconstrained sub-problem for the primal variables.\n
@@ -975,6 +1013,30 @@ class PADMMSolver:
                 problem.data.vio,
                 problem.data.mu,
                 self._data.status,
+                # Outputs:
+                self._data.state.y,
+            ],
+        )
+
+    def _update_projection_argument_and_project(self, problem: DualProblem, z: wp.array):
+        """Fused kernel: compute projection argument and project to feasible set in one launch."""
+        wp.launch(
+            kernel=_compute_projection_argument_and_project,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                # Inputs:
+                problem.data.dim,
+                problem.data.nl,
+                problem.data.nc,
+                problem.data.cio,
+                problem.data.lcgo,
+                problem.data.ccgo,
+                problem.data.vio,
+                problem.data.mu,
+                self._data.penalty,
+                self._data.status,
+                z,
+                self._data.state.x,
                 # Outputs:
                 self._data.state.y,
             ],
@@ -1089,6 +1151,41 @@ class PADMMSolver:
 
         # Compute complementarity residual from the current state
         self._update_complementarity_residuals(problem)
+
+    def _update_dual_variables_and_all_residuals_accel(self, problem: DualProblem):
+        """Fused kernel: dual variable update + primal/dual residuals + complementarity residuals."""
+        wp.launch(
+            kernel=self._update_dual_and_all_residuals_kernel,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                # Inputs:
+                problem.data.dim,
+                problem.data.nl,
+                problem.data.nc,
+                problem.data.cio,
+                problem.data.lcgo,
+                problem.data.ccgo,
+                problem.data.vio,
+                problem.data.uio,
+                problem.data.P,
+                self._data.config,
+                self._data.penalty,
+                self._data.status,
+                self._data.state.x,
+                self._data.state.y,
+                self._data.state.x_p,
+                self._data.state.y_hat,
+                self._data.state.z_hat,
+                # Outputs:
+                self._data.state.z,
+                self._data.residuals.r_primal,
+                self._data.residuals.r_dual,
+                self._data.residuals.r_compl,
+                self._data.residuals.r_dx,
+                self._data.residuals.r_dy,
+                self._data.residuals.r_dz,
+            ],
+        )
 
     def _update_convergence_check(self, problem: DualProblem):
         """
@@ -1368,6 +1465,36 @@ class PADMMSolver:
 
         # Cache previous state variables
         self._update_previous_state()
+
+    def _update_acceleration_and_cache_previous(self, problem: DualProblem):
+        """Fused kernel: Nesterov acceleration update + cache previous state variables.
+
+        Replaces _update_acceleration + _update_previous_state_accel with a single kernel launch.
+        """
+        wp.launch(
+            kernel=_update_acceleration_and_cache_previous,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                # Inputs:
+                problem.data.dim,
+                problem.data.vio,
+                self._data.status,
+                self._data.state.a,
+                self._data.state.x,
+                self._data.state.y,
+                self._data.state.z,
+                self._data.state.a_p,
+                self._data.state.y_p,
+                self._data.state.z_p,
+                # Outputs:
+                self._data.state.y_hat,
+                self._data.state.z_hat,
+                self._data.state.x_p,
+                self._data.state.y_p,
+                self._data.state.z_p,
+                self._data.state.a_p,
+            ],
+        )
 
     ###
     # Internals - Post-Solve Operations

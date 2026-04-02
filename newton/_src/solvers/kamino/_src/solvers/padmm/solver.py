@@ -910,9 +910,11 @@ class PADMMSolver:
         """Fused De Saxce correction + velocity bias in a single kernel launch.
 
         Computes the De Saxce correction inline for contact constraints and the velocity
-        bias for all constraints, avoiding the intermediate write to solver_s.
-        Uses compile-time specialization: when no contacts are present, the De Saxce
-        branch is eliminated entirely.
+        bias for all constraints.  Uses compile-time specialization: when no contacts
+        are present, the De Saxce branch is eliminated entirely.  When ``collect_info``
+        is disabled the intermediate De Saxce vector is kept as a register-only local;
+        when enabled it is also persisted to ``solver_s`` so that the info kernel can
+        read the original value.
 
         Args:
             problem (DualProblem): The dual forward dynamics problem to be solved.
@@ -920,7 +922,7 @@ class PADMMSolver:
             z (wp.array): The dual variable array from the previous iteration.
         """
         has_contacts = self._size.max_of_max_contacts > 0
-        kernel = make_desaxce_correction_and_velocity_bias_kernel(has_contacts)
+        kernel = make_desaxce_correction_and_velocity_bias_kernel(has_contacts, self._collect_info)
         wp.launch(
             kernel=kernel,
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
@@ -939,6 +941,7 @@ class PADMMSolver:
                 y,
                 z,
                 self._data.state.v,
+                self._data.state.s,
             ],
         )
 

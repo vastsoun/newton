@@ -650,14 +650,17 @@ def _compute_velocity_bias(
 
 
 @functools.cache
-def make_desaxce_correction_and_velocity_bias_kernel(has_contacts: bool):
+def make_desaxce_correction_and_velocity_bias_kernel(has_contacts: bool, collect_info: bool = False):
     """Factory for fused De Saxce correction + velocity bias kernel.
 
     Specialized at compile time on whether contacts are present, eliminating
-    runtime branches for the common no-contacts case.
+    runtime branches for the common no-contacts case.  When ``collect_info``
+    is True, the intermediate De Saxce correction is also written to
+    ``solver_s`` so that the info kernel can read the original ``norm_s``.
 
     Args:
         has_contacts: Whether the problem has contact constraints.
+        collect_info: Whether to persist the De Saxce correction to solver_s.
     """
 
     @wp.kernel
@@ -678,6 +681,7 @@ def make_desaxce_correction_and_velocity_bias_kernel(has_contacts: bool):
         solver_z_p: wp.array(dtype=float32),
         # Outputs:
         solver_v: wp.array(dtype=float32),
+        solver_s: wp.array(dtype=float32),
     ):
         wid, tid = wp.tid()
 
@@ -716,6 +720,9 @@ def make_desaxce_correction_and_velocity_bias_kernel(has_contacts: bool):
                         s = problem_mu[cio + cid] * wp.sqrt(vtx * vtx + vty * vty)
 
         solver_v[thread_offset] = -v_f - s + eta * x_p + rho * y_p + z_p
+
+        if wp.static(collect_info):
+            solver_s[thread_offset] = s
 
     return _compute_desaxce_correction_and_velocity_bias
 

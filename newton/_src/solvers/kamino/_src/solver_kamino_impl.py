@@ -674,6 +674,8 @@ class SolverKaminoImpl(SolverBase):
         only read during a step. State arrays must still be copied because
         the solver modifies them in-place.
         """
+        # TODO: Remove corresponding data copies
+        # by directly using the input containers
         wp.copy(self._data.bodies.q_i, state_in.q_i)
         wp.copy(self._data.bodies.u_i, state_in.u_i)
         wp.copy(self._data.bodies.w_i, state_in.w_i)
@@ -692,6 +694,8 @@ class SolverKaminoImpl(SolverBase):
         """
         Updates the output state from the internal solver data.
         """
+        # TODO: Remove corresponding data copies
+        # by directly using the input containers
         wp.copy(state_out.q_i, self._data.bodies.q_i)
         wp.copy(state_out.u_i, self._data.bodies.u_i)
         wp.copy(state_out.w_i, self._data.bodies.w_i)

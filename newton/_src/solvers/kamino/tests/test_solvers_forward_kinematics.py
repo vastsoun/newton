@@ -166,7 +166,7 @@ def compute_constraint_residual_mask(model: ModelKamino):
     """
     Computes a boolean mask for constraint residuals, True for most constraints but False
     for base joints (to filter out residuals for fixed base models if the base is reset
-    to a different pose) and passive universal joints (residual implementation is currently flawed)
+    to a different pose)
     """
     # Precompute constraint offsets
     num_joints = model.info.num_joints.numpy()  # Num joints per world
@@ -188,15 +188,6 @@ def compute_constraint_residual_mask(model: ModelKamino):
         base_jt_id = base_joint_index[wd_id]
         ct_offset = first_joint_ct_id[base_jt_id]
         mask[ct_offset : ct_offset + num_joint_cts[base_jt_id]] = False
-
-    # Exclude passive universal joints
-    act_types = model.joints.act_type.numpy()
-    dof_types = model.joints.dof_type.numpy()
-    for jt_id in range(model.size.sum_of_num_joints):
-        if act_types[jt_id] != JointActuationType.PASSIVE or dof_types[jt_id] != JointDoFType.UNIVERSAL:
-            continue
-        ct_offset = first_joint_ct_id[jt_id]
-        mask[ct_offset : ct_offset + num_joint_cts[jt_id]] = False
 
     return mask
 

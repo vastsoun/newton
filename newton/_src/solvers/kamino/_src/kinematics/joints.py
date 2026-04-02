@@ -230,9 +230,21 @@ def map_to_joint_coords_cylindrical(j_r_j: vec3f, j_q_j: quatf) -> vec2f:
 @wp.func
 def map_to_joint_coords_universal(j_r_j: vec3f, j_q_j: quatf) -> vec2f:
     """Returns the 2D vector of joint angles for the two revolute DoFs."""
-    # TODO: Fix this so that the order of rotations is consistent
-    j_theta_j = quat_log(j_q_j)
-    return j_theta_j[0:2]
+    # X and Y axis in base frame
+    a_x_B = vec3f(1.0, 0.0, 0.0)
+    a_y_B = vec3f(0.0, 1.0, 0.0)
+
+    # X and Y axis in follower frame
+    a_x_F = wp.quat_rotate(j_q_j, a_x_B)
+    a_y_F = wp.quat_rotate(j_q_j, a_y_B)
+
+    # Extract theta_x, as the angle of the rotation about a_x_B mapping a_y_B to a_y_F
+    theta_x = wp.atan2(a_y_F[2], a_y_F[1])
+
+    # Extract theta_y, as the angle of the rotation about a_y_F mapping a_x_B to a_x_F
+    theta_y = wp.atan2(wp.dot(wp.cross(a_x_B, a_x_F), a_y_F), a_x_F[0])
+
+    return vec2f(theta_x, theta_y)
 
 
 @wp.func
@@ -308,8 +320,10 @@ def joint_constraint_angular_residual_revolute(j_q_j: quatf) -> vec3f:
 @wp.func
 def joint_constraint_angular_residual_universal(j_q_j: quatf) -> vec3f:
     """Returns the joint constraint residual for a universal joint."""
-    # TODO: Fix, using log-based residual as a placeholder
-    return quat_log(j_q_j)
+    e_y = vec3f(0.0, 1.0, 0.0)
+    a_x_dot_a_y = wp.quat_rotate(j_q_j, e_y)[0]
+
+    return wp.vec3f(0.0, 0.0, -a_x_dot_a_y)
 
 
 @wp.func
@@ -344,6 +358,23 @@ def get_joint_constraint_angular_residual_function(dof_type: JointDoFType):
         return joint_constraint_angular_residual_fixed
     else:
         raise ValueError(f"Unknown joint DoF type: {dof_type}")
+
+
+@wp.func
+def joint_constraint_velocity_residual_universal(j_q_j: quatf, j_u_j: vec6f) -> vec6f:
+    """Returns the joint constraint velocity residual for a universal joint."""
+    # Compute intermediary body axes, in the joint frame on the base body
+    e_x = vec3f(1.0, 0.0, 0.0)
+    e_y = vec3f(0.0, 1.0, 0.0)
+    a_x = e_x  # x axis on base
+    a_y_raw = wp.quat_rotate(j_q_j, e_y)  #  y axis on follower (constrained to be orthogonal to a_x)
+    a_y = a_y_raw - wp.dot(a_y_raw, a_x) * a_x  # orthogonalize (in case of constraint violations)
+    a_y = wp.normalize(a_y)
+    a_z = wp.cross(a_x, a_y)
+
+    # Project angular velocity into intermediary body frame
+    omega = screw_angular(j_u_j)
+    return screw(screw_linear(j_u_j), vec3f(wp.dot(omega, a_x), wp.dot(omega, a_y), wp.dot(omega, a_z)))
 
 
 ###
@@ -381,7 +412,7 @@ def make_typed_write_joint_data(dof_type: JointDoFType, correction: JointCorrect
         coords_offset: int32,  # Index offset of the joint coordinates
         j_r_j: vec3f,  # 3D vector of the joint-local relative pose
         j_q_j: quatf,  # 4D unit-quaternion of the joint-local relative pose
-        j_u_j: vec6f,  # 6D vector ofthe joint-local relative twist
+        j_u_j: vec6f,  # 6D vector of the joint-local relative twist
         q_j_p: wp.array(dtype=float32),  # Reference joint coordinates for correction
         # Outputs:
         r_j_out: wp.array(dtype=float32),  # Flat array of joint constraint residuals
@@ -389,6 +420,10 @@ def make_typed_write_joint_data(dof_type: JointDoFType, correction: JointCorrect
         q_j_out: wp.array(dtype=float32),  # Flat array of joint DoF coordinates
         dq_j_out: wp.array(dtype=float32),  # Flat array of joint DoF velocities
     ):
+        # Convert angular velocity to intermediary body frame for universal joint
+        if wp.static(dof_type == JointDoFType.UNIVERSAL):
+            j_u_j = joint_constraint_velocity_residual_universal(j_q_j, j_u_j)
+
         # Only write the constraint residual and velocity if the joint defines constraints
         # NOTE: This will be disabled for free joints
         if wp.static(num_cts > 0):

@@ -26,15 +26,17 @@ import warp as wp
 
 import newton
 import newton.examples
+from newton._src.solvers.kamino._src.utils import logger as msg
 
 
 class Example:
     def __init__(self, viewer, num_worlds=8, args=None):
         # Set simulation run-time configurations
-        self.fps = 60
-        self.sim_dt = 0.0025
+        self.fps = 50
         self.frame_dt = 1.0 / self.fps
-        self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
+        self.sim_substeps = max(1, round(self.frame_dt / 0.0025))
+        self.sim_dt = self.frame_dt / self.sim_substeps
+        msg.info(f"Using sim_dt = {self.sim_dt} ({self.sim_substeps} substeps per frame)")
         self.sim_time = 0.0
         self.num_worlds = num_worlds
         self.viewer = viewer

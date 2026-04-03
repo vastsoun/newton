@@ -53,6 +53,7 @@ class SimulationRunner:
         self.frame_dt = 1.0 / self.fps
         self.substeps = max(1, round(self.frame_dt / sim_dt))
         self.sim_dt = self.frame_dt / self.substeps
+        msg.info(f"Using sim_dt = {self.sim_dt} ({self.substeps} substeps per frame)")
 
         # Cache the device and other internal flags
         self.device = device

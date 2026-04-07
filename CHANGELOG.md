@@ -129,6 +129,7 @@
 - Fix fast inertia validation treating near-symmetric tensors within `np.allclose()` default tolerances as corrections, aligning CPU and GPU validation warnings
 - Fix forward-kinematics child-origin linear velocity for articulated translated joints
 - Fix URDF joint dynamics friction import so specified friction values are preserved during simulation
+- Fix duplicate Reset button in brick stacking example when using the example browser
 
 ## [1.0.0] - 2026-03-10
 

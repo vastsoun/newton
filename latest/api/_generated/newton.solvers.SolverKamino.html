@@ -1037,25 +1037,25 @@ which worlds should be reset. The reset state is written to <cite>state_out</cit
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>state_out</strong> (<a class="reference internal" href="newton.State.html#newton.State" title="newton._src.sim.state.State"><em>State</em></a>) – The output state container to which the reset state data is written.</p></li>
-<li><p><strong>world_mask</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.0)"><em>array</em></a><em> | </em><em>None</em>) – <p>Optional array of per-world masks indicating which worlds should be reset.</p>
+<li><p><strong>world_mask</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.1)"><em>array</em></a><em> | </em><em>None</em>) – <p>Optional array of per-world masks indicating which worlds should be reset.</p>
 <p>Shape of <cite>(num_worlds,)</cite> and type <code class="xref py py-class docutils literal notranslate"><span class="pre">wp.int8</span> <span class="pre">|</span> <span class="pre">wp.bool</span></code></p>
 </p></li>
-<li><p><strong>actuator_q</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.0)"><em>array</em></a><em> | </em><em>None</em>) – <p>Optional array of target actuated joint coordinates.</p>
+<li><p><strong>actuator_q</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.1)"><em>array</em></a><em> | </em><em>None</em>) – <p>Optional array of target actuated joint coordinates.</p>
 <p>Shape of <cite>(num_actuated_joint_coords,)</cite> and type <code class="xref py py-class docutils literal notranslate"><span class="pre">wp.float32</span></code></p>
 </p></li>
-<li><p><strong>actuator_u</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.0)"><em>array</em></a><em> | </em><em>None</em>) – <p>Optional array of target actuated joint DoF velocities.</p>
+<li><p><strong>actuator_u</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.1)"><em>array</em></a><em> | </em><em>None</em>) – <p>Optional array of target actuated joint DoF velocities.</p>
 <p>Shape of <cite>(num_actuated_joint_dofs,)</cite> and type <code class="xref py py-class docutils literal notranslate"><span class="pre">wp.float32</span></code></p>
 </p></li>
-<li><p><strong>joint_q</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.0)"><em>array</em></a><em> | </em><em>None</em>) – <p>Optional array of target joint coordinates.</p>
+<li><p><strong>joint_q</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.1)"><em>array</em></a><em> | </em><em>None</em>) – <p>Optional array of target joint coordinates.</p>
 <p>Shape of <cite>(num_joint_coords,)</cite> and type <code class="xref py py-class docutils literal notranslate"><span class="pre">wp.float32</span></code></p>
 </p></li>
-<li><p><strong>joint_u</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.0)"><em>array</em></a><em> | </em><em>None</em>) – <p>Optional array of target joint DoF velocities.</p>
+<li><p><strong>joint_u</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.1)"><em>array</em></a><em> | </em><em>None</em>) – <p>Optional array of target joint DoF velocities.</p>
 <p>Shape of <cite>(num_joint_dofs,)</cite> and type <code class="xref py py-class docutils literal notranslate"><span class="pre">wp.float32</span></code></p>
 </p></li>
-<li><p><strong>base_q</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.0)"><em>array</em></a><em> | </em><em>None</em>) – <p>Optional array of target base body poses.</p>
+<li><p><strong>base_q</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.1)"><em>array</em></a><em> | </em><em>None</em>) – <p>Optional array of target base body poses.</p>
 <p>Shape of <cite>(num_worlds,)</cite> and type <code class="xref py py-class docutils literal notranslate"><span class="pre">wp.transformf</span></code></p>
 </p></li>
-<li><p><strong>base_u</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.0)"><em>array</em></a><em> | </em><em>None</em>) – <p>Optional array of target base body twists.</p>
+<li><p><strong>base_u</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.1)"><em>array</em></a><em> | </em><em>None</em>) – <p>Optional array of target base body twists.</p>
 <p>Shape of <cite>(num_worlds,)</cite> and type <code class="xref py py-class docutils literal notranslate"><span class="pre">wp.spatial_vectorf</span></code></p>
 </p></li>
 </ul>

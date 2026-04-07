@@ -885,7 +885,7 @@ rearrange them into tiled RGBA buffers for display, with one tile per (world, ca
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
 <p>Sensor configuration.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="xref py py-class docutils literal notranslate"><span class="pre">RenderConfig</span></code> and <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.*</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="xref py py-class docutils literal notranslate"><span class="pre">RenderConfig</span></code> and <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.*</span></code> instead.</p>
 </div>
 <dl class="field-list simple">
 </dl>
@@ -900,7 +900,7 @@ rearrange them into tiled RGBA buffers for display, with one tile per (world, ca
 <dt class="sig sig-object py" id="newton.sensors.SensorTiledCamera.Config.backface_culling">
 <span class="sig-name descname"><span class="pre">backface_culling</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#newton.sensors.SensorTiledCamera.Config.backface_culling" title="Link to this definition">#</a></dt>
 <dd><div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">render_config.enable_backface_culling</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">render_config.enable_backface_culling</span></code> instead.</p>
 </div>
 </dd></dl>
 
@@ -908,7 +908,7 @@ rearrange them into tiled RGBA buffers for display, with one tile per (world, ca
 <dt class="sig sig-object py" id="newton.sensors.SensorTiledCamera.Config.checkerboard_texture">
 <span class="sig-name descname"><span class="pre">checkerboard_texture</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#newton.sensors.SensorTiledCamera.Config.checkerboard_texture" title="Link to this definition">#</a></dt>
 <dd><div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.assign_checkerboard_material_to_all_shapes()</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.assign_checkerboard_material_to_all_shapes()</span></code> instead.</p>
 </div>
 </dd></dl>
 
@@ -916,7 +916,7 @@ rearrange them into tiled RGBA buffers for display, with one tile per (world, ca
 <dt class="sig sig-object py" id="newton.sensors.SensorTiledCamera.Config.colors_per_shape">
 <span class="sig-name descname"><span class="pre">colors_per_shape</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#newton.sensors.SensorTiledCamera.Config.colors_per_shape" title="Link to this definition">#</a></dt>
 <dd><div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span>shape colors instead (e.g. <code class="docutils literal notranslate"><span class="pre">builder.add_shape_cylinder(...,</span> <span class="pre">color=(r,</span> <span class="pre">g,</span> <span class="pre">b))</span></code>).</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use shape colors instead (e.g. <code class="docutils literal notranslate"><span class="pre">builder.add_shape_cylinder(...,</span> <span class="pre">color=(r,</span> <span class="pre">g,</span> <span class="pre">b))</span></code>).</p>
 </div>
 </dd></dl>
 
@@ -924,7 +924,7 @@ rearrange them into tiled RGBA buffers for display, with one tile per (world, ca
 <dt class="sig sig-object py" id="newton.sensors.SensorTiledCamera.Config.colors_per_world">
 <span class="sig-name descname"><span class="pre">colors_per_world</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#newton.sensors.SensorTiledCamera.Config.colors_per_world" title="Link to this definition">#</a></dt>
 <dd><div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span>shape colors instead (e.g. <code class="docutils literal notranslate"><span class="pre">builder.add_shape_cylinder(...,</span> <span class="pre">color=(r,</span> <span class="pre">g,</span> <span class="pre">b))</span></code>).</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use shape colors instead (e.g. <code class="docutils literal notranslate"><span class="pre">builder.add_shape_cylinder(...,</span> <span class="pre">color=(r,</span> <span class="pre">g,</span> <span class="pre">b))</span></code>).</p>
 </div>
 </dd></dl>
 
@@ -932,7 +932,7 @@ rearrange them into tiled RGBA buffers for display, with one tile per (world, ca
 <dt class="sig sig-object py" id="newton.sensors.SensorTiledCamera.Config.default_light">
 <span class="sig-name descname"><span class="pre">default_light</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#newton.sensors.SensorTiledCamera.Config.default_light" title="Link to this definition">#</a></dt>
 <dd><div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_default_light()</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_default_light()</span></code> instead.</p>
 </div>
 </dd></dl>
 
@@ -940,7 +940,7 @@ rearrange them into tiled RGBA buffers for display, with one tile per (world, ca
 <dt class="sig sig-object py" id="newton.sensors.SensorTiledCamera.Config.default_light_shadows">
 <span class="sig-name descname"><span class="pre">default_light_shadows</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#newton.sensors.SensorTiledCamera.Config.default_light_shadows" title="Link to this definition">#</a></dt>
 <dd><div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_default_light(enable_shadows=True)</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_default_light(enable_shadows=True)</span></code> instead.</p>
 </div>
 </dd></dl>
 
@@ -948,7 +948,7 @@ rearrange them into tiled RGBA buffers for display, with one tile per (world, ca
 <dt class="sig sig-object py" id="newton.sensors.SensorTiledCamera.Config.enable_ambient_lighting">
 <span class="sig-name descname"><span class="pre">enable_ambient_lighting</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#newton.sensors.SensorTiledCamera.Config.enable_ambient_lighting" title="Link to this definition">#</a></dt>
 <dd><div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">render_config.enable_ambient_lighting</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">render_config.enable_ambient_lighting</span></code> instead.</p>
 </div>
 </dd></dl>
 
@@ -956,7 +956,7 @@ rearrange them into tiled RGBA buffers for display, with one tile per (world, ca
 <dt class="sig sig-object py" id="newton.sensors.SensorTiledCamera.Config.enable_particles">
 <span class="sig-name descname"><span class="pre">enable_particles</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#newton.sensors.SensorTiledCamera.Config.enable_particles" title="Link to this definition">#</a></dt>
 <dd><div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">render_config.enable_particles</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">render_config.enable_particles</span></code> instead.</p>
 </div>
 </dd></dl>
 
@@ -964,7 +964,7 @@ rearrange them into tiled RGBA buffers for display, with one tile per (world, ca
 <dt class="sig sig-object py" id="newton.sensors.SensorTiledCamera.Config.enable_textures">
 <span class="sig-name descname"><span class="pre">enable_textures</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#newton.sensors.SensorTiledCamera.Config.enable_textures" title="Link to this definition">#</a></dt>
 <dd><div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">render_config.enable_textures</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">render_config.enable_textures</span></code> instead.</p>
 </div>
 </dd></dl>
 
@@ -1162,7 +1162,7 @@ in the scene.</p>
 <span class="sig-name descname"><span class="pre">assign_random_colors_per_shape</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.sensors.SensorTiledCamera.Utils.assign_random_colors_per_shape" title="Link to this definition">#</a></dt>
 <dd><p>Assign a random color to each shape.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span>shape colors instead (e.g. <code class="docutils literal notranslate"><span class="pre">builder.add_shape_cylinder(...,</span> <span class="pre">color=(r,</span> <span class="pre">g,</span> <span class="pre">b))</span></code>).</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use shape colors instead (e.g. <code class="docutils literal notranslate"><span class="pre">builder.add_shape_cylinder(...,</span> <span class="pre">color=(r,</span> <span class="pre">g,</span> <span class="pre">b))</span></code>).</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1176,7 +1176,7 @@ in the scene.</p>
 <span class="sig-name descname"><span class="pre">assign_random_colors_per_world</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.sensors.SensorTiledCamera.Utils.assign_random_colors_per_world" title="Link to this definition">#</a></dt>
 <dd><p>Assign each world a random color, applied to all its shapes.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span>shape colors instead (e.g. <code class="docutils literal notranslate"><span class="pre">builder.add_shape_cylinder(...,</span> <span class="pre">color=(r,</span> <span class="pre">g,</span> <span class="pre">b))</span></code>).</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use shape colors instead (e.g. <code class="docutils literal notranslate"><span class="pre">builder.add_shape_cylinder(...,</span> <span class="pre">color=(r,</span> <span class="pre">g,</span> <span class="pre">b))</span></code>).</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1209,6 +1209,37 @@ vertical field of view.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="newton.sensors.SensorTiledCamera.Utils.convert_ray_depth_to_forward_depth">
+<span class="sig-name descname"><span class="pre">convert_ray_depth_to_forward_depth</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">depth_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">camera_transforms</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">camera_rays</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_depth</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.sensors.SensorTiledCamera.Utils.convert_ray_depth_to_forward_depth" title="Link to this definition">#</a></dt>
+<dd><p>Convert ray-distance depth to forward (planar) depth.</p>
+<p>Projects each pixel’s hit distance along its ray onto the camera’s
+forward axis, producing depth measured perpendicular to the image
+plane. The forward axis is derived from each camera transform by
+transforming camera-space <code class="docutils literal notranslate"><span class="pre">(0,</span> <span class="pre">0,</span> <span class="pre">-1)</span></code> into world space.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>depth_image</strong> (<em>wp.array4d</em><em>[</em><em>wp.float32</em><em>]</em>) – Ray-distance depth [m] from <code class="xref py py-meth docutils literal notranslate"><span class="pre">update()</span></code>, shape
+<code class="docutils literal notranslate"><span class="pre">(world_count,</span> <span class="pre">camera_count,</span> <span class="pre">height,</span> <span class="pre">width)</span></code>.</p></li>
+<li><p><strong>camera_transforms</strong> (<em>wp.array2d</em><em>[</em><em>wp.transformf</em><em>]</em>) – World-space camera transforms, shape
+<code class="docutils literal notranslate"><span class="pre">(camera_count,</span> <span class="pre">world_count)</span></code>.</p></li>
+<li><p><strong>camera_rays</strong> (<em>wp.array4d</em><em>[</em><em>wp.vec3f</em><em>]</em>) – Camera-space rays from
+<a class="reference internal" href="#newton.sensors.SensorTiledCamera.Utils.compute_pinhole_camera_rays" title="newton.sensors.SensorTiledCamera.Utils.compute_pinhole_camera_rays"><code class="xref py py-meth docutils literal notranslate"><span class="pre">compute_pinhole_camera_rays()</span></code></a>, shape
+<code class="docutils literal notranslate"><span class="pre">(camera_count,</span> <span class="pre">height,</span> <span class="pre">width,</span> <span class="pre">2)</span></code>.</p></li>
+<li><p><strong>out_depth</strong> (<em>wp.array4d</em><em>[</em><em>wp.float32</em><em>] </em><em>| </em><em>None</em>) – Output forward-depth array [m] with the same shape as
+<em>depth_image</em>. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, allocates a new one.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Forward (planar) depth array, same shape as <em>depth_image</em> [m].</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>wp.array4d[wp.float32]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="newton.sensors.SensorTiledCamera.Utils.create_albedo_image_output">
 <span class="sig-name descname"><span class="pre">create_albedo_image_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">camera_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.sensors.SensorTiledCamera.Utils.create_albedo_image_output" title="Link to this definition">#</a></dt>
 <dd><p>Create an albedo output array for <a class="reference internal" href="#newton.sensors.SensorTiledCamera.update" title="newton.sensors.SensorTiledCamera.update"><code class="xref py py-meth docutils literal notranslate"><span class="pre">update()</span></code></a>.</p>
@@ -1224,7 +1255,7 @@ vertical field of view.</p>
 <dd class="field-even"><p>Array of shape <code class="docutils literal notranslate"><span class="pre">(world_count,</span> <span class="pre">camera_count,</span> <span class="pre">height,</span> <span class="pre">width)</span></code>, dtype <code class="docutils literal notranslate"><span class="pre">uint32</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>wp.array(dtype=&lt;class ‘warp._src.types.uint32’&gt;, ndim=4)</p>
+<dd class="field-odd"><p>wp.array(dtype=wp.uint32, ndim=4)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1245,7 +1276,7 @@ vertical field of view.</p>
 <dd class="field-even"><p>Array of shape <code class="docutils literal notranslate"><span class="pre">(world_count,</span> <span class="pre">camera_count,</span> <span class="pre">height,</span> <span class="pre">width)</span></code>, dtype <code class="docutils literal notranslate"><span class="pre">uint32</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>wp.array(dtype=&lt;class ‘warp._src.types.uint32’&gt;, ndim=4)</p>
+<dd class="field-odd"><p>wp.array(dtype=wp.uint32, ndim=4)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1258,7 +1289,7 @@ vertical field of view.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>enable_shadows</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Enable shadow casting for this light.</p></li>
-<li><p><strong>direction</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.vec3f.html#warp.vec3f" title="(in Warp v1.12.0)"><em>vec3f</em></a><em> | </em><em>None</em>) – Normalized light direction. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, defaults to
+<li><p><strong>direction</strong> (<a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.vec3f.html#warp.vec3f" title="(in Warp v1.12.1)"><em>vec3f</em></a><em> | </em><em>None</em>) – Normalized light direction. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, defaults to
 (normalized <code class="docutils literal notranslate"><span class="pre">(-1,</span> <span class="pre">1,</span> <span class="pre">-1)</span></code>).</p></li>
 </ul>
 </dd>
@@ -1281,7 +1312,7 @@ vertical field of view.</p>
 <dd class="field-even"><p>Array of shape <code class="docutils literal notranslate"><span class="pre">(world_count,</span> <span class="pre">camera_count,</span> <span class="pre">height,</span> <span class="pre">width)</span></code>, dtype <code class="docutils literal notranslate"><span class="pre">float32</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>wp.array(dtype=&lt;class ‘warp._src.types.float32’&gt;, ndim=4)</p>
+<dd class="field-odd"><p>wp.array(dtype=wp.float32, ndim=4)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1302,7 +1333,7 @@ vertical field of view.</p>
 <dd class="field-even"><p>Array of shape <code class="docutils literal notranslate"><span class="pre">(world_count,</span> <span class="pre">camera_count,</span> <span class="pre">height,</span> <span class="pre">width)</span></code>, dtype <code class="docutils literal notranslate"><span class="pre">vec3f</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>wp.array(dtype=&lt;class ‘warp._src.types.vec3f’&gt;, ndim=4)</p>
+<dd class="field-odd"><p>wp.array(dtype=wp.vec3f, ndim=4)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1323,7 +1354,7 @@ vertical field of view.</p>
 <dd class="field-even"><p>Array of shape <code class="docutils literal notranslate"><span class="pre">(world_count,</span> <span class="pre">camera_count,</span> <span class="pre">height,</span> <span class="pre">width)</span></code>, dtype <code class="docutils literal notranslate"><span class="pre">uint32</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>wp.array(dtype=&lt;class ‘warp._src.types.uint32’&gt;, ndim=4)</p>
+<dd class="field-odd"><p>wp.array(dtype=wp.uint32, ndim=4)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1409,7 +1440,7 @@ to skip texture loading when textures are not needed.</p></li>
 <p>Creates a gray checkerboard pattern texture and applies it to all shapes
 in the scene.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.assign_checkerboard_material_to_all_shapes</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.assign_checkerboard_material_to_all_shapes</span></code> instead.</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1426,7 +1457,7 @@ in the scene.</p>
 <span class="sig-name descname"><span class="pre">assign_random_colors_per_shape</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.sensors.SensorTiledCamera.assign_random_colors_per_shape" title="Link to this definition">#</a></dt>
 <dd><p>Assign a random color to each shape.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span>shape colors instead (e.g. <code class="docutils literal notranslate"><span class="pre">builder.add_shape_cylinder(...,</span> <span class="pre">color=(r,</span> <span class="pre">g,</span> <span class="pre">b))</span></code>).</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use shape colors instead (e.g. <code class="docutils literal notranslate"><span class="pre">builder.add_shape_cylinder(...,</span> <span class="pre">color=(r,</span> <span class="pre">g,</span> <span class="pre">b))</span></code>).</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1440,7 +1471,7 @@ in the scene.</p>
 <span class="sig-name descname"><span class="pre">assign_random_colors_per_world</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.sensors.SensorTiledCamera.assign_random_colors_per_world" title="Link to this definition">#</a></dt>
 <dd><p>Assign each world a random color, applied to all its shapes.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span>shape colors instead (e.g. <code class="docutils literal notranslate"><span class="pre">builder.add_shape_cylinder(...,</span> <span class="pre">color=(r,</span> <span class="pre">g,</span> <span class="pre">b))</span></code>).</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use shape colors instead (e.g. <code class="docutils literal notranslate"><span class="pre">builder.add_shape_cylinder(...,</span> <span class="pre">color=(r,</span> <span class="pre">g,</span> <span class="pre">b))</span></code>).</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1456,7 +1487,7 @@ in the scene.</p>
 <p>Generates rays in camera space (origin at the camera center, direction normalized) for each pixel based on the
 vertical field of view.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.compute_pinhole_camera_rays</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.compute_pinhole_camera_rays</span></code> instead.</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1480,7 +1511,7 @@ vertical field of view.</p>
 <span class="sig-name descname"><span class="pre">create_albedo_image_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">camera_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.sensors.SensorTiledCamera.create_albedo_image_output" title="Link to this definition">#</a></dt>
 <dd><p>Create an albedo output array for <a class="reference internal" href="#newton.sensors.SensorTiledCamera.update" title="newton.sensors.SensorTiledCamera.update"><code class="xref py py-meth docutils literal notranslate"><span class="pre">update()</span></code></a>.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_albedo_image_output</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_albedo_image_output</span></code> instead.</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1494,7 +1525,7 @@ vertical field of view.</p>
 <dd class="field-even"><p>Array of shape <code class="docutils literal notranslate"><span class="pre">(world_count,</span> <span class="pre">camera_count,</span> <span class="pre">height,</span> <span class="pre">width)</span></code>, dtype <code class="docutils literal notranslate"><span class="pre">uint32</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>wp.array(dtype=&lt;class ‘warp._src.types.uint32’&gt;, ndim=4)</p>
+<dd class="field-odd"><p>wp.array(dtype=wp.uint32, ndim=4)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1504,7 +1535,7 @@ vertical field of view.</p>
 <span class="sig-name descname"><span class="pre">create_color_image_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">camera_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.sensors.SensorTiledCamera.create_color_image_output" title="Link to this definition">#</a></dt>
 <dd><p>Create a color output array for <a class="reference internal" href="#newton.sensors.SensorTiledCamera.update" title="newton.sensors.SensorTiledCamera.update"><code class="xref py py-meth docutils literal notranslate"><span class="pre">update()</span></code></a>.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_color_image_output</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_color_image_output</span></code> instead.</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1518,7 +1549,7 @@ vertical field of view.</p>
 <dd class="field-even"><p>Array of shape <code class="docutils literal notranslate"><span class="pre">(world_count,</span> <span class="pre">camera_count,</span> <span class="pre">height,</span> <span class="pre">width)</span></code>, dtype <code class="docutils literal notranslate"><span class="pre">uint32</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>wp.array(dtype=&lt;class ‘warp._src.types.uint32’&gt;, ndim=4)</p>
+<dd class="field-odd"><p>wp.array(dtype=wp.uint32, ndim=4)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1528,7 +1559,7 @@ vertical field of view.</p>
 <span class="sig-name descname"><span class="pre">create_default_light</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">enable_shadows</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.sensors.SensorTiledCamera.create_default_light" title="Link to this definition">#</a></dt>
 <dd><p>Create a default directional light oriented at <code class="docutils literal notranslate"><span class="pre">(-1,</span> <span class="pre">1,</span> <span class="pre">-1)</span></code>.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_default_light</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_default_light</span></code> instead.</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1542,7 +1573,7 @@ vertical field of view.</p>
 <span class="sig-name descname"><span class="pre">create_depth_image_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">camera_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.sensors.SensorTiledCamera.create_depth_image_output" title="Link to this definition">#</a></dt>
 <dd><p>Create a depth output array for <a class="reference internal" href="#newton.sensors.SensorTiledCamera.update" title="newton.sensors.SensorTiledCamera.update"><code class="xref py py-meth docutils literal notranslate"><span class="pre">update()</span></code></a>.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_depth_image_output</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_depth_image_output</span></code> instead.</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1556,7 +1587,7 @@ vertical field of view.</p>
 <dd class="field-even"><p>Array of shape <code class="docutils literal notranslate"><span class="pre">(world_count,</span> <span class="pre">camera_count,</span> <span class="pre">height,</span> <span class="pre">width)</span></code>, dtype <code class="docutils literal notranslate"><span class="pre">float32</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>wp.array(dtype=&lt;class ‘warp._src.types.float32’&gt;, ndim=4)</p>
+<dd class="field-odd"><p>wp.array(dtype=wp.float32, ndim=4)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1566,7 +1597,7 @@ vertical field of view.</p>
 <span class="sig-name descname"><span class="pre">create_normal_image_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">camera_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.sensors.SensorTiledCamera.create_normal_image_output" title="Link to this definition">#</a></dt>
 <dd><p>Create a normal output array for <a class="reference internal" href="#newton.sensors.SensorTiledCamera.update" title="newton.sensors.SensorTiledCamera.update"><code class="xref py py-meth docutils literal notranslate"><span class="pre">update()</span></code></a>.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_normal_image_output</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_normal_image_output</span></code> instead.</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1580,7 +1611,7 @@ vertical field of view.</p>
 <dd class="field-even"><p>Array of shape <code class="docutils literal notranslate"><span class="pre">(world_count,</span> <span class="pre">camera_count,</span> <span class="pre">height,</span> <span class="pre">width)</span></code>, dtype <code class="docutils literal notranslate"><span class="pre">vec3f</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>wp.array(dtype=&lt;class ‘warp._src.types.vec3f’&gt;, ndim=4)</p>
+<dd class="field-odd"><p>wp.array(dtype=wp.vec3f, ndim=4)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1590,7 +1621,7 @@ vertical field of view.</p>
 <span class="sig-name descname"><span class="pre">create_shape_index_image_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">camera_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.sensors.SensorTiledCamera.create_shape_index_image_output" title="Link to this definition">#</a></dt>
 <dd><p>Create a shape-index output array for <a class="reference internal" href="#newton.sensors.SensorTiledCamera.update" title="newton.sensors.SensorTiledCamera.update"><code class="xref py py-meth docutils literal notranslate"><span class="pre">update()</span></code></a>.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_shape_index_image_output</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.create_shape_index_image_output</span></code> instead.</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1604,7 +1635,7 @@ vertical field of view.</p>
 <dd class="field-even"><p>Array of shape <code class="docutils literal notranslate"><span class="pre">(world_count,</span> <span class="pre">camera_count,</span> <span class="pre">height,</span> <span class="pre">width)</span></code>, dtype <code class="docutils literal notranslate"><span class="pre">uint32</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>wp.array(dtype=&lt;class ‘warp._src.types.uint32’&gt;, ndim=4)</p>
+<dd class="field-odd"><p>wp.array(dtype=wp.uint32, ndim=4)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1615,7 +1646,7 @@ vertical field of view.</p>
 <dd><p>Flatten rendered color image to a tiled RGBA buffer.</p>
 <p>Arranges <code class="docutils literal notranslate"><span class="pre">(world_count</span> <span class="pre">*</span> <span class="pre">camera_count)</span></code> tiles in a grid. Each tile shows one camera’s view of one world.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.flatten_color_image_to_rgba</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.flatten_color_image_to_rgba</span></code> instead.</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1635,7 +1666,7 @@ vertical field of view.</p>
 <p>Encodes depth as grayscale: inverts values (closer = brighter) and normalizes to the <code class="docutils literal notranslate"><span class="pre">[50,</span> <span class="pre">255]</span></code>
 range. Background pixels (no hit) remain black.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.flatten_depth_image_to_rgba</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.flatten_depth_image_to_rgba</span></code> instead.</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1655,7 +1686,7 @@ range. Background pixels (no hit) remain black.</p>
 <dd><p>Flatten rendered normal image to a tiled RGBA buffer.</p>
 <p>Arranges <code class="docutils literal notranslate"><span class="pre">(world_count</span> <span class="pre">*</span> <span class="pre">camera_count)</span></code> tiles in a grid. Each tile shows one camera’s view of one world.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Use: </span><code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.flatten_normal_image_to_rgba</span></code> instead.</p>
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Use <code class="docutils literal notranslate"><span class="pre">SensorTiledCamera.utils.flatten_normal_image_to_rgba</span></code> instead.</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1737,7 +1768,7 @@ be modified to change behavior for subsequent <a class="reference internal" href
 <em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">render_context</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">RenderContext</span></em><a class="headerlink" href="#newton.sensors.SensorTiledCamera.render_context" title="Link to this definition">#</a></dt>
 <dd><p>Internal Warp raytracing context used by <a class="reference internal" href="#newton.sensors.SensorTiledCamera.update" title="newton.sensors.SensorTiledCamera.update"><code class="xref py py-meth docutils literal notranslate"><span class="pre">update()</span></code></a> and buffer helpers.</p>
 <div class="deprecated">
-<p><span class="versionmodified deprecated">Deprecated since version Direct: </span>access is deprecated and will be removed. Prefer this
+<p><span class="versionmodified deprecated">Deprecated since version 1.1: </span>Direct access is deprecated and will be removed. Prefer this
 class’s public methods, or <a class="reference internal" href="#newton.sensors.SensorTiledCamera.render_config" title="newton.sensors.SensorTiledCamera.render_config"><code class="xref py py-attr docutils literal notranslate"><span class="pre">render_config</span></code></a> for
 <a class="reference internal" href="#newton.sensors.SensorTiledCamera.RenderConfig" title="newton.sensors.SensorTiledCamera.RenderConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">RenderConfig</span></code></a> access.</p>
 </div>
@@ -1843,6 +1874,7 @@ class’s public methods, or <a class="reference internal" href="#newton.sensors
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.sensors.SensorTiledCamera.Utils.assign_random_colors_per_shape"><code class="docutils literal notranslate"><span class="pre">assign_random_colors_per_shape()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.sensors.SensorTiledCamera.Utils.assign_random_colors_per_world"><code class="docutils literal notranslate"><span class="pre">assign_random_colors_per_world()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.sensors.SensorTiledCamera.Utils.compute_pinhole_camera_rays"><code class="docutils literal notranslate"><span class="pre">compute_pinhole_camera_rays()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.sensors.SensorTiledCamera.Utils.convert_ray_depth_to_forward_depth"><code class="docutils literal notranslate"><span class="pre">convert_ray_depth_to_forward_depth()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.sensors.SensorTiledCamera.Utils.create_albedo_image_output"><code class="docutils literal notranslate"><span class="pre">create_albedo_image_output()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.sensors.SensorTiledCamera.Utils.create_color_image_output"><code class="docutils literal notranslate"><span class="pre">create_color_image_output()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.sensors.SensorTiledCamera.Utils.create_default_light"><code class="docutils literal notranslate"><span class="pre">create_default_light()</span></code></a></li>

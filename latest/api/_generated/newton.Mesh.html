@@ -1312,6 +1312,14 @@ If False, return a new Mesh for the convex hull.</p>
 </dd></dl>
 
 <dl class="py property">
+<dt class="sig sig-object py" id="newton.Mesh.edges">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">edges</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a></em><a class="headerlink" href="#newton.Mesh.edges" title="Link to this definition">#</a></dt>
+<dd><p>Unique edge vertex pairs, shape (N, 2), with geometric deduplication.</p>
+<p>Computed lazily on first access and cached. Invalidated when vertices or
+indices change.</p>
+</dd></dl>
+
+<dl class="py property">
 <dt class="sig sig-object py" id="newton.Mesh.texture">
 <em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">texture</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v2.4)"><span class="pre">ndarray</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></em><a class="headerlink" href="#newton.Mesh.texture" title="Link to this definition">#</a></dt>
 <dd><p>Optional texture as a file path or a normalized RGBA array.</p>
@@ -1377,6 +1385,7 @@ is reassigned.</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.Mesh.finalize"><code class="docutils literal notranslate"><span class="pre">finalize()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.Mesh.MAX_HULL_VERTICES"><code class="docutils literal notranslate"><span class="pre">MAX_HULL_VERTICES</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.Mesh.color"><code class="docutils literal notranslate"><span class="pre">color</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.Mesh.edges"><code class="docutils literal notranslate"><span class="pre">edges</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.Mesh.texture"><code class="docutils literal notranslate"><span class="pre">texture</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#newton.Mesh.texture_hash"><code class="docutils literal notranslate"><span class="pre">texture_hash</span></code></a></li>
 </ul>

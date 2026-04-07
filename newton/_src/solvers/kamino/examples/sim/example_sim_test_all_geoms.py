@@ -48,10 +48,11 @@ class Example:
         async_save: bool = False,
     ):
         # Initialize target frames per second and corresponding time-steps
-        self.fps = 60
-        self.sim_dt = 0.001
+        self.fps = 50
         self.frame_dt = 1.0 / self.fps
-        self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
+        self.sim_substeps = max(1, round(self.frame_dt / 0.001))
+        self.sim_dt = self.frame_dt / self.sim_substeps
+        msg.info(f"Using sim_dt = {self.sim_dt} ({self.sim_substeps} substeps per frame)")
         self.max_steps = max_steps
 
         # Cache the device and other internal flags

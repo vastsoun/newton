@@ -61,6 +61,9 @@ class BatchedLinearOperator:
         device: wp.context.Device,
         dtype: type,
         matvec_fn: Callable | None = None,
+        mio: wp.array | None = None,
+        vio: wp.array | None = None,
+        total_vec_size: int = 0,
     ):
         self._gemv_fn = gemv_fn
         self.n_worlds = n_worlds
@@ -69,6 +72,9 @@ class BatchedLinearOperator:
         self.device = device
         self.dtype = dtype
         self._matvec_fn = matvec_fn
+        self.mio = mio
+        self.vio = vio
+        self.total_vec_size = total_vec_size
 
     @classmethod
     def from_dense(cls, operator: DenseLinearOperatorData) -> BatchedLinearOperator:
@@ -76,84 +82,111 @@ class BatchedLinearOperator:
         info = operator.info
         n_worlds = info.num_blocks
         max_dim = info.max_dimension
-        A_mat = operator.mat.reshape((n_worlds, max_dim * max_dim))
+        A_mat = operator.mat
         active_dims = info.dim
+        mio = info.mio
+        vio = info.vio
 
         def gemv_fn(x, y, world_active, alpha, beta):
-            blas.dense_gemv(A_mat, x, y, active_dims, world_active, alpha, beta, max_dim)
+            blas.dense_gemv(A_mat, x, y, active_dims, world_active, alpha, beta, max_dim, mio, vio)
 
-        return cls(gemv_fn, n_worlds, max_dim, active_dims, info.device, info.dtype)
+        return cls(
+            gemv_fn,
+            n_worlds,
+            max_dim,
+            active_dims,
+            info.device,
+            info.dtype,
+            mio=mio,
+            vio=vio,
+            total_vec_size=info.total_vec_size,
+        )
 
     @classmethod
-    def from_diagonal(cls, D: wp.array2d, active_dims: wp.array) -> BatchedLinearOperator:
-        """Create operator from diagonal matrix."""
-        n_worlds, max_dim = D.shape
+    def from_diagonal(cls, D: wp.array, active_dims: wp.array, vio: wp.array, max_dim: int) -> BatchedLinearOperator:
+        """Create operator from diagonal matrix (flat 1D storage)."""
+        n_worlds = active_dims.shape[0]
 
         def gemv_fn(x, y, world_active, alpha, beta):
-            blas.diag_gemv(D, x, y, active_dims, world_active, alpha, beta)
+            blas.diag_gemv(D, x, y, active_dims, world_active, vio, alpha, beta, max_dim)
 
-        return cls(gemv_fn, n_worlds, max_dim, active_dims, D.device, D.dtype)
+        return cls(gemv_fn, n_worlds, max_dim, active_dims, D.device, D.dtype, vio=vio, total_vec_size=D.shape[0])
 
     @classmethod
     def from_block_sparse(cls, A: BlockSparseMatrices, active_dims: wp.array) -> BatchedLinearOperator:
         """Create operator from block-sparse matrix.
 
-        Requires all matrices to have the same max dimensions so that 2D arrays
-        can be reshaped to 1D for the sparse gemv kernel.
+        The block-sparse matrix uses its own ``row_start``/``col_start`` offsets
+        for flat-array indexing, so x and y must be flat 1D arrays compatible
+        with those offsets.
 
         Args:
             A: Block-sparse matrices container.
             active_dims: 1D int array with active row dimension per matrix.
         """
-        max_rows, max_cols = A.max_of_max_dims
+        max_rows, _max_cols = A.max_of_max_dims
         n_worlds = A.num_matrices
 
+        # Compute total_vec_size from per-world max row dimensions
+        max_dims_np = A.max_dims.numpy()
+        total_vec_size = int(max_dims_np[:, 0].sum())
+
         def gemv_fn(x, y, world_active, alpha, beta):
-            # Reshape 2D arrays to 1D for sparse gemv, then back
-            x_flat = x.reshape((n_worlds * max_cols,))
-            y_flat = y.reshape((n_worlds * max_rows,))
-            blas.block_sparse_gemv(A, x_flat, y_flat, alpha, beta, world_active)
+            blas.block_sparse_gemv(A, x, y, alpha, beta, world_active)
 
         def matvec_fn(x, y, world_active):
-            # Reshape 2D arrays to 1D for sparse matvec, then back
-            x_flat = x.reshape((n_worlds * max_cols,))
-            y_flat = y.reshape((n_worlds * max_rows,))
-            blas.block_sparse_matvec(A, x_flat, y_flat, world_active)
+            blas.block_sparse_matvec(A, x, y, world_active)
 
         dtype = A.nzb_dtype.dtype if A.nzb_dtype is not None else None
-        return cls(gemv_fn, n_worlds, max_rows, active_dims, A.device, dtype, matvec_fn=matvec_fn)
+        return cls(
+            gemv_fn,
+            n_worlds,
+            max_rows,
+            active_dims,
+            A.device,
+            dtype,
+            matvec_fn=matvec_fn,
+            vio=A.row_start,
+            total_vec_size=total_vec_size,
+        )
 
     @classmethod
     def from_block_sparse_operator(cls, A: BlockSparseLinearOperators) -> BatchedLinearOperator:
         """Create operator from block-sparse operator.
 
-        Requires all matrices to have the same max dimensions so that 2D arrays
-        can be reshaped to 1D for the sparse gemv kernel.
-
         Args:
             A: Block-sparse matrices operator.
-            active_dims: 1D int array with active row dimension per matrix.
         """
-        max_rows, max_cols = A.max_of_max_dims
+        max_rows, _max_cols = A.max_of_max_dims
         n_worlds = A.num_matrices
 
+        # Compute total_vec_size from per-world max row dimensions
+        max_dims_np = A.bsm.max_dims.numpy()
+        total_vec_size = int(max_dims_np[:, 0].sum())
+
         def gemv_fn(x, y, world_active, alpha, beta):
-            x_flat = x.reshape((n_worlds * max_cols,))
-            y_flat = y.reshape((n_worlds * max_rows,))
-            A.gemv(x_flat, y_flat, world_active, alpha, beta)
+            A.gemv(x, y, world_active, alpha, beta)
 
         def matvec_fn(x, y, world_active):
-            x_flat = x.reshape((n_worlds * max_cols,))
-            y_flat = y.reshape((n_worlds * max_rows,))
-            A.matvec(x_flat, y_flat, world_active)
+            A.matvec(x, y, world_active)
 
-        return cls(gemv_fn, n_worlds, max_rows, A.active_cols, A.device, A.dtype, matvec_fn=matvec_fn)
+        return cls(
+            gemv_fn,
+            n_worlds,
+            max_rows,
+            A.active_cols,
+            A.device,
+            A.dtype,
+            matvec_fn=matvec_fn,
+            vio=A.bsm.row_start,
+            total_vec_size=total_vec_size,
+        )
 
-    def gemv(self, x: wp.array2d, y: wp.array2d, world_active: wp.array, alpha: float, beta: float):
+    def gemv(self, x: wp.array, y: wp.array, world_active: wp.array, alpha: float, beta: float):
         """Compute y = alpha * A @ x + beta * y."""
         self._gemv_fn(x, y, world_active, alpha, beta)
 
-    def matvec(self, x: wp.array2d, y: wp.array2d, world_active: wp.array):
+    def matvec(self, x: wp.array, y: wp.array, world_active: wp.array):
         if self._matvec_fn is not None:
             return self._matvec_fn(x, y, world_active)
         return self._gemv_fn(x, y, world_active, 1.0, 0.0)
@@ -204,17 +237,22 @@ def _cg_kernel_1(
     resid: wp.array(dtype=Any),
     rz_old: wp.array(dtype=Any),
     p_Ap: wp.array(dtype=Any),
-    p: wp.array2d(dtype=Any),
-    Ap: wp.array2d(dtype=Any),
-    x: wp.array2d(dtype=Any),
-    r: wp.array2d(dtype=Any),
+    p: wp.array(dtype=Any),
+    Ap: wp.array(dtype=Any),
+    x: wp.array(dtype=Any),
+    r: wp.array(dtype=Any),
+    vio: wp.array(dtype=wp.int32),
+    dim: wp.array(dtype=wp.int32),
 ):
     e, i = wp.tid()
+    if i >= dim[e]:
+        return
 
     alpha = wp.where(resid[e] > tol[e] and p_Ap[e] > 0.0, rz_old[e] / p_Ap[e], rz_old.dtype(0.0))
 
-    x[e, i] = x[e, i] + alpha * p[e, i]
-    r[e, i] = r[e, i] - alpha * Ap[e, i]
+    idx = vio[e] + i
+    x[idx] = x[idx] + alpha * p[idx]
+    r[idx] = r[idx] - alpha * Ap[idx]
 
 
 @wp.kernel
@@ -223,16 +261,21 @@ def _cg_kernel_2(
     resid_new: wp.array(dtype=Any),
     rz_old: wp.array(dtype=Any),
     rz_new: wp.array(dtype=Any),
-    z: wp.array2d(dtype=Any),
-    p: wp.array2d(dtype=Any),
+    z: wp.array(dtype=Any),
+    p: wp.array(dtype=Any),
+    vio: wp.array(dtype=wp.int32),
+    dim: wp.array(dtype=wp.int32),
 ):
     #    p = r + (rz_new / rz_old) * p;
     e, i = wp.tid()
+    if i >= dim[e]:
+        return
 
     cond = resid_new[e] > tol[e]
     beta = wp.where(cond and rz_old[e] > 0.0, rz_new[e] / rz_old[e], rz_old.dtype(0.0))
 
-    p[e, i] = z[e, i] + beta * p[e, i]
+    idx = vio[e] + i
+    p[idx] = z[idx] + beta * p[idx]
 
 
 @wp.kernel
@@ -241,20 +284,25 @@ def _cr_kernel_1(
     resid: wp.array(dtype=Any),
     zAz_old: wp.array(dtype=Any),
     y_Ap: wp.array(dtype=Any),
-    p: wp.array2d(dtype=Any),
-    Ap: wp.array2d(dtype=Any),
-    y: wp.array2d(dtype=Any),
-    x: wp.array2d(dtype=Any),
-    r: wp.array2d(dtype=Any),
-    z: wp.array2d(dtype=Any),
+    p: wp.array(dtype=Any),
+    Ap: wp.array(dtype=Any),
+    y: wp.array(dtype=Any),
+    x: wp.array(dtype=Any),
+    r: wp.array(dtype=Any),
+    z: wp.array(dtype=Any),
+    vio: wp.array(dtype=wp.int32),
+    dim: wp.array(dtype=wp.int32),
 ):
     e, i = wp.tid()
+    if i >= dim[e]:
+        return
 
     alpha = wp.where(resid[e] > tol[e] and y_Ap[e] > 0.0, zAz_old[e] / y_Ap[e], zAz_old.dtype(0.0))
 
-    x[e, i] = x[e, i] + alpha * p[e, i]
-    r[e, i] = r[e, i] - alpha * Ap[e, i]
-    z[e, i] = z[e, i] - alpha * y[e, i]
+    idx = vio[e] + i
+    x[idx] = x[idx] + alpha * p[idx]
+    r[idx] = r[idx] - alpha * Ap[idx]
+    z[idx] = z[idx] - alpha * y[idx]
 
 
 @wp.kernel
@@ -263,18 +311,23 @@ def _cr_kernel_2(
     resid: wp.array(dtype=Any),
     zAz_old: wp.array(dtype=Any),
     zAz_new: wp.array(dtype=Any),
-    z: wp.array2d(dtype=Any),
-    Az: wp.array2d(dtype=Any),
-    p: wp.array2d(dtype=Any),
-    Ap: wp.array2d(dtype=Any),
+    z: wp.array(dtype=Any),
+    Az: wp.array(dtype=Any),
+    p: wp.array(dtype=Any),
+    Ap: wp.array(dtype=Any),
+    vio: wp.array(dtype=wp.int32),
+    dim: wp.array(dtype=wp.int32),
 ):
     #    p = r + (rz_new / rz_old) * p;
     e, i = wp.tid()
+    if i >= dim[e]:
+        return
 
     beta = wp.where(resid[e] > tol[e] and zAz_old[e] > 0.0, zAz_new[e] / zAz_old[e], zAz_old.dtype(0.0))
 
-    p[e, i] = z[e, i] + beta * p[e, i]
-    Ap[e, i] = Az[e, i] + beta * Ap[e, i]
+    idx = vio[e] + i
+    p[idx] = z[idx] + beta * p[idx]
+    Ap[idx] = Az[idx] + beta * Ap[idx]
 
 
 def _run_capturable_loop(
@@ -365,17 +418,19 @@ def make_dot_kernel(tile_size: int, maxdim: int):
 
     @wp.kernel(enable_backward=False)
     def dot(
-        a: wp.array3d(dtype=Any),
-        b: wp.array3d(dtype=Any),
+        a: wp.array2d(dtype=Any),
+        b: wp.array2d(dtype=Any),
+        vio: wp.array(dtype=wp.int32),
         world_size: wp.array(dtype=wp.int32),
         world_active: wp.array(dtype=wp.int32),
         result: wp.array2d(dtype=Any),
     ):
-        """Compute the dot products between the trailing-dim arrays in a and b using tiles and pairwise summation."""
+        """Compute the dot products between flat arrays using tiles and pairwise summation."""
         col, world, tid = wp.tid()
         if not world_active[world]:
             return
         n = world_size[world]
+        offset = vio[world]
 
         if wp.static(num_tiles > 1):
             ts = wp.tile_zeros((num_tiles,), dtype=a.dtype, storage="shared")
@@ -384,8 +439,8 @@ def make_dot_kernel(tile_size: int, maxdim: int):
             o_src = tile_id * tile_size
             if o_src >= n:
                 break
-            ta = wp.tile_load(a[col, world], shape=tile_size, offset=o_src)
-            tb = wp.tile_load(b[col, world], shape=tile_size, offset=o_src)
+            ta = wp.tile_load(a[col], shape=tile_size, offset=offset + o_src)
+            tb = wp.tile_load(b[col], shape=tile_size, offset=offset + o_src)
             prod = wp.tile_map(wp.mul, ta, tb)
             if o_src > n - tile_size:
                 mask = wp.tile_map(less_than_op, wp.tile_arange(tile_size, dtype=wp.int32), n - o_src)
@@ -404,8 +459,9 @@ def make_dot_kernel(tile_size: int, maxdim: int):
 
 @wp.kernel
 def dot_sequential(
-    a: wp.array3d(dtype=Any),
-    b: wp.array3d(dtype=Any),
+    a: wp.array2d(dtype=Any),
+    b: wp.array2d(dtype=Any),
+    vio: wp.array(dtype=wp.int32),
     world_size: wp.array(dtype=wp.int32),
     world_active: wp.array(dtype=wp.int32),
     partial_sum: wp.array3d(dtype=Any),
@@ -415,11 +471,12 @@ def dot_sequential(
     if not world_active[world]:
         return
     n = wp.int32(world_size[world])
+    offset = vio[world]
 
     for i in range((n + 1) // 2):
-        s = a[col, world, 2 * i] * b[col, world, 2 * i]
+        s = a[col, offset + 2 * i] * b[col, offset + 2 * i]
         if 2 * i + 1 < n:
-            s += a[col, world, 2 * i + 1] * b[col, world, 2 * i + 1]
+            s += a[col, offset + 2 * i + 1] * b[col, offset + 2 * i + 1]
         partial_sum[col, world, i] = s
 
     n = (n + 1) // 2
@@ -446,16 +503,24 @@ def _initialize_tolerance_kernel(
 
 @wp.kernel
 def make_jacobi_preconditioner(
-    A: wp.array2d(dtype=Any), world_dims: wp.array(dtype=wp.int32), diag: wp.array2d(dtype=Any)
+    A: wp.array(dtype=Any),
+    world_dims: wp.array(dtype=wp.int32),
+    world_maxdims: wp.array(dtype=wp.int32),
+    mio: wp.array(dtype=wp.int32),
+    vio: wp.array(dtype=wp.int32),
+    diag: wp.array(dtype=Any),
 ):
     world, row = wp.tid()
-    world_dim = world_dims[world]
-    if row >= world_dim:
-        diag[world, row] = 0.0
+    if row >= world_maxdims[world]:
         return
-    el = A[world, row * world_dim + row]
+    world_dim = world_dims[world]
+    v_idx = vio[world] + row
+    if row >= world_dim:
+        diag[v_idx] = 0.0
+        return
+    el = A[mio[world] + row * world_dim + row]
     el_inv = 1.0 / (el + 1e-9)
-    diag[world, row] = el_inv
+    diag[v_idx] = el_inv
 
 
 class ConjugateSolver:
@@ -499,10 +564,21 @@ class ConjugateSolver:
             raise ValueError("A must be a BatchedLinearOperator")
         if Mi is not None and not isinstance(Mi, BatchedLinearOperator):
             raise ValueError("Mi must be a BatchedLinearOperator or None")
+        if A.vio is None:
+            raise ValueError("BatchedLinearOperator must have vio set (vector index offsets per world).")
+        if A.total_vec_size <= 0:
+            raise ValueError("BatchedLinearOperator must have total_vec_size > 0.")
+        if Mi is not None and Mi.total_vec_size != A.total_vec_size:
+            raise ValueError(
+                f"Preconditioner total_vec_size ({Mi.total_vec_size}) must match "
+                f"operator total_vec_size ({A.total_vec_size})."
+            )
 
         self.scalar_type = wp.types.type_scalar_type(A.dtype)
         self.n_worlds = A.n_worlds
         self.maxdims = A.max_dim
+        self.total_vec_size = A.total_vec_size
+        self.vio = A.vio
         self.A = A
         self.Mi = Mi
         self.device = A.device
@@ -557,9 +633,9 @@ class ConjugateSolver:
         return wp.get_device(self.device).is_cuda
 
     def compute_dot(self, a, b, active_dims, world_active, col_offset=0):
-        if a.ndim == 2:
-            a = a.reshape((1, *a.shape))
-            b = b.reshape((1, *b.shape))
+        if a.ndim == 1:
+            a = a.reshape((1, a.shape[0]))
+            b = b.reshape((1, b.shape[0]))
         if self.tiled_dot_product:
             result = self.dot_product[col_offset:]
 
@@ -567,7 +643,7 @@ class ConjugateSolver:
                 self.tiled_dot_kernel,
                 dim=(a.shape[0], self.n_worlds),
                 block_dim=min(256, self.dot_tile_size // 8),
-                inputs=[a, b, active_dims, world_active],
+                inputs=[a, b, self.vio, active_dims, world_active],
                 outputs=[result],
                 device=self.device,
             )
@@ -576,7 +652,7 @@ class ConjugateSolver:
             wp.launch(
                 dot_sequential,
                 dim=(a.shape[0], self.n_worlds),
-                inputs=[a, b, active_dims, world_active],
+                inputs=[a, b, self.vio, active_dims, world_active],
                 outputs=[partial_sums],
                 device=self.device,
             )
@@ -592,8 +668,8 @@ class CGSolver(ConjugateSolver):
     def _allocate(self):
         super()._allocate()
 
-        # Temp storage
-        self.r_and_z = wp.zeros((2, self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
+        # Temp storage: (2, total_vec_size) paired arrays
+        self.r_and_z = wp.zeros((2, self.total_vec_size), dtype=self.scalar_type, device=self.device)
         self.p_and_Ap = wp.zeros_like(self.r_and_z)
 
         # (r, r) -- so we can compute r.z and r.r at once
@@ -620,6 +696,10 @@ class CGSolver(ConjugateSolver):
         active_dims: wp.array(dtype=Any) | None = None,
         world_active: wp.array(dtype=wp.int32) | None = None,
     ):
+        if b.shape[0] != self.total_vec_size:
+            raise ValueError(f"b has size {b.shape[0]} but solver expects total_vec_size={self.total_vec_size}")
+        if x.shape[0] != self.total_vec_size:
+            raise ValueError(f"x has size {x.shape[0]} but solver expects total_vec_size={self.total_vec_size}")
         if active_dims is None:
             if self.active_dims is None:
                 raise ValueError("Error, active_dims must be provided either to constructor or to solve()")
@@ -686,8 +766,7 @@ class CGSolver(ConjugateSolver):
         wp.launch(
             kernel=_cg_kernel_1,
             dim=(self.n_worlds, self.maxdims),
-            inputs=[self.atol_sq, r_norm_sq, rz_old, p_Ap, p, Ap],
-            outputs=[x, r],
+            inputs=[self.atol_sq, r_norm_sq, rz_old, p_Ap, p, Ap, x, r, self.vio, self.active_dims],
             device=self.device,
         )
 
@@ -696,8 +775,7 @@ class CGSolver(ConjugateSolver):
         wp.launch(
             kernel=_cg_kernel_2,
             dim=(self.n_worlds, self.maxdims),
-            inputs=[self.atol_sq, r_norm_sq, rz_old, rz_new, z],
-            outputs=[p],
+            inputs=[self.atol_sq, r_norm_sq, rz_old, rz_new, z, p, self.vio, self.active_dims],
             device=self.device,
         )
 
@@ -712,11 +790,11 @@ class CRSolver(ConjugateSolver):
     def _allocate(self):
         super()._allocate()
 
-        # Temp storage
-        self.r_and_z = wp.zeros((2, self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
+        # Temp storage: (2, total_vec_size) paired arrays
+        self.r_and_z = wp.zeros((2, self.total_vec_size), dtype=self.scalar_type, device=self.device)
         self.r_and_Az = wp.zeros_like(self.r_and_z)
         self.y_and_Ap = wp.zeros_like(self.r_and_z)
-        self.p = wp.zeros((self.n_worlds, self.maxdims), dtype=self.scalar_type, device=self.device)
+        self.p = wp.zeros((self.total_vec_size,), dtype=self.scalar_type, device=self.device)
         # (r, r) -- so we can compute r.z and r.r at once
 
         if self.Mi is None:
@@ -736,6 +814,10 @@ class CRSolver(ConjugateSolver):
         active_dims: wp.array(dtype=Any) | None = None,
         world_active: wp.array(dtype=wp.int32) | None = None,
     ):
+        if b.shape[0] != self.total_vec_size:
+            raise ValueError(f"b has size {b.shape[0]} but solver expects total_vec_size={self.total_vec_size}")
+        if x.shape[0] != self.total_vec_size:
+            raise ValueError(f"x has size {x.shape[0]} but solver expects total_vec_size={self.total_vec_size}")
         if active_dims is None:
             if self.active_dims is None:
                 raise ValueError("Error, active_dims must be provided either to constructor or to solve()")
@@ -818,8 +900,7 @@ class CRSolver(ConjugateSolver):
             wp.launch(
                 kernel=_cg_kernel_1,
                 dim=(self.n_worlds, self.maxdims),
-                inputs=[self.atol_sq, r_norm_sq, zAz_old, y_Ap, p, Ap],
-                outputs=[x, r],
+                inputs=[self.atol_sq, r_norm_sq, zAz_old, y_Ap, p, Ap, x, r, self.vio, self.active_dims],
                 device=self.device,
             )
         else:
@@ -827,8 +908,7 @@ class CRSolver(ConjugateSolver):
             wp.launch(
                 kernel=_cr_kernel_1,
                 dim=(self.n_worlds, self.maxdims),
-                inputs=[self.atol_sq, r_norm_sq, zAz_old, y_Ap, p, Ap, y],
-                outputs=[x, r, z],
+                inputs=[self.atol_sq, r_norm_sq, zAz_old, y_Ap, p, Ap, y, x, r, z, self.vio, self.active_dims],
                 device=self.device,
             )
 
@@ -837,8 +917,7 @@ class CRSolver(ConjugateSolver):
         wp.launch(
             kernel=_cr_kernel_2,
             dim=(self.n_worlds, self.maxdims),
-            inputs=[self.atol_sq, r_norm_sq, zAz_old, zAz_new, z, Az],
-            outputs=[p, Ap],
+            inputs=[self.atol_sq, r_norm_sq, zAz_old, zAz_new, z, Az, p, Ap, self.vio, self.active_dims],
             device=self.device,
         )
 

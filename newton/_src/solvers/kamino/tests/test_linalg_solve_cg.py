@@ -28,7 +28,7 @@ from newton._src.solvers.kamino._src.linalg.conjugate import (
     make_jacobi_preconditioner,
 )
 from newton._src.solvers.kamino._src.linalg.core import DenseLinearOperatorData, DenseSquareMultiLinearInfo
-from newton._src.solvers.kamino._src.linalg.linear import ConjugateGradientSolver
+from newton._src.solvers.kamino._src.linalg.linear import ConjugateGradientSolver, ConjugateResidualSolver
 from newton._src.solvers.kamino._src.linalg.sparse_matrix import (
     BlockDType,
     BlockSparseMatrices,
@@ -609,8 +609,8 @@ class TestLinalgConjugate(unittest.TestCase):
             with self.subTest(problem=problem_name, solver="CRSolver+Jacobi"):
                 self._test_solve_heterogeneous_jacobi(CRSolver, problem_params, device)
 
-    def test_cg_solver_discover_sparse(self):
-        """Test ConjugateGradientSolver with discover_sparse=True and heterogeneous dims."""
+    def _test_iterative_solver_heterogeneous(self, solver_cls, discover_sparse):
+        """Test iterative solver wrapper with heterogeneous dims."""
         if not wp.get_cuda_devices():
             self.skipTest("No CUDA devices found")
         device = wp.get_cuda_device()
@@ -650,10 +650,11 @@ class TestLinalgConjugate(unittest.TestCase):
         b_wp = wp.array(b_flat, dtype=float32, device=device)
         x_wp = wp.zeros(info.total_vec_size, dtype=float32, device=device)
 
-        # Solve with discover_sparse=True
-        solver = ConjugateGradientSolver(
-            discover_sparse=True, sparse_block_size=block_size, sparse_threshold=1.0, device=device
-        )
+        # Solve
+        kwargs = {}
+        if discover_sparse:
+            kwargs = {discover_sparse: True, sparse_block_size: block_size, sparse_threshold: 1.0}
+        solver = solver_cls(**kwargs, device=device)
         solver.finalize(dense_op)
         solver.compute(A_wp)
         solver.solve(b_wp, x_wp)
@@ -670,21 +671,30 @@ class TestLinalgConjugate(unittest.TestCase):
                 f"World {w}: solve failed, max error={np.abs(x_found - x_ref).max():.2e}",
             )
 
-        # Also solve with discover_sparse=False and compare
-        x_dense_wp = wp.zeros(info.total_vec_size, dtype=float32, device=device)
-        solver_dense = ConjugateGradientSolver(discover_sparse=False, device=device)
-        solver_dense.finalize(dense_op)
-        solver_dense.compute(A_wp)
-        solver_dense.solve(b_wp, x_dense_wp)
+        if discover_sparse:
+            # Also solve with discover_sparse=False and compare
+            x_dense_wp = wp.zeros(info.total_vec_size, dtype=float32, device=device)
+            solver_dense = solver_cls(discover_sparse=False, device=device)
+            solver_dense.finalize(dense_op)
+            solver_dense.compute(A_wp)
+            solver_dense.solve(b_wp, x_dense_wp)
 
-        x_sparse = x_wp.numpy()
-        x_dense = x_dense_wp.numpy()
-        if self.verbose:
-            print(f"Sparse vs dense max diff: {np.abs(x_sparse - x_dense).max():.2e}")
-        self.assertTrue(
-            np.allclose(x_sparse, x_dense, rtol=1e-5, atol=1e-6),
-            f"Sparse and dense solutions differ: max diff={np.abs(x_sparse - x_dense).max():.2e}",
-        )
+            x_sparse = x_wp.numpy()
+            x_dense = x_dense_wp.numpy()
+            if self.verbose:
+                print(f"Sparse vs dense max diff: {np.abs(x_sparse - x_dense).max():.2e}")
+            self.assertTrue(
+                np.allclose(x_sparse, x_dense, rtol=1e-5, atol=1e-6),
+                f"Sparse and dense solutions differ: max diff={np.abs(x_sparse - x_dense).max():.2e}",
+            )
+
+    def test_cg_solver_discover_sparse(self):
+        """Test ConjugateGradientSolver with discover_sparse=True and heterogeneous dims."""
+        self._test_iterative_solver_heterogeneous(ConjugateGradientSolver, discover_sparse=True)
+
+    def test_cr_solver_heterogeneous(self):
+        """Test ConjugateResidualSolver with heterogeneous dims."""
+        self._test_iterative_solver_heterogeneous(ConjugateResidualSolver, discover_sparse=False)
 
 
 if __name__ == "__main__":

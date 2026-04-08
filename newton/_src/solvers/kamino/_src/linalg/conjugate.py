@@ -127,9 +127,7 @@ class BatchedLinearOperator:
         max_rows, _max_cols = A.max_of_max_dims
         n_worlds = A.num_matrices
 
-        # Compute total_vec_size from per-world max row dimensions
-        max_dims_np = A.max_dims.numpy()
-        total_vec_size = int(max_dims_np[:, 0].sum())
+        total_vec_size = A.sum_of_max_dims[0]
 
         def gemv_fn(x, y, world_active, alpha, beta):
             blas.block_sparse_gemv(A, x, y, alpha, beta, world_active)
@@ -160,9 +158,7 @@ class BatchedLinearOperator:
         max_rows, _max_cols = A.max_of_max_dims
         n_worlds = A.num_matrices
 
-        # Compute total_vec_size from per-world max row dimensions
-        max_dims_np = A.bsm.max_dims.numpy()
-        total_vec_size = int(max_dims_np[:, 0].sum())
+        total_vec_size = A.bsm.sum_of_max_dims[0]
 
         def gemv_fn(x, y, world_active, alpha, beta):
             A.gemv(x, y, world_active, alpha, beta)

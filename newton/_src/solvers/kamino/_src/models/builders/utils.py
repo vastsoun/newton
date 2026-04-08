@@ -24,6 +24,7 @@ homogeneous multi-world builders and import
 USD models.
 """
 
+import os
 import time
 from collections.abc import Callable
 
@@ -224,3 +225,28 @@ def make_homogeneous_builder(num_worlds: int, build_fn: Callable, show_progress=
             print_progress_bar(i + 1, num_worlds, start_time, prefix="Adding builders", suffix="")
         builder.add_builder(single)
     return builder
+
+
+###
+# Asset path utilities
+###
+
+
+def get_basics_usd_assets_path() -> str:
+    """
+    Returns the path to the USD assets for basic models.
+    """
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "../assets/basics")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"The USD assets path for basic models does not exist: {path}")
+    return path
+
+
+def get_testing_usd_assets_path() -> str:
+    """
+    Returns the path to the USD assets for testing models.
+    """
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "../assets/testing")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"The USD assets path for testing models does not exist: {path}")
+    return path

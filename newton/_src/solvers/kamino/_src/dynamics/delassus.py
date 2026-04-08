@@ -147,7 +147,7 @@ def _build_delassus_elementwise_dense(
     #   Row i starts at flat position f(i) = i*ncts - i*(i-1)/2
     #   and contains (ncts - i) elements. Total elements = ncts*(ncts+1)/2.
     n_upper = ncts * (ncts + 1) / 2
-    if float32(tid) >= n_upper:
+    if tid >= n_upper:
         return
 
     # Recover row i: largest i such that f(i) <= tid

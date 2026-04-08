@@ -146,7 +146,7 @@ def _build_delassus_elementwise_dense(
     # Map tid to upper-triangular index (i, j):
     #   Row i starts at flat position f(i) = i*ncts - i*(i-1)/2
     #   and contains (ncts - i) elements. Total elements = ncts*(ncts+1)/2.
-    n_upper = ncts * (ncts + 1) / 2
+    n_upper = ncts * (ncts + 1) // 2
     if tid >= n_upper:
         return
 

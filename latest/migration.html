@@ -41,7 +41,7 @@
   <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
-    <script src="_static/documentation_options.js?v=1c471e8e"></script>
+    <script src="_static/documentation_options.js?v=9912e11f"></script>
     <script src="_static/doctools.js?v=9bcbadda"></script>
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -132,7 +132,7 @@
     <img src="_static/newton-logo-dark.png" class="logo__image only-dark pst-js-only" alt="Newton Physics Logo"/>
   
   
-    <p class="title logo__title">Newton Physics <span style='font-size: 0.8em; color: #888;'>(1.1.0.dev0)</span></p>
+    <p class="title logo__title">Newton Physics <span style='font-size: 0.8em; color: #888;'>(1.2.0.dev0)</span></p>
   
 </a></div>
     
@@ -869,6 +869,9 @@ All importers will rotate the asset now to match the builder’s <code class="do
 For example, <a class="reference internal" href="api/_generated/newton.State.html#newton.State.body_qd" title="newton.State.body_qd"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.State.body_qd</span></code></a> stores <code class="docutils literal notranslate"><span class="pre">(lin_vel,</span> <span class="pre">ang_vel)</span></code>, whereas
 <code class="docutils literal notranslate"><span class="pre">warp.sim</span></code> followed Warp’s native <code class="docutils literal notranslate"><span class="pre">(ang_vel,</span> <span class="pre">lin_vel)</span></code> convention. See
 <a class="reference internal" href="concepts/conventions.html#twist-conventions"><span class="std std-ref">Newton Conventions</span></a>.</p>
+<p>For rigid bodies, the linear component is the world-frame velocity of the body’s
+center of mass (COM). If you need the body-origin velocity instead, recover it
+as <code class="docutils literal notranslate"><span class="pre">v_origin</span> <span class="pre">=</span> <span class="pre">v_com</span> <span class="pre">-</span> <span class="pre">omega</span> <span class="pre">x</span> <span class="pre">r_com_world</span></code>.</p>
 <p>The attributes related to joint axes now have the same dimension as the joint DOFs, which is
 <a class="reference internal" href="api/_generated/newton.Model.html#newton.Model.joint_dof_count" title="newton.Model.joint_dof_count"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.Model.joint_dof_count</span></code></a>. <a class="reference internal" href="api/_generated/newton.Model.html#newton.Model.joint_axis" title="newton.Model.joint_axis"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.Model.joint_axis</span></code></a> remains available and is
 indexed per DOF; use <a class="reference internal" href="api/_generated/newton.Model.html#newton.Model.joint_qd_start" title="newton.Model.joint_qd_start"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.Model.joint_qd_start</span></code></a> and <a class="reference internal" href="api/_generated/newton.Model.html#newton.Model.joint_dof_dim" title="newton.Model.joint_dof_dim"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.Model.joint_dof_dim</span></code></a>
@@ -876,7 +879,11 @@ to locate a joint’s slice in the per-DOF arrays.</p>
 <p>For free and D6 joints, Newton stores linear DOFs before angular DOFs in per-axis arrays. In
 particular, floating-base slices of <a class="reference internal" href="api/_generated/newton.State.html#newton.State.joint_qd" title="newton.State.joint_qd"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.State.joint_qd</span></code></a>, <a class="reference internal" href="api/_generated/newton.Control.html#newton.Control.joint_f" title="newton.Control.joint_f"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.Control.joint_f</span></code></a>,
 <a class="reference internal" href="api/_generated/newton.Control.html#newton.Control.joint_target_pos" title="newton.Control.joint_target_pos"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.Control.joint_target_pos</span></code></a>, and <a class="reference internal" href="api/_generated/newton.Control.html#newton.Control.joint_target_vel" title="newton.Control.joint_target_vel"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.Control.joint_target_vel</span></code></a> use
-<code class="docutils literal notranslate"><span class="pre">(lin_vel,</span> <span class="pre">ang_vel)</span></code> ordering, whereas <code class="docutils literal notranslate"><span class="pre">warp.sim</span></code> used <code class="docutils literal notranslate"><span class="pre">(ang_vel,</span> <span class="pre">lin_vel)</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">(linear,</span> <span class="pre">angular)</span></code> ordering, whereas <code class="docutils literal notranslate"><span class="pre">warp.sim</span></code> used <code class="docutils literal notranslate"><span class="pre">(ang_vel,</span> <span class="pre">lin_vel)</span></code>.
+For public <code class="docutils literal notranslate"><span class="pre">FREE</span></code> and <code class="docutils literal notranslate"><span class="pre">DISTANCE</span></code> joints, <a class="reference internal" href="api/_generated/newton.State.html#newton.State.joint_qd" title="newton.State.joint_qd"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.State.joint_qd</span></code></a>
+stores the child-COM twist in the joint parent frame, while
+<a class="reference internal" href="api/_generated/newton.Control.html#newton.Control.joint_f" title="newton.Control.joint_f"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.Control.joint_f</span></code></a> stores the world-frame COM wrench
+<code class="docutils literal notranslate"><span class="pre">(f_world,</span> <span class="pre">tau_com_world)</span></code>.</p>
 <div class="pst-scrollable-table-container"><table class="table">
 <tbody>
 <tr class="row-odd"><td><p><strong>warp.sim</strong></p></td>
@@ -939,8 +946,8 @@ particular, floating-base slices of <a class="reference internal" href="api/_gen
 position and velocity targets, <a class="reference internal" href="api/_generated/newton.Control.html#newton.Control.joint_act" title="newton.Control.joint_act"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.Control.joint_act</span></code></a> stores feedforward actuator input,
 and <a class="reference internal" href="api/_generated/newton.Control.html#newton.Control.joint_f" title="newton.Control.joint_f"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.Control.joint_f</span></code></a> stores generalized forces/torques. Unlike <code class="docutils literal notranslate"><span class="pre">warp.sim</span></code>,
 <code class="docutils literal notranslate"><span class="pre">joint_act</span></code> is no longer the target array.</p>
-<p>In order to match the MuJoCo convention, <a class="reference internal" href="api/_generated/newton.Control.html#newton.Control.joint_f" title="newton.Control.joint_f"><code class="xref py py-attr docutils literal notranslate"><span class="pre">joint_f</span></code></a> includes the DOFs of the
-free joints as well, so its dimension is <a class="reference internal" href="api/_generated/newton.Model.html#newton.Model.joint_dof_count" title="newton.Model.joint_dof_count"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.Model.joint_dof_count</span></code></a>.</p>
+<p>In order to match the MuJoCo convention, <a class="reference internal" href="api/_generated/newton.Control.html#newton.Control.joint_f" title="newton.Control.joint_f"><code class="xref py py-attr docutils literal notranslate"><span class="pre">joint_f</span></code></a> includes the DOFs of
+<code class="docutils literal notranslate"><span class="pre">FREE</span></code> and <code class="docutils literal notranslate"><span class="pre">DISTANCE</span></code> joints as well, so its dimension is <a class="reference internal" href="api/_generated/newton.Model.html#newton.Model.joint_dof_count" title="newton.Model.joint_dof_count"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.Model.joint_dof_count</span></code></a>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">JointMode</span></code> has been replaced by <a class="reference internal" href="api/_generated/newton.JointTargetMode.html#newton.JointTargetMode" title="newton.JointTargetMode"><code class="xref py py-class docutils literal notranslate"><span class="pre">newton.JointTargetMode</span></code></a>. Direct force control
 corresponds to <a class="reference internal" href="api/_generated/newton.JointTargetMode.html#newton.JointTargetMode.EFFORT" title="newton.JointTargetMode.EFFORT"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.JointTargetMode.EFFORT</span></code></a> together with
 <a class="reference internal" href="api/_generated/newton.Control.html#newton.Control.joint_f" title="newton.Control.joint_f"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.Control.joint_f</span></code></a>, while simultaneous position and velocity target control uses

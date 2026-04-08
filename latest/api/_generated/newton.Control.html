@@ -41,7 +41,7 @@
   <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
-    <script src="../../_static/documentation_options.js?v=1c471e8e"></script>
+    <script src="../../_static/documentation_options.js?v=9912e11f"></script>
     <script src="../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -132,7 +132,7 @@
     <img src="../../_static/newton-logo-dark.png" class="logo__image only-dark pst-js-only" alt="Newton Physics Logo"/>
   
   
-    <p class="title logo__title">Newton Physics <span style='font-size: 0.8em; color: #888;'>(1.1.0.dev0)</span></p>
+    <p class="title logo__title">Newton Physics <span style='font-size: 0.8em; color: #888;'>(1.2.0.dev0)</span></p>
   
 </a></div>
     
@@ -841,17 +841,12 @@ before PD/PID correction is applied.</p>
 <span class="sig-name descname"><span class="pre">joint_f</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://nvidia.github.io/warp/api_reference/_generated/warp.array.html#warp.array" title="(in Warp v1.12.1)"><span class="pre">array</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></em><a class="headerlink" href="#newton.Control.joint_f" title="Link to this definition">#</a></dt>
 <dd><p>Array of generalized joint forces [N or N·m, depending on joint type] with shape <code class="docutils literal notranslate"><span class="pre">(joint_dof_count,)</span></code>
 and type <code class="docutils literal notranslate"><span class="pre">float</span></code>.</p>
-<p>The degrees of freedom for free joints are included in this array and have the same
+<p>The degrees of freedom for FREE and DISTANCE joints are included in this array and have the same
 convention as the <a class="reference internal" href="newton.State.html#newton.State.body_f" title="newton.State.body_f"><code class="xref py py-attr docutils literal notranslate"><span class="pre">newton.State.body_f</span></code></a> array where the 6D wrench is defined as
 <code class="docutils literal notranslate"><span class="pre">(f_x,</span> <span class="pre">f_y,</span> <span class="pre">f_z,</span> <span class="pre">t_x,</span> <span class="pre">t_y,</span> <span class="pre">t_z)</span></code>, where <code class="docutils literal notranslate"><span class="pre">f_x</span></code>, <code class="docutils literal notranslate"><span class="pre">f_y</span></code>, and <code class="docutils literal notranslate"><span class="pre">f_z</span></code> are the components
 of the force vector (linear) [N] and <code class="docutils literal notranslate"><span class="pre">t_x</span></code>, <code class="docutils literal notranslate"><span class="pre">t_y</span></code>, and <code class="docutils literal notranslate"><span class="pre">t_z</span></code> are the
-components of the torque vector (angular) [N·m]. For free joints, the wrench is applied in world frame with the
-body’s center of mass (COM) as reference point.</p>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>The Featherstone solver currently applies free-joint forces in the body-origin frame instead of the
-center-of-mass frame, which can lead to unexpected rotation when applying linear force to a body with a non-zero COM offset.</p>
-</div>
+components of the torque vector (angular) [N·m]. For FREE and DISTANCE joints, the wrench is applied in world
+frame with the child body’s center of mass (COM) as reference point.</p>
 </dd></dl>
 
 <dl class="py attribute">

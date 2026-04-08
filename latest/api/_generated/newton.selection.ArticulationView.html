@@ -41,7 +41,7 @@
   <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
-    <script src="../../_static/documentation_options.js?v=1c471e8e"></script>
+    <script src="../../_static/documentation_options.js?v=9912e11f"></script>
     <script src="../../_static/doctools.js?v=9bcbadda"></script>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -132,7 +132,7 @@
     <img src="../../_static/newton-logo-dark.png" class="logo__image only-dark pst-js-only" alt="Newton Physics Logo"/>
   
   
-    <p class="title logo__title">Newton Physics <span style='font-size: 0.8em; color: #888;'>(1.1.0.dev0)</span></p>
+    <p class="title logo__title">Newton Physics <span style='font-size: 0.8em; color: #888;'>(1.2.0.dev0)</span></p>
   
 </a></div>
     
@@ -857,6 +857,8 @@ and <code class="docutils literal notranslate"><span class="pre">exclude_links</
 <dt class="sig sig-object py" id="newton.selection.ArticulationView.eval_fk">
 <span class="sig-name descname"><span class="pre">eval_fk</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">target</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.selection.ArticulationView.eval_fk" title="Link to this definition">#</a></dt>
 <dd><p>Evaluates forward kinematics given the joint coordinates and updates the body information.</p>
+<p>The written <code class="docutils literal notranslate"><span class="pre">target.body_qd</span></code> values follow Newton’s public body-twist
+convention <code class="docutils literal notranslate"><span class="pre">(v_com_world,</span> <span class="pre">omega_world)</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -872,7 +874,8 @@ and <code class="docutils literal notranslate"><span class="pre">exclude_links</
 <span class="sig-name descname"><span class="pre">eval_jacobian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">J</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">joint_S_s</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.selection.ArticulationView.eval_jacobian" title="Link to this definition">#</a></dt>
 <dd><p>Evaluate spatial Jacobian for articulations in this view.</p>
 <p>Computes the spatial Jacobian J that maps joint velocities to spatial
-velocities of each link in world frame.</p>
+velocities of each link in world frame, matching <code class="docutils literal notranslate"><span class="pre">state.body_qd</span></code> under
+Newton’s public COM/world body-twist convention.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -894,7 +897,9 @@ If None, allocates internally.</p></li>
 <span class="sig-name descname"><span class="pre">eval_mass_matrix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">H</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">J</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">body_I_s</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">joint_S_s</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.selection.ArticulationView.eval_mass_matrix" title="Link to this definition">#</a></dt>
 <dd><p>Evaluate generalized mass matrix for articulations in this view.</p>
 <p>Computes the generalized mass matrix H = J^T * M * J, where J is the spatial
-Jacobian and M is the block-diagonal spatial mass matrix.</p>
+Jacobian and M is the block-diagonal spatial mass matrix. The resulting
+matrix is consistent with kinetic energy computed from COM-referenced
+body twists.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1025,6 +1030,8 @@ If None, allocates internally.</p></li>
 <dt class="sig sig-object py" id="newton.selection.ArticulationView.get_link_velocities">
 <span class="sig-name descname"><span class="pre">get_link_velocities</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newton.selection.ArticulationView.get_link_velocities" title="Link to this definition">#</a></dt>
 <dd><p>Get the world-space spatial velocities of all links in the selected articulations.</p>
+<p>The returned <code class="docutils literal notranslate"><span class="pre">body_qd</span></code> values follow Newton’s public convention:
+<code class="docutils literal notranslate"><span class="pre">(v_com_world,</span> <span class="pre">omega_world)</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>source</strong> (<a class="reference internal" href="newton.Model.html#newton.Model" title="newton.Model"><em>Model</em></a><em> | </em><a class="reference internal" href="newton.State.html#newton.State" title="newton.State"><em>State</em></a>) – The source from which to retrieve the link velocities.</p>

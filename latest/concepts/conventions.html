@@ -41,7 +41,7 @@
   <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
-    <script src="../_static/documentation_options.js?v=1c471e8e"></script>
+    <script src="../_static/documentation_options.js?v=9912e11f"></script>
     <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -134,7 +134,7 @@
     <img src="../_static/newton-logo-dark.png" class="logo__image only-dark pst-js-only" alt="Newton Physics Logo"/>
   
   
-    <p class="title logo__title">Newton Physics <span style='font-size: 0.8em; color: #888;'>(1.1.0.dev0)</span></p>
+    <p class="title logo__title">Newton Physics <span style='font-size: 0.8em; color: #888;'>(1.2.0.dev0)</span></p>
   
 </a></div>
     
@@ -916,6 +916,10 @@ This matches the Isaac Lab convention exactly. Note that Newton will automatical
 convert from this convention to MuJoCo’s mixed-frame format when using the
 SolverMuJoCo, including both the angular velocity frame conversion (world ↔ body)
 and the linear velocity reference point conversion (CoM ↔ body frame origin).</p>
+<p>If you need the velocity of the body-frame origin rather than the COM, shift the
+linear term by the body’s COM offset in world coordinates:</p>
+<div class="math notranslate nohighlight">
+\[v_{\text{origin}}^W = v_{\text{com}}^W - \omega^W \times r_{\text{com}}^W.\]</div>
 </section>
 <section id="summary-of-conventions">
 <h3>Summary of Conventions<a class="headerlink" href="#summary-of-conventions" title="Link to this heading">#</a></h3>
@@ -964,20 +968,13 @@ and the linear velocity reference point conversion (CoM ↔ body frame origin).<
 <td><p>World frame</p></td>
 <td><p>Not named “twist”; typically treated as <span class="math notranslate nohighlight">\([\mathbf{v}_{com}^W;\ \boldsymbol{\omega}^W]\)</span></p></td>
 </tr>
-<tr class="row-even"><td><p><strong>Newton</strong> (except the Featherstone solver; see below)</p></td>
+<tr class="row-even"><td><p><strong>Newton</strong></p></td>
 <td><p>COM, world frame</p></td>
 <td><p>World frame</p></td>
 <td><p><a class="reference internal" href="../api/_generated/newton.State.html#newton.State.body_qd" title="newton.State.body_qd"><code class="xref py py-attr docutils literal notranslate"><span class="pre">body_qd</span></code></a></p></td>
 </tr>
 </tbody>
 </table>
-</div>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p><a class="reference internal" href="../api/_generated/newton.solvers.SolverFeatherstone.html#newton.solvers.SolverFeatherstone" title="newton.solvers.SolverFeatherstone"><code class="xref py py-class docutils literal notranslate"><span class="pre">SolverFeatherstone</span></code></a> does not correctly handle angular velocity
-for free-floating bodies with <strong>non-zero center of mass offsets</strong>. The body may not
-rotate purely about its CoM.</p>
-<p>This issue is tracked at <a class="github reference external" href="https://github.com/newton-physics/newton/issues/1366">newton-physics/newton#1366</a>.</p>
 </div>
 </section>
 <section id="mapping-between-representations">
@@ -1044,21 +1041,15 @@ world coordinates. The reference point matters for the moment term, so shifting
 the wrench to a point offset by <span class="math notranslate nohighlight">\(\mathbf{r}\)</span> changes the torque as:</p>
 <div class="math notranslate nohighlight">
 \[\boldsymbol{\tau}_{\text{new}} = \boldsymbol{\tau} + \mathbf{r} \times \mathbf{f}.\]</div>
-<p>This convention is used in all Newton solvers, except for <a class="reference internal" href="../api/_generated/newton.solvers.SolverFeatherstone.html#newton.solvers.SolverFeatherstone" title="newton.solvers.SolverFeatherstone"><code class="xref py py-class docutils literal notranslate"><span class="pre">SolverFeatherstone</span></code></a>, which does not correctly handle torque application for free-floating bodies with <strong>non-zero center of mass offsets</strong>.</p>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p><a class="reference internal" href="../api/_generated/newton.solvers.SolverFeatherstone.html#newton.solvers.SolverFeatherstone" title="newton.solvers.SolverFeatherstone"><code class="xref py py-class docutils literal notranslate"><span class="pre">SolverFeatherstone</span></code></a> does not correctly handle torque application
-for free-floating bodies with <strong>non-zero center of mass offsets</strong>. A pure torque will
-incorrectly cause the CoM to translate instead of remaining stationary.</p>
-<p>This issue is tracked at <a class="github reference external" href="https://github.com/newton-physics/newton/issues/1366">newton-physics/newton#1366</a>.</p>
-</div>
+<p>This convention is used in all Newton solvers.</p>
 <p>The array of joint forces (torques) in generalized coordinates is stored in <a class="reference internal" href="../api/_generated/newton.Control.html#newton.Control.joint_f" title="newton.Control.joint_f"><code class="xref py py-attr docutils literal notranslate"><span class="pre">Control.joint_f</span></code></a>.
-For free joints, the corresponding 6 dimensions in this array are the spatial wrench applied at the body’s center of mass (COM)
-in world frame, following exactly the same convention as <a class="reference internal" href="../api/_generated/newton.State.html#newton.State.body_f" title="newton.State.body_f"><code class="xref py py-attr docutils literal notranslate"><span class="pre">State.body_f</span></code></a>.</p>
+For <code class="docutils literal notranslate"><span class="pre">FREE</span></code> and <code class="docutils literal notranslate"><span class="pre">DISTANCE</span></code> joints, the corresponding 6 dimensions in this
+array are the physical wrench in world coordinates, with the force and torque
+referenced at the child body’s center of mass (COM).</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>MuJoCo represents free-joint generalized forces in a mixed-frame convention in <code class="docutils literal notranslate"><span class="pre">qfrc_applied</span></code>. To preserve Newton’s
-COM-wrench semantics, <a class="reference internal" href="../api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo" title="newton.solvers.SolverMuJoCo"><code class="xref py py-class docutils literal notranslate"><span class="pre">SolverMuJoCo</span></code></a> applies free-joint
+<p>MuJoCo represents root free-joint generalized forces in a mixed-frame convention in <code class="docutils literal notranslate"><span class="pre">qfrc_applied</span></code>. To preserve Newton’s
+COM-wrench semantics for that root-free-joint case, <a class="reference internal" href="../api/_generated/newton.solvers.SolverMuJoCo.html#newton.solvers.SolverMuJoCo" title="newton.solvers.SolverMuJoCo"><code class="xref py py-class docutils literal notranslate"><span class="pre">SolverMuJoCo</span></code></a> applies free-joint
 <a class="reference internal" href="../api/_generated/newton.Control.html#newton.Control.joint_f" title="newton.Control.joint_f"><code class="xref py py-attr docutils literal notranslate"><span class="pre">Control.joint_f</span></code></a> through <code class="docutils literal notranslate"><span class="pre">xfrc_applied</span></code> (world-frame wrench at the COM) and
 uses <code class="docutils literal notranslate"><span class="pre">qfrc_applied</span></code> only for non-free joints. This keeps free-joint <code class="docutils literal notranslate"><span class="pre">joint_f</span></code> behavior aligned with
 <a class="reference internal" href="../api/_generated/newton.State.html#newton.State.body_f" title="newton.State.body_f"><code class="xref py py-attr docutils literal notranslate"><span class="pre">State.body_f</span></code></a>.</p>

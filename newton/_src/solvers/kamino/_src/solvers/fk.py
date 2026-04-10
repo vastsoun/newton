@@ -260,7 +260,7 @@ def _eval_position_control_transformations(
         q = wp.quatf(0.0, 0.0, 0.0, 1.0)
 
         # In the actuated case, set translation/rotation as per joint generalized coordinates
-        if act_type_j == JointActuationType.FORCE:
+        if act_type_j != JointActuationType.PASSIVE:
             offset_q_j = actuated_coords_offset[jt_id]
             if dof_type_j == JointDoFType.CARTESIAN:
                 t[0] = actuators_q[offset_q_j]
@@ -1387,7 +1387,7 @@ def _eval_target_constraint_velocities(
     if wd_id < world_mask.shape[0] and world_mask[wd_id] != 0 and jt_id_loc < num_joints[wd_id]:
         # Retrieve the joint model data
         jt_id_tot = first_joint_id[wd_id] + jt_id_loc
-        if joints_act_type[jt_id_tot] != JointActuationType.FORCE:
+        if joints_act_type[jt_id_tot] == JointActuationType.PASSIVE:
             return
         dof_type_j = joints_dof_type[jt_id_tot]
         offset_u_j = actuated_dofs_offset[jt_id_tot]
@@ -1726,7 +1726,7 @@ class ForwardKinematicsSolver:
                 joints_B_r_Bj.append(joints_B_r_Bj_prev[jt_id_prev])
                 joints_F_r_Fj.append(joints_F_r_Fj_prev[jt_id_prev])
                 joints_X_j.append(joints_X_j_prev[jt_id_prev])
-                if joints_act_type[-1] == JointActuationType.FORCE:
+                if joints_act_type[-1] != JointActuationType.PASSIVE:
                     num_coords_jt = joints_num_coords_prev[jt_id_prev]
                     joints_num_actuated_coords.append(num_coords_jt)
                     coord_offset = actuated_coord_offsets_prev[jt_id_prev]
@@ -1818,7 +1818,7 @@ class ForwardKinematicsSolver:
             for jt_id_loc in range(num_joints[wd_id]):
                 jt_id_tot = first_joint_id[wd_id] + jt_id_loc  # Joint id among all joints
                 act_type = joints_act_type[jt_id_tot]
-                if act_type == JointActuationType.FORCE:  # Actuator: select all six constraints
+                if act_type != JointActuationType.PASSIVE:  # Actuator: select all six constraints
                     for i in range(6):
                         constraint_full_to_red_map[6 * jt_id_tot + i] = ct_count + i
                     ct_count += 6

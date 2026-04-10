@@ -197,6 +197,11 @@ class BlockSparseMatrices:
     Host-side cache of the maximum of the maximum matrix dimensions over all sparse matrices.
     """
 
+    sum_of_max_dims: tuple[int, int] = (0, 0)
+    """
+    Host-side cache of the sum of the maximum matrix dimensions over all sparse matrices.
+    """
+
     ###
     # On-device Data (Constant)
     ###
@@ -416,6 +421,7 @@ class BlockSparseMatrices:
         # Update memory allocation meta-data caches
         self.num_matrices = len(capacities)
         self.max_of_max_dims = tuple(max(x) for x in zip(*max_dims, strict=True))
+        self.sum_of_max_dims = tuple(sum(x) for x in zip(*max_dims, strict=True))
         self.sum_of_num_nzb = sum(capacities)
         self.max_of_num_nzb = max(capacities)
 

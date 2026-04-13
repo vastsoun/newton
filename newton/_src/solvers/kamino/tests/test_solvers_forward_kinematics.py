@@ -17,6 +17,7 @@
 Unit tests for the ForwardKinematicsSolver class of Kamino, in `solvers/fk.py`.
 """
 
+import copy
 import hashlib
 import unittest
 
@@ -24,10 +25,13 @@ import numpy as np
 import warp as wp
 
 import newton
+from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino._src.core.joints import JointActuationType, JointCorrectionMode, JointDoFType
 from newton._src.solvers.kamino._src.core.model import ModelKamino
 from newton._src.solvers.kamino._src.core.types import vec6f
 from newton._src.solvers.kamino._src.kinematics.joints import compute_joints_data
+from newton._src.solvers.kamino._src.models.builders.basics import build_boxes_fourbar
+from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino._src.solvers.fk import ForwardKinematicsSolver
 from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -43,6 +47,36 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Tests
 ###
+
+
+def create_four_bar_tie_rod() -> ModelBuilderKamino:
+    """
+    Creates a four-bar linkage, but with two revolute joints replaced with
+    spherical joints so as to create a tie rod (to test axis joints).
+    """
+    builder_revolute = build_boxes_fourbar(
+        fixedbase=False,
+        floatingbase=True,
+        limits=False,
+        ground=False,
+        verbose=False,
+        dynamic_joints=False,
+        implicit_pd=False,
+        actuator_ids=[1],
+    )
+    builder_spherical = ModelBuilderKamino(default_world=True)
+    for body in builder_revolute.bodies[0]:
+        builder_spherical.add_rigid_body_descriptor(copy.deepcopy(body))
+    for joint in builder_revolute.joints[0]:
+        joint_copy = copy.deepcopy(joint)
+        if joint.name == "link2_to_link3" or joint.name == "link3_to_link4":
+            joint_copy.dof_type = JointDoFType.SPHERICAL
+        builder_spherical.add_joint_descriptor(joint_copy)
+    for geom in builder_revolute.geoms[0]:
+        geom_copy = copy.deepcopy(geom)
+        geom_copy.shape = builder_revolute.shapes[geom.uid]
+        builder_spherical.add_geometry_descriptor(geom_copy)
+    return builder_spherical
 
 
 class JacobianCheckForwardKinematics(unittest.TestCase):
@@ -303,6 +337,7 @@ def simulate_random_poses(
     config.reset_state = True
     config.use_sparsity = False  # Change for sparse/dense solver
     config.preconditioner = "jacobi_block_diagonal"  # Change to test preconditioners
+    config.add_axis_joints = True  # Set to False to check that axis joints are needed for tie rod example
     solver = ForwardKinematicsSolver(model, config)
     success_flags = []
     with wp.ScopedDevice(model.device):
@@ -497,6 +532,40 @@ class HeterogenousModelRandomPosesCheckForwardKinematics(unittest.TestCase):
         base_q_max = np.array(3 * [0.2] + 4 * [1.0] + 3 * [0.2] + 4 * [1.0])
         actuators_q_max = np.array([theta_max_test_mech] + builder1.num_actuated_joint_coords * [theta_max_dr_legs])
         base_u_max = np.array(3 * [0.1] + 3 * [0.5] + 3 * [0.5] + 3 * [0.5])
+        actuators_u_max = np.array(model.size.sum_of_num_actuated_joint_dofs * [0.5])
+        success = simulate_random_poses(
+            model, num_poses, base_q_max, actuators_q_max, base_u_max, actuators_u_max, rng, self.has_cuda, self.verbose
+        )
+        self.assertTrue(success)
+
+
+class FourBarTieRodRandomPosesCheckForwardKinematics(unittest.TestCase):
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.has_cuda = self.default_device.is_cuda
+        self.verbose = test_context.verbose
+
+    def tearDown(self):
+        self.default_device = None
+
+    def test_four_bar_tie_rod_model_FK_random_poses(self):
+        # Initialize RNG
+        test_name = "Four-bar with tie rod FK random poses check"
+        seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
+        rng = np.random.default_rng(seed)
+
+        # Create a builder with 10 worlds, each with a four-bar with a tie rod
+        builder = make_homogeneous_builder(num_worlds=10, build_fn=create_four_bar_tie_rod)
+        model = builder.finalize(device=self.default_device, requires_grad=False)
+
+        # Simulate random poses
+        num_poses = 30
+        theta_max = np.radians(30.0)
+        base_q_max = np.array(builder.num_worlds * (3 * [0.2] + 4 * [1.0]))
+        actuators_q_max = np.array(builder.num_actuated_joint_coords * [theta_max])
+        base_u_max = np.array(builder.num_worlds * (3 * [0.5] + 3 * [0.5]))
         actuators_u_max = np.array(model.size.sum_of_num_actuated_joint_dofs * [0.5])
         success = simulate_random_poses(
             model, num_poses, base_q_max, actuators_q_max, base_u_max, actuators_u_max, rng, self.has_cuda, self.verbose

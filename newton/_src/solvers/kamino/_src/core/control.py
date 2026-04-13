@@ -116,7 +116,7 @@ class ControlKamino:
         return ControlKamino(
             tau_j=control.joint_f,
             tau_j_ref=control.joint_act,
-            q_j_ref=control.joint_target_pos,
+            q_j_ref=control.joint_target_pos,  # TODO: address mismatch if coords != dofs
             dq_j_ref=control.joint_target_vel,
         )
 

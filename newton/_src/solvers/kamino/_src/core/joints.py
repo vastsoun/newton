@@ -2270,6 +2270,7 @@ class JointsData:
         self.dq_j.zero_()
 
     def reset_references(self, q_j_ref: wp.array | None = None, dq_j_ref: wp.array | None = None):
+        # TODO: update so that quaternions are correctly initialized given None inputs?
         """
         Resets all reference coordinates and velocities to either zero or the provided
         reference values.

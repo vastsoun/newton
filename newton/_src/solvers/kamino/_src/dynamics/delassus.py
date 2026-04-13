@@ -255,6 +255,12 @@ def _build_delassus_elementwise_sparse(
     if block_coords_i[1] != block_coords_j[1]:
         return
 
+    # The Delassus matrix is symmetric, so we only compute the upper triangle (ct_i <= ct_j).
+    ct_i = block_coords_i[0]
+    ct_j = block_coords_j[0]
+    if ct_i > ct_j:
+        return
+
     # Body index (bid) of body k w.r.t the model, from Jacobian block coords
     bid_k = bio + block_coords_i[1] // 6
 
@@ -272,21 +278,15 @@ def _build_delassus_elementwise_sparse(
     Jw_j = vec3f(block_j[3], block_j[4], block_j[5])
 
     # Linear term: inv_m_k * dot(Jv_i, Jv_j)
+    # Angular term: dot(Jw_i, inv_I_k @ Jw_j)
     inv_m_k = model_bodies_inv_m_i[bid_k]
-    lin_ij = inv_m_k * wp.dot(Jv_i, Jv_j)
-    lin_ji = inv_m_k * wp.dot(Jv_j, Jv_i)
-
-    # Angular term: dot(Jw_i.T * I_k, Jw_j)
     inv_I_k = data_bodies_inv_I_i[bid_k]
-    ang_ij = wp.dot(Jw_i, inv_I_k @ Jw_j)
-    ang_ji = wp.dot(Jw_j, inv_I_k @ Jw_i)
+    D_ij = inv_m_k * wp.dot(Jv_i, Jv_j) + wp.dot(Jw_i, inv_I_k @ Jw_j)
 
-    # Compute sum
-    D_ij = lin_ij + ang_ij
-    D_ji = lin_ji + ang_ji
-
-    # Store the result in the Delassus matrix
-    wp.atomic_add(delassus_D, dmio + ncts * block_coords_i[0] + block_coords_j[0], 0.5 * (D_ij + D_ji))
+    # Write upper triangle and mirror to lower
+    wp.atomic_add(delassus_D, dmio + ncts * ct_i + ct_j, D_ij)
+    if ct_i != ct_j:
+        wp.atomic_add(delassus_D, dmio + ncts * ct_j + ct_i, D_ij)
 
 
 @wp.kernel

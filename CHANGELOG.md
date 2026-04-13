@@ -4,6 +4,7 @@
 
 ### Added
 
+- Add `SolverXPBD.update_contacts()` to populate `contacts.force` with per-contact spatial forces (linear force and torque) derived from XPBD constraint impulses
 - Add repeatable `--warp-config KEY=VALUE` CLI option for overriding `warp.config` attributes when running examples
 - Add 3D texture-based SDF, replacing NanoVDB volumes in the mesh-mesh collision pipeline for improved performance and CPU compatibility.
 - Parse URDF joint `limit effort="..."` values and propagate them to imported revolute and prismatic joint `effort_limit` settings

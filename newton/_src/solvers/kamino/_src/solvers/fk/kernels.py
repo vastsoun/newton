@@ -19,7 +19,7 @@ from functools import cache
 
 import warp as wp
 
-from ...core.joints import JointActuationType, JointDoFType
+from ...core.joints import JointActuationType
 from ...core.math import (
     G_of,
     quat_left_jacobian_inverse,
@@ -32,6 +32,7 @@ from ...core.math import (
 )
 from ...core.types import vec6f
 from ...linalg.sparse_matrix import BlockDType
+from .types import FKJointDoFType
 
 ###
 # Module interface
@@ -268,34 +269,36 @@ def _eval_position_control_transformations(
         # In the actuated case, set translation/rotation as per joint generalized coordinates
         if act_type_j != JointActuationType.PASSIVE:
             offset_q_j = actuated_coords_offset[jt_id]
-            if dof_type_j == JointDoFType.CARTESIAN:
+            if dof_type_j == FKJointDoFType.CARTESIAN:
                 t[0] = actuators_q[offset_q_j]
                 t[1] = actuators_q[offset_q_j + 1]
                 t[2] = actuators_q[offset_q_j + 2]
-            elif dof_type_j == JointDoFType.CYLINDRICAL:
+            elif dof_type_j == FKJointDoFType.CYLINDRICAL:
                 t[0] = actuators_q[offset_q_j]
                 q = wp.quat_from_axis_angle(wp.vec3f(X[0, 0], X[1, 0], X[2, 0]), actuators_q[offset_q_j + 1])
-            elif dof_type_j == JointDoFType.FIXED:
+            elif dof_type_j == FKJointDoFType.FIXED:
                 pass  # No dofs to apply
-            elif dof_type_j == JointDoFType.FREE:
+            elif dof_type_j == FKJointDoFType.FREE:
                 t[0] = actuators_q[offset_q_j]
                 t[1] = actuators_q[offset_q_j + 1]
                 t[2] = actuators_q[offset_q_j + 2]
                 q_X = wp.quat_from_matrix(X)
                 q_loc = read_quat_from_array(actuators_q, offset_q_j + 3)
                 q = q_X * q_loc * wp.quat_inverse(q_X)
-            elif dof_type_j == JointDoFType.PRISMATIC:
+            elif dof_type_j == FKJointDoFType.PRISMATIC:
                 t[0] = actuators_q[offset_q_j]
-            elif dof_type_j == JointDoFType.REVOLUTE:
+            elif dof_type_j == FKJointDoFType.REVOLUTE:
                 q = wp.quat_from_axis_angle(wp.vec3f(X[0, 0], X[1, 0], X[2, 0]), actuators_q[offset_q_j])
-            elif dof_type_j == JointDoFType.SPHERICAL:
+            elif dof_type_j == FKJointDoFType.SPHERICAL:
                 q_X = wp.quat_from_matrix(X)
                 q_loc = read_quat_from_array(actuators_q, offset_q_j)
                 q = q_X * q_loc * wp.quat_inverse(q_X)
-            elif dof_type_j == JointDoFType.UNIVERSAL:
+            elif dof_type_j == FKJointDoFType.UNIVERSAL:
                 q_x = wp.quat_from_axis_angle(wp.vec3f(X[0, 0], X[1, 0], X[2, 0]), actuators_q[offset_q_j])
                 q_y = wp.quat_from_axis_angle(wp.vec3f(X[0, 1], X[1, 1], X[2, 1]), actuators_q[offset_q_j + 1])
                 q = q_x * q_y
+            else:
+                assert False, "Unexpected actuator dof type"  # noqa: B011
 
         # Write out transformation
         pos_control_transforms[jt_id] = wp.transformf(t, q)
@@ -454,7 +457,7 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
                 # Check for a passive universal joint
                 dof_type_j = joints_dof_type[jt_id_tot]
                 act_type_j = joints_act_type[jt_id_tot]
-                if dof_type_j != int(JointDoFType.UNIVERSAL) or act_type_j != int(JointActuationType.PASSIVE):
+                if dof_type_j != FKJointDoFType.UNIVERSAL or act_type_j != JointActuationType.PASSIVE:
                     return
 
                 # Compute constraint (dot product between x axis on base and y axis on follower)
@@ -692,7 +695,7 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
                 # Check for a passive universal joint
                 dof_type_j = joints_dof_type[jt_id_tot]
                 act_type_j = joints_act_type[jt_id_tot]
-                if dof_type_j != int(JointDoFType.UNIVERSAL) or act_type_j != int(JointActuationType.PASSIVE):
+                if dof_type_j != FKJointDoFType.UNIVERSAL or act_type_j != JointActuationType.PASSIVE:
                     return
 
                 # Compute constraint Jacobian (cross product between x axis on base and y axis on follower)
@@ -854,7 +857,7 @@ def create_eval_joint_constraints_sparse_jacobian_kernel(has_universal_joints: b
                 # Check for a passive universal joint
                 dof_type_j = joints_dof_type[jt_id_tot]
                 act_type_j = joints_act_type[jt_id_tot]
-                if dof_type_j != int(JointDoFType.UNIVERSAL) or act_type_j != int(JointActuationType.PASSIVE):
+                if dof_type_j != FKJointDoFType.UNIVERSAL or act_type_j != JointActuationType.PASSIVE:
                     return
 
                 # Compute constraint Jacobian (cross product between x axis on base and y axis on follower)
@@ -1399,33 +1402,35 @@ def _eval_target_constraint_velocities(
         offset_u_j = actuated_dofs_offset[jt_id_tot]
         offset_cts_j = ct_full_to_red_map[6 * jt_id_tot]
 
-        if dof_type_j == JointDoFType.CARTESIAN:
+        if dof_type_j == FKJointDoFType.CARTESIAN:
             target_cts_u[wd_id, offset_cts_j] = actuators_u[offset_u_j]
             target_cts_u[wd_id, offset_cts_j + 1] = actuators_u[offset_u_j + 1]
             target_cts_u[wd_id, offset_cts_j + 2] = actuators_u[offset_u_j + 2]
-        elif dof_type_j == JointDoFType.CYLINDRICAL:
+        elif dof_type_j == FKJointDoFType.CYLINDRICAL:
             target_cts_u[wd_id, offset_cts_j] = actuators_u[offset_u_j]
             target_cts_u[wd_id, offset_cts_j + 3] = actuators_u[offset_u_j + 1]
-        elif dof_type_j == JointDoFType.FIXED:
+        elif dof_type_j == FKJointDoFType.FIXED:
             pass  # No dofs to apply
-        elif dof_type_j == JointDoFType.FREE:
+        elif dof_type_j == FKJointDoFType.FREE:
             target_cts_u[wd_id, offset_cts_j] = actuators_u[offset_u_j]
             target_cts_u[wd_id, offset_cts_j + 1] = actuators_u[offset_u_j + 1]
             target_cts_u[wd_id, offset_cts_j + 2] = actuators_u[offset_u_j + 2]
             target_cts_u[wd_id, offset_cts_j + 3] = actuators_u[offset_u_j + 3]
             target_cts_u[wd_id, offset_cts_j + 4] = actuators_u[offset_u_j + 4]
             target_cts_u[wd_id, offset_cts_j + 5] = actuators_u[offset_u_j + 5]
-        elif dof_type_j == JointDoFType.PRISMATIC:
+        elif dof_type_j == FKJointDoFType.PRISMATIC:
             target_cts_u[wd_id, offset_cts_j] = actuators_u[offset_u_j]
-        elif dof_type_j == JointDoFType.REVOLUTE:
+        elif dof_type_j == FKJointDoFType.REVOLUTE:
             target_cts_u[wd_id, offset_cts_j + 3] = actuators_u[offset_u_j]
-        elif dof_type_j == JointDoFType.SPHERICAL:
+        elif dof_type_j == FKJointDoFType.SPHERICAL:
             target_cts_u[wd_id, offset_cts_j + 3] = actuators_u[offset_u_j]
             target_cts_u[wd_id, offset_cts_j + 4] = actuators_u[offset_u_j + 1]
             target_cts_u[wd_id, offset_cts_j + 5] = actuators_u[offset_u_j + 2]
-        elif dof_type_j == JointDoFType.UNIVERSAL:
+        elif dof_type_j == FKJointDoFType.UNIVERSAL:
             target_cts_u[wd_id, offset_cts_j + 3] = actuators_u[offset_u_j]
             target_cts_u[wd_id, offset_cts_j + 4] = actuators_u[offset_u_j + 1]
+        else:
+            assert False, "Unexpected actuator dof type"  # noqa: B011
 
 
 @wp.kernel

@@ -27,10 +27,7 @@ import warp as wp
 # Module interface
 ###
 
-__all__ = [
-    "ForwardKinematicsPreconditionerType",
-    "ForwardKinematicsStatus",
-]
+__all__ = ["FKJointDoFType", "ForwardKinematicsPreconditionerType", "ForwardKinematicsStatus"]
 
 
 ###
@@ -43,6 +40,28 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Types
 ###
+
+
+class FKJointDoFType(IntEnum):
+    """
+    Joint dof types for the FK solver, which currently differs from Kamino's main joint types
+    by the addition of the axis joint, used to regularize tie rods between two spherical joints
+    (taking out the rotation dof about their own axis).
+
+    Importantly, the integer value is the same for all joints not specific to FK, allowing seamless
+    conversions.
+    """
+
+    FREE = 0
+    REVOLUTE = 1
+    PRISMATIC = 2
+    CYLINDRICAL = 3
+    UNIVERSAL = 4
+    SPHERICAL = 5
+    GIMBAL = 6
+    CARTESIAN = 7
+    FIXED = 8
+    AXIS = 9
 
 
 class ForwardKinematicsPreconditionerType(IntEnum):

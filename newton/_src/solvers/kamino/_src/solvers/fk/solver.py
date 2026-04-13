@@ -61,7 +61,7 @@ from .kernels import (
     create_eval_joint_constraints_sparse_jacobian_kernel,
     create_tile_based_kernels,
 )
-from .types import ForwardKinematicsPreconditionerType, ForwardKinematicsStatus
+from .types import FKJointDoFType, ForwardKinematicsPreconditionerType, ForwardKinematicsStatus
 
 ###
 # Module interface
@@ -217,8 +217,9 @@ class ForwardKinematicsSolver:
             # Note: will currently produce garbage for passive joints (because for these the offsets are set to -1)
             # but we won't read these values below anyway.
 
-        # Create a copy of the model's joints with added actuated
-        # free joints as needed to reset the base position/orientation
+        # Create a copy of the model's joints with added joints as needed:
+        # - actuated free joints to reset the base position/orientation
+        # - axis joints to factor out superfluous DoFs at tie rods
         joints_dof_type_prev = self.model.joints.dof_type.numpy().copy()
         joints_act_type_prev = self.model.joints.act_type.numpy().copy()
         joints_bid_B_prev = self.model.joints.bid_B.numpy().copy()
@@ -255,6 +256,8 @@ class ForwardKinematicsSolver:
                 i for i in range(first_joint_id_prev[wd_id], first_joint_id_prev[wd_id + 1]) if i != base_joint_id
             ]
             for jt_id_prev in world_joint_ids:
+                # Note: we use the fact that integer values of the FK vs Kamino dof type enums
+                # are matched for all joints that are not FK-specific
                 joints_dof_type.append(joints_dof_type_prev[jt_id_prev])
                 joints_act_type.append(joints_act_type_prev[jt_id_prev])
                 joints_bid_B.append(joints_bid_B_prev[jt_id_prev])
@@ -275,6 +278,67 @@ class ForwardKinematicsSolver:
                 else:
                     joints_num_actuated_coords.append(0)
                     joints_num_actuated_dofs.append(0)
+
+            # Add axis joints as needed
+            if self.config.add_axis_joints:
+                # Find all bodies incident to two spherical joints (and nothing more)
+                num_joints_per_body = np.zeros(dtype=np.int32, shape=num_bodies[wd_id])
+                spherical_joints_per_body = [[] for i in range(num_bodies[wd_id])]
+                for jt_id_prev in world_joint_ids:
+                    is_spherical = joints_dof_type_prev[jt_id_prev] == JointDoFType.SPHERICAL
+                    bid_B = joints_bid_B_prev[jt_id_prev]
+                    if bid_B >= 0:
+                        bid_B -= first_body_id[wd_id]
+                        num_joints_per_body[bid_B] += 1
+                        if is_spherical:
+                            spherical_joints_per_body[bid_B].append(jt_id_prev)
+                    bid_F = joints_bid_F_prev[jt_id_prev] - first_body_id[wd_id]
+                    num_joints_per_body[bid_F] += 1
+                    if is_spherical:
+                        spherical_joints_per_body[bid_F].append(jt_id_prev)
+
+                # Add an axis joint for each such body
+                for rb_id in range(num_bodies[wd_id]):
+                    if num_joints_per_body[rb_id] != 2 or len(spherical_joints_per_body[rb_id]) != 2:
+                        continue
+                    rb_id_tot = first_body_id[wd_id] + rb_id
+                    joints_dof_type.append(FKJointDoFType.AXIS)
+                    joints_act_type.append(JointActuationType.PASSIVE)
+                    joints_bid_B.append(-1)
+                    joints_bid_F.append(rb_id_tot)
+                    joints_B_r_Bj.append(np.zeros(dtype=np.float32, shape=3))
+                    joints_F_r_Fj.append(np.zeros(dtype=np.float32, shape=3))
+                    joints_num_actuated_coords.append(0)
+                    joints_num_actuated_dofs.append(0)
+
+                    # Compute position of both spherical joints on initial pose
+                    def eval_joint_pos_init(jt_id_prev):
+                        bid_B = joints_bid_B_prev[jt_id_prev]
+                        bid_F = joints_bid_F_prev[jt_id_prev]
+                        if bid_B == rb_id_tot:  # Body is the joint's base  # noqa: B023
+                            q_B = bodies_q_0[bid_B]
+                            B_r_B = joints_B_r_Bj_prev[jt_id_prev]
+                            return q_B[:3] + np.array(wp.quat_rotate(wp.quat(q_B[3:]), wp.vec3f(B_r_B)))
+                        else:  # Body is the joint's follower
+                            assert bid_F == rb_id_tot  # noqa: B023
+                            q_F = bodies_q_0[bid_F]
+                            F_r_F = joints_F_r_Fj_prev[jt_id_prev]
+                            return q_F[:3] + np.array(wp.quat_rotate(wp.quat(q_F[3:]), wp.vec3f(F_r_F)))
+
+                    pos_0 = eval_joint_pos_init(spherical_joints_per_body[rb_id][0])
+                    pos_1 = eval_joint_pos_init(spherical_joints_per_body[rb_id][1])
+
+                    # Joint frame: set X axis that connects both spherical joints (= tie rod axis)
+                    a_x = pos_1 - pos_0
+                    a_x /= np.linalg.norm(a_x)
+                    if np.abs(a_x[2]) < 0.99:
+                        a_y = np.cross(np.array([0.0, 0.0, 1.0]), a_x)
+                    else:
+                        a_y = np.cross(np.array([0.0, 1.0, 0.0]), a_x)
+                    a_y /= np.linalg.norm(a_y)
+                    a_z = np.cross(a_x, a_y)
+                    a_z /= np.linalg.norm(a_z)
+                    joints_X_j.append(np.stack((a_x, a_y, a_z), axis=1))
 
             # Add joint for base joint / base body
             if base_joint_id >= 0:  # Replace base joint with an actuated free joint
@@ -360,39 +424,42 @@ class ForwardKinematicsSolver:
                     ct_count += 6
                 else:
                     dof_type = joints_dof_type[jt_id_tot]
-                    if dof_type == JointDoFType.CARTESIAN:
+                    if dof_type == FKJointDoFType.AXIS:
+                        constraint_full_to_red_map[6 * jt_id_tot + 3] = ct_count
+                        ct_count += 1
+                    elif dof_type == FKJointDoFType.CARTESIAN:
                         for i in range(3):
                             constraint_full_to_red_map[6 * jt_id_tot + 3 + i] = ct_count + i
                         ct_count += 3
-                    elif dof_type == JointDoFType.CYLINDRICAL:
+                    elif dof_type == FKJointDoFType.CYLINDRICAL:
                         constraint_full_to_red_map[6 * jt_id_tot + 1] = ct_count
                         constraint_full_to_red_map[6 * jt_id_tot + 2] = ct_count + 1
                         constraint_full_to_red_map[6 * jt_id_tot + 4] = ct_count + 2
                         constraint_full_to_red_map[6 * jt_id_tot + 5] = ct_count + 3
                         ct_count += 4
-                    elif dof_type == JointDoFType.FIXED:
+                    elif dof_type == FKJointDoFType.FIXED:
                         for i in range(6):
                             constraint_full_to_red_map[6 * jt_id_tot + i] = ct_count + i
                         ct_count += 6
-                    elif dof_type == JointDoFType.FREE:
+                    elif dof_type == FKJointDoFType.FREE:
                         pass
-                    elif dof_type == JointDoFType.PRISMATIC:
+                    elif dof_type == FKJointDoFType.PRISMATIC:
                         constraint_full_to_red_map[6 * jt_id_tot + 1] = ct_count
                         constraint_full_to_red_map[6 * jt_id_tot + 2] = ct_count + 1
                         for i in range(3):
                             constraint_full_to_red_map[6 * jt_id_tot + 3 + i] = ct_count + 2 + i
                         ct_count += 5
-                    elif dof_type == JointDoFType.REVOLUTE:
+                    elif dof_type == FKJointDoFType.REVOLUTE:
                         for i in range(3):
                             constraint_full_to_red_map[6 * jt_id_tot + i] = ct_count + i
                         constraint_full_to_red_map[6 * jt_id_tot + 4] = ct_count + 3
                         constraint_full_to_red_map[6 * jt_id_tot + 5] = ct_count + 4
                         ct_count += 5
-                    elif dof_type == JointDoFType.SPHERICAL:
+                    elif dof_type == FKJointDoFType.SPHERICAL:
                         for i in range(3):
                             constraint_full_to_red_map[6 * jt_id_tot + i] = ct_count + i
                         ct_count += 3
-                    elif dof_type == JointDoFType.UNIVERSAL:
+                    elif dof_type == FKJointDoFType.UNIVERSAL:
                         for i in range(3):
                             constraint_full_to_red_map[6 * jt_id_tot + i] = ct_count + i
                         constraint_full_to_red_map[6 * jt_id_tot + 5] = ct_count + 3

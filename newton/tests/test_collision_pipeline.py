@@ -717,6 +717,71 @@ for bp_name in ("explicit", "nxn", "sap"):
     )
 
 
+def test_box_box_quaternion_perturbation(test, device, broad_phase: str):
+    """Verify box-box contacts are correct under tiny quaternion perturbation.
+
+    Two identical cubes are placed face-to-face with a non-trivial base
+    rotation (30 deg around X) and a tiny quaternion perturbation (~1e-14)
+    in the second box only. Without the support-map deadband fix this
+    produces 1 invalid contact instead of 4 face-corner contacts, with an
+    out-of-bounds body-frame point and a wrong world-frame normal.
+
+    Regression test for issue #2024 / #2430.
+    """
+    with wp.ScopedDevice(device):
+        half = 0.495
+        q_clean = wp.quat(0.2588233343021173, 0.0, 0.0, 0.9659246769912934)
+        q_noisy = wp.quat(0.2588233343021173, -2.27e-14, 9.25e-15, 0.9659246769912934)
+
+        y, z = 6.680443286895752, 4.4285125732421875
+
+        builder = newton.ModelBuilder()
+        b0 = builder.add_body(xform=wp.transform(p=wp.vec3(half, y, z), q=q_clean))
+        builder.add_shape_box(body=b0, hx=half, hy=half, hz=half)
+
+        b1 = builder.add_body(xform=wp.transform(p=wp.vec3(-half, y, z), q=q_noisy))
+        builder.add_shape_box(body=b1, hx=half, hy=half, hz=half)
+
+        model = builder.finalize(device=device)
+        state = model.state()
+
+        pipeline = newton.CollisionPipeline(model, broad_phase=broad_phase)
+        contacts = pipeline.contacts()
+        pipeline.collide(state, contacts)
+
+        cc = int(contacts.rigid_contact_count.numpy()[0])
+        points0 = contacts.rigid_contact_point0.numpy()[:cc]
+        normals = contacts.rigid_contact_normal.numpy()[:cc]
+
+        test.assertEqual(cc, 4, f"Expected 4 face-corner contacts, got {cc}")
+
+        for i in range(cc):
+            pt = points0[i]
+            n = normals[i]
+            for j in range(3):
+                test.assertLessEqual(
+                    abs(pt[j]),
+                    half * 1.01,
+                    f"Contact {i} body-frame point[{j}] = {pt[j]:.4f} outside half-extent {half}",
+                )
+            test.assertAlmostEqual(
+                abs(n[0]),
+                1.0,
+                places=2,
+                msg=f"Contact {i} normal = [{n[0]:.4f}, {n[1]:.4f}, {n[2]:.4f}], expected [+-1, 0, 0]",
+            )
+
+
+for bp_name in ("explicit", "nxn", "sap"):
+    add_function_test(
+        TestRigidContactNormal,
+        f"test_box_box_quaternion_perturbation_{bp_name}",
+        test_box_box_quaternion_perturbation,
+        devices=devices,
+        broad_phase=bp_name,
+    )
+
+
 # ============================================================================
 # Particle-Shape (Soft) Contact Tests
 # ============================================================================

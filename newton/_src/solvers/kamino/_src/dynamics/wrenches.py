@@ -86,14 +86,13 @@ def _compute_joint_dof_body_wrenches_dense(
     # Retrieve the element index offset of the bodies of the world
     bio = model_info_bodies_offset[wid]
 
-    # Retrieve the DoF block index offsets of the world's actuation
-    # Jacobian matrix and generalized joint actuation force vector
-    mio = jacobian_dofs_offsets[wid]
-    vio = model_info_joint_dofs_offset[wid]
+    # Use the global DoF offset directly for the generalized force vector
+    vio = dio_j
 
-    # Append offsets to the current joint's DoFs
-    vio += dio_j
-    mio += nbd * dio_j
+    # Compute the local DoF offset within the world for Jacobian matrix indexing
+    local_dio_j = dio_j - model_info_joint_dofs_offset[wid]
+    mio = jacobian_dofs_offsets[wid]
+    mio += nbd * local_dio_j
 
     # Compute and store the joint actuation wrench for the Follower body
     w_j_F = vec6f(0.0)
@@ -122,7 +121,6 @@ def _compute_joint_dof_body_wrenches_dense(
 @wp.kernel
 def _compute_joint_dof_body_wrenches_sparse(
     # Inputs:
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
     model_joints_num_dofs: wp.array(dtype=int32),
     model_joints_dofs_offset: wp.array(dtype=int32),
     model_joints_wid: wp.array(dtype=int32),
@@ -137,9 +135,6 @@ def _compute_joint_dof_body_wrenches_sparse(
     # Retrieve the thread index as the joint index
     jid = wp.tid()
 
-    # Retrieve the world index of the joint
-    wid = model_joints_wid[jid]
-
     # Retrieve the body indices of the joint
     # NOTE: these indices are w.r.t the model
     bid_F_j = model_joints_bid_F[jid]
@@ -149,12 +144,8 @@ def _compute_joint_dof_body_wrenches_sparse(
     d_j = model_joints_num_dofs[jid]
     dio_j = model_joints_dofs_offset[jid]
 
-    # Retrieve the DoF block index offsets of the world's actuation
-    # Jacobian matrix and generalized joint actuation force vector
-    vio = model_info_joint_dofs_offset[wid]
-
-    # Append offsets to the current joint's DoFs
-    vio += dio_j
+    # Use the global DoF offset directly for the generalized force vector
+    vio = dio_j
 
     # Retrieve the starting index for the non-zero blocks for the current joint
     jac_j_nzb_start = jac_joint_nzb_offsets[jid]
@@ -184,6 +175,8 @@ def _compute_joint_cts_body_wrenches_dense(
     # Inputs:
     model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
+    model_info_joint_dynamic_cts_offset: wp.array(dtype=int32),
+    model_info_joint_kinematic_cts_offset: wp.array(dtype=int32),
     model_info_joint_dynamic_cts_group_offset: wp.array(dtype=int32),
     model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     model_time_inv_dt: wp.array(dtype=float32),
@@ -228,6 +221,10 @@ def _compute_joint_cts_body_wrenches_dense(
     world_jdcgo = model_info_joint_dynamic_cts_group_offset[wid]
     world_jkcgo = model_info_joint_kinematic_cts_group_offset[wid]
 
+    # Compute local (within-world) constraint offsets for Jacobian matrix indexing
+    local_dyn_cts_start_j = dyn_cts_start_j - model_info_joint_dynamic_cts_offset[wid]
+    local_kin_cts_start_j = kin_cts_start_j - model_info_joint_kinematic_cts_offset[wid]
+
     # Retrieve the inverse time-step of the world
     inv_dt = model_time_inv_dt[wid]
 
@@ -241,14 +238,14 @@ def _compute_joint_cts_body_wrenches_dense(
     w_j_F = vec6f(0.0)
     col_F_start = 6 * (bid_F_j - bio)
     for j in range(num_dyn_cts_j):
-        row_j = world_jdcgo + dyn_cts_start_j + j
+        row_j = world_jdcgo + local_dyn_cts_start_j + j
         mio_j = world_jacobian_start + nbd * row_j + col_F_start
         vio_j = world_cts_start + row_j
         lambda_j = inv_dt * lambdas_data[vio_j]
         for i in range(6):
             w_j_F[i] += jacobian_cts_data[mio_j + i] * lambda_j
     for j in range(num_kin_cts_j):
-        row_j = world_jkcgo + kin_cts_start_j + j
+        row_j = world_jkcgo + local_kin_cts_start_j + j
         mio_j = world_jacobian_start + nbd * row_j + col_F_start
         vio_j = world_cts_start + row_j
         lambda_j = inv_dt * lambdas_data[vio_j]
@@ -262,14 +259,14 @@ def _compute_joint_cts_body_wrenches_dense(
         w_j_B = vec6f(0.0)
         col_B_start = 6 * (bid_B_j - bio)
         for j in range(num_dyn_cts_j):
-            row_j = world_jdcgo + dyn_cts_start_j + j
+            row_j = world_jdcgo + local_dyn_cts_start_j + j
             mio_j = world_jacobian_start + nbd * row_j + col_B_start
             vio_j = world_cts_start + row_j
             lambda_j = inv_dt * lambdas_data[vio_j]
             for i in range(6):
                 w_j_B[i] += jacobian_cts_data[mio_j + i] * lambda_j
         for j in range(num_kin_cts_j):
-            row_j = world_jkcgo + kin_cts_start_j + j
+            row_j = world_jkcgo + local_kin_cts_start_j + j
             mio_j = world_jacobian_start + nbd * row_j + col_B_start
             vio_j = world_cts_start + row_j
             lambda_j = inv_dt * lambdas_data[vio_j]
@@ -589,7 +586,6 @@ def compute_joint_dof_body_wrenches_sparse(
         dim=model.size.sum_of_num_joints,
         inputs=[
             # Inputs:
-            model.info.joint_dofs_offset,
             model.joints.num_dofs,
             model.joints.dofs_offset,
             model.joints.wid,
@@ -650,6 +646,8 @@ def compute_constraint_body_wrenches_dense(
                 # Inputs:
                 model.info.num_body_dofs,
                 model.info.bodies_offset,
+                model.info.joint_dynamic_cts_offset,
+                model.info.joint_kinematic_cts_offset,
                 model.info.joint_dynamic_cts_group_offset,
                 model.info.joint_kinematic_cts_group_offset,
                 model.time.inv_dt,

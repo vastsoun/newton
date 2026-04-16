@@ -52,10 +52,6 @@ wp.set_module_options({"enable_backward": False})
 def _pd_control_callback(
     # Inputs:
     decimation: int32,
-    model_info_joint_coords_offset: wp.array(dtype=int32),
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_actuated_coords_offset: wp.array(dtype=int32),
-    model_info_joint_actuated_dofs_offset: wp.array(dtype=int32),
     model_joints_wid: wp.array(dtype=int32),
     model_joints_act_type: wp.array(dtype=int32),
     model_joint_num_coords: wp.array(dtype=int32),
@@ -101,20 +97,8 @@ def _pd_control_callback(
     actuated_coords_offset_j = model_joint_actuated_coords_offset[jid]
     actuated_dofs_offset_j = model_joint_actuated_dofs_offset[jid]
 
-    # Retrieve the offset of the world's joints in the global DoF vector
-    world_coords_offset = model_info_joint_coords_offset[wid]
-    world_dofs_offset = model_info_joint_dofs_offset[wid]
-    world_actuated_coords_offset = model_info_joint_actuated_coords_offset[wid]
-    world_actuated_dofs_offset = model_info_joint_actuated_dofs_offset[wid]
-
     # Retrieve the current frame of the animation reference for the world
     frame = animation_frame[wid]
-
-    # Compute the global DoF offset of the joint
-    coords_offset_j += world_coords_offset
-    dofs_offset_j += world_dofs_offset
-    actuated_coords_offset_j += world_actuated_coords_offset
-    actuated_dofs_offset_j += world_actuated_dofs_offset
 
     # Copy the joint reference coordinates and velocities
     # from the animation data to the controller data
@@ -141,10 +125,6 @@ def pd_control_callback(sim: Simulator, animation: AnimationJointReference, deci
         inputs=[
             # Inputs
             int32(decimation),
-            sim.model.info.joint_coords_offset,
-            sim.model.info.joint_dofs_offset,
-            sim.model.info.joint_actuated_coords_offset,
-            sim.model.info.joint_actuated_dofs_offset,
             sim.model.joints.wid,
             sim.model.joints.act_type,
             sim.model.joints.num_coords,

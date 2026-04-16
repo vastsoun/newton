@@ -172,13 +172,11 @@ def _warmstart_joint_constraints(
     model_time_dt: wp.array(dtype=float32),
     model_info_joint_cts_offset: wp.array(dtype=int32),
     model_info_total_cts_offset: wp.array(dtype=int32),
-    model_info_joint_dynamic_cts_group_offset: wp.array(dtype=int32),
-    model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     joint_wid: wp.array(dtype=int32),
     joint_num_dynamic_cts: wp.array(dtype=int32),
     joint_num_kinematic_cts: wp.array(dtype=int32),
-    joint_dynamic_cts_offset: wp.array(dtype=int32),
-    joint_kinematic_cts_offset: wp.array(dtype=int32),
+    joint_dynamic_cts_total_offset: wp.array(dtype=int32),
+    joint_kinematic_cts_total_offset: wp.array(dtype=int32),
     joint_lambda_j: wp.array(dtype=float32),
     problem_P: wp.array(dtype=float32),
     # Outputs:
@@ -193,22 +191,18 @@ def _warmstart_joint_constraints(
     wid_j = joint_wid[jid]
     num_dynamic_cts_j = joint_num_dynamic_cts[jid]
     num_kinematic_cts_j = joint_num_kinematic_cts[jid]
-    dynamic_cts_start_j = joint_dynamic_cts_offset[jid]
-    kinematic_cts_start_j = joint_kinematic_cts_offset[jid]
 
     # Retrieve the world-specific info
     dt = model_time_dt[wid_j]
-    world_joint_cts_start = model_info_joint_cts_offset[wid_j]
-    world_total_cts_start = model_info_total_cts_offset[wid_j]
-    world_joint_dynamic_cts_group_start = model_info_joint_dynamic_cts_group_offset[wid_j]
-    world_joint_kinematic_cts_group_start = model_info_joint_kinematic_cts_group_offset[wid_j]
 
-    # Compute block offsets of the joint's constraints within
-    # the joint-only constraints and total constraints arrays
-    joint_dyn_cts_start = world_joint_cts_start + world_joint_dynamic_cts_group_start + dynamic_cts_start_j
-    dyn_cts_row_start_j = world_total_cts_start + world_joint_dynamic_cts_group_start + dynamic_cts_start_j
-    joint_kin_cts_start = world_joint_cts_start + world_joint_kinematic_cts_group_start + kinematic_cts_start_j
-    kin_cts_row_start_j = world_total_cts_start + world_joint_kinematic_cts_group_start + kinematic_cts_start_j
+    # Global offsets in the total constraints vector
+    dyn_cts_row_start_j = joint_dynamic_cts_total_offset[jid]
+    kin_cts_row_start_j = joint_kinematic_cts_total_offset[jid]
+
+    # Rebase from total_cts to joint-only cts array
+    joint_cts_rebase = model_info_joint_cts_offset[wid_j] - model_info_total_cts_offset[wid_j]
+    joint_dyn_cts_start = dyn_cts_row_start_j + joint_cts_rebase
+    joint_kin_cts_start = kin_cts_row_start_j + joint_cts_rebase
 
     # For each joint constraint, scale the constraint force by the time-step and
     # the preconditioner and initialize the solver state variables accordingly

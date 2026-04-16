@@ -155,25 +155,13 @@ def compute_actuated_coords_and_dofs_offsets(model: ModelKamino):
     and dofs from all joint coordinates/dofs
     Returns actuated_coords_offsets, actuated_coords_sizes, actuated_dofs_offsets, actuated_dofs_sizes
     """
-    # Joints
-    num_joints = model.info.num_joints.numpy()  # Num joints per world
-    first_joint_id = np.concatenate(([0], num_joints.cumsum()))  # First joint id per world
+    # Joint coordinates (offsets are already global)
+    coord_offsets = model.joints.coords_offset.numpy().copy()
+    joint_num_coords = model.joints.num_coords.numpy()
 
-    # Joint coordinates
-    num_coords = model.info.num_joint_coords.numpy()  # Num coords per world
-    first_coord = np.concatenate(([0], num_coords.cumsum()))  # First coord id per world
-    coord_offsets = model.joints.coords_offset.numpy().copy()  # First coord id per joint within world
-    for wd_id in range(model.size.num_worlds):  # Convert to first coord id per joint globally
-        coord_offsets[first_joint_id[wd_id] : first_joint_id[wd_id + 1]] += first_coord[wd_id]
-    joint_num_coords = model.joints.num_coords.numpy()  # Num coords per joint
-
-    # Joint dofs
-    num_dofs = model.info.num_joint_dofs.numpy()  # Num dofs per world
-    first_dof = np.concatenate(([0], num_dofs.cumsum()))  # First dof id per world
-    dof_offsets = model.joints.dofs_offset.numpy().copy()  # First dof id per joint within world
-    for wd_id in range(model.size.num_worlds):  # Convert to first dof id per joint globally
-        dof_offsets[first_joint_id[wd_id] : first_joint_id[wd_id + 1]] += first_dof[wd_id]
-    joint_num_dofs = model.joints.num_dofs.numpy()  # Num dofs per joint
+    # Joint dofs (offsets are already global)
+    dof_offsets = model.joints.dofs_offset.numpy().copy()
+    joint_num_dofs = model.joints.num_dofs.numpy()
 
     # Filter for actuators only
     joint_is_actuator = model.joints.act_type.numpy() == JointActuationType.FORCE
@@ -202,14 +190,8 @@ def compute_constraint_residual_mask(model: ModelKamino):
     for base joints (to filter out residuals for fixed base models if the base is reset
     to a different pose)
     """
-    # Precompute constraint offsets
-    num_joints = model.info.num_joints.numpy()  # Num joints per world
-    first_joint_id = np.concatenate(([0], num_joints.cumsum()))  # First joint id per world
-    num_cts = model.info.num_joint_cts.numpy()  # Num joint cts per world
-    first_ct_id = np.concatenate(([0], num_cts.cumsum()))  # First joint ct id per world
-    first_joint_ct_id = model.joints.cts_offset.numpy().copy()  # First ct id per joint within world
-    for wd_id in range(model.size.num_worlds):  # Convert to first ct id per joint globally
-        first_joint_ct_id[first_joint_id[wd_id] : first_joint_id[wd_id + 1]] += first_ct_id[wd_id]
+    # Precompute constraint offsets (cts_offset is already global)
+    first_joint_ct_id = model.joints.cts_offset.numpy().copy()
     num_joint_cts = model.joints.num_cts.numpy()  # Num cts per joint
 
     mask = np.array(model.size.sum_of_num_joint_cts * [True])

@@ -447,11 +447,15 @@ def _build_joint_jacobians_dense(
     # Inputs
     model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
+    model_info_joint_dofs_offset: wp.array(dtype=int32),
+    model_info_joint_dynamic_cts_offset: wp.array(dtype=int32),
+    model_info_joint_kinematic_cts_offset: wp.array(dtype=int32),
     model_info_joint_dynamic_cts_group_offset: wp.array(dtype=int32),
     model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     model_joints_wid: wp.array(dtype=int32),
     model_joints_dof_type: wp.array(dtype=int32),
     model_joints_dofs_offset: wp.array(dtype=int32),
+    model_joints_num_dynamic_cts: wp.array(dtype=int32),
     model_joints_dynamic_cts_offset: wp.array(dtype=int32),
     model_joints_kinematic_cts_offset: wp.array(dtype=int32),
     model_joints_bid_B: wp.array(dtype=int32),
@@ -477,6 +481,7 @@ def _build_joint_jacobians_dense(
     bid_B = model_joints_bid_B[jid]
     bid_F = model_joints_bid_F[jid]
     dofs_offset = model_joints_dofs_offset[jid]
+    num_dyn_cts = model_joints_num_dynamic_cts[jid]
     dyn_cts_offset = model_joints_dynamic_cts_offset[jid]
     kin_cts_offset = model_joints_kinematic_cts_offset[jid]
 
@@ -486,14 +491,19 @@ def _build_joint_jacobians_dense(
     jdcgo = model_info_joint_dynamic_cts_group_offset[wid]
     jkcgo = model_info_joint_kinematic_cts_group_offset[wid]
 
+    # Compute local (within-world) offsets for Jacobian matrix indexing
+    local_dofs_offset = dofs_offset - model_info_joint_dofs_offset[wid]
+    local_dyn_cts_offset = dyn_cts_offset - model_info_joint_dynamic_cts_offset[wid]
+    local_kin_cts_offset = kin_cts_offset - model_info_joint_kinematic_cts_offset[wid]
+
     # Retrieve the Jacobian block offset for this world
     J_cjmio = jac_cts_offsets[wid]
     J_djmio = jac_dofs_offsets[wid]
 
     # Constraint Jacobian row offsets for this joint
-    J_jdof_row_start = J_djmio + nbd * dofs_offset
-    J_jdc_row_start = J_cjmio + nbd * (jdcgo + dyn_cts_offset)
-    J_jkc_row_start = J_cjmio + nbd * (jkcgo + kin_cts_offset)
+    J_jdof_row_start = J_djmio + nbd * local_dofs_offset
+    J_jdc_row_start = J_cjmio + nbd * (jdcgo + local_dyn_cts_offset)
+    J_jkc_row_start = J_cjmio + nbd * (jkcgo + local_kin_cts_offset)
 
     # Retrieve the pose transform of the joint
     T_j = state_joints_p[jid]
@@ -528,7 +538,7 @@ def _build_joint_jacobians_dense(
 
     # Store joint dynamic constraint jacobians if applicable
     # NOTE: We use the extraction method for DoFs since dynamic constraints are in DoF-space
-    if dyn_cts_offset >= 0:  # Negative dynamic constraint offset means the joint is not implicit
+    if num_dyn_cts > 0:
         store_joint_dofs_jacobian_dense(dof_type, J_jdc_row_start, nbd, bio, bid_B, bid_F, JT_B_j, JT_F_j, jac_cts_data)
 
     # Store joint kinematic constraint jacobians
@@ -557,6 +567,7 @@ def _build_joint_jacobians_sparse(
     # Inputs
     model_joints_dof_type: wp.array(dtype=int32),
     model_joints_num_dofs: wp.array(dtype=int32),
+    model_joints_num_dynamic_cts: wp.array(dtype=int32),
     model_joints_bid_B: wp.array(dtype=int32),
     model_joints_bid_F: wp.array(dtype=int32),
     model_joints_X_j: wp.array(dtype=mat33f),
@@ -578,9 +589,9 @@ def _build_joint_jacobians_sparse(
     # Retrieve the joint model data
     dof_type = model_joints_dof_type[jid]
     num_dofs = model_joints_num_dofs[jid]
+    num_dyn_cts = model_joints_num_dynamic_cts[jid]
     bid_B = model_joints_bid_B[jid]
     bid_F = model_joints_bid_F[jid]
-    dyn_cts_offset = model_joints_dynamic_cts_offset[jid]
 
     # Retrieve the pose transform of the joint
     T_j = state_joints_p[jid]
@@ -615,7 +626,7 @@ def _build_joint_jacobians_sparse(
 
     # Store joint dynamic constraint jacobians if applicable
     # NOTE: We use the extraction method for DoFs since dynamic constraints are in DoF-space
-    if dyn_cts_offset >= 0:  # Negative dynamic constraint offset means the joint is not implicit
+    if num_dyn_cts > 0:
         store_joint_dofs_jacobian_sparse(
             dof_type,
             bid_B > -1,
@@ -626,7 +637,7 @@ def _build_joint_jacobians_sparse(
         )
 
     # Store the constraint Jacobian block
-    kinematic_nzb_offset = 0 if dyn_cts_offset < 0 else (2 * num_dofs if bid_B > -1 else num_dofs)
+    kinematic_nzb_offset = 0 if num_dyn_cts == 0 else (2 * num_dofs if bid_B > -1 else num_dofs)
     store_joint_cts_jacobian_sparse(
         dof_type,
         bid_B > -1,
@@ -652,6 +663,7 @@ def _build_limit_jacobians_dense(
     # Inputs:
     model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
+    model_info_joint_dofs_offset: wp.array(dtype=int32),
     data_info_limit_cts_group_offset: wp.array(dtype=int32),
     limits_model_num: wp.array(dtype=int32),
     limits_model_max: int32,
@@ -693,8 +705,11 @@ def _build_limit_jacobians_dense(
     ajmio = jacobian_dofs_offsets[wid_l]
     cjmio = jacobian_cts_offsets[wid_l]
 
+    # Compute local (within-world) DoF index for Jacobian matrix indexing
+    local_dof_l = dof_l - model_info_joint_dofs_offset[wid_l]
+
     # Append the index offsets to the corresponding rows of the Jacobians
-    ajmio += nbd * dof_l
+    ajmio += nbd * local_dof_l
     cjmio += nbd * (lcgo + lid_l)
 
     # Extract the body ids
@@ -1416,11 +1431,15 @@ class DenseSystemJacobians:
                     # Inputs:
                     model.info.num_body_dofs,
                     model.info.bodies_offset,
+                    model.info.joint_dofs_offset,
+                    model.info.joint_dynamic_cts_offset,
+                    model.info.joint_kinematic_cts_offset,
                     model.info.joint_dynamic_cts_group_offset,
                     model.info.joint_kinematic_cts_group_offset,
                     model.joints.wid,
                     model.joints.dof_type,
                     model.joints.dofs_offset,
+                    model.joints.num_dynamic_cts,
                     model.joints.dynamic_cts_offset,
                     model.joints.kinematic_cts_offset,
                     model.joints.bid_B,
@@ -1445,6 +1464,7 @@ class DenseSystemJacobians:
                     # Inputs:
                     model.info.num_body_dofs,
                     model.info.bodies_offset,
+                    model.info.joint_dofs_offset,
                     data.info.limit_cts_group_offset,
                     limits.model_active_limits,
                     limits.model_max_limits_host,
@@ -1610,6 +1630,9 @@ class SparseSystemJacobians:
         joint_dynamic_cts_group_offset = model.info.joint_dynamic_cts_group_offset.numpy()
         joint_kinematic_cts_group_offset = model.info.joint_kinematic_cts_group_offset.numpy()
         joint_dofs_offset = model.joints.dofs_offset.numpy()
+        world_dofs_offset = model.info.joint_dofs_offset.numpy()
+        world_dynamic_cts_offset = model.info.joint_dynamic_cts_offset.numpy()
+        world_kinematic_cts_offset = model.info.joint_kinematic_cts_offset.numpy()
         bodies_offset = model.info.bodies_offset.numpy()
         J_cts_nnzb_min = [0] * num_worlds
         J_cts_nnzb_max = [0] * num_worlds
@@ -1638,10 +1661,13 @@ class SparseSystemJacobians:
             J_cts_nnzb_max[w] += num_adjacent_bodies * num_cts
             J_dofs_nnzb[w] += num_adjacent_bodies * num_dofs
 
-            # Joint nzb coordinates
-            dynamic_cts_offset = joint_dynamic_cts_offset[_j] + joint_dynamic_cts_group_offset[w]
-            kinematic_cts_offset = joint_kinematic_cts_offset[_j] + joint_kinematic_cts_group_offset[w]
-            dofs_offset = joint_dofs_offset[_j]
+            # Joint nzb coordinates (convert global per-joint offsets to local per-world)
+            local_dyn_cts = joint_dynamic_cts_offset[_j] - world_dynamic_cts_offset[w]
+            local_kin_cts = joint_kinematic_cts_offset[_j] - world_kinematic_cts_offset[w]
+            local_dofs = joint_dofs_offset[_j] - world_dofs_offset[w]
+            dynamic_cts_offset = local_dyn_cts + joint_dynamic_cts_group_offset[w]
+            kinematic_cts_offset = local_kin_cts + joint_kinematic_cts_group_offset[w]
+            dofs_offset = local_dofs
             column_ids = [6 * (joint_bid_F[_j] - bodies_offset[w])]
             if is_binary:
                 column_ids.append(6 * (joint_bid_B[_j] - bodies_offset[w]))
@@ -1803,6 +1829,7 @@ class SparseSystemJacobians:
                     # Inputs:
                     model.joints.dof_type,
                     model.joints.num_dofs,
+                    model.joints.num_dynamic_cts,
                     model.joints.bid_B,
                     model.joints.bid_F,
                     model.joints.X_j,
@@ -1983,6 +2010,8 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
         joint_kinematic_cts_offset = model.joints.kinematic_cts_offset.numpy()
         joint_dynamic_cts_group_offset = model.info.joint_dynamic_cts_group_offset.numpy()
         joint_kinematic_cts_group_offset = model.info.joint_kinematic_cts_group_offset.numpy()
+        world_dynamic_cts_offset = model.info.joint_dynamic_cts_offset.numpy()
+        world_kinematic_cts_offset = model.info.joint_kinematic_cts_offset.numpy()
         bodies_offset = model.info.bodies_offset.numpy()
         J_cts_cm_nnzb_min = [0] * num_worlds
         J_cts_cm_nnzb_max = [0] * num_worlds
@@ -2011,16 +2040,18 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
             col_ids = [int(6 * (joint_bid_F[_j] - bodies_offset[w]))]
             if is_binary:
                 col_ids.append(int(6 * (joint_bid_B[_j] - bodies_offset[w])))
-            # Dynamic constraint blocks
+            # Dynamic constraint blocks (convert global per-joint offsets to local per-world)
             if num_dynamic_cts > 0:
-                dynamic_cts_offset = joint_dynamic_cts_offset[_j] + joint_dynamic_cts_group_offset[w]
+                local_dyn_cts = joint_dynamic_cts_offset[_j] - world_dynamic_cts_offset[w]
+                dynamic_cts_offset = local_dyn_cts + joint_dynamic_cts_group_offset[w]
                 dynamic_nzb_row = max(0, dynamic_cts_offset + num_dynamic_cts - 6)
                 for col_id in col_ids:
                     for i in range(6):
                         J_cts_nzb_row[w].append(dynamic_nzb_row)
                         J_cts_nzb_col[w].append(col_id + i)
-            # Kinematic constraint blocks
-            kinematic_cts_offset = joint_kinematic_cts_offset[_j] + joint_kinematic_cts_group_offset[w]
+            # Kinematic constraint blocks (convert global per-joint offsets to local per-world)
+            local_kin_cts = joint_kinematic_cts_offset[_j] - world_kinematic_cts_offset[w]
+            kinematic_cts_offset = local_kin_cts + joint_kinematic_cts_group_offset[w]
             num_kinematic_cts = int(joint_num_kinematic_cts[_j])
             kinematic_nzb_row = max(0, kinematic_cts_offset + num_kinematic_cts - 6)
             for col_id in col_ids:

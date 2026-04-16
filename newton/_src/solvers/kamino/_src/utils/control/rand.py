@@ -94,7 +94,6 @@ def _generate_random_control_inputs(
     controller_seed: int,
     controller_decimation: wp.array(dtype=int32),
     controller_scale: wp.array(dtype=float32),
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
     model_joints_wid: wp.array(dtype=int32),
     model_joints_act_type: wp.array(dtype=int32),
     model_joints_num_dofs: wp.array(dtype=int32),
@@ -132,15 +131,9 @@ def _generate_random_control_inputs(
     if act_type == JointActuationType.PASSIVE or step % decimation != 0:
         return
 
-    # Retrieve the offset of the world's joints in the global DoF vector
-    world_dof_offset = model_info_joint_dofs_offset[wid]
-
-    # Retrieve the number of DoFs and offset of the joint
+    # Retrieve the number of DoFs and global offset of the joint
     num_dofs_j = model_joints_num_dofs[jid]
-    dofs_offset_j = model_joints_dofs_offset[jid]
-
-    # Compute the global DoF offset of the joint
-    dofs_start = world_dof_offset + dofs_offset_j
+    dofs_start = model_joints_dofs_offset[jid]
 
     # Iterate over the DoFs of the joint
     for dof in range(num_dofs_j):
@@ -368,7 +361,6 @@ class RandomJointController:
                 self._data.seed,
                 self._data.decimation,
                 self._data.scale,
-                self._model.info.joint_dofs_offset,
                 self._model.joints.wid,
                 self._model.joints.act_type,
                 self._model.joints.num_dofs,

@@ -476,13 +476,11 @@ def _build_generalized_free_velocity(
 @wp.kernel
 def _build_free_velocity_bias_joint_dynamics(
     # Inputs:
-    model_info_joint_dynamic_cts_offset: wp.array(dtype=int32),
-    model_info_joint_dynamic_cts_group_offset: wp.array(dtype=int32),
     model_joints_wid: wp.array(dtype=int32),
     model_joints_num_dynamic_cts: wp.array(dtype=int32),
     model_joints_dynamic_cts_offset: wp.array(dtype=int32),
+    model_joints_dynamic_cts_total_offset: wp.array(dtype=int32),
     data_joints_dq_b_j: wp.array(dtype=float32),
-    problem_vio: wp.array(dtype=int32),
     # Outputs:
     problem_v_b: wp.array(dtype=float32),
 ):
@@ -490,26 +488,16 @@ def _build_free_velocity_bias_joint_dynamics(
     jid = wp.tid()
 
     # Retrieve the joint-specific model data
-    wid = model_joints_wid[jid]
     num_dyn_cts_j = model_joints_num_dynamic_cts[jid]
-    dyn_cts_start_j = model_joints_dynamic_cts_offset[jid]
 
     # Skip operation if the joint has no dynamic constraints
-    if num_dyn_cts_j == 0 or dyn_cts_start_j < 0:
+    if num_dyn_cts_j == 0:
         return
 
-    # Retrieve the joint constraint index offsets in the:
-    # - arrays of only dynamic constraints (i.e. for residuals)
-    # - arrays of all constraints (i.e. including joint dynamics+kinematics, limits and contacts)
-    dyn_cts_start = model_info_joint_dynamic_cts_offset[wid]
-    dyn_cts_group_start = model_info_joint_dynamic_cts_group_offset[wid]
-
-    # Retrieve the index offset of the vector block of the world
-    world_total_cts_start = problem_vio[wid]
-
-    # Compute block offsets for the constraint and velocity
-    bias_row_start_j = dyn_cts_start + dyn_cts_start_j
-    cts_row_start_j = world_total_cts_start + dyn_cts_group_start + dyn_cts_start_j
+    # Global offset into the dynamic-only constraints array
+    bias_row_start_j = model_joints_dynamic_cts_offset[jid]
+    # Global offset into the total constraints vector
+    cts_row_start_j = model_joints_dynamic_cts_total_offset[jid]
 
     # Compute the free-velocity bias for the joint
     for j in range(num_dyn_cts_j):
@@ -519,15 +507,13 @@ def _build_free_velocity_bias_joint_dynamics(
 @wp.kernel
 def _build_free_velocity_bias_joint_kinematics(
     # Inputs:
-    model_info_joint_kinematic_cts_offset: wp.array(dtype=int32),
-    model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     model_time_inv_dt: wp.array(dtype=float32),
     model_joints_wid: wp.array(dtype=int32),
     model_joints_num_kinematic_cts: wp.array(dtype=int32),
     model_joints_kinematic_cts_offset: wp.array(dtype=int32),
+    model_joints_kinematic_cts_total_offset: wp.array(dtype=int32),
     data_joints_r_j: wp.array(dtype=float32),
     problem_config: wp.array(dtype=DualProblemConfigStruct),
-    problem_vio: wp.array(dtype=int32),
     # Outputs:
     problem_v_b: wp.array(dtype=float32),
 ):
@@ -537,13 +523,6 @@ def _build_free_velocity_bias_joint_kinematics(
     # Retrieve the joint-specific model data
     wid = model_joints_wid[jid]
     num_kin_cts_j = model_joints_num_kinematic_cts[jid]
-    kin_cts_start_j = model_joints_kinematic_cts_offset[jid]
-
-    # Retrieve the joint constraint index offsets in the:
-    # - arrays of only kinematic constraints (i.e. for residuals)
-    # - arrays of all constraints (i.e. including joint dynamics+kinematics, limits and contacts)
-    kin_cts_start = model_info_joint_kinematic_cts_offset[wid]
-    kin_cts_group_start = model_info_joint_kinematic_cts_group_offset[wid]
 
     # Retrieve the model time step
     inv_dt = model_time_inv_dt[wid]
@@ -551,15 +530,13 @@ def _build_free_velocity_bias_joint_kinematics(
     # Retrieve the dual problem config
     config = problem_config[wid]
 
-    # Retrieve the index offset of the vector block of the world
-    world_total_cts_start = problem_vio[wid]
-
     # Compute baumgarte constraint stabilization coefficient
     c_b = config.alpha * inv_dt
 
-    # Compute block offsets for the constraint and residual vectors
-    res_row_start_j = kin_cts_start + kin_cts_start_j
-    cts_row_start_j = world_total_cts_start + kin_cts_group_start + kin_cts_start_j
+    # Global offset into the kinematic-only constraints array
+    res_row_start_j = model_joints_kinematic_cts_offset[jid]
+    # Global offset into the total constraints vector
+    cts_row_start_j = model_joints_kinematic_cts_total_offset[jid]
 
     # Compute the free-velocity bias for the joint
     for j in range(num_kin_cts_j):
@@ -1588,13 +1565,11 @@ class DualProblem:
                     dim=model.size.sum_of_num_joints,
                     inputs=[
                         # Inputs:
-                        model.info.joint_dynamic_cts_offset,
-                        model.info.joint_dynamic_cts_group_offset,
                         model.joints.wid,
                         model.joints.num_dynamic_cts,
                         model.joints.dynamic_cts_offset,
+                        model.joints.dynamic_cts_total_offset,
                         data.joints.dq_b_j,
-                        self._data.vio,
                         # Outputs:
                         self._data.v_b,
                     ],
@@ -1604,15 +1579,13 @@ class DualProblem:
                 dim=model.size.sum_of_num_joints,
                 inputs=[
                     # Inputs:
-                    model.info.joint_kinematic_cts_offset,
-                    model.info.joint_kinematic_cts_group_offset,
                     model.time.inv_dt,
                     model.joints.wid,
                     model.joints.num_kinematic_cts,
                     model.joints.kinematic_cts_offset,
+                    model.joints.kinematic_cts_total_offset,
                     data.joints.r_j,
                     self._data.config,
-                    self._data.vio,
                     # Outputs:
                     self._data.v_b,
                 ],

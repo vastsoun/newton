@@ -486,22 +486,16 @@ def joint_indexing_kernel(
             num_actuated_j += 1
             num_actuated_coords += ncoords_j
             num_actuated_dofs += ndofs_j
-            joint_passive_coord_start[joint_id] = -1
-            joint_passive_dofs_start[joint_id] = -1
         else:
             num_passive_j += 1
             num_passive_coords += ncoords_j
             num_passive_dofs += ndofs_j
-            joint_actuated_coord_start[joint_id] = -1
-            joint_actuated_dofs_start[joint_id] = -1
 
         # Update sizes based on whether joint is dynamic
         if n_dyn_cts_j > 0:
             num_dynamic_cts += n_dyn_cts_j
             num_cts += n_dyn_cts_j
             num_dynamic_j += 1
-        else:
-            joint_dynamic_cts_start[joint_id] = -1
 
     # Write sizes for this world
     num_passive_joints[world_id] = num_passive_j
@@ -516,6 +510,42 @@ def joint_indexing_kernel(
     num_joint_actuated_dofs[world_id] = num_actuated_dofs
     num_joint_passive_coords[world_id] = num_passive_coords
     num_joint_passive_dofs[world_id] = num_passive_dofs
+
+
+@wp.kernel
+def _globalize_joint_offsets(
+    joint_world: wp.array(dtype=int32),
+    world_coord_offset: wp.array(dtype=int32),
+    world_dof_offset: wp.array(dtype=int32),
+    world_passive_coord_offset: wp.array(dtype=int32),
+    world_passive_dof_offset: wp.array(dtype=int32),
+    world_actuated_coord_offset: wp.array(dtype=int32),
+    world_actuated_dof_offset: wp.array(dtype=int32),
+    world_cts_offset: wp.array(dtype=int32),
+    world_dynamic_cts_offset: wp.array(dtype=int32),
+    world_kinematic_cts_offset: wp.array(dtype=int32),
+    # Modified in-place:
+    joint_coord_start: wp.array(dtype=int32),
+    joint_dofs_start: wp.array(dtype=int32),
+    joint_passive_coord_start: wp.array(dtype=int32),
+    joint_passive_dofs_start: wp.array(dtype=int32),
+    joint_actuated_coord_start: wp.array(dtype=int32),
+    joint_actuated_dofs_start: wp.array(dtype=int32),
+    joint_cts_start: wp.array(dtype=int32),
+    joint_dynamic_cts_start: wp.array(dtype=int32),
+    joint_kinematic_cts_start: wp.array(dtype=int32),
+):
+    jid = wp.tid()
+    w = joint_world[jid]
+    joint_coord_start[jid] += world_coord_offset[w]
+    joint_dofs_start[jid] += world_dof_offset[w]
+    joint_passive_coord_start[jid] += world_passive_coord_offset[w]
+    joint_passive_dofs_start[jid] += world_passive_dof_offset[w]
+    joint_actuated_coord_start[jid] += world_actuated_coord_offset[w]
+    joint_actuated_dofs_start[jid] += world_actuated_dof_offset[w]
+    joint_cts_start[jid] += world_cts_offset[w]
+    joint_dynamic_cts_start[jid] += world_dynamic_cts_offset[w]
+    joint_kinematic_cts_start[jid] += world_kinematic_cts_offset[w]
 
 
 @wp.kernel
@@ -1343,6 +1373,35 @@ def convert_joints(
     model_info.joint_kinematic_cts_offset = wp.array(world_joint_kinematic_cts_offset_np, dtype=int32)
     model_info.base_body_index = wp.array(base_body_idx_np, dtype=int32)
     model_info.base_joint_index = wp.array(base_joint_idx_np, dtype=int32)
+
+    # Convert local (per-world) joint offsets to global by adding per-world prefix offsets in-place
+    wp.launch(
+        kernel=_globalize_joint_offsets,
+        dim=model.joint_count,
+        inputs=[
+            model.joint_world,
+            model_info.joint_coords_offset,
+            model_info.joint_dofs_offset,
+            model_info.joint_passive_coords_offset,
+            model_info.joint_passive_dofs_offset,
+            model_info.joint_actuated_coords_offset,
+            model_info.joint_actuated_dofs_offset,
+            model_info.joint_cts_offset,
+            model_info.joint_dynamic_cts_offset,
+            model_info.joint_kinematic_cts_offset,
+        ],
+        outputs=[
+            joint_coord_start,
+            joint_dofs_start,
+            joint_passive_coord_start,
+            joint_passive_dofs_start,
+            joint_actuated_coord_start,
+            joint_actuated_dofs_start,
+            joint_cts_start,
+            joint_dynamic_cts_start,
+            joint_kinematic_cts_start,
+        ],
+    )
 
     # Joints
     model_joints = JointsModel(

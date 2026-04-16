@@ -171,39 +171,11 @@ class ForwardKinematicsSolver:
         num_joints_prev = self.model.info.num_joints.numpy().copy()  # Number of joints per world
         first_joint_id_prev = np.concatenate(([0], num_joints_prev.cumsum()))  # Index of first joint per world
 
-        # Retrieve / compute dimensions - Actuated coordinates (main model)
-        num_actuated_coords_prev = (
-            self.model.info.num_actuated_joint_coords.numpy().copy()
-        )  # Number of actuated joint coordinates per world
-        first_actuated_coord_prev = np.concatenate(
-            ([0], num_actuated_coords_prev.cumsum())
-        )  # Index of first actuated coordinate per world
-        actuated_coord_offsets_prev = (
-            self.model.joints.actuated_coords_offset.numpy().copy()
-        )  # Index of first joint actuated coordinate, among actuated coordinates of a single world
-        for wd_id in range(self.num_worlds):  # Convert into offsets among all actuated coordinates
-            actuated_coord_offsets_prev[first_joint_id_prev[wd_id] : first_joint_id_prev[wd_id + 1]] += (
-                first_actuated_coord_prev[wd_id]
-            )
-            # Note: will currently produce garbage for passive joints (because for these the offsets are set to -1)
-            # but we won't read these values below anyway.
+        # Retrieve / compute dimensions - Actuated coordinates (main model, offsets are already global)
+        actuated_coord_offsets_prev = self.model.joints.actuated_coords_offset.numpy().copy()
 
-        # Retrieve / compute dimensions - Actuated dofs (main model)
-        num_actuated_dofs_prev = (
-            self.model.info.num_actuated_joint_dofs.numpy().copy()
-        )  # Number of actuated joint dofs per world
-        first_actuated_dof_prev = np.concatenate(
-            ([0], num_actuated_dofs_prev.cumsum())
-        )  # Index of first actuated dof per world
-        actuated_dof_offsets_prev = (
-            self.model.joints.actuated_dofs_offset.numpy().copy()
-        )  # Index of first joind actuated dof, among actuated dofs of a single world
-        for wd_id in range(self.num_worlds):  # Convert into offsets among all actuated dofs
-            actuated_dof_offsets_prev[first_joint_id_prev[wd_id] : first_joint_id_prev[wd_id + 1]] += (
-                first_actuated_dof_prev[wd_id]
-            )
-            # Note: will currently produce garbage for passive joints (because for these the offsets are set to -1)
-            # but we won't read these values below anyway.
+        # Retrieve / compute dimensions - Actuated dofs (main model, offsets are already global)
+        actuated_dof_offsets_prev = self.model.joints.actuated_dofs_offset.numpy().copy()
 
         # Create a copy of the model's joints with added joints as needed:
         # - actuated free joints to reset the base position/orientation

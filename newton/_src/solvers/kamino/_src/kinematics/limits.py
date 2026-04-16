@@ -487,8 +487,6 @@ def detect_active_dof_limit(
 
 @wp.kernel
 def _detect_active_joint_configuration_limits(
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_coords_offset: wp.array(dtype=int32),
     model_joint_wid: wp.array(dtype=int32),
     model_joint_dof_type: wp.array(dtype=int32),
     model_joint_dofs_offset: wp.array(dtype=int32),
@@ -535,13 +533,9 @@ def _detect_active_joint_configuration_limits(
     if dof_type_j == JointDoFType.FIXED or world_max_limits == 0 or model_max_limits == 0:
         return
 
-    # Extract the index offset of the world's joint DoFs w.r.t the model
-    world_dofs_offset = model_info_joint_dofs_offset[wid]
-    world_coords_offset = model_info_joint_coords_offset[wid]
-
-    # Compute total index offset of the joint's DoFs w.r.t the model
-    dofs_offset_total = dofs_offset_j + world_dofs_offset
-    coords_offset_total = coords_offset_j + world_coords_offset
+    # Use global offsets directly
+    dofs_offset_total = dofs_offset_j
+    coords_offset_total = coords_offset_j
 
     # Read the joint DoF count, limits and coordinates mapped to DoF space
     # NOTE: We need to map to DoF space to compare against the limits when
@@ -883,8 +877,6 @@ class LimitsKamino:
             dim=model.size.sum_of_num_joints,
             inputs=[
                 # Inputs:
-                model.info.joint_dofs_offset,
-                model.info.joint_coords_offset,
                 model.joints.wid,
                 model.joints.dof_type,
                 model.joints.dofs_offset,

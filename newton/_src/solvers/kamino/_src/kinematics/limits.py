@@ -144,7 +144,7 @@ class LimitsKaminoData:
 
     dof: wp.array | None = None
     """
-    The DoF indices along which limits are active w.r.t the world.\n
+    The DoF indices along which limits are active w.r.t the model.\n
     Shape of ``(model_max_limits_host,)`` and type :class:`int32`.
     """
 
@@ -695,7 +695,7 @@ class LimitsKamino:
     @property
     def jid(self) -> wp.array:
         """
-        Returns the element index of the corresponding joint w.r.t the world.\n
+        Returns the element index of the corresponding joint w.r.t the model.\n
         Shape of ``(model_max_limits_host,)`` and type :class:`int32`.
         """
         self._assert_has_data()
@@ -713,7 +713,7 @@ class LimitsKamino:
     @property
     def dof(self) -> wp.array:
         """
-        Returns the DoF indices along which limits are active w.r.t the world.\n
+        Returns the DoF indices along which limits are active w.r.t the model.\n
         Shape of ``(model_max_limits_host,)`` and type :class:`int32`.
         """
         self._assert_has_data()

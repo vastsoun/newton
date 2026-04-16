@@ -86,13 +86,12 @@ def _compute_joint_dof_body_wrenches_dense(
     # Retrieve the element index offset of the bodies of the world
     bio = model_info_bodies_offset[wid]
 
-    # Use the global DoF offset directly for the generalized force vector
-    vio = dio_j
-
-    # Compute the local DoF offset within the world for Jacobian matrix indexing
-    local_dio_j = dio_j - model_info_joint_dofs_offset[wid]
+    # Compute the DoF block index offsets of the world's actuation
+    # Jacobian matrix and generalized joint actuation force vector
     mio = jacobian_dofs_offsets[wid]
-    mio += nbd * local_dio_j
+    dio_j_world = dio_j - model_info_joint_dofs_offset[wid]
+    mio += nbd * dio_j_world
+    vio = dio_j
 
     # Compute and store the joint actuation wrench for the Follower body
     w_j_F = vec6f(0.0)
@@ -144,9 +143,6 @@ def _compute_joint_dof_body_wrenches_sparse(
     d_j = model_joints_num_dofs[jid]
     dio_j = model_joints_dofs_offset[jid]
 
-    # Use the global DoF offset directly for the generalized force vector
-    vio = dio_j
-
     # Retrieve the starting index for the non-zero blocks for the current joint
     jac_j_nzb_start = jac_joint_nzb_offsets[jid]
 
@@ -154,7 +150,7 @@ def _compute_joint_dof_body_wrenches_sparse(
     w_j_F = vec6f(0.0)
     for j in range(d_j):
         jac_block = jac_nzb_values[jac_j_nzb_start + j]
-        vio_j = vio + j
+        vio_j = dio_j + j
         tau_j = data_joints_tau_j[vio_j]
         w_j_F += jac_block * tau_j
     wp.atomic_add(data_bodies_w_a, bid_F_j, w_j_F)
@@ -164,7 +160,7 @@ def _compute_joint_dof_body_wrenches_sparse(
         w_j_B = vec6f(0.0)
         for j in range(d_j):
             jac_block = jac_nzb_values[jac_j_nzb_start + d_j + j]
-            vio_j = vio + j
+            vio_j = dio_j + j
             tau_j = data_joints_tau_j[vio_j]
             w_j_B += jac_block * tau_j
         wp.atomic_add(data_bodies_w_a, bid_B_j, w_j_B)

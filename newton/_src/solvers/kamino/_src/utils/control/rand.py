@@ -131,7 +131,7 @@ def _generate_random_control_inputs(
     if act_type == JointActuationType.PASSIVE or step % decimation != 0:
         return
 
-    # Retrieve the number of DoFs and global offset of the joint
+    # Retrieve the number of DoFs and offset of the joint
     num_dofs_j = model_joints_num_dofs[jid]
     dofs_start = model_joints_dofs_offset[jid]
 

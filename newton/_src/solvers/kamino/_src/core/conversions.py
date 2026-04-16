@@ -514,6 +514,7 @@ def joint_indexing_kernel(
 
 @wp.kernel
 def _globalize_joint_offsets(
+    # Inputs:
     joint_world: wp.array(dtype=int32),
     world_coord_offset: wp.array(dtype=int32),
     world_dof_offset: wp.array(dtype=int32),
@@ -524,7 +525,7 @@ def _globalize_joint_offsets(
     world_cts_offset: wp.array(dtype=int32),
     world_dynamic_cts_offset: wp.array(dtype=int32),
     world_kinematic_cts_offset: wp.array(dtype=int32),
-    # Modified in-place:
+    # Outputs:
     joint_coord_start: wp.array(dtype=int32),
     joint_dofs_start: wp.array(dtype=int32),
     joint_passive_coord_start: wp.array(dtype=int32),

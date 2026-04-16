@@ -155,16 +155,14 @@ def compute_actuated_coords_and_dofs_offsets(model: ModelKamino):
     and dofs from all joint coordinates/dofs
     Returns actuated_coords_offsets, actuated_coords_sizes, actuated_dofs_offsets, actuated_dofs_sizes
     """
-    # Joint coordinates (offsets are already global)
-    coord_offsets = model.joints.coords_offset.numpy().copy()
+    # Retrieve joint coordinates/dofs sizes and offsets
+    coord_offsets = model.joints.coords_offset.numpy()
     joint_num_coords = model.joints.num_coords.numpy()
-
-    # Joint dofs (offsets are already global)
-    dof_offsets = model.joints.dofs_offset.numpy().copy()
+    dof_offsets = model.joints.dofs_offset.numpy()
     joint_num_dofs = model.joints.num_dofs.numpy()
 
     # Filter for actuators only
-    joint_is_actuator = model.joints.act_type.numpy() == JointActuationType.FORCE
+    joint_is_actuator = model.joints.act_type.numpy() != JointActuationType.PASSIVE
     actuated_coord_offsets = coord_offsets[joint_is_actuator]
     actuated_coords_sizes = joint_num_coords[joint_is_actuator]
     actuated_dof_offsets = dof_offsets[joint_is_actuator]
@@ -190,13 +188,11 @@ def compute_constraint_residual_mask(model: ModelKamino):
     for base joints (to filter out residuals for fixed base models if the base is reset
     to a different pose)
     """
-    # Precompute constraint offsets (cts_offset is already global)
-    first_joint_ct_id = model.joints.cts_offset.numpy().copy()
-    num_joint_cts = model.joints.num_cts.numpy()  # Num cts per joint
-
     mask = np.array(model.size.sum_of_num_joint_cts * [True])
 
     # Exclude base joints
+    first_joint_ct_id = model.joints.cts_offset.numpy().copy()  # Cts offset per joint
+    num_joint_cts = model.joints.num_cts.numpy()  # Num cts per joint
     base_joint_index = model.info.base_joint_index.numpy().tolist()
     for wd_id in range(model.size.num_worlds):
         if base_joint_index[wd_id] < 0:

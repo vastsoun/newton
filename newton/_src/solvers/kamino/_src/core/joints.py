@@ -1901,7 +1901,7 @@ class JointsModel:
 
     coords_offset: wp.array | None = None
     """
-    Global index offset of each joint's coordinates in the model-wide
+    Index offset of each joint's coordinates in the model-wide
     flattened joint coordinates array.
 
     Used to index into joint-specific blocks of:
@@ -1914,7 +1914,7 @@ class JointsModel:
 
     dofs_offset: wp.array | None = None
     """
-    Global index offset of each joint's DoFs in the model-wide
+    Index offset of each joint's DoFs in the model-wide
     flattened joint DoFs array.
 
     Used to index into joint-specific blocks of:
@@ -1927,51 +1927,47 @@ class JointsModel:
 
     passive_coords_offset: wp.array | None = None
     """
-    Global index offset of each joint's passive coordinates in the model-wide
+    Index offset of each joint's passive coordinates in the model-wide
     flattened passive joint coordinates array.
 
-    For non-passive joints, the offset equals the next passive joint's offset
-    (monotonically non-decreasing).
+    For actuated joints, the offset equals the next passive joint's offset.
 
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
     passive_dofs_offset: wp.array | None = None
     """
-    Global index offset of each joint's passive DoFs in the model-wide
+    Index offset of each joint's passive DoFs in the model-wide
     flattened passive joint DoFs array.
 
-    For non-passive joints, the offset equals the next passive joint's offset
-    (monotonically non-decreasing).
+    For actuated joints, the offset equals the next passive joint's offset.
 
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
     actuated_coords_offset: wp.array | None = None
     """
-    Global index offset of each joint's actuated coordinates in the model-wide
+    Index offset of each joint's actuated coordinates in the model-wide
     flattened actuated joint coordinates array.
 
-    For non-actuated joints, the offset equals the next actuated joint's offset
-    (monotonically non-decreasing).
+    For passive joints, the offset equals the next actuated joint's offset.
 
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
     actuated_dofs_offset: wp.array | None = None
     """
-    Global index offset of each joint's actuated DoFs in the model-wide
+    Index offset of each joint's actuated DoFs in the model-wide
     flattened actuated joint DoFs array.
 
-    For non-actuated joints, the offset equals the next actuated joint's offset
-    (monotonically non-decreasing).
+    For passive joints, the offset equals the next actuated joint's offset.
 
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
     cts_offset: wp.array | None = None
     """
-    Global index offset of each joint's constraints (dynamic + kinematic)
+    Index offset of each joint's constraints (dynamic + kinematic)
     in the model-wide flattened joint constraints array.
 
     Shape of ``(num_joints,)`` and type :class:`int`.
@@ -1979,7 +1975,7 @@ class JointsModel:
 
     dynamic_cts_offset: wp.array | None = None
     """
-    Global index offset of each joint's dynamic constraints in the model-wide
+    Index offset of each joint's dynamic constraints in the model-wide
     flattened dynamic joint constraints array.
 
     Used to index into joint-specific blocks of:
@@ -1988,15 +1984,14 @@ class JointsModel:
     - array of joint-space P gains :attr:`JointsData.k_p_j`
     - array of joint-space D gains :attr:`JointsData.k_d_j`
 
-    For joints with no dynamic constraints, the offset equals the next
-    dynamic joint's offset (monotonically non-decreasing).
+    For non-dynamic joints, the offset equals the next dynamic joint's offset.
 
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
     kinematic_cts_offset: wp.array | None = None
     """
-    Global index offset of each joint's kinematic constraints in the model-wide
+    Index offset of each joint's kinematic constraints in the model-wide
     flattened kinematic joint constraints array.
 
     Used to index into joint-specific blocks of:
@@ -2008,24 +2003,16 @@ class JointsModel:
 
     dynamic_cts_total_offset: wp.array | None = None
     """
-    Global index offset of each joint's dynamic constraints in the total
-    constraint vector (containing all joint dynamic + kinematic + limit + contact
-    constraints across all worlds).
-
-    Allows direct indexing into the total constraint vector without
-    combining per-world group offsets at runtime.
+    Index offset of each joint's dynamic constraints in the model-wide
+    flattened total constraints array (joints + limits + contacts).
 
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
     kinematic_cts_total_offset: wp.array | None = None
     """
-    Global index offset of each joint's kinematic constraints in the total
-    constraint vector (containing all joint dynamic + kinematic + limit + contact
-    constraints across all worlds).
-
-    Allows direct indexing into the total constraint vector without
-    combining per-world group offsets at runtime.
+    Index offset of each joint's kinematic constraints in the model-wide
+    flattened total constraints array (joints + limits + contacts).
 
     Shape of ``(num_joints,)`` and type :class:`int`.
     """

@@ -494,9 +494,9 @@ def _build_free_velocity_bias_joint_dynamics(
     if num_dyn_cts_j == 0:
         return
 
-    # Global offset into the dynamic-only constraints array
+    # Retrieve the joint constraints index offset into the dynamic-only constraints array
     bias_row_start_j = model_joints_dynamic_cts_offset[jid]
-    # Global offset into the total constraints vector
+    # Retrieve the joint constraints index offset into the full constraints array
     cts_row_start_j = model_joints_dynamic_cts_total_offset[jid]
 
     # Compute the free-velocity bias for the joint
@@ -533,9 +533,9 @@ def _build_free_velocity_bias_joint_kinematics(
     # Compute baumgarte constraint stabilization coefficient
     c_b = config.alpha * inv_dt
 
-    # Global offset into the kinematic-only constraints array
+    # Retrieve the joint constraints index offset into the kinematic-only constraints array
     res_row_start_j = model_joints_kinematic_cts_offset[jid]
-    # Global offset into the total constraints vector
+    # Retrieve the joint constraints index offset into the full constraints array
     cts_row_start_j = model_joints_kinematic_cts_total_offset[jid]
 
     # Compute the free-velocity bias for the joint

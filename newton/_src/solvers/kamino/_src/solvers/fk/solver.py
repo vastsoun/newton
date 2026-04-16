@@ -171,10 +171,8 @@ class ForwardKinematicsSolver:
         num_joints_prev = self.model.info.num_joints.numpy().copy()  # Number of joints per world
         first_joint_id_prev = np.concatenate(([0], num_joints_prev.cumsum()))  # Index of first joint per world
 
-        # Retrieve / compute dimensions - Actuated coordinates (main model, offsets are already global)
+        # Retrieve / compute dimensions - Actuated coordinates/dofs (main model)
         actuated_coord_offsets_prev = self.model.joints.actuated_coords_offset.numpy().copy()
-
-        # Retrieve / compute dimensions - Actuated dofs (main model, offsets are already global)
         actuated_dof_offsets_prev = self.model.joints.actuated_dofs_offset.numpy().copy()
 
         # Create a copy of the model's joints with added joints as needed:

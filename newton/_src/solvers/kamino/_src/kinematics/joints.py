@@ -836,7 +836,7 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         # Retrieve the time step
         dt = model_time_dt[wid]
 
-        # Retrieve joint-specific global offsets
+        # Retrieve joint-specific offsets
         coords_offset = model_joint_coords_offset[jid]
         dofs_offset = model_joint_dofs_offset[jid]
         dynamic_cts_offset = model_joint_dynamic_cts_offset[jid]

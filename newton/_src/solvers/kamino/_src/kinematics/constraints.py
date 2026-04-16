@@ -356,18 +356,18 @@ def _unpack_joint_constraint_solutions(
     num_dyn_cts_j = model_joints_num_dynamic_cts[jid]
     num_kin_cts_j = model_joints_num_kinematic_cts[jid]
 
-    # Global offsets in the total constraints vector
+    # Retrieve dynamic/kinematic constraint offsets in the total constraints vector
     dyn_cts_row_start_j = model_joints_dynamic_cts_total_offset[jid]
     kin_cts_row_start_j = model_joints_kinematic_cts_total_offset[jid]
 
     # Retrieve the world-specific info
     inv_dt = model_time_inv_dt[wid]
 
-    # Compute block offsets in the joint-only constraints array
-    # by rebasing from total_cts to joint_cts
-    joint_cts_rebase = model_info_joint_cts_offset[wid] - model_info_total_cts_offset[wid]
-    joint_dyn_cts_start_j = dyn_cts_row_start_j + joint_cts_rebase
-    joint_kin_cts_start_j = kin_cts_row_start_j + joint_cts_rebase
+    # Compute offsets of the joint's constraints within the joint-only constraints array
+    # by shifting the offsets in the total constraints array
+    joint_cts_delta = model_info_joint_cts_offset[wid] - model_info_total_cts_offset[wid]
+    joint_dyn_cts_start_j = dyn_cts_row_start_j + joint_cts_delta
+    joint_kin_cts_start_j = kin_cts_row_start_j + joint_cts_delta
 
     # Compute and store the joint-constraint reaction forces
     for j in range(num_dyn_cts_j):

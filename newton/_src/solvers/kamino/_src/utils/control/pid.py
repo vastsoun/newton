@@ -109,7 +109,7 @@ def _reset_jointspace_pid_references(
     if act_type != JointActuationType.FORCE:
         return
 
-    # Retrieve the number of DoFs and global offsets of the joint
+    # Retrieve the number of DoFs and offsets of the joint
     num_dofs = model_joints_num_dofs[jid]
     dofs_offset = model_joints_dofs_offset[jid]
     actuated_dofs_offset = model_joints_actuated_dofs_offset[jid]
@@ -185,7 +185,7 @@ def _compute_jointspace_pid_control(
     # decimation to get the effective control time-step
     dt *= float32(decimation)
 
-    # Retrieve the number of DoFs and global offsets of the joint
+    # Retrieve the number of DoFs and offsets of the joint
     num_dofs = model_joints_num_dofs[jid]
     dofs_offset = model_joints_dofs_offset[jid]
     actuated_dofs_offset = model_joints_actuated_dofs_offset[jid]

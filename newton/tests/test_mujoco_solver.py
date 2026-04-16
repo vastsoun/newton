@@ -6496,7 +6496,7 @@ class TestMuJoCoArticulationConversion(unittest.TestCase):
         j1 = builder.add_joint_revolute(b0, b1)
         builder.add_articulation([j0, j1])
         # add a loop joint with asymmetric xforms to exercise relpose computation
-        loop_joint = builder.add_joint_fixed(
+        builder.add_joint_fixed(
             b1,
             b0,
             parent_xform=wp.transform(wp.vec3(0.0, 0.0, -0.45), wp.quat_identity()),
@@ -6526,11 +6526,9 @@ class TestMuJoCoArticulationConversion(unittest.TestCase):
         assert np.allclose(quat, expected, atol=1e-6) or np.allclose(quat, -expected, atol=1e-6)
         # we defined no regular equality constraints, so there is no mapping from MuJoCo to Newton equality constraints
         assert np.allclose(solver.mjc_eq_to_newton_eq.numpy(), np.full_like(solver.mjc_eq_to_newton_eq.numpy(), -1))
-        # but we converted the loop joints to equality constraints, so there is a mapping from MuJoCo to Newton joints
-        assert np.allclose(
-            solver.mjc_eq_to_newton_jnt.numpy(),
-            [[loop_joint + i * builder.joint_count] for i in range(world_count)],
-        )
+        # WELD entries from FIXED loop joints are excluded from mjc_eq_to_newton_jnt
+        # (only CONNECT entries are tracked) so the mapping should be all -1
+        assert np.allclose(solver.mjc_eq_to_newton_jnt.numpy(), np.full_like(solver.mjc_eq_to_newton_jnt.numpy(), -1))
 
     def test_mixed_loop_joints_and_equality_constraints(self):
         """Testing that loop joints and regular equality constraints are converted to equality constraints."""
@@ -6545,7 +6543,7 @@ class TestMuJoCoArticulationConversion(unittest.TestCase):
         # add one equality constraint before the loop joint
         builder.add_equality_constraint_connect(body1=b0, body2=b1, anchor=wp.vec3(0.0, 0.0, 1.0))
         # add a loop joint
-        loop_joint = builder.add_joint_fixed(
+        builder.add_joint_fixed(
             b0,
             b2,
             # note these offset transforms here are important to ensure valid anchor points for the equality constraints are used
@@ -6576,12 +6574,9 @@ class TestMuJoCoArticulationConversion(unittest.TestCase):
             expected_eq_to_newton_eq[i, 0] = i * 2
             expected_eq_to_newton_eq[i, 1] = i * 2 + 1
         assert np.allclose(solver.mjc_eq_to_newton_eq.numpy(), expected_eq_to_newton_eq)
-        # after those two explicit equality constraints comes the 1 weld from the fixed loop joint
-        expected_eq_to_newton_jnt = np.full((world_count, 3), -1, dtype=np.int32)
-        for i in range(world_count):
-            # joint 3 is the loop joint, we have 4 joints per world
-            expected_eq_to_newton_jnt[i, 2] = i * 4 + loop_joint
-        assert np.allclose(solver.mjc_eq_to_newton_jnt.numpy(), expected_eq_to_newton_jnt)
+        # WELD entries from FIXED loop joints are excluded from mjc_eq_to_newton_jnt
+        # (only CONNECT entries are tracked) so the weld slot should remain -1
+        assert np.allclose(solver.mjc_eq_to_newton_jnt.numpy(), np.full((world_count, 3), -1, dtype=np.int32))
 
     def test_loop_joint_coordinate_conversion_offset(self):
         """Verify coordinate conversion when revolute loop joints precede other joints.

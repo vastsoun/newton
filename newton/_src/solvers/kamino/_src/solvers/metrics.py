@@ -796,8 +796,7 @@ def _compute_joint_kinematics_residual_sparse(
 @wp.kernel
 def _compute_cts_joints_residual(
     # Inputs:
-    model_info_joints_cts_offset: wp.array(dtype=int32),
-    model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
+    model_info_joint_kinematic_cts_offset: wp.array(dtype=int32),
     model_joint_wid: wp.array(dtype=int32),
     model_joint_num_kinematic_cts: wp.array(dtype=int32),
     model_joint_kinematic_cts_offset: wp.array(dtype=int32),
@@ -814,12 +813,9 @@ def _compute_cts_joints_residual(
     num_cts_j = model_joint_num_kinematic_cts[jid]
     cts_offset_j = model_joint_kinematic_cts_offset[jid]
 
-    # Retrieve the joint-block constraint index offset of the world
-    world_joint_cts_offset = model_info_joints_cts_offset[wid]
-    world_joint_kinematic_cts_group_offset = model_info_joint_kinematic_cts_group_offset[wid]
-
     # Compute the global constraint index offset for the specific joint
-    cio_j = world_joint_cts_offset + world_joint_kinematic_cts_group_offset + cts_offset_j
+    world_kinematic_cts_offset = model_info_joint_kinematic_cts_offset[wid]
+    cio_j = world_kinematic_cts_offset + cts_offset_j
 
     # Compute the per-joint constraint residual (infinity-norm)
     r_cts_joints_j = float32(0.0)
@@ -1317,8 +1313,7 @@ class SolutionMetrics:
                 dim=model.size.sum_of_num_joints,
                 inputs=[
                     # Inputs:
-                    model.info.joint_cts_offset,
-                    model.info.joint_kinematic_cts_group_offset,
+                    model.info.joint_kinematic_cts_offset,
                     model.joints.wid,
                     model.joints.num_kinematic_cts,
                     model.joints.kinematic_cts_offset,

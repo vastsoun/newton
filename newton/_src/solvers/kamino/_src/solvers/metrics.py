@@ -680,7 +680,7 @@ def _compute_joint_kinematics_residual_dense(
     model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     model_joint_wid: wp.array(dtype=int32),
     model_joint_num_kinematic_cts: wp.array(dtype=int32),
-    model_joint_kinematic_cts_total_offset: wp.array(dtype=int32),
+    model_joint_kinematic_cts_total_cts_offset: wp.array(dtype=int32),
     model_joint_bid_B: wp.array(dtype=int32),
     model_joint_bid_F: wp.array(dtype=int32),
     data_bodies_u_i: wp.array(dtype=vec6f),
@@ -703,7 +703,7 @@ def _compute_joint_kinematics_residual_dense(
 
     # Retrieve the size and index offset of the joint constraint
     num_cts_j = model_joint_num_kinematic_cts[jid]
-    cts_offset_j = model_joint_kinematic_cts_total_offset[jid] - model_info_total_cts_offset[wid]
+    cts_offset_j = model_joint_kinematic_cts_total_cts_offset[jid] - model_info_total_cts_offset[wid]
 
     # Retrieve the world-specific info
     nbd = model_info_num_body_dofs[wid]
@@ -1420,7 +1420,7 @@ class SolutionMetrics:
                         model.info.joint_kinematic_cts_group_offset,
                         model.joints.wid,
                         model.joints.num_kinematic_cts,
-                        model.joints.kinematic_cts_total_offset,
+                        model.joints.kinematic_cts_total_cts_offset,
                         model.joints.bid_B,
                         model.joints.bid_F,
                         data.bodies.u_i,

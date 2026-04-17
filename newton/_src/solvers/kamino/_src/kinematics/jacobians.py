@@ -1625,8 +1625,8 @@ class SparseSystemJacobians:
         joint_num_dofs = model.joints.num_dofs.numpy()
         joint_q_j_min = model.joints.q_j_min.numpy()
         joint_q_j_max = model.joints.q_j_max.numpy()
-        joint_dynamic_cts_total_offset = model.joints.dynamic_cts_total_offset.numpy()
-        joint_kinematic_cts_total_offset = model.joints.kinematic_cts_total_offset.numpy()
+        joint_dynamic_cts_total_cts_offset = model.joints.dynamic_cts_total_cts_offset.numpy()
+        joint_kinematic_cts_total_cts_offset = model.joints.kinematic_cts_total_cts_offset.numpy()
         world_cts_offset = model.info.total_cts_offset.numpy()
         joint_dofs_offset = model.joints.dofs_offset.numpy()
         world_dofs_offset = model.info.joint_dofs_offset.numpy()
@@ -1659,8 +1659,8 @@ class SparseSystemJacobians:
             J_dofs_nnzb[w] += num_adjacent_bodies * num_dofs
 
             # Joint nzb coordinates
-            dynamic_cts_offset = joint_dynamic_cts_total_offset[_j] - world_cts_offset[w]
-            kinematic_cts_offset = joint_kinematic_cts_total_offset[_j] - world_cts_offset[w]
+            dynamic_cts_offset = joint_dynamic_cts_total_cts_offset[_j] - world_cts_offset[w]
+            kinematic_cts_offset = joint_kinematic_cts_total_cts_offset[_j] - world_cts_offset[w]
             dofs_offset = joint_dofs_offset[_j] - world_dofs_offset[w]
             column_ids = [6 * (joint_bid_F[_j] - bodies_offset[w])]
             if is_binary:
@@ -2000,8 +2000,8 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
         joint_num_dofs = model.joints.num_dofs.numpy()
         joint_q_j_min = model.joints.q_j_min.numpy()
         joint_q_j_max = model.joints.q_j_max.numpy()
-        joint_dynamic_cts_total_offset = model.joints.dynamic_cts_total_offset.numpy()
-        joint_kinematic_cts_total_offset = model.joints.kinematic_cts_total_offset.numpy()
+        joint_dynamic_cts_total_cts_offset = model.joints.dynamic_cts_total_cts_offset.numpy()
+        joint_kinematic_cts_total_cts_offset = model.joints.kinematic_cts_total_cts_offset.numpy()
         world_cts_offset = model.info.total_cts_offset.numpy()
         bodies_offset = model.info.bodies_offset.numpy()
         J_cts_cm_nnzb_min = [0] * num_worlds
@@ -2033,14 +2033,14 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
                 col_ids.append(int(6 * (joint_bid_B[_j] - bodies_offset[w])))
             # Dynamic constraint blocks
             if num_dynamic_cts > 0:
-                dynamic_cts_offset = joint_dynamic_cts_total_offset[_j] - world_cts_offset[w]
+                dynamic_cts_offset = joint_dynamic_cts_total_cts_offset[_j] - world_cts_offset[w]
                 dynamic_nzb_row = max(0, dynamic_cts_offset + num_dynamic_cts - 6)
                 for col_id in col_ids:
                     for i in range(6):
                         J_cts_nzb_row[w].append(dynamic_nzb_row)
                         J_cts_nzb_col[w].append(col_id + i)
             # Kinematic constraint blocks
-            kinematic_cts_offset = joint_kinematic_cts_total_offset[_j] - world_cts_offset[w]
+            kinematic_cts_offset = joint_kinematic_cts_total_cts_offset[_j] - world_cts_offset[w]
             num_kinematic_cts = int(joint_num_kinematic_cts[_j])
             kinematic_nzb_row = max(0, kinematic_cts_offset + num_kinematic_cts - 6)
             for col_id in col_ids:

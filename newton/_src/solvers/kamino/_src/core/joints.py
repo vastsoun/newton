@@ -2001,7 +2001,23 @@ class JointsModel:
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
-    dynamic_cts_total_offset: wp.array | None = None
+    dynamic_cts_joint_cts_offset: wp.array | None = None
+    """
+    Index offset of each joint's dynamic constraints in the model-wide
+    flattened joint constraints array.
+
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
+
+    kinematic_cts_joint_cts_offset: wp.array | None = None
+    """
+    Index offset of each joint's kinematic constraints in the model-wide
+    flattened joint constraints array.
+
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
+
+    dynamic_cts_total_cts_offset: wp.array | None = None
     """
     Index offset of each joint's dynamic constraints in the model-wide
     flattened total constraints array (joints + limits + contacts).
@@ -2009,7 +2025,7 @@ class JointsModel:
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
-    kinematic_cts_total_offset: wp.array | None = None
+    kinematic_cts_total_cts_offset: wp.array | None = None
     """
     Index offset of each joint's kinematic constraints in the model-wide
     flattened total constraints array (joints + limits + contacts).

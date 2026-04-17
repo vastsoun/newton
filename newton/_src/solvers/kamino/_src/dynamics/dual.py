@@ -479,7 +479,7 @@ def _build_free_velocity_bias_joint_dynamics(
     model_joints_wid: wp.array(dtype=int32),
     model_joints_num_dynamic_cts: wp.array(dtype=int32),
     model_joints_dynamic_cts_offset: wp.array(dtype=int32),
-    model_joints_dynamic_cts_total_offset: wp.array(dtype=int32),
+    model_joints_dynamic_cts_total_cts_offset: wp.array(dtype=int32),
     data_joints_dq_b_j: wp.array(dtype=float32),
     # Outputs:
     problem_v_b: wp.array(dtype=float32),
@@ -497,7 +497,7 @@ def _build_free_velocity_bias_joint_dynamics(
     # Retrieve the joint constraints index offset into the dynamic-only constraints array
     bias_row_start_j = model_joints_dynamic_cts_offset[jid]
     # Retrieve the joint constraints index offset into the full constraints array
-    cts_row_start_j = model_joints_dynamic_cts_total_offset[jid]
+    cts_row_start_j = model_joints_dynamic_cts_total_cts_offset[jid]
 
     # Compute the free-velocity bias for the joint
     for j in range(num_dyn_cts_j):
@@ -511,7 +511,7 @@ def _build_free_velocity_bias_joint_kinematics(
     model_joints_wid: wp.array(dtype=int32),
     model_joints_num_kinematic_cts: wp.array(dtype=int32),
     model_joints_kinematic_cts_offset: wp.array(dtype=int32),
-    model_joints_kinematic_cts_total_offset: wp.array(dtype=int32),
+    model_joints_kinematic_cts_total_cts_offset: wp.array(dtype=int32),
     data_joints_r_j: wp.array(dtype=float32),
     problem_config: wp.array(dtype=DualProblemConfigStruct),
     # Outputs:
@@ -536,7 +536,7 @@ def _build_free_velocity_bias_joint_kinematics(
     # Retrieve the joint constraints index offset into the kinematic-only constraints array
     res_row_start_j = model_joints_kinematic_cts_offset[jid]
     # Retrieve the joint constraints index offset into the full constraints array
-    cts_row_start_j = model_joints_kinematic_cts_total_offset[jid]
+    cts_row_start_j = model_joints_kinematic_cts_total_cts_offset[jid]
 
     # Compute the free-velocity bias for the joint
     for j in range(num_kin_cts_j):
@@ -1568,7 +1568,7 @@ class DualProblem:
                         model.joints.wid,
                         model.joints.num_dynamic_cts,
                         model.joints.dynamic_cts_offset,
-                        model.joints.dynamic_cts_total_offset,
+                        model.joints.dynamic_cts_total_cts_offset,
                         data.joints.dq_b_j,
                         # Outputs:
                         self._data.v_b,
@@ -1583,7 +1583,7 @@ class DualProblem:
                     model.joints.wid,
                     model.joints.num_kinematic_cts,
                     model.joints.kinematic_cts_offset,
-                    model.joints.kinematic_cts_total_offset,
+                    model.joints.kinematic_cts_total_cts_offset,
                     data.joints.r_j,
                     self._data.config,
                     # Outputs:

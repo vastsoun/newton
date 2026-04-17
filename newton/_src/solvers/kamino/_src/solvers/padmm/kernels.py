@@ -170,13 +170,13 @@ def _warmstart_desaxce_correction(
 def _warmstart_joint_constraints(
     # Inputs:
     model_time_dt: wp.array(dtype=float32),
-    model_info_joint_cts_offset: wp.array(dtype=int32),
-    model_info_total_cts_offset: wp.array(dtype=int32),
     joint_wid: wp.array(dtype=int32),
     joint_num_dynamic_cts: wp.array(dtype=int32),
     joint_num_kinematic_cts: wp.array(dtype=int32),
-    joint_dynamic_cts_total_offset: wp.array(dtype=int32),
-    joint_kinematic_cts_total_offset: wp.array(dtype=int32),
+    joint_dynamic_cts_joint_cts_offset: wp.array(dtype=int32),
+    joint_kinematic_cts_joint_cts_offset: wp.array(dtype=int32),
+    joint_dynamic_cts_total_cts_offset: wp.array(dtype=int32),
+    joint_kinematic_cts_total_cts_offset: wp.array(dtype=int32),
     joint_lambda_j: wp.array(dtype=float32),
     problem_P: wp.array(dtype=float32),
     # Outputs:
@@ -195,14 +195,11 @@ def _warmstart_joint_constraints(
     # Retrieve the world-specific info
     dt = model_time_dt[wid_j]
 
-    # Global offsets in the total constraints vector
-    dyn_cts_row_start_j = joint_dynamic_cts_total_offset[jid]
-    kin_cts_row_start_j = joint_kinematic_cts_total_offset[jid]
-
-    # Rebase from total_cts to joint-only cts array
-    joint_cts_rebase = model_info_joint_cts_offset[wid_j] - model_info_total_cts_offset[wid_j]
-    joint_dyn_cts_start = dyn_cts_row_start_j + joint_cts_rebase
-    joint_kin_cts_start = kin_cts_row_start_j + joint_cts_rebase
+    # Retrieve offsets in the joint-only and total constraints vector
+    joint_dyn_cts_start = joint_dynamic_cts_joint_cts_offset[jid]
+    joint_kin_cts_start = joint_kinematic_cts_joint_cts_offset[jid]
+    dyn_cts_row_start_j = joint_dynamic_cts_total_cts_offset[jid]
+    kin_cts_row_start_j = joint_kinematic_cts_total_cts_offset[jid]
 
     # For each joint constraint, scale the constraint force by the time-step and
     # the preconditioner and initialize the solver state variables accordingly

@@ -747,11 +747,12 @@ def _make_block_sparse_transpose_gemv_kernel_2d(block_type: BlockDType):
 
 @wp.kernel
 def _diag_gemv_kernel(
-    x: wp.array2d(dtype=Any),
-    y: wp.array2d(dtype=Any),
-    D: wp.array2d(dtype=Any),
+    x: wp.array(dtype=Any),
+    y: wp.array(dtype=Any),
+    D: wp.array(dtype=Any),
     active_dims: wp.array(dtype=Any),
     world_active: wp.array(dtype=wp.int32),
+    vio: wp.array(dtype=wp.int32),
     alpha: Any,
     beta: Any,
 ):
@@ -761,26 +762,28 @@ def _diag_gemv_kernel(
     if world_active[world] == 0 or row >= active_dims[world]:
         return
 
+    idx = vio[world] + row
     zero = type(alpha)(0)
     s = y.dtype(0)
 
     if alpha != zero:
-        s += alpha * D[world, row] * x[world, row]
+        s += alpha * D[idx] * x[idx]
     if beta != zero:
-        s += beta * y[world, row]
-    y[world, row] = s
+        s += beta * y[idx]
+    y[idx] = s
 
 
 @wp.kernel
 def _dense_gemv_kernel(
-    x: wp.array2d(dtype=Any),
-    y: wp.array2d(dtype=Any),
-    A: wp.array2d(dtype=Any),
+    x: wp.array(dtype=Any),
+    y: wp.array(dtype=Any),
+    A: wp.array(dtype=Any),
     active_dims: wp.array(dtype=Any),
     world_active: wp.array(dtype=wp.int32),
     alpha: Any,
     beta: Any,
-    matrix_stride: int,
+    mio: wp.array(dtype=wp.int32),
+    vio: wp.array(dtype=wp.int32),
     tile_size: int,
 ):
     """Computes y[w] = alpha * (A[w] @ x[w]) + beta * y[w] in-place for each world w."""
@@ -791,15 +794,17 @@ def _dense_gemv_kernel(
         return
 
     row_stride = active_dims[world]
+    a_offset = mio[world]
+    v_offset = vio[world]
     zero = type(alpha)(0)
     s = zero
     if alpha != zero:
         for col in range(lane, dim, tile_size):
-            s += A[world, row * row_stride + col] * x[world, col]
+            s += A[a_offset + row * row_stride + col] * x[v_offset + col]
     row_tile = wp.tile_sum(wp.tile(s * alpha))
     if beta != zero:
-        row_tile += beta * wp.tile_load(y[world], shape=1, offset=row)
-    wp.tile_store(y[world], row_tile, offset=row)
+        row_tile += beta * wp.tile_load(y, shape=1, offset=v_offset + row)
+    wp.tile_store(y, row_tile, offset=v_offset + row)
 
 
 @functools.cache
@@ -1011,69 +1016,77 @@ def _blockwise_diag_3_4_gemv_kernel_2d(
 
 
 def diag_gemv(
-    D: wp.array2d,
-    x: wp.array2d,
-    y: wp.array2d,
+    D: wp.array,
+    x: wp.array,
+    y: wp.array,
     active_dims: wp.array,
     world_active: wp.array,
+    vio: wp.array,
     alpha: float,
     beta: float,
+    max_dim: int,
 ):
     """
     Launch kernel for diagonal matrix gemv: y = alpha * D * x + beta * y
 
     Args:
-        D: Diagonal matrices stored as 2D array (n_worlds, max_dim).
-        x: Input vectors (n_worlds, max_dim).
-        y: Output vectors (n_worlds, max_dim), modified in-place.
+        D: Diagonal entries stored as flat 1D array.
+        x: Input vectors, flat 1D.
+        y: Output vectors, flat 1D, modified in-place.
         active_dims: Active dimension per world.
         world_active: Boolean mask for active worlds.
+        vio: Vector index offsets per world.
         alpha: Scalar multiplier for D * x.
         beta: Scalar multiplier for y.
+        max_dim: Maximum dimension over all worlds (for launch grid).
     """
-    n_worlds, max_dim = x.shape
+    n_worlds = active_dims.shape[0]
     dtype = x.dtype
     wp.launch(
         _diag_gemv_kernel,
         dim=(n_worlds, max_dim),
-        inputs=[x, y, D, active_dims, world_active, dtype(alpha), dtype(beta)],
+        inputs=[x, y, D, active_dims, world_active, vio, dtype(alpha), dtype(beta)],
         device=x.device,
     )
 
 
 def dense_gemv(
-    A: wp.array2d,
-    x: wp.array2d,
-    y: wp.array2d,
+    A: wp.array,
+    x: wp.array,
+    y: wp.array,
     active_dims: wp.array,
     world_active: wp.array,
     alpha: float,
     beta: float,
-    matrix_stride: int,
+    max_dim: int,
+    mio: wp.array,
+    vio: wp.array,
     block_dim: int = 64,
 ):
     """
     Launch kernel for dense matrix gemv: y = alpha * A @ x + beta * y
 
     Args:
-        A: Dense matrices stored as 2D array (n_worlds, max_dim * max_dim).
-        x: Input vectors (n_worlds, max_dim).
-        y: Output vectors (n_worlds, max_dim), modified in-place.
+        A: Dense matrices stored as flat 1D array.
+        x: Input vectors, flat 1D.
+        y: Output vectors, flat 1D, modified in-place.
         active_dims: Active dimension per world.
         world_active: Boolean mask for active worlds.
         alpha: Scalar multiplier for A * x.
         beta: Scalar multiplier for y.
-        matrix_stride: Stride for matrix row indexing.
+        max_dim: Maximum dimension over all worlds (for launch grid).
+        mio: Matrix index offsets per world.
+        vio: Vector index offsets per world.
         block_dim: Block dimension for tiled computation.
     """
-    n_worlds, max_dim = x.shape
+    n_worlds = active_dims.shape[0]
     dtype = x.dtype
     if not x.device.is_cuda:
         block_dim = 1
     wp.launch(
         _dense_gemv_kernel,
         dim=(n_worlds, max_dim, block_dim),
-        inputs=[x, y, A, active_dims, world_active, dtype(alpha), dtype(beta), matrix_stride, block_dim],
+        inputs=[x, y, A, active_dims, world_active, dtype(alpha), dtype(beta), mio, vio, block_dim],
         device=x.device,
         block_dim=block_dim,
     )

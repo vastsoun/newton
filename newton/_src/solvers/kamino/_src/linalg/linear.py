@@ -374,6 +374,7 @@ class IterativeSolver(LinearSolver):
 
         self._num_worlds = self._batched_operator.n_worlds
         self._max_dim = self._batched_operator.max_dim
+        self._total_vec_size = self._batched_operator.total_vec_size
         self._solve_iterations: wp.array | None = None
         self._solve_residual_norm: wp.array | None = None
 
@@ -719,18 +720,16 @@ class ConjugateGradientSolver(IterativeSolver):
         if isinstance(operator, DenseLinearOperatorData):
             if not isinstance(operator.info, DenseSquareMultiLinearInfo):
                 raise ValueError("ConjugateGradientSolver requires a square matrix operator.")
-            dim_values = set(operator.info.maxdim.numpy().tolist())
-            if len(dim_values) > 1:
-                raise ValueError(
-                    f"ConjugateGradientSolver requires all blocks to have the same dimension ({dim_values})."
-                )
 
         if self._preconditioner == "jacobi":
             self._jacobi_preconditioner = wp.zeros(
-                shape=(self._num_worlds, self._max_dim), dtype=self._dtype, device=self._device
+                shape=(self._total_vec_size,), dtype=self._dtype, device=self._device
             )
             self._Mi = conjugate.BatchedLinearOperator.from_diagonal(
-                self._jacobi_preconditioner, self._batched_operator.active_dims
+                self._jacobi_preconditioner,
+                self._batched_operator.active_dims,
+                self._batched_operator.vio,
+                self._max_dim,
             )
         elif self._preconditioner is not None:
             raise ValueError(f"Unsupported preconditioner: {self._preconditioner}.")
@@ -790,8 +789,8 @@ class ConjugateGradientSolver(IterativeSolver):
             raise ValueError("ConjugateGradientSolver.allocate() must be called before solve().")
 
         self._solve_iterations, self._solve_residual_norm, _ = solver.solve(
-            b=b.reshape((self._num_worlds, self._max_dim)),
-            x=x.reshape((self._num_worlds, self._max_dim)),
+            b=b,
+            x=x,
         )
 
     def _update_preconditioner(self):
@@ -801,8 +800,11 @@ class ConjugateGradientSolver(IterativeSolver):
             conjugate.make_jacobi_preconditioner,
             dim=(self._num_worlds, self._max_dim),
             inputs=[
-                self._operator.mat.reshape((self._num_worlds, self._max_dim * self._max_dim)),
+                self._operator.mat,
                 self._batched_operator.active_dims,
+                self._operator.info.maxdim,
+                self._operator.info.mio,
+                self._operator.info.vio,
             ],
             outputs=[self._jacobi_preconditioner],
             device=self._device,
@@ -830,18 +832,16 @@ class ConjugateResidualSolver(IterativeSolver):
         if isinstance(operator, DenseLinearOperatorData):
             if not isinstance(operator.info, DenseSquareMultiLinearInfo):
                 raise ValueError("ConjugateResidualSolver requires a square matrix operator.")
-            dim_values = set(operator.info.maxdim.numpy().tolist())
-            if len(dim_values) > 1:
-                raise ValueError(
-                    f"ConjugateResidualSolver requires all blocks to have the same dimension ({dim_values})."
-                )
 
         if self._preconditioner == "jacobi":
             self._jacobi_preconditioner = wp.zeros(
-                shape=(self._num_worlds, self._max_dim), dtype=self._dtype, device=self._device
+                shape=(self._total_vec_size,), dtype=self._dtype, device=self._device
             )
             self._Mi = conjugate.BatchedLinearOperator.from_diagonal(
-                self._jacobi_preconditioner, self._batched_operator.active_dims
+                self._jacobi_preconditioner,
+                self._batched_operator.active_dims,
+                self._batched_operator.vio,
+                self._max_dim,
             )
         elif self._preconditioner is not None:
             raise ValueError(f"Unsupported preconditioner: {self._preconditioner}.")
@@ -901,8 +901,8 @@ class ConjugateResidualSolver(IterativeSolver):
             raise ValueError("ConjugateResidualSolver.allocate() must be called before solve().")
 
         self._solve_iterations, self._solve_residual_norm, _ = solver.solve(
-            b=b.reshape((self._num_worlds, self._max_dim)),
-            x=x.reshape((self._num_worlds, self._max_dim)),
+            b=b,
+            x=x,
         )
 
     def _update_preconditioner(self):
@@ -912,8 +912,11 @@ class ConjugateResidualSolver(IterativeSolver):
             conjugate.make_jacobi_preconditioner,
             dim=(self._num_worlds, self._max_dim),
             inputs=[
-                self._operator.mat.reshape((self._num_worlds, self._max_dim * self._max_dim)),
+                self._operator.mat,
                 self._batched_operator.active_dims,
+                self._operator.info.maxdim,
+                self._operator.info.mio,
+                self._operator.info.vio,
             ],
             outputs=[self._jacobi_preconditioner],
             device=self._device,

@@ -2114,12 +2114,21 @@ class ForwardKinematicsSolver:
             # Initialize Jacobian linear operator
             self.sparse_jacobian_op = BlockSparseLinearOperators(self.sparse_jacobian)
 
+            # Compute flat-array offsets for the CG solver (uniform world dimensions)
+            cg_vio = wp.from_numpy(np.arange(self.num_worlds, dtype=np.int32) * self.num_states_max, device=self.device)
+            cg_total_vec_size = self.num_worlds * self.num_states_max
+
             # Initialize preconditioner
             if self._preconditioner_type == ForwardKinematicsSolver.PreconditionerType.JACOBI_DIAGONAL:
                 self.jacobian_diag_inv = wp.array(
                     dtype=wp.float32, device=self.device, shape=(self.num_worlds, self.num_states_max)
                 )
-                preconditioner_op = BatchedLinearOperator.from_diagonal(self.jacobian_diag_inv, self.num_states)
+                preconditioner_op = BatchedLinearOperator.from_diagonal(
+                    self.jacobian_diag_inv.reshape((cg_total_vec_size,)),
+                    self.num_states,
+                    cg_vio,
+                    self.num_states_max,
+                )
             elif self._preconditioner_type == ForwardKinematicsSolver.PreconditionerType.JACOBI_BLOCK_DIAGONAL:
                 self.inv_blocks_3 = wp.array(
                     dtype=wp.mat33f, shape=(self.num_worlds, self.num_bodies_max), device=self.device
@@ -2127,25 +2136,42 @@ class ForwardKinematicsSolver:
                 self.inv_blocks_4 = wp.array(
                     dtype=wp.mat44f, shape=(self.num_worlds, self.num_bodies_max), device=self.device
                 )
+                blockwise_gemv_2d = get_blockwise_diag_3_4_gemv_2d(
+                    self.inv_blocks_3, self.inv_blocks_4, self.num_states
+                )
+                n_wd, n_st = self.num_worlds, self.num_states_max
+
+                def _blockwise_gemv_flat(x, y, world_active, alpha, beta):
+                    blockwise_gemv_2d(x.reshape((n_wd, n_st)), y.reshape((n_wd, n_st)), world_active, alpha, beta)
+
                 preconditioner_op = BatchedLinearOperator(
-                    gemv_fn=get_blockwise_diag_3_4_gemv_2d(self.inv_blocks_3, self.inv_blocks_4, self.num_states),
+                    gemv_fn=_blockwise_gemv_flat,
                     n_worlds=self.num_worlds,
                     max_dim=self.num_states_max,
                     active_dims=self.num_states,
                     device=self.device,
                     dtype=wp.float32,
+                    vio=cg_vio,
+                    total_vec_size=cg_total_vec_size,
                 )
             else:
                 preconditioner_op = None
 
-            # Initialize CG solver
+            # Initialize CG solver — wrap 2D gemv for flat 1D arrays
+            n_wd, n_st = self.num_worlds, self.num_states_max
+
+            def _cg_gemv_flat(x, y, world_active, alpha, beta):
+                self._eval_lhs_gemv(x.reshape((n_wd, n_st)), y.reshape((n_wd, n_st)), world_active, alpha, beta)
+
             cg_op = BatchedLinearOperator(
                 n_worlds=self.num_worlds,
                 max_dim=self.num_states_max,
                 active_dims=self.num_states,
                 dtype=wp.float32,
                 device=self.device,
-                gemv_fn=self._eval_lhs_gemv,
+                gemv_fn=_cg_gemv_flat,
+                vio=cg_vio,
+                total_vec_size=cg_total_vec_size,
             )
             self.cg_atol = wp.array(dtype=wp.float32, shape=self.num_worlds, device=self.device)
             self.cg_rtol = wp.array(dtype=wp.float32, shape=self.num_worlds, device=self.device)
@@ -2586,7 +2612,9 @@ class ForwardKinematicsSolver:
             else:
                 self.cg_atol.fill_(1e-8)
                 self.cg_rtol.fill_(1e-8)
-            self.linear_solver_cg.solve(self.rhs, self.step, world_active=self.newton_mask)
+            self.linear_solver_cg.solve(
+                self.rhs.reshape((-1,)), self.step.reshape((-1,)), world_active=self.newton_mask
+            )
         else:
             self.linear_solver_llt.factorize(self.lhs, self.num_states, self.newton_mask)
             self.linear_solver_llt.solve(
@@ -2724,7 +2752,9 @@ class ForwardKinematicsSolver:
             self.bodies_q_dot.zero_()
             self.cg_atol.fill_(1e-8)
             self.cg_rtol.fill_(1e-8)
-            self.linear_solver_cg.solve(self.rhs, self.bodies_q_dot, world_active=world_mask)
+            self.linear_solver_cg.solve(
+                self.rhs.reshape((-1,)), self.bodies_q_dot.reshape((-1,)), world_active=world_mask
+            )
         else:
             self.linear_solver_llt.factorize(self.lhs, self.num_states, world_mask)
             self.linear_solver_llt.solve(

@@ -653,7 +653,7 @@ class TestLinalgConjugate(unittest.TestCase):
         # Solve
         kwargs = {}
         if discover_sparse:
-            kwargs = {discover_sparse: True, sparse_block_size: block_size, sparse_threshold: 1.0}
+            kwargs = {"discover_sparse": True, "sparse_block_size": block_size, "sparse_threshold": 1.0}
         solver = solver_cls(**kwargs, device=device)
         solver.finalize(dense_op)
         solver.compute(A_wp)

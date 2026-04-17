@@ -549,7 +549,7 @@ class SolverKamino(SolverBase):
         # internal control arrays if None is provided.
         if control is None:
             control = self.model.control(clone_variables=False)
-        control_kamino = self._kamino.ControlKamino.from_newton(control)
+        control_kamino = self._kamino.ControlKamino.from_newton(control, self.model)
 
         # If contacts are provided, use them directly, bypassing Kamino's collision detector
         if contacts is not None:

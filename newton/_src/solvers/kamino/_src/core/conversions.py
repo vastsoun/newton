@@ -42,7 +42,7 @@ from .shapes import ShapeType, max_contacts_for_shape_pair, shape_from_newton, s
 from .types import float32, int32, mat33f, mat63f, quatf, transformf, vec2i, vec3f, vec4f, vec6f
 
 if TYPE_CHECKING:
-    from ..core.model import ModelKaminoInfo
+    from ..core.model import ModelKamino, ModelKaminoInfo
 
 ###
 # Module interface
@@ -54,6 +54,8 @@ __all__ = [
     "convert_joints",
     "convert_model_joint_transforms",
     "convert_rigid_bodies",
+    "convert_target_coords_to_target_dofs",
+    "convert_target_dofs_to_target_coords",
 ]
 
 
@@ -558,6 +560,105 @@ def geometry_conversion_kernel(
         q_rot = wp.transform_get_rotation(tf)
         normal = wp.quat_rotate(q_rot, vec3f(0.0, 0.0, 1.0))
         geom_shape_params[shape_id] = vec4f(normal[0], normal[1], normal[2], 0.0)
+
+
+@wp.kernel
+def target_dofs_to_coords_conversion_kernel(
+    # Inputs
+    model_joints_wid: wp.array(dtype=int32),
+    model_joints_dof_type: wp.array(dtype=int32),
+    model_joints_dofs_offset: wp.array(dtype=int32),
+    model_joints_coords_offset: wp.array(dtype=int32),
+    model_joints_num_dofs: wp.array(dtype=int32),
+    model_info_joint_dofs_offset: wp.array(dtype=int32),
+    model_info_joint_coords_offset: wp.array(dtype=int32),
+    joint_target_dofs: wp.array(dtype=float32),
+    # Outputs
+    joint_target_coords: wp.array(dtype=float32),
+):
+    # Read thread id (= joint id)
+    jid = wp.tid()
+
+    # Get dof/coords offsets and number of dofs
+    wid = model_joints_wid[jid]
+    num_dofs = model_joints_num_dofs[jid]
+    dof_offset = model_info_joint_dofs_offset[wid] + model_joints_dofs_offset[jid]
+    coord_offset = model_info_joint_coords_offset[wid] + model_joints_coords_offset[jid]
+
+    # Check whether coords = dofs for this joint
+    dof_type = model_joints_dof_type[jid]
+    orientation_dofs_offset = -1  # Offset of orientation dofs to convert
+    if dof_type == JointDoFType.FREE or dof_type == JointDoFType.SPHERICAL:
+        # Spherical/free joint: the last 3 dofs / 4 coords differ (Euler angles vs unit quaternion)
+        orientation_dofs_offset = num_dofs - 3
+        num_dofs -= 3
+
+    # Copy all dofs/coords that match
+    for k in range(num_dofs):
+        joint_target_coords[coord_offset + k] = joint_target_dofs[dof_offset + k]
+
+    # Convert Euler angles to unit quaternion if needed
+    if orientation_dofs_offset >= 0:
+        angles_offset = dof_offset + orientation_dofs_offset
+        angles = vec3f(
+            joint_target_dofs[angles_offset],
+            joint_target_dofs[angles_offset + 1],
+            joint_target_dofs[angles_offset + 2],
+        )
+        quat = wp.quat_from_euler(angles, 2, 1, 0)
+        quat_offset = coord_offset + orientation_dofs_offset
+        for k in range(4):
+            joint_target_coords[quat_offset + k] = quat[k]
+
+
+@wp.kernel
+def target_coords_to_dofs_conversion_kernel(
+    # Inputs
+    model_joints_wid: wp.array(dtype=int32),
+    model_joints_dof_type: wp.array(dtype=int32),
+    model_joints_dofs_offset: wp.array(dtype=int32),
+    model_joints_coords_offset: wp.array(dtype=int32),
+    model_joints_num_dofs: wp.array(dtype=int32),
+    model_info_joint_dofs_offset: wp.array(dtype=int32),
+    model_info_joint_coords_offset: wp.array(dtype=int32),
+    joint_target_coords: wp.array(dtype=float32),
+    # Outputs
+    joint_target_dofs: wp.array(dtype=float32),
+):
+    # Read thread id (= joint id)
+    jid = wp.tid()
+
+    # Get dof/coords offsets and number of dofs
+    wid = model_joints_wid[jid]
+    num_dofs = model_joints_num_dofs[jid]
+    dof_offset = model_info_joint_dofs_offset[wid] + model_joints_dofs_offset[jid]
+    coord_offset = model_info_joint_coords_offset[wid] + model_joints_coords_offset[jid]
+
+    # Check whether coords = dofs for this joint
+    dof_type = model_joints_dof_type[jid]
+    orientation_dofs_offset = -1  # Offset of orientation dofs to convert
+    if dof_type == JointDoFType.FREE or dof_type == JointDoFType.SPHERICAL:
+        # Spherical/free joint: the last 3 dofs / 4 coords differ (Euler angles vs unit quaternion)
+        orientation_dofs_offset = num_dofs - 3
+        num_dofs -= 3
+
+    # Copy all dofs/coords that match
+    for k in range(num_dofs):
+        joint_target_dofs[dof_offset + k] = joint_target_coords[coord_offset + k]
+
+    # Convert unit quaternion to Euler angles if needed
+    if orientation_dofs_offset >= 0:
+        quat_offset = coord_offset + orientation_dofs_offset
+        quat = wp.quat(
+            joint_target_coords[quat_offset],
+            joint_target_coords[quat_offset + 1],
+            joint_target_coords[quat_offset + 2],
+            joint_target_coords[quat_offset + 3],
+        )
+        angles = wp.quat_to_euler(quat, 2, 1, 0)
+        angles_offset = dof_offset + orientation_dofs_offset
+        for k in range(3):
+            joint_target_dofs[angles_offset + k] = angles[k]
 
 
 ###
@@ -1408,3 +1509,45 @@ def convert_geometries(
     )
 
     return model_geoms
+
+
+def convert_target_dofs_to_target_coords(
+    joint_target_dofs: wp.array, joint_target_coords: wp.array, model: ModelKamino
+):
+    wp.launch(
+        target_dofs_to_coords_conversion_kernel,
+        dim=model.size.sum_of_num_joints,
+        inputs=[
+            model.joints.wid,
+            model.joints.dof_type,
+            model.joints.dofs_offset,
+            model.joints.coords_offset,
+            model.joints.num_dofs,
+            model.info.joint_dofs_offset,
+            model.info.joint_coords_offset,
+            joint_target_dofs,
+            joint_target_coords,
+        ],
+        device=model.device,
+    )
+
+
+def convert_target_coords_to_target_dofs(
+    joint_target_coords: wp.array, joint_target_dofs: wp.array, model: ModelKamino
+):
+    wp.launch(
+        target_coords_to_dofs_conversion_kernel,
+        dim=model.size.sum_of_num_joints,
+        inputs=[
+            model.joints.wid,
+            model.joints.dof_type,
+            model.joints.dofs_offset,
+            model.joints.coords_offset,
+            model.joints.num_dofs,
+            model.info.joint_dofs_offset,
+            model.info.joint_coords_offset,
+            joint_target_coords,
+            joint_target_dofs,
+        ],
+        device=model.device,
+    )

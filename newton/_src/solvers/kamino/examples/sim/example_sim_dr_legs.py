@@ -52,6 +52,8 @@ wp.set_module_options({"enable_backward": False})
 def _pd_control_callback(
     # Inputs:
     decimation: int32,
+    model_info_joint_actuated_coords_offset: wp.array(dtype=int32),
+    model_info_joint_actuated_dofs_offset: wp.array(dtype=int32),
     model_joints_wid: wp.array(dtype=int32),
     model_joints_act_type: wp.array(dtype=int32),
     model_joint_num_coords: wp.array(dtype=int32),
@@ -94,8 +96,8 @@ def _pd_control_callback(
     num_dofs_j = model_joint_num_dofs[jid]
     coords_offset_j = model_joint_coords_offset[jid]
     dofs_offset_j = model_joint_dofs_offset[jid]
-    actuated_coords_offset_j = model_joint_actuated_coords_offset[jid]
-    actuated_dofs_offset_j = model_joint_actuated_dofs_offset[jid]
+    actuated_coords_offset_j = model_joint_actuated_coords_offset[jid] - model_info_joint_actuated_coords_offset[wid]
+    actuated_dofs_offset_j = model_joint_actuated_dofs_offset[jid] - model_info_joint_actuated_dofs_offset[wid]
 
     # Retrieve the current frame of the animation reference for the world
     frame = animation_frame[wid]
@@ -125,6 +127,8 @@ def pd_control_callback(sim: Simulator, animation: AnimationJointReference, deci
         inputs=[
             # Inputs
             int32(decimation),
+            sim.model.info.joint_actuated_coords_offset,
+            sim.model.info.joint_actuated_dofs_offset,
             sim.model.joints.wid,
             sim.model.joints.act_type,
             sim.model.joints.num_coords,

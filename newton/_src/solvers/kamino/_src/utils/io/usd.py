@@ -2070,6 +2070,8 @@ class USDImporter:
                     act_type=JointActuationType.PASSIVE,
                     bid_B=-1,
                     bid_F=root_body_index,
+                    B_r_Bj=wp.transform_get_translation(builder.bodies[0][root_body_index].q_i_0),
+                    F_r_Fj=vec3f(0.0),
                     X_j=Axis.X.to_mat33(),
                 )
                 msg.debug(

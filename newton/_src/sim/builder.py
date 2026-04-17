@@ -3747,9 +3747,9 @@ class ModelBuilder:
             ],
             custom_attributes=custom_attributes,
         )
-        q_start = self.joint_q_start[joint_id]
-        # set the positional dofs to the child body's transform
-        self.joint_q[q_start : q_start + 7] = list(self.body_q[child])
+        # q_start = self.joint_q_start[joint_id]
+        # # set the positional dofs to the child body's transform
+        # self.joint_q[q_start : q_start + 7] = list(self.body_q[child])
         return joint_id
 
     def add_joint_distance(

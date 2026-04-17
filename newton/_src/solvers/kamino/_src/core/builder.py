@@ -1218,13 +1218,6 @@ class ModelBuilderKamino:
         collect_geometry_model_data()
         collect_material_pairs_model_data()
 
-        # Post-processing of reference coords of FREE joints to match body frames
-        for joint in self.all_joints:
-            if joint.dof_type == JointDoFType.FREE:
-                body = self._bodies[joint.wid][joint.bid_F]
-                qj_start = joint.coords_offset + self._worlds[joint.wid].joint_coords_idx_offset
-                joints_q_j_0[qj_start : qj_start + joint.num_coords] = [*body.q_i_0]
-
         ###
         # Host-side model size meta-data
         ###

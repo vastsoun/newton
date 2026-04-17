@@ -128,7 +128,7 @@ def _build_delassus_elementwise_dense(
     # Outputs:
     delassus_D: wp.array(dtype=float32),
 ):
-    # Retrieve the thread index as the world index and Delassus element index
+    # Retrieve the thread index as the world index and upper-triangle element index
     wid, tid = wp.tid()
 
     # Retrieve the world dimensions
@@ -142,12 +142,19 @@ def _build_delassus_elementwise_dense(
     if ncts == 0:
         return
 
-    # Compute i (row) and j (col) indices from the tid
-    i = tid // ncts
-    j = tid % ncts
+    # The Delassus matrix is symmetric, so we only compute the upper triangle (i <= j).
+    # Map tid to upper-triangular index (i, j):
+    #   Row i starts at flat position f(i) = i*ncts - i*(i-1)/2
+    #   and contains (ncts - i) elements. Total elements = ncts*(ncts+1)/2.
+    n_upper = ncts * (ncts + 1) // 2
+    if tid >= n_upper:
+        return
 
-    # Skip if indices exceed the problem size
-    if i >= ncts or j >= ncts:
+    # Recover row i: largest i such that f(i) <= tid
+    i = int(float32(2 * ncts + 1) - wp.sqrt(float32((2 * ncts + 1) * (2 * ncts + 1) - 8 * tid))) // 2
+    # Recover column j: offset within row i, shifted by i (upper triangle starts at diagonal)
+    j = tid - i * ncts + i * (i + 1) // 2
+    if i < 0 or i >= ncts or j < i or j >= ncts:
         return
 
     # Retrieve the world's matrix offsets
@@ -158,13 +165,11 @@ def _build_delassus_elementwise_dense(
     nbd = 6 * nb
 
     # Buffers
-    # tmp = vec3f(0.0)
     Jv_i = vec3f(0.0)
     Jv_j = vec3f(0.0)
     Jw_i = vec3f(0.0)
     Jw_j = vec3f(0.0)
     D_ij = float32(0.0)
-    D_ji = float32(0.0)
 
     # Loop over rigid body blocks
     # NOTE: k is the body index w.r.t the world
@@ -188,21 +193,15 @@ def _build_delassus_elementwise_dense(
             Jw_j[d] = jacobians_cts_data[jio_jk + d + 3]
 
         # Linear term: inv_m_k * dot(Jv_i, Jv_j)
+        # Angular term: dot(Jw_i, inv_I_k @ Jw_j)
         inv_m_k = model_bodies_inv_m_i[bid_k]
-        lin_ij = inv_m_k * wp.dot(Jv_i, Jv_j)
-        lin_ji = inv_m_k * wp.dot(Jv_j, Jv_i)
-
-        # Angular term: dot(Jw_i.T * I_k, Jw_j)
         inv_I_k = data_bodies_inv_I_i[bid_k]
-        ang_ij = wp.dot(Jw_i, inv_I_k @ Jw_j)
-        ang_ji = wp.dot(Jw_j, inv_I_k @ Jw_i)
+        D_ij += inv_m_k * wp.dot(Jv_i, Jv_j) + wp.dot(Jw_i, inv_I_k @ Jw_j)
 
-        # Accumulate
-        D_ij += lin_ij + ang_ij
-        D_ji += lin_ji + ang_ji
-
-    # Store the result in the Delassus matrix
-    delassus_D[dmio + ncts * i + j] = 0.5 * (D_ij + D_ji)
+    # Write upper triangle and mirror to lower
+    delassus_D[dmio + ncts * i + j] = D_ij
+    if i != j:
+        delassus_D[dmio + ncts * j + i] = D_ij
 
 
 @wp.kernel
@@ -256,6 +255,12 @@ def _build_delassus_elementwise_sparse(
     if block_coords_i[1] != block_coords_j[1]:
         return
 
+    # The Delassus matrix is symmetric, so we only compute the upper triangle (ct_i <= ct_j).
+    ct_i = block_coords_i[0]
+    ct_j = block_coords_j[0]
+    if ct_i > ct_j:
+        return
+
     # Body index (bid) of body k w.r.t the model, from Jacobian block coords
     bid_k = bio + block_coords_i[1] // 6
 
@@ -273,21 +278,15 @@ def _build_delassus_elementwise_sparse(
     Jw_j = vec3f(block_j[3], block_j[4], block_j[5])
 
     # Linear term: inv_m_k * dot(Jv_i, Jv_j)
+    # Angular term: dot(Jw_i, inv_I_k @ Jw_j)
     inv_m_k = model_bodies_inv_m_i[bid_k]
-    lin_ij = inv_m_k * wp.dot(Jv_i, Jv_j)
-    lin_ji = inv_m_k * wp.dot(Jv_j, Jv_i)
-
-    # Angular term: dot(Jw_i.T * I_k, Jw_j)
     inv_I_k = data_bodies_inv_I_i[bid_k]
-    ang_ij = wp.dot(Jw_i, inv_I_k @ Jw_j)
-    ang_ji = wp.dot(Jw_j, inv_I_k @ Jw_i)
+    D_ij = inv_m_k * wp.dot(Jv_i, Jv_j) + wp.dot(Jw_i, inv_I_k @ Jw_j)
 
-    # Compute sum
-    D_ij = lin_ij + ang_ij
-    D_ji = lin_ji + ang_ji
-
-    # Store the result in the Delassus matrix
-    wp.atomic_add(delassus_D, dmio + ncts * block_coords_i[0] + block_coords_j[0], 0.5 * (D_ij + D_ji))
+    # Write upper triangle and mirror to lower
+    wp.atomic_add(delassus_D, dmio + ncts * ct_i + ct_j, D_ij)
+    if ct_i != ct_j:
+        wp.atomic_add(delassus_D, dmio + ncts * ct_j + ct_i, D_ij)
 
 
 @wp.kernel
@@ -964,11 +963,16 @@ class DelassusOperator:
         if reset_to_zero:
             self.zero()
 
-        # Build the Delassus matrix parallelized element-wise
+        # Build the Delassus matrix parallelized over the upper triangle.
+        # Aligns to warp size (32) to avoid partially-filled warps.
         if isinstance(jacobians, DenseSystemJacobians):
+            max_ncts = max(self._world_dims) if self._world_dims else 0
+            upper_tri_size = max_ncts * (max_ncts + 1) // 2
+            warp_size = 32
+            upper_tri_size = ((upper_tri_size + warp_size - 1) // warp_size) * warp_size
             wp.launch(
                 kernel=_build_delassus_elementwise_dense,
-                dim=(self._size.num_worlds, self._max_of_max_total_D_size),
+                dim=(self._size.num_worlds, upper_tri_size),
                 inputs=[
                     # Inputs:
                     model.info.num_bodies,

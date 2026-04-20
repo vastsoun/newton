@@ -2269,25 +2269,37 @@ class JointsData:
             self.q_j_p.zero_()
         self.dq_j.zero_()
 
-    def reset_references(self, q_j_ref: wp.array | None = None, dq_j_ref: wp.array | None = None):
-        # TODO: update so that quaternions are correctly initialized given None inputs?
+    def reset_references(
+        self, q_j_ref: wp.array | None = None, dq_j_ref: wp.array | None = None, joints: JointsModel | None = None
+    ):
         """
-        Resets all reference coordinates and velocities to either zero or the provided
-        reference values.
+        Resets all reference coordinates and velocities to either the provided reference values,
+        or the initial values stored in the model.
+
+        Args:
+            q_j_ref (wp.array, optional): New reference joint coordinates to set.
+            dq_j_ref (wp.array, optional): New reference joint velocities to set.
+            joints (JointsModel, optional): Joints model, to read initial joint coords/velocities
+                                            to use as reference if not provided.
         """
+        if q_j_ref is None and joints is None:
+            raise ValueError("Either q_j_ref or joints must be provided to reset reference coordinates.")
+        if dq_j_ref is None and joints is None:
+            raise ValueError("Either dq_j_ref or joints must be provided to reset reference velocities.")
+
         if q_j_ref is not None:
             if q_j_ref.size != self.q_j_ref.size:
                 raise ValueError(f"Invalid size of q_j_ref: {q_j_ref.size}. Expected: {self.q_j_ref.size}.")
             wp.copy(self.q_j_ref, q_j_ref)
         else:
-            self.q_j_ref.zero_()
+            wp.copy(self.q_j_ref, joints.q_j_0)
 
         if dq_j_ref is not None:
             if dq_j_ref.size != self.dq_j_ref.size:
                 raise ValueError(f"Invalid size of dq_j_ref: {dq_j_ref.size}. Expected: {self.dq_j_ref.size}.")
             wp.copy(self.dq_j_ref, dq_j_ref)
         else:
-            self.dq_j_ref.zero_()
+            wp.copy(self.dq_j_ref, joints.dq_j_0)
 
     def clear_residuals(self):
         """

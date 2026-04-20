@@ -83,6 +83,16 @@ class ControlKamino:
     """
 
     ###
+    # Internal state
+    ###
+
+    _needs_coord_conversion: bool = False
+    """Whether dofs-to-coords conversion is required for this model."""
+
+    _q_j_ref_coords_space: wp.array | None = None
+    """Owned coords-space reference buffer used when ``dofs != coords``."""
+
+    ###
     # Operations
     ###
 
@@ -108,62 +118,70 @@ class ControlKamino:
             raise ValueError("Error copying from/to uninitialized ControlKamino")
         wp.copy(self.tau_j, other.tau_j)
 
-    @staticmethod
-    def from_newton(control: Control, model: ModelKamino) -> ControlKamino:
+    def finalize(self, model: ModelKamino, device: wp.DeviceLike | None = None) -> None:
         """
-        Constructs a :class:`kamino.ControlKamino` object from a :class:`newton.Control` object.
+        Allocates any required internal buffer to interface with a :class:`newton.Control`.
 
-        This operation serves as an adaptor-like constructor to interface a :class:`newton.Control`,
-        creating aliases without copying data in most cases. One array must be copied/converted for models
-        containing spherical or free joints.
+        More specifically, an internal buffer is allocated for models for which joint coordinates
+        and DoFs differ (i.e. models with spherical or free joints); otherwise, no allocation
+        is performed.
 
         Args:
-            control: The source :class:`newton.Control` object to be adapted.
+            model: The Kamino model describing the system.
+            device: Optional device to allocate buffers on. If ``None``, uses the model's device.
+        """
+        if model.size.sum_of_num_joint_dofs != model.size.sum_of_num_joint_coords:
+            self._needs_coord_conversion = True
+            self._q_j_ref_coords_space = wp.zeros(
+                shape=model.size.sum_of_num_joint_coords,
+                dtype=float32,
+                device=device if device is not None else model.device,
+            )
+        else:
+            self._needs_coord_conversion = False
+            self._q_j_ref_coords_space = None
+
+    def from_newton(self, control: Control, model: ModelKamino) -> None:
+        """
+        Reads a source :class:`newton.Control` object into this :class:`ControlKamino` instance.
+        Arrays are simply aliased whenever possible, but in some cases a necessary conversion from joint
+        target DoFs to coords is performed.
+
+        Args:
+            control: The source :class:`newton.Control` object.
             model: The Kamino model.
         """
-        if model.size.sum_of_num_joint_dofs == model.size.sum_of_num_joint_coords:
-            return ControlKamino(
-                tau_j=control.joint_f,
-                tau_j_ref=control.joint_act,
-                q_j_ref=control.joint_target_pos,
-                dq_j_ref=control.joint_target_vel,
+        self.tau_j = control.joint_f
+        self.tau_j_ref = control.joint_act
+        self.dq_j_ref = control.joint_target_vel
+        if self._needs_coord_conversion:
+            self.q_j_ref = self._q_j_ref_coords_space
+            convert_target_dofs_to_target_coords(
+                joint_target_dofs=control.joint_target_pos,
+                joint_target_coords=self.q_j_ref,
+                model=model,
             )
         else:
-            joint_target_coords = wp.array(dtype=float32, shape=model.size.sum_of_num_joint_coords, device=model.device)
-            convert_target_dofs_to_target_coords(
-                joint_target_dofs=control.joint_target_pos, joint_target_coords=joint_target_coords, model=model
-            )
-            return ControlKamino(
-                tau_j=control.joint_f,
-                tau_j_ref=control.joint_act,
-                q_j_ref=joint_target_coords,
-                dq_j_ref=control.joint_target_vel,
-            )
+            self.q_j_ref = control.joint_target_pos
 
-    @staticmethod
-    def to_newton(control: ControlKamino, model: ModelKamino) -> Control:
+    def to_newton(self, control: Control, model: ModelKamino) -> None:
         """
-        Constructs a :class:`newton.Control` object from a :class:`kamino.ControlKamino` object.
-
-        This operation serves as an adaptor-like constructor to interface a :class:`newton.Control`,
-        creating aliases without copying data in most cases. One array must be copied/converted for models
-        containing spherical or free joints.
+        Writes this :class:`ControlKamino` instance into a destination :class:`newton.Control` object.
+        Arrays are simply aliased whenever possible, but in some cases a necessary conversion from joint
+        target coords to DoFs is performed.
 
         Args:
-            control: The source :class:`kamino.ControlKamino` object to be adapted.
+            control: The destination :class:`newton.Control` object.
+            model: The Kamino model.
         """
-        control_newton = Control()
-        control_newton.joint_f = control.tau_j
-        control_newton.joint_act = control.tau_j_ref
-        control_newton.joint_target_vel = control.dq_j_ref
-
-        if model.size.sum_of_num_joint_dofs == model.size.sum_of_num_joint_coords:
-            control_newton.joint_target_pos = control.q_j_ref
-        else:
-            joint_target_dofs = wp.array(dtype=float32, shape=model.size.sum_of_num_joint_dofs, device=model.device)
+        control.joint_f = self.tau_j
+        control.joint_act = self.tau_j_ref
+        control.joint_target_vel = self.dq_j_ref
+        if self._needs_coord_conversion:
             convert_target_coords_to_target_dofs(
-                joint_target_coords=control.q_j_ref, joint_target_dofs=joint_target_dofs, model=model
+                joint_target_coords=self.q_j_ref,
+                joint_target_dofs=control.joint_target_pos,
+                model=model,
             )
-            control_newton.joint_target_pos = joint_target_dofs
-
-        return control_newton
+        else:
+            control.joint_target_pos = self.q_j_ref

@@ -707,6 +707,7 @@ class TestSolverMetrics(unittest.TestCase):
             data=test.data,
             limits=test.limits,
             contacts=test.contacts,
+            jacobians=jacobians_sparse,
             device=self.default_device,
             sparse=True,
         )

@@ -1191,7 +1191,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         be active in each world.
 
         Args:
-            model (ModelKamino):
+            model (ModelKamino, optional):
                 The model container for which the Delassus operator is built.
             data (DataKamino, optional):
                 The model data container holding the state info and data.
@@ -1201,7 +1201,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 Contacts data container for contact constraints.
             jacobians (SparseSystemJacobians, optional):
                 The sparse Jacobians container.
-                Can be assigned later via the `assign` method.
             solver (LinearSolverType, optional):
                 The linear solver class to use for solving linear systems.
                 Must be a subclass of `IterativeSolver`.
@@ -1261,9 +1260,9 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         self,
         model: ModelKamino,
         data: DataKamino,
+        jacobians: SparseSystemJacobians,
         limits: LimitsKamino | None,
         contacts: ContactsKamino | None,
-        jacobians: SparseSystemJacobians | None = None,
         solver: LinearSolverType = None,
         device: wp.DeviceLike = None,
         solver_kwargs: dict[str, Any] | None = None,
@@ -1276,13 +1275,12 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 The model container for which the Delassus operator is built.
             data (DataKamino):
                 The model data container holding the state info and data.
+            jacobians (SparseSystemJacobians):
+                The sparse Jacobians container.
             limits (LimitsKamino, optional):
                 Limits data container for joint limit constraints.
             contacts (ContactsKamino, optional):
                 Contacts data container for contact constraints.
-            jacobians (SparseSystemJacobians, optional):
-                The sparse Jacobians container.
-                Can be assigned later via the `assign` method.
             solver (LinearSolverType, optional):
                 The linear solver class to use for solving linear systems.
                 Must be a subclass of `IterativeSolver`.
@@ -1307,6 +1305,10 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             )
         elif not isinstance(data, DataKamino):
             raise ValueError("Invalid data container provided. Must be an instance of `DataKamino`.")
+
+        # Ensure the Jacobians are provided
+        if jacobians is None:
+            raise ValueError("The sparse system Jacobians must be provided to allocate the Delassus operator.")
 
         # Ensure the solver is iterative if provided
         if solver is not None and not issubclass(solver, IterativeSolver):
@@ -1379,34 +1381,12 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         else:
             self._col_major_jacobian = None
 
-        # Assign Jacobian if specified
-        if jacobians is not None:
-            self.assign(jacobians)
-
-        # Optionally initialize the iterative linear system solver if one is specified
-        if solver is not None:
-            solver_kwargs = solver_kwargs or {}
-            self._solver = solver(operator=self, device=self._device, **solver_kwargs)
-
-        self.set_needs_update()
-
-    def assign(self, jacobians: SparseSystemJacobians):
-        """
-        Assigns the constraint Jacobian to the Delassus operator.
-
-        This method links the Delassus operator to the block sparse Jacobian matrix,
-        which is used to compute the implicit Delassus matrix-vector products.
-
-        Args:
-            jacobians (SparseSystemJacobians):
-                The sparse system Jacobians container holding the
-                constraint Jacobian matrix in block sparse format.
-        """
+        # Assign Jacobian
         self._jacobians = jacobians
 
+        # Create copy of constraint Jacobian with separate non-zero block values, so we can apply
+        # preconditioning directly to the Jacobian.
         if self._col_major_jacobian is None and self._transpose_op_matrix is None:
-            # Create copy of constraint Jacobian with separate non-zero block values, so we can apply
-            # preconditioning directly to the Jacobian.
             self._transpose_op_matrix = copy.copy(jacobians._J_cts.bsm)
             self._transpose_op_matrix.nzb_values = wp.empty_like(self.constraint_jacobian.nzb_values)
 
@@ -1417,7 +1397,12 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             self.bsm = copy.copy(jacobians._J_cts.bsm)
             self.bsm.nzb_values = wp.empty_like(self.constraint_jacobian.nzb_values)
 
-        self.update()
+        # Optionally initialize the iterative linear system solver if one is specified
+        if solver is not None:
+            solver_kwargs = solver_kwargs or {}
+            self._solver = solver(operator=self, device=self._device, **solver_kwargs)
+
+        self.set_needs_update()
 
     def set_needs_update(self):
         """

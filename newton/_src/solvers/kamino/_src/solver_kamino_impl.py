@@ -234,6 +234,7 @@ class SolverKaminoImpl(SolverBase):
             data=self._data,
             limits=self._limits,
             contacts=contacts,
+            jacobians=self._jacobians,
             config=problem_fd_config,
             solver=linear_solver_type,
             solver_kwargs=linear_solver_kwargs,

@@ -1092,6 +1092,7 @@ class DualProblem:
         data: DataKamino | None = None,
         limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
+        jacobians: SparseSystemJacobians | DenseSystemJacobians | None = None,
         solver: LinearSolverType | None = None,
         solver_kwargs: dict[str, Any] | None = None,
         config: list[DualProblem.Config] | DualProblem.Config | None = None,
@@ -1114,6 +1115,8 @@ class DualProblem:
                 The model to build the dual problem for.
             contacts (ContactsKamino, optional):
                 The contacts container to use for the dual problem.
+            jacobians (SparseSystemJacobians | DenseSystemJacobians, optional):
+                The constraints Jacobians for this model. Must be provided if model is provided.
             solver (LinearSolverType, optional):
                 The linear solver to use for the Delassus operator. Defaults to None.
             config (List[DualProblem.Config] | DualProblem.Config, optional):
@@ -1153,6 +1156,7 @@ class DualProblem:
                 data=data,
                 limits=limits,
                 contacts=contacts,
+                jacobians=jacobians,
                 solver=solver,
                 solver_kwargs=solver_kwargs,
                 config=config,
@@ -1226,6 +1230,7 @@ class DualProblem:
     def finalize(
         self,
         model: ModelKamino,
+        jacobians: SparseSystemJacobians | DenseSystemJacobians,
         data: DataKamino | None = None,
         limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
@@ -1240,8 +1245,10 @@ class DualProblem:
         for the given model, limits, contacts and Jacobians.
 
         Args:
-            model (ModelKamino, optional):
+            model (ModelKamino):
                 The model to build the dual problem for.
+            jacobians (SparseSystemJacobians | DenseSystemJacobians):
+                The constraints Jacobians for this model.
             contacts (ContactsKamino, optional):
                 The contacts container to use for the dual problem.
             solver (LinearSolverType, optional):
@@ -1298,6 +1305,7 @@ class DualProblem:
                 data=data,
                 limits=limits,
                 contacts=contacts,
+                jacobians=jacobians,
                 solver=solver,
                 solver_kwargs=solver_kwargs,
                 device=device,
@@ -1417,11 +1425,9 @@ class DualProblem:
         if reset_to_zero:
             self.zero()
 
-        # Build the Delassus operator
+        # Build the dense Delassus operator if applicable
         # NOTE: We build this first since it will update the arrays of active constraints
-        if self._sparse:
-            self._delassus.assign(jacobians=jacobians)
-        else:
+        if not self._sparse:
             self._delassus.build(
                 model=model,
                 data=data,

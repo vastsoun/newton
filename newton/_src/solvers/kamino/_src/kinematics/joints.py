@@ -746,7 +746,7 @@ def compute_and_write_joint_implicit_dynamics(
         # Retrieve the current joint state
         # TODO: How can we avoid the extra memory load and
         # instead just get them from `make_write_joint_data`?
-        q_j = data_joint_q_j[dofs_offset_j]
+        q_j = data_joint_q_j[coords_offset_j]
         dq_j = data_joint_dq_j[dofs_offset_j]
 
         # Retrieve the implicit joint dynamics and PD control parameters

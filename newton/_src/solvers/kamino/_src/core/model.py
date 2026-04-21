@@ -666,8 +666,8 @@ class ModelKamino:
         with wp.ScopedDevice(device=device):
             control = ControlKamino(
                 tau_j=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
-                q_j_ref=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
-                dq_j_ref=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
+                q_j_ref=wp.clone(self.joints.q_j_0, requires_grad=requires_grad),
+                dq_j_ref=wp.clone(self.joints.dq_j_0, requires_grad=requires_grad),
                 tau_j_ref=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
             )
 

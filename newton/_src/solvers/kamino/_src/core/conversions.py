@@ -596,13 +596,10 @@ def geometry_conversion_kernel(
 @wp.kernel
 def target_dofs_to_coords_conversion_kernel(
     # Inputs
-    model_joints_wid: wp.array(dtype=int32),
     model_joints_dof_type: wp.array(dtype=int32),
     model_joints_dofs_offset: wp.array(dtype=int32),
     model_joints_coords_offset: wp.array(dtype=int32),
     model_joints_num_dofs: wp.array(dtype=int32),
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_coords_offset: wp.array(dtype=int32),
     joint_target_dofs: wp.array(dtype=float32),
     # Outputs
     joint_target_coords: wp.array(dtype=float32),
@@ -611,10 +608,9 @@ def target_dofs_to_coords_conversion_kernel(
     jid = wp.tid()
 
     # Get dof/coords offsets and number of dofs
-    wid = model_joints_wid[jid]
     num_dofs = model_joints_num_dofs[jid]
-    dof_offset = model_info_joint_dofs_offset[wid] + model_joints_dofs_offset[jid]
-    coord_offset = model_info_joint_coords_offset[wid] + model_joints_coords_offset[jid]
+    dof_offset = model_joints_dofs_offset[jid]
+    coord_offset = model_joints_coords_offset[jid]
 
     # Check whether coords = dofs for this joint
     dof_type = model_joints_dof_type[jid]
@@ -645,13 +641,10 @@ def target_dofs_to_coords_conversion_kernel(
 @wp.kernel
 def target_coords_to_dofs_conversion_kernel(
     # Inputs
-    model_joints_wid: wp.array(dtype=int32),
     model_joints_dof_type: wp.array(dtype=int32),
     model_joints_dofs_offset: wp.array(dtype=int32),
     model_joints_coords_offset: wp.array(dtype=int32),
     model_joints_num_dofs: wp.array(dtype=int32),
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_coords_offset: wp.array(dtype=int32),
     joint_target_coords: wp.array(dtype=float32),
     # Outputs
     joint_target_dofs: wp.array(dtype=float32),
@@ -660,10 +653,9 @@ def target_coords_to_dofs_conversion_kernel(
     jid = wp.tid()
 
     # Get dof/coords offsets and number of dofs
-    wid = model_joints_wid[jid]
     num_dofs = model_joints_num_dofs[jid]
-    dof_offset = model_info_joint_dofs_offset[wid] + model_joints_dofs_offset[jid]
-    coord_offset = model_info_joint_coords_offset[wid] + model_joints_coords_offset[jid]
+    dof_offset = model_joints_dofs_offset[jid]
+    coord_offset = model_joints_coords_offset[jid]
 
     # Check whether coords = dofs for this joint
     dof_type = model_joints_dof_type[jid]
@@ -1578,13 +1570,10 @@ def convert_target_dofs_to_target_coords(
         target_dofs_to_coords_conversion_kernel,
         dim=model.size.sum_of_num_joints,
         inputs=[
-            model.joints.wid,
             model.joints.dof_type,
             model.joints.dofs_offset,
             model.joints.coords_offset,
             model.joints.num_dofs,
-            model.info.joint_dofs_offset,
-            model.info.joint_coords_offset,
             joint_target_dofs,
             joint_target_coords,
         ],
@@ -1599,13 +1588,10 @@ def convert_target_coords_to_target_dofs(
         target_coords_to_dofs_conversion_kernel,
         dim=model.size.sum_of_num_joints,
         inputs=[
-            model.joints.wid,
             model.joints.dof_type,
             model.joints.dofs_offset,
             model.joints.coords_offset,
             model.joints.num_dofs,
-            model.info.joint_dofs_offset,
-            model.info.joint_coords_offset,
             joint_target_coords,
             joint_target_dofs,
         ],

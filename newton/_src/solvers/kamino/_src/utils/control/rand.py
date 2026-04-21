@@ -96,7 +96,6 @@ def _generate_random_control_inputs(
     controller_scale: wp.array(dtype=float32),
     model_joints_wid: wp.array(dtype=int32),
     model_joints_act_type: wp.array(dtype=int32),
-    model_joints_num_dofs: wp.array(dtype=int32),
     model_joints_dofs_offset: wp.array(dtype=int32),
     model_joints_tau_j_max: wp.array(dtype=float32),
     state_time_steps: wp.array(dtype=int32),
@@ -132,8 +131,8 @@ def _generate_random_control_inputs(
         return
 
     # Retrieve the number of DoFs and offset of the joint
-    num_dofs_j = model_joints_num_dofs[jid]
     dofs_start = model_joints_dofs_offset[jid]
+    num_dofs_j = model_joints_dofs_offset[jid + 1] - dofs_start
 
     # Iterate over the DoFs of the joint
     for dof in range(num_dofs_j):
@@ -363,7 +362,6 @@ class RandomJointController:
                 self._data.scale,
                 self._model.joints.wid,
                 self._model.joints.act_type,
-                self._model.joints.num_dofs,
                 self._model.joints.dofs_offset,
                 self._model.joints.tau_j_max,
                 time.steps,

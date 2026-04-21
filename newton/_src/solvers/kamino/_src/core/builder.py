@@ -1174,6 +1174,17 @@ class ModelBuilderKamino:
                 joints_bid_B.append(joint.bid_B + world_bio if joint.bid_B >= 0 else -1)
                 joints_bid_F.append(joint.bid_F + world_bio if joint.bid_F >= 0 else -1)
 
+            # Append the N+1 entry (grand total) to each offset list
+            joints_q_start.append(self._num_joint_coords)
+            joints_dq_start.append(self._num_joint_dofs)
+            joints_pq_start.append(self._num_joint_passive_coords)
+            joints_pdq_start.append(self._num_joint_passive_dofs)
+            joints_aq_start.append(self._num_joint_actuated_coords)
+            joints_adq_start.append(self._num_joint_actuated_dofs)
+            joints_cts_start.append(self._num_joint_cts)
+            joints_dcts_start.append(self._num_joint_dynamic_cts)
+            joints_kcts_start.append(self._num_joint_kinematic_cts)
+
         # A helper function to collect model collision geometries data
         def collect_geometry_model_data():
             shape_ptrs = {}

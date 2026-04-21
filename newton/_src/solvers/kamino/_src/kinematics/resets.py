@@ -175,8 +175,6 @@ def _reset_joint_state_of_select_worlds(
     # Inputs:
     world_mask: wp.array(dtype=int32),
     model_joint_wid: wp.array(dtype=int32),
-    model_joint_num_coords: wp.array(dtype=int32),
-    model_joint_num_dofs: wp.array(dtype=int32),
     model_joint_num_dynamic_cts: wp.array(dtype=int32),
     model_joint_num_kinematic_cts: wp.array(dtype=int32),
     model_joint_coords_offset: wp.array(dtype=int32),
@@ -201,14 +199,14 @@ def _reset_joint_state_of_select_worlds(
         return
 
     # Retrieve the joint model data
-    num_coords = model_joint_num_coords[jid]
-    num_dofs = model_joint_num_dofs[jid]
-    num_dynamic_cts = model_joint_num_dynamic_cts[jid]
-    num_kinematic_cts = model_joint_num_kinematic_cts[jid]
     coords_offset = model_joint_coords_offset[jid]
+    num_coords = model_joint_coords_offset[jid + 1] - coords_offset
     dofs_offset = model_joint_dofs_offset[jid]
+    num_dofs = model_joint_dofs_offset[jid + 1] - dofs_offset
     dynamic_cts_offset = model_joint_dynamic_cts_joint_cts_offset[jid]
     kinematic_cts_offset = model_joint_kinematic_cts_joint_cts_offset[jid]
+    num_dynamic_cts = model_joint_num_dynamic_cts[jid]
+    num_kinematic_cts = model_joint_num_kinematic_cts[jid]
 
     # Reset all joint state data
     for j in range(num_coords):
@@ -616,8 +614,6 @@ def reset_state_from_bodies_state(
             # Inputs:
             world_mask,
             model.joints.wid,
-            model.joints.num_coords,
-            model.joints.num_dofs,
             model.joints.num_dynamic_cts,
             model.joints.num_kinematic_cts,
             model.joints.coords_offset,

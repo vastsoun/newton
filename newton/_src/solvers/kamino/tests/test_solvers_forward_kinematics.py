@@ -155,10 +155,10 @@ def compute_actuated_coords_and_dofs_offsets(model: ModelKamino):
     and dofs from all joint coordinates/dofs
     Returns actuated_coords_offsets, actuated_coords_sizes, actuated_dofs_offsets, actuated_dofs_sizes
     """
-    # Retrieve joint coordinates/dofs sizes and offsets
-    coord_offsets = model.joints.coords_offset.numpy()
+    # Retrieve joint coordinates/dofs sizes and offsets (offset arrays include a trailing total)
+    coord_offsets = model.joints.coords_offset.numpy()[:-1]
     joint_num_coords = model.joints.num_coords.numpy()
-    dof_offsets = model.joints.dofs_offset.numpy()
+    dof_offsets = model.joints.dofs_offset.numpy()[:-1]
     joint_num_dofs = model.joints.num_dofs.numpy()
 
     # Filter for actuators only

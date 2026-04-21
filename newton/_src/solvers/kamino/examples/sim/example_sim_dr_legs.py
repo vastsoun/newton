@@ -56,8 +56,6 @@ def _pd_control_callback(
     model_info_joint_actuated_dofs_offset: wp.array(dtype=int32),
     model_joints_wid: wp.array(dtype=int32),
     model_joints_act_type: wp.array(dtype=int32),
-    model_joint_num_coords: wp.array(dtype=int32),
-    model_joint_num_dofs: wp.array(dtype=int32),
     model_joint_coords_offset: wp.array(dtype=int32),
     model_joint_dofs_offset: wp.array(dtype=int32),
     model_joint_actuated_coords_offset: wp.array(dtype=int32),
@@ -92,10 +90,10 @@ def _pd_control_callback(
         return
 
     # Retrieve joint-specific mode info
-    num_coords_j = model_joint_num_coords[jid]
-    num_dofs_j = model_joint_num_dofs[jid]
     coords_offset_j = model_joint_coords_offset[jid]
+    num_coords_j = model_joint_coords_offset[jid + 1] - coords_offset_j
     dofs_offset_j = model_joint_dofs_offset[jid]
+    num_dofs_j = model_joint_dofs_offset[jid + 1] - dofs_offset_j
     actuated_coords_offset_j = model_joint_actuated_coords_offset[jid] - model_info_joint_actuated_coords_offset[wid]
     actuated_dofs_offset_j = model_joint_actuated_dofs_offset[jid] - model_info_joint_actuated_dofs_offset[wid]
 
@@ -112,7 +110,7 @@ def _pd_control_callback(
         joint_dof_index = dofs_offset_j + dof
         actuator_dof_index = actuated_dofs_offset_j + dof
         control_dq_j_ref[joint_dof_index] = animation_dq_j_ref[frame, actuator_dof_index]
-        control_tau_j_ref[joint_coord_index] = 0.0  # No feed-forward term in this example
+        control_tau_j_ref[joint_dof_index] = 0.0  # No feed-forward term in this example
 
 
 ###
@@ -131,8 +129,6 @@ def pd_control_callback(sim: Simulator, animation: AnimationJointReference, deci
             sim.model.info.joint_actuated_dofs_offset,
             sim.model.joints.wid,
             sim.model.joints.act_type,
-            sim.model.joints.num_coords,
-            sim.model.joints.num_dofs,
             sim.model.joints.coords_offset,
             sim.model.joints.dofs_offset,
             sim.model.joints.actuated_coords_offset,

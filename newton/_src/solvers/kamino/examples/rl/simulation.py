@@ -303,15 +303,17 @@ class RigidBodySim:
             self._newton_state = self._newton_model.state()
             self._apply_render_config(self._render_config)
 
-        # ----- CUDA graphs -----
+        # ----- Initialize empty CUDA graphs -----
         self._reset_graph = None
         self._step_graph = None
-        self._capture_graphs()
 
         # ----- Warm-up (compiles Warp kernels) -----
         msg.notif("Warming up simulator ...")
         self.step()
         self.reset()
+
+        # ----- Capture CUDA graphs -----
+        self._capture_graphs()
 
     # ------------------------------------------------------------------
     # Viewer appearance

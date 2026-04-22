@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """
 KAMINO: Constrained Rigid Multi-Body Model Builder
@@ -25,7 +13,7 @@ from collections.abc import Iterable
 import numpy as np
 import warp as wp
 
-from .....geometry.flags import ShapeFlags
+from .....geometry import ShapeFlags
 from .bodies import RigidBodiesModel, RigidBodyDescriptor
 from .geometry import GeometriesModel, GeometryDescriptor
 from .gravity import GravityDescriptor, GravityModel
@@ -38,7 +26,7 @@ from .joints import (
 from .materials import MaterialDescriptor, MaterialManager, MaterialPairProperties, MaterialPairsModel, MaterialsModel
 from .math import FLOAT32_EPS
 from .model import ModelKamino, ModelKaminoInfo
-from .shapes import ShapeDescriptorType, ShapeType, max_contacts_for_shape_pair
+from .shapes import ShapeDescriptorType, max_contacts_for_shape_pair
 from .size import SizeKamino
 from .time import TimeModel
 from .types import Axis, float32, int32, mat33f, transformf, vec2i, vec3f, vec4f, vec6f
@@ -1179,7 +1167,7 @@ class ModelBuilderKamino:
             for uid, shape in self._shapes.items():
                 # If the geometry has a Mesh, SDF or HField source,
                 # finalize it and retrieve the mesh pointer/index
-                if shape.type in (ShapeType.MESH, ShapeType.CONVEX, ShapeType.HFIELD):
+                if shape.type.is_explicit:
                     shape_ptrs[uid] = shape.data.finalize(device=device)
                 # Otherwise, append a null (i.e. zero-valued) pointer
                 else:
@@ -1420,7 +1408,7 @@ class ModelBuilderKamino:
                 type=wp.array(geoms_type, dtype=int32),
                 flags=wp.array(geoms_flags, dtype=int32),
                 ptr=wp.array(geoms_ptr, dtype=wp.uint64),
-                params=wp.array(geoms_params, dtype=vec4f),
+                params=wp.array(geoms_params, dtype=vec3f),
                 offset=wp.array(geoms_offset, dtype=transformf),
                 material=wp.array(geoms_material, dtype=int32),
                 group=wp.array(geoms_group, dtype=int32),

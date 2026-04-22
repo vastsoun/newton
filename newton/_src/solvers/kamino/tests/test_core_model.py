@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """
 Unit tests for the :class:`ModelKamino` class and related functionality.
@@ -451,9 +439,6 @@ class TestModelConversions(unittest.TestCase):
 
         # Create models from the builders and conversion operations, and check for consistency
         model_0: Model = builder_0.finalize()
-        # TODO @nvtw: Why are shape_collision_group[i] values for
-        # visual shapes set to `=1` since they are not collidable?
-        msg.error(f"model_0.shape_collision_group:\n{model_0.shape_collision_group}\n")
         model_1: ModelKamino = builder_1.finalize()
         model_2: ModelKamino = ModelKamino.from_newton(model_0)
         # NOTE: We don't check mesh geometry pointers since they have been loaded separately
@@ -1006,11 +991,6 @@ class TestModelConversions(unittest.TestCase):
         model_0: Model = builder_0.finalize(skip_validation_joints=True)
         model_1: ModelKamino = builder_1.finalize()
         model_2: ModelKamino = ModelKamino.from_newton(model_0)
-
-        msg.warning(f"{model_1.materials.restitution}")
-        msg.warning(f"{model_2.materials.restitution}")
-        msg.warning(f"{model_1.material_pairs.restitution}")
-        msg.warning(f"{model_2.material_pairs.restitution}")
 
         test_util_checks.assert_model_geoms_equal(self, model_2.geoms, model_1.geoms)
         test_util_checks.assert_model_materials_equal(self, model_2.materials, model_1.materials)

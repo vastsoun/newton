@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import warnings
 from enum import Enum
@@ -27,7 +15,7 @@ class ColoringAlgorithm(Enum):
 
 
 @wp.kernel
-def validate_graph_coloring(edge_indices: wp.array(dtype=int, ndim=2), colors: wp.array(dtype=int)):
+def validate_graph_coloring(edge_indices: wp.array2d[int], colors: wp.array[int]):
     edge_idx = wp.tid()
     e_v_1 = edge_indices[edge_idx, 0]
     e_v_2 = edge_indices[edge_idx, 1]
@@ -37,8 +25,8 @@ def validate_graph_coloring(edge_indices: wp.array(dtype=int, ndim=2), colors: w
 
 @wp.kernel
 def count_color_group_size(
-    colors: wp.array(dtype=int),
-    group_sizes: wp.array(dtype=int),
+    colors: wp.array[int],
+    group_sizes: wp.array[int],
 ):
     for particle_idx in range(colors.shape[0]):
         particle_color = colors[particle_idx]
@@ -47,11 +35,11 @@ def count_color_group_size(
 
 @wp.kernel
 def fill_color_groups(
-    colors: wp.array(dtype=int),
-    group_fill_count: wp.array(dtype=int),
-    group_offsets: wp.array(dtype=int),
+    colors: wp.array[int],
+    group_fill_count: wp.array[int],
+    group_offsets: wp.array[int],
     # flattened color groups
-    color_groups_flatten: wp.array(dtype=int),
+    color_groups_flatten: wp.array[int],
 ):
     for particle_idx in range(colors.shape[0]):
         particle_color = colors[particle_idx]
@@ -298,7 +286,7 @@ def construct_particle_graph(
 
 def color_graph(
     num_nodes,
-    graph_edge_indices: wp.array(dtype=int, ndim=2),
+    graph_edge_indices: wp.array2d[int],
     balance_colors: bool = True,
     target_max_min_color_ratio: float = 1.1,
     algorithm: ColoringAlgorithm = ColoringAlgorithm.MCS,
@@ -464,7 +452,7 @@ def combine_independent_particle_coloring(color_groups_1, color_groups_2) -> lis
         color_groups_1, color_groups_2 = color_groups_2, color_groups_1
 
     # sort group 1 in ascending order
-    color_groups_1_sorted = sorted(color_groups_1, key=lambda group: len(group))
+    color_groups_1_sorted = sorted(color_groups_1, key=len)
     # sort group 1 in descending order
     color_groups_2_sorted = sorted(color_groups_2, key=lambda group: -len(group))
     # so that we are combining the smaller group with the larger group

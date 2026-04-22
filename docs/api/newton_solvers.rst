@@ -155,14 +155,14 @@ enforce joints as pairwise body constraints but do not use the articulation kine
      - |yes|
      - |yes|
      - |yes|
-     - |no|
+     - |yes|
      - |yes|
    * - REVOLUTE
      - |yes|
      - |yes|
      - |yes|
      - |yes|
-     - |no|
+     - |yes|
      - |yes|
    * - BALL
      - |yes|
@@ -197,7 +197,7 @@ enforce joints as pairwise body constraints but do not use the articulation kine
      - |yes|
      - |yes|
      - |yes|
-     - |no|
+     - |yes|
      - |no|
    * - CABLE
      - |no|
@@ -228,7 +228,7 @@ enforce joints as pairwise body constraints but do not use the articulation kine
      - |yes|
      - |yes|
      - |no|
-     - |no|
+     - |yes|
      - |no|
    * - :attr:`~newton.Model.joint_armature`
      - |yes|
@@ -249,14 +249,14 @@ enforce joints as pairwise body constraints but do not use the articulation kine
      - |yes| :sup:`2`
      - |yes|
      - |yes|
-     - |no|
+     - |yes|
      - |yes|
    * - :attr:`~newton.Model.joint_limit_ke` / :attr:`~newton.Model.joint_limit_kd`
      - |yes|
      - |yes| :sup:`2`
      - |no|
      - |yes|
-     - |no|
+     - |yes| :sup:`4`
      - |no|
    * - :attr:`~newton.Model.joint_effort_limit`
      - |no|
@@ -294,7 +294,7 @@ enforce joints as pairwise body constraints but do not use the articulation kine
      - |yes| :sup:`2`
      - |yes|
      - |yes|
-     - 🟨 :sup:`4`
+     - |yes| :sup:`4`
      - |yes|
    * - :attr:`~newton.Model.joint_target_mode`
      - |no|
@@ -308,7 +308,7 @@ enforce joints as pairwise body constraints but do not use the articulation kine
      - |yes|
      - |yes|
      - |yes|
-     - |no|
+     - |yes|
      - |yes|
 
 **Constraints**
@@ -341,7 +341,7 @@ enforce joints as pairwise body constraints but do not use the articulation kine
      - |no|
 
 | :sup:`3` Mimic constraints in MuJoCo are supported for REVOLUTE and PRISMATIC joints only.
-| :sup:`4` Used for CABLE joints only (as stretch/bend stiffness and damping).
+| :sup:`4` VBD interprets ``joint_target_kd`` and ``joint_limit_kd`` as dimensionless Rayleigh damping coefficients (``D = kd * ke``), not absolute units.
 
 
 
@@ -362,7 +362,7 @@ control, or model arrays. In practice, this starts by calling
     import newton
 
     @wp.kernel
-    def loss_kernel(particle_q: wp.array(dtype=wp.vec3), target: wp.vec3, loss: wp.array(dtype=float)):
+    def loss_kernel(particle_q: wp.array[wp.vec3], target: wp.vec3, loss: wp.array[float]):
         delta = particle_q[0] - target
         loss[0] = wp.dot(delta, delta)
 
@@ -400,6 +400,7 @@ See the `DiffSim examples on GitHub`_ for the current reference workflows.
 .. |yes| unicode:: U+2705
 .. |no| unicode:: U+274C
 
+.. py:module:: newton.solvers
 .. currentmodule:: newton.solvers
 
 .. toctree::

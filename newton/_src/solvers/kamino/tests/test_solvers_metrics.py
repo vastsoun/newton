@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """Unit tests for `solvers/metrics.py`."""
 
@@ -648,7 +636,7 @@ class TestSolverMetrics(unittest.TestCase):
         # Compute numpy solution to metrics
         metrics_np = compute_metrics_numpy(test.problem, solver.data)
         for key, value in metrics_np.items():
-            msg.warning(f"{key}: {value}")
+            msg.info(f"{key}: {value}")
         np.testing.assert_allclose(metrics_np["r_v_plus"], metrics.data.r_v_plus.numpy(), rtol=rtol, atol=atol)
         np.testing.assert_allclose(metrics_np["f_ccp"], metrics.data.f_ccp.numpy(), rtol=rtol, atol=atol)
         np.testing.assert_allclose(metrics_np["f_ncp"], metrics.data.f_ncp.numpy(), rtol=rtol, atol=atol)

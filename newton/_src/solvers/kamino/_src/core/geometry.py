@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """
 KAMINO: Geometry Model Types & Containers
@@ -294,7 +282,7 @@ class GeometriesModel:
     params: wp.array | None = None
     """
     Shape parameters of each geometry entity if they are shape primitives.\n
-    Shape of ``(num_geoms,)`` and type :class:`vec4f`.
+    Shape of ``(num_geoms,)`` and type :class:`vec3f`.
     """
 
     offset: wp.array | None = None
@@ -347,6 +335,31 @@ class GeometriesModel:
     This array is used in broad-phase collision detection.\n
     Shape of ``(num_excluded_geom_pairs,)`` and type :class:`vec2i`.
     """
+
+    ###
+    # Mesh / Heightfield Data
+    ###
+
+    heightfield_index: wp.array | None = None
+    """Per-shape heightfield index (``-1`` for non-heightfield shapes)."""
+
+    heightfield_data: wp.array | None = None
+    """Concatenated :class:`HeightfieldData` structs for all heightfields."""
+
+    heightfield_elevations: wp.array | None = None
+    """Concatenated elevation samples for all heightfields."""
+
+    collision_aabb_lower: wp.array | None = None
+    """Per-shape local-space collision AABB lower bounds."""
+
+    collision_aabb_upper: wp.array | None = None
+    """Per-shape local-space collision AABB upper bounds."""
+
+    collision_radius: wp.array | None = None
+    """Per-shape bounding-sphere radius for broadphase AABB computation."""
+
+    voxel_resolution: wp.array | None = None
+    """Per-shape voxel resolution for mesh contact reduction."""
 
 
 @dataclass

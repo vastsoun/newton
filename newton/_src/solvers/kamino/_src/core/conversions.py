@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """Provides a set of conversion utilities to bridge Kamino and Newton."""
 
@@ -26,7 +14,6 @@ from .....geometry import ShapeFlags
 from .....sim.model import Model
 from ..core.bodies import RigidBodiesModel, convert_body_origin_to_com
 from ..core.size import SizeKamino
-from ..utils import logger as msg
 from .builder import JointActuationType
 from .geometry import GeometriesModel
 from .joints import (
@@ -38,8 +25,8 @@ from .joints import (
     JointsModel,
 )
 from .materials import MaterialDescriptor, MaterialManager
-from .shapes import ShapeType, max_contacts_for_shape_pair, shape_from_newton, shape_type_from_newton
-from .types import float32, int32, mat33f, mat63f, quatf, transformf, vec2i, vec3f, vec4f, vec6f
+from .shapes import max_contacts_for_shape_pair
+from .types import float32, int32, mat33f, mat63f, quatf, transformf, vec2i, vec3f, vec6f
 
 if TYPE_CHECKING:
     from ..core.model import ModelKamino, ModelKaminoInfo
@@ -168,33 +155,33 @@ def shape_transform_conversion_kernel(
 
 
 @wp.kernel
-def world_contact_kernel(
+def world_max_contacts_kernel(
     # Inputs:
+    max_contacts_per_pair: int,
     model_shape_type: wp.array(dtype=int32),
     model_shape_world: wp.array(dtype=int32),
     model_shape_contact_pair: wp.array(dtype=vec2i),
-    max_contacts_per_pair: int,
     # Outputs:
     world_max_contacts: wp.array(dtype=int32),
 ):
+    # Retrieve the shape pair index from the thread grid
     shape_pair_id = wp.tid()
 
+    # Extract the shape types for this pair and determine the world they belong to. If both
     shape_pair = model_shape_contact_pair[shape_pair_id]
-    shape_id_a = shape_pair[0]
-    shape_id_b = shape_pair[1]
+    shape_type_a = model_shape_type[shape_pair[0]]
+    shape_type_b = model_shape_type[shape_pair[1]]
 
     # Determine the world for this pair — fall back to other shape if one is global
-    world_id_a = model_shape_world[shape_id_a]
-    world_id_b = model_shape_world[shape_id_b]
+    world_id_a = model_shape_world[shape_pair[0]]
+    world_id_b = model_shape_world[shape_pair[1]]
     world_id = world_id_a if world_id_a >= 0 else world_id_b
     if world_id < 0:
         return  # Both shapes are global — skip
 
-    # Map from Newton GeoType to Kamino ShapeType
-    shape_type_a = shape_type_from_newton(model_shape_type[shape_id_a])
-    shape_type_b = shape_type_from_newton(model_shape_type[shape_id_b])
+    # Compute max contact count for this pair and add to world total,
+    # ensuring shapes are ordered by type for consistent contact counts.
     if shape_type_a > shape_type_b:
-        shape_id_a, shape_id_b = shape_id_b, shape_id_a
         shape_type_a, shape_type_b = shape_type_b, shape_type_a
     num_contacts_a, num_contacts_b = max_contacts_for_shape_pair(
         type_a=shape_type_a,
@@ -523,43 +510,36 @@ def geometry_conversion_kernel(
     # Inputs:
     model_shape_world: wp.array(dtype=int32),
     model_shape_world_start: wp.array(dtype=int32),
-    model_shape_type: wp.array(dtype=int32),
-    model_shape_scale: wp.array(dtype=vec3f),
     model_shape_flags: wp.array(dtype=int32),
     model_shape_collision_groups: wp.array(dtype=int32),
-    shape_transform: wp.array(dtype=transformf),
     geom_material: wp.array(dtype=int32),
     # Outputs:
-    shape_sid: wp.array(dtype=int32),
+    geom_gid: wp.array(dtype=int32),
     model_num_collidable_geoms: wp.array(dtype=int32),
-    geom_shape_type: wp.array(dtype=int32),
-    geom_shape_params: wp.array(dtype=vec4f),
 ):
+    # Retrieve the geom/shape index from the thread grid
     shape_id = wp.tid()
 
+    # Determine the world for this shape and compute in-world geom index
     world_id = model_shape_world[shape_id]
     if world_id >= 0:
-        shape_sid[shape_id] = shape_id - model_shape_world_start[world_id]
+        geom_gid[shape_id] = shape_id - model_shape_world_start[world_id]
+    else:
+        # Handle global shapes that don't belong to any world (world_id=-1)
+        if shape_id < model_shape_world_start[0]:
+            # Global shapes at the head are indexed as-is before all world shapes
+            geom_gid[shape_id] = shape_id
+        else:
+            # Global shapes at the tail are indexed after all world shapes
+            geom_gid[shape_id] = shape_id - model_shape_world_start[-2]
 
-    geo_type = model_shape_type[shape_id]
-    shape_scale = model_shape_scale[shape_id]
+    # Determine if this shape is collidable and update collidable geom count
+    # for the world. If not collidable, also ensure no material is assigned.
     shape_flags = model_shape_flags[shape_id]
-
-    shape_type, params = shape_from_newton(geo_type, shape_scale)
-    geom_shape_type[shape_id] = shape_type
-    geom_shape_params[shape_id] = params
     if (shape_flags & ShapeFlags.COLLIDE_SHAPES) != 0 and model_shape_collision_groups[shape_id] > 0:
         wp.atomic_add(model_num_collidable_geoms, 0, 1)
     else:
-        geom_material[shape_id] = -1  # Ensure non-collidable geoms no material assigned
-
-    # Fix plane normals: derive from the shape transform rotation (local Z-axis)
-    # instead of the hardcoded default in convert_newton_geo_to_kamino_shape.
-    if shape_type == ShapeType.PLANE:
-        tf = shape_transform[shape_id]
-        q_rot = wp.transform_get_rotation(tf)
-        normal = wp.quat_rotate(q_rot, vec3f(0.0, 0.0, 1.0))
-        geom_shape_params[shape_id] = vec4f(normal[0], normal[1], normal[2], 0.0)
+        geom_material[shape_id] = -1
 
 
 @wp.kernel
@@ -809,19 +789,18 @@ def compute_required_contact_capacity(
     # Compute maximum contacts per world
     world_max_contacts_wp = wp.zeros((model.world_count,), dtype=int32)
     wp.launch(
-        kernel=world_contact_kernel,
+        kernel=world_max_contacts_kernel,
         dim=model.shape_contact_pair_count,
         inputs=[
+            max_contacts_per_pair if max_contacts_per_pair is not None else -1,
             model.shape_type,
             model.shape_world,
             model.shape_contact_pairs,
-            max_contacts_per_pair if max_contacts_per_pair is not None else -1,
         ],
         outputs=[
             world_max_contacts_wp,
         ],
     )
-
     world_max_contacts = world_max_contacts_wp.numpy()
 
     # Override the per-world maximum contacts if specified in the settings
@@ -829,7 +808,7 @@ def compute_required_contact_capacity(
         world_max_contacts = np.minimum(world_max_contacts, max_contacts_per_world)
 
     # Return the per-world maximum contacts list
-    return np.sum(world_max_contacts), world_max_contacts.tolist()
+    return int(np.sum(world_max_contacts)), world_max_contacts.astype(int).tolist()
 
 
 # TODO: Re-implement this using a kernel to run in parallel on the GPU if possible
@@ -1230,7 +1209,6 @@ def convert_joints(
 
     # Check for articulations
     if model.articulation_count > 0:
-        msg.warning("Model contains articulations")
         articulation_start_np = model.articulation_start.numpy()
         articulation_world_np = model.articulation_world.numpy()
         joint_child_np = model.joint_child.numpy()
@@ -1447,12 +1425,9 @@ def convert_geometries(
     model_size.max_of_num_material_pairs = materials_manager.num_material_pairs
 
     # Convert shapes to the Kamino data structure
-    shape_sid = wp.zeros((model.shape_count,), dtype=int32)
-    model_num_collidable_geoms = wp.zeros((1,), dtype=int32)
-    geom_shape_type = wp.zeros((model.shape_count,), dtype=int32)
-    geom_shape_params = wp.zeros((model.shape_count,), dtype=vec4f)
-
+    geom_gid = wp.zeros((model.shape_count,), dtype=int32)
     geom_material = wp.from_numpy(geom_material_np, dtype=int32)
+    model_num_collidable_geoms = wp.zeros((1,), dtype=int32)
 
     wp.launch(
         kernel=geometry_conversion_kernel,
@@ -1460,18 +1435,13 @@ def convert_geometries(
         inputs=[
             model.shape_world,
             model.shape_world_start,
-            model.shape_type,
-            model.shape_scale,
             model.shape_flags,
             model.shape_collision_group,
-            shape_transform,
             geom_material,
         ],
         outputs=[
-            shape_sid,
+            geom_gid,
             model_num_collidable_geoms,
-            geom_shape_type,
-            geom_shape_params,
         ],
     )
 
@@ -1493,12 +1463,12 @@ def convert_geometries(
         world_minimum_contacts=world_min_contacts,
         label=model.shape_label,
         wid=model.shape_world,
-        gid=shape_sid,
+        gid=geom_gid,
         bid=model.shape_body,
-        type=geom_shape_type,
+        type=model.shape_type,
         flags=model.shape_flags,
         ptr=model.shape_source_ptr,
-        params=geom_shape_params,
+        params=model.shape_scale,
         offset=wp.zeros_like(model.shape_transform),
         material=geom_material,
         group=model.shape_collision_group,
@@ -1506,6 +1476,14 @@ def convert_geometries(
         margin=model.shape_margin,
         collidable_pairs=model.shape_contact_pairs,
         excluded_pairs=wp.array(sorted(model.shape_collision_filter_pairs), dtype=vec2i),
+        # Mesh / heightfield data pass-through from Newton model
+        heightfield_index=model.shape_heightfield_index,
+        heightfield_data=model.heightfield_data,
+        heightfield_elevations=model.heightfield_elevations,
+        collision_aabb_lower=model.shape_collision_aabb_lower,
+        collision_aabb_upper=model.shape_collision_aabb_upper,
+        voxel_resolution=model._shape_voxel_resolution,
+        collision_radius=model.shape_collision_radius,
     )
 
     return model_geoms

@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 ###########################################################################
 # Example Basic Conveyor
@@ -145,11 +133,11 @@ def create_annular_prism_mesh(
 def set_conveyor_belt_state(
     belt_joint_q_start: int,
     belt_joint_qd_start: int,
-    sim_time: wp.array(dtype=wp.float32),
+    sim_time: wp.array[wp.float32],
     belt_angular_speed: float,
     # outputs
-    joint_q: wp.array(dtype=wp.float32),
-    joint_qd: wp.array(dtype=wp.float32),
+    joint_q: wp.array[wp.float32],
+    joint_qd: wp.array[wp.float32],
 ):
     """Set prescribed state for the belt's revolute root joint."""
     angle = belt_angular_speed * sim_time[0]
@@ -158,7 +146,7 @@ def set_conveyor_belt_state(
 
 
 @wp.kernel
-def advance_time(sim_time: wp.array(dtype=wp.float32), dt: float):
+def advance_time(sim_time: wp.array[wp.float32], dt: float):
     sim_time[0] = sim_time[0] + dt
 
 
@@ -195,17 +183,22 @@ class Example:
 
         belt_cfg = newton.ModelBuilder.ShapeConfig(
             mu=1.2,
-            ke=3.0e3,
-            kd=150.0,
+            ke=1.0e7,  # vbd only
+            kd=1.0e-5,  # vbd only
             collision_group=BELT_COLLISION_GROUP,
         )
         rail_cfg = newton.ModelBuilder.ShapeConfig(
             mu=0.8,
-            ke=3.0e3,
-            kd=150.0,
+            ke=1.0e7,  # vbd only
+            kd=1.0e-5,  # vbd only
             collision_group=RAIL_COLLISION_GROUP,
         )
-        bag_cfg = newton.ModelBuilder.ShapeConfig(mu=1.0, ke=2.0e3, kd=180.0, restitution=0.0)
+        bag_cfg = newton.ModelBuilder.ShapeConfig(
+            mu=1.0,
+            ke=1.0e7,  # vbd only
+            kd=1.0e-5,  # vbd only
+            restitution=0.0,
+        )
 
         belt_inner_radius = BELT_RING_RADIUS - BELT_HALF_WIDTH
         belt_outer_radius = BELT_RING_RADIUS + BELT_HALF_WIDTH
@@ -227,7 +220,7 @@ class Example:
             z_max=BELT_HALF_THICKNESS - RAIL_BASE_OVERLAP + RAIL_HEIGHT,
             segments=BELT_MESH_SEGMENTS,
             color=(0.66, 0.69, 0.74),  # brushed metal
-            roughness=0.24,
+            roughness=0.5,
             metallic=0.9,
         )
         rail_outer_mesh = create_annular_prism_mesh(
@@ -237,7 +230,7 @@ class Example:
             z_max=BELT_HALF_THICKNESS - RAIL_BASE_OVERLAP + RAIL_HEIGHT,
             segments=BELT_MESH_SEGMENTS,
             color=(0.66, 0.69, 0.74),  # brushed metal
-            roughness=0.24,
+            roughness=0.5,
             metallic=0.9,
         )
 
@@ -329,9 +322,14 @@ class Example:
             builder.add_articulation([builder.add_joint_free(bag_body)], label=f"bag_{i}")
             self.bag_bodies.append(bag_body)
 
+        builder.color()
         self.model = builder.finalize()
 
-        self.solver = newton.solvers.SolverXPBD(self.model)
+        solver_type = getattr(args, "solver", "xpbd") if args is not None else "xpbd"
+        if solver_type == "vbd":
+            self.solver = newton.solvers.SolverVBD(self.model)
+        else:
+            self.solver = newton.solvers.SolverXPBD(self.model)
 
         self.state_0 = self.model.state()
         self.state_1 = self.model.state()
@@ -421,6 +419,13 @@ class Example:
 
 if __name__ == "__main__":
     parser = newton.examples.create_parser()
+    parser.add_argument(
+        "--solver",
+        type=str,
+        choices=["xpbd", "vbd"],
+        default="xpbd",
+        help="Solver backend to use.",
+    )
     parser.add_argument(
         "--belt-speed",
         type=float,

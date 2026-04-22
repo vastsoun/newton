@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """Unit tests for the high-level Simulator class utility of Kamino"""
 
@@ -258,7 +246,7 @@ class TestCartpoleSimulator(unittest.TestCase):
         np.testing.assert_allclose(multi_sim.state.q_j.numpy(), multi_final_q_j)
         np.testing.assert_allclose(multi_sim.state.dq_j.numpy(), multi_final_dq_j)
 
-    def test_step_02_multiple_cartpoles_reset_all_from_sampled_states(self):
+    def test_02_step_multiple_cartpoles_reset_all_from_sampled_states(self):
         """
         Test stepping multiple cartpole simulators once but initialized from
         states collected from a single-instance simulator over multiple steps.

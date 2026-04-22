@@ -250,18 +250,18 @@ def make_unilateral_constraints_info(
     joint_dynamic_cts_world_prefix = model.info.joint_dynamic_cts_offset.numpy()
     joint_kinematic_cts_world_prefix = model.info.joint_kinematic_cts_offset.numpy()
     num_joints = model.size.sum_of_num_joints
-    dynamic_cts_joint_cts_offset = [0] * num_joints
-    kinematic_cts_joint_cts_offset = [0] * num_joints
-    dynamic_cts_total_cts_offset = [0] * num_joints
-    kinematic_cts_total_cts_offset = [0] * num_joints
+    dynamic_cts_offset_joint_cts = [0] * num_joints
+    kinematic_cts_offset_joint_cts = [0] * num_joints
+    dynamic_cts_offset_total_cts = [0] * num_joints
+    kinematic_cts_offset_total_cts = [0] * num_joints
     for jid in range(num_joints):
         wid_j = joints_world[jid]
         local_dyn = int(joints_dynamic_cts_offset[jid]) - int(joint_dynamic_cts_world_prefix[wid_j])
         local_kin = int(joints_kinematic_cts_offset[jid]) - int(joint_kinematic_cts_world_prefix[wid_j])
-        dynamic_cts_joint_cts_offset[jid] = world_jctsio[wid_j] + world_jdcio[wid_j] + local_dyn
-        kinematic_cts_joint_cts_offset[jid] = world_jctsio[wid_j] + world_jkcio[wid_j] + local_kin
-        dynamic_cts_total_cts_offset[jid] = world_ctsio[wid_j] + world_jdcio[wid_j] + local_dyn
-        kinematic_cts_total_cts_offset[jid] = world_ctsio[wid_j] + world_jkcio[wid_j] + local_kin
+        dynamic_cts_offset_joint_cts[jid] = world_jctsio[wid_j] + world_jdcio[wid_j] + local_dyn
+        kinematic_cts_offset_joint_cts[jid] = world_jctsio[wid_j] + world_jkcio[wid_j] + local_kin
+        dynamic_cts_offset_total_cts[jid] = world_ctsio[wid_j] + world_jdcio[wid_j] + local_dyn
+        kinematic_cts_offset_total_cts[jid] = world_ctsio[wid_j] + world_jkcio[wid_j] + local_kin
 
     # Allocate all constraint info arrays on the target device
     with wp.ScopedDevice(device):
@@ -288,10 +288,10 @@ def make_unilateral_constraints_info(
         data.info.contact_cts_group_offset = wp.array(world_ccio[:num_worlds], dtype=int32)
 
         # Allocate per-joint total constraint vector offsets
-        model.joints.dynamic_cts_joint_cts_offset = wp.array(dynamic_cts_joint_cts_offset, dtype=int32)
-        model.joints.kinematic_cts_joint_cts_offset = wp.array(kinematic_cts_joint_cts_offset, dtype=int32)
-        model.joints.dynamic_cts_total_cts_offset = wp.array(dynamic_cts_total_cts_offset, dtype=int32)
-        model.joints.kinematic_cts_total_cts_offset = wp.array(kinematic_cts_total_cts_offset, dtype=int32)
+        model.joints.dynamic_cts_offset_joint_cts = wp.array(dynamic_cts_offset_joint_cts, dtype=int32)
+        model.joints.kinematic_cts_offset_joint_cts = wp.array(kinematic_cts_offset_joint_cts, dtype=int32)
+        model.joints.dynamic_cts_offset_total_cts = wp.array(dynamic_cts_offset_total_cts, dtype=int32)
+        model.joints.kinematic_cts_offset_total_cts = wp.array(kinematic_cts_offset_total_cts, dtype=int32)
 
 
 ###
@@ -347,10 +347,10 @@ def _unpack_joint_constraint_solutions(
     model_joint_wid: wp.array(dtype=int32),
     model_joints_num_dynamic_cts: wp.array(dtype=int32),
     model_joints_num_kinematic_cts: wp.array(dtype=int32),
-    model_joints_dynamic_cts_joint_cts_offset: wp.array(dtype=int32),
-    model_joints_kinematic_cts_joint_cts_offset: wp.array(dtype=int32),
-    model_joints_dynamic_cts_total_cts_offset: wp.array(dtype=int32),
-    model_joints_kinematic_cts_total_cts_offset: wp.array(dtype=int32),
+    model_joints_dynamic_cts_offset_joint_cts: wp.array(dtype=int32),
+    model_joints_kinematic_cts_offset_joint_cts: wp.array(dtype=int32),
+    model_joints_dynamic_cts_offset_total_cts: wp.array(dtype=int32),
+    model_joints_kinematic_cts_offset_total_cts: wp.array(dtype=int32),
     lambdas: wp.array(dtype=float32),
     # Outputs:
     joint_lambda_j: wp.array(dtype=float32),
@@ -365,10 +365,10 @@ def _unpack_joint_constraint_solutions(
 
     # Retrieve block offsets of the joint's constraints within
     # the joint-only constraints and total constraints arrays
-    joint_dyn_cts_start_j = model_joints_dynamic_cts_joint_cts_offset[jid]
-    joint_kin_cts_start_j = model_joints_kinematic_cts_joint_cts_offset[jid]
-    dyn_cts_row_start_j = model_joints_dynamic_cts_total_cts_offset[jid]
-    kin_cts_row_start_j = model_joints_kinematic_cts_total_cts_offset[jid]
+    joint_dyn_cts_start_j = model_joints_dynamic_cts_offset_joint_cts[jid]
+    joint_kin_cts_start_j = model_joints_kinematic_cts_offset_joint_cts[jid]
+    dyn_cts_row_start_j = model_joints_dynamic_cts_offset_total_cts[jid]
+    kin_cts_row_start_j = model_joints_kinematic_cts_offset_total_cts[jid]
 
     # Retrieve the world-specific info
     inv_dt = model_time_inv_dt[wid]
@@ -552,10 +552,10 @@ def unpack_constraint_solutions(
                 model.joints.wid,
                 model.joints.num_dynamic_cts,
                 model.joints.num_kinematic_cts,
-                model.joints.dynamic_cts_joint_cts_offset,
-                model.joints.kinematic_cts_joint_cts_offset,
-                model.joints.dynamic_cts_total_cts_offset,
-                model.joints.kinematic_cts_total_cts_offset,
+                model.joints.dynamic_cts_offset_joint_cts,
+                model.joints.kinematic_cts_offset_joint_cts,
+                model.joints.dynamic_cts_offset_total_cts,
+                model.joints.kinematic_cts_offset_total_cts,
                 lambdas,
                 # Outputs:
                 data.joints.lambda_j,

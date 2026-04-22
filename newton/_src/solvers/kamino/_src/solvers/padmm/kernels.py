@@ -173,10 +173,10 @@ def _warmstart_joint_constraints(
     joint_wid: wp.array(dtype=int32),
     joint_num_dynamic_cts: wp.array(dtype=int32),
     joint_num_kinematic_cts: wp.array(dtype=int32),
-    joint_dynamic_cts_joint_cts_offset: wp.array(dtype=int32),
-    joint_kinematic_cts_joint_cts_offset: wp.array(dtype=int32),
-    joint_dynamic_cts_total_cts_offset: wp.array(dtype=int32),
-    joint_kinematic_cts_total_cts_offset: wp.array(dtype=int32),
+    joint_dynamic_cts_offset_joint_cts: wp.array(dtype=int32),
+    joint_kinematic_cts_offset_joint_cts: wp.array(dtype=int32),
+    joint_dynamic_cts_offset_total_cts: wp.array(dtype=int32),
+    joint_kinematic_cts_offset_total_cts: wp.array(dtype=int32),
     joint_lambda_j: wp.array(dtype=float32),
     problem_P: wp.array(dtype=float32),
     # Outputs:
@@ -196,10 +196,10 @@ def _warmstart_joint_constraints(
     dt = model_time_dt[wid_j]
 
     # Retrieve offsets in the joint-only and total constraints vector
-    joint_dyn_cts_start = joint_dynamic_cts_joint_cts_offset[jid]
-    joint_kin_cts_start = joint_kinematic_cts_joint_cts_offset[jid]
-    dyn_cts_row_start_j = joint_dynamic_cts_total_cts_offset[jid]
-    kin_cts_row_start_j = joint_kinematic_cts_total_cts_offset[jid]
+    joint_dyn_cts_start = joint_dynamic_cts_offset_joint_cts[jid]
+    joint_kin_cts_start = joint_kinematic_cts_offset_joint_cts[jid]
+    dyn_cts_row_start_j = joint_dynamic_cts_offset_total_cts[jid]
+    kin_cts_row_start_j = joint_kinematic_cts_offset_total_cts[jid]
 
     # For each joint constraint, scale the constraint force by the time-step and
     # the preconditioner and initialize the solver state variables accordingly

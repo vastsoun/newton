@@ -2018,7 +2018,7 @@ class JointsModel:
     kinematic constraints count is encoded as ``kinematic_cts_offset[j+1] - kinematic_cts_offset[j]``.
     """
 
-    dynamic_cts_joint_cts_offset: wp.array | None = None
+    dynamic_cts_offset_joint_cts: wp.array | None = None
     """
     Index offset of each joint's dynamic constraints block, in model-wide
     flattened joint constraints arrays.
@@ -2026,7 +2026,7 @@ class JointsModel:
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
-    kinematic_cts_joint_cts_offset: wp.array | None = None
+    kinematic_cts_offset_joint_cts: wp.array | None = None
     """
     Index offset of each joint's kinematic constraints block, in model-wide
     flattened joint constraints arrays.
@@ -2034,7 +2034,7 @@ class JointsModel:
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
-    dynamic_cts_total_cts_offset: wp.array | None = None
+    dynamic_cts_offset_total_cts: wp.array | None = None
     """
     Index offset of each joint's dynamic constraints block, in model-wide
     flattened total constraints arrays (joints + limits + contacts).
@@ -2042,7 +2042,7 @@ class JointsModel:
     Shape of ``(num_joints,)`` and type :class:`int`.
     """
 
-    kinematic_cts_total_cts_offset: wp.array | None = None
+    kinematic_cts_offset_total_cts: wp.array | None = None
     """
     Index offset of each joint's kinematic constraints block, in model-wide
     flattened total constraints arrays (joints + limits + contacts).

@@ -675,7 +675,6 @@ def _build_free_velocity_bias_contacts(
 @wp.kernel
 def _build_free_velocity(
     # Inputs:
-    model_info_num_bodies: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
     data_bodies_u_i: wp.array(dtype=vec6f),
     jacobians_J_cts_offsets: wp.array(dtype=int32),
@@ -699,8 +698,8 @@ def _build_free_velocity(
         return
 
     # Retrieve the world-specific data
-    nb = model_info_num_bodies[wid]
     bio = model_info_bodies_offset[wid]
+    nb = model_info_bodies_offset[wid + 1] - bio
     cjmio = jacobians_J_cts_offsets[wid]
     vio = problem_vio[wid]
 
@@ -1448,7 +1447,6 @@ class DualProblem:
                 dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
                 inputs=[
                     # Inputs:
-                    model.info.num_bodies,
                     model.info.bodies_offset,
                     data.bodies.u_i,
                     jacobians.data.J_cts_offsets,
@@ -1640,7 +1638,6 @@ class DualProblem:
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
             inputs=[
                 # Inputs:
-                model.info.num_bodies,
                 model.info.bodies_offset,
                 data.bodies.u_i,
                 jacobians.data.J_cts_offsets,

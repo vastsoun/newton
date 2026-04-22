@@ -674,7 +674,6 @@ def _compute_eom_residual(
 @wp.kernel
 def _compute_joint_kinematics_residual_dense(
     # Inputs:
-    model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
     model_info_total_cts_offset: wp.array(dtype=int32),
     model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
@@ -706,8 +705,8 @@ def _compute_joint_kinematics_residual_dense(
     cts_offset_j = model_joint_kinematic_cts_offset_total_cts[jid] - model_info_total_cts_offset[wid]
 
     # Retrieve the world-specific info
-    nbd = model_info_num_body_dofs[wid]
     bio = model_info_bodies_offset[wid]
+    nbd = 6 * (model_info_bodies_offset[wid + 1] - bio)
     kgo = model_info_joint_kinematic_cts_group_offset[wid]
     mio = jacobian_cts_offset[wid]
 
@@ -1414,7 +1413,6 @@ class SolutionMetrics:
                     dim=model.size.sum_of_num_joints,
                     inputs=[
                         # Inputs:
-                        model.info.num_body_dofs,
                         model.info.bodies_offset,
                         model.info.total_cts_offset,
                         model.info.joint_kinematic_cts_group_offset,

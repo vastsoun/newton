@@ -1286,6 +1286,9 @@ class ModelBuilderKamino:
             max_of_max_total_cts=max([world.num_joint_cts for world in self._worlds]),
         )
 
+        # Append total number of bodies to body offsets
+        info_bio.append(model_size.sum_of_num_bodies)
+
         ###
         # Collision detection and contact-allocation meta-data
         ###

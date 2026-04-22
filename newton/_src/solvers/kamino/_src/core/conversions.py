@@ -958,7 +958,7 @@ def convert_rigid_bodies(
     num_bodies = wp.zeros((model.world_count,), dtype=int32)
     num_shapes = wp.zeros((model.world_count,), dtype=int32)
     num_body_dofs = wp.zeros((model.world_count,), dtype=int32)
-    world_body_offset = wp.zeros((model.world_count,), dtype=int32)
+    world_body_offset = wp.zeros((model.world_count + 1,), dtype=int32)
     world_shape_offset = wp.zeros((model.world_count,), dtype=int32)
     world_body_dof_offset = wp.zeros((model.world_count,), dtype=int32)
 
@@ -1014,6 +1014,13 @@ def convert_rigid_bodies(
     model_size.max_of_num_geoms = int(num_shapes.numpy().max())
     model_size.sum_of_num_body_dofs = 6 * model.body_count
     model_size.max_of_num_body_dofs = int(num_body_dofs.numpy().max())
+
+    # Write the N+1 entry (grand total) into the bodies offset array.
+    wp.launch(
+        write_coeff_kernel,
+        dim=1,
+        inputs=[world_body_offset, model_size.num_worlds, model_size.sum_of_num_bodies],
+    )
 
     # Per-world heterogeneous model info
     model_info.num_bodies = num_bodies

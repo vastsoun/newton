@@ -445,7 +445,6 @@ def compute_intermediate_body_frame_universal_joint(
 @wp.kernel
 def _build_joint_jacobians_dense(
     # Inputs
-    model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
     model_info_joint_dofs_offset: wp.array(dtype=int32),
     model_info_joint_dynamic_cts_offset: wp.array(dtype=int32),
@@ -486,8 +485,8 @@ def _build_joint_jacobians_dense(
     kin_cts_offset = model_joints_kinematic_cts_offset[jid]
 
     # Retrieve the number of body DoFs for corresponding world
-    nbd = model_info_num_body_dofs[wid]
     bio = model_info_bodies_offset[wid]
+    nbd = 6 * (model_info_bodies_offset[wid + 1] - bio)
     jdcgo = model_info_joint_dynamic_cts_group_offset[wid]
     jkcgo = model_info_joint_kinematic_cts_group_offset[wid]
 
@@ -661,7 +660,6 @@ def _build_joint_jacobians_sparse(
 @wp.kernel
 def _build_limit_jacobians_dense(
     # Inputs:
-    model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
     model_info_joint_dofs_offset: wp.array(dtype=int32),
     data_info_limit_cts_group_offset: wp.array(dtype=int32),
@@ -699,8 +697,8 @@ def _build_limit_jacobians_dense(
     side_l = limits_side[lid]
 
     # Retrieve the relevant model info of the world
-    nbd = model_info_num_body_dofs[wid_l]
     bio = model_info_bodies_offset[wid_l]
+    nbd = 6 * (model_info_bodies_offset[wid_l + 1] - bio)
     lcgo = data_info_limit_cts_group_offset[wid_l]
     ajmio = jacobian_dofs_offsets[wid_l]
     cjmio = jacobian_cts_offsets[wid_l]
@@ -809,7 +807,6 @@ def _build_limit_jacobians_sparse(
 @wp.kernel
 def _build_contact_jacobians_dense(
     # Inputs:
-    model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
     data_info_contact_cts_group_offset: wp.array(dtype=int32),
     state_bodies_q: wp.array(dtype=transformf),
@@ -848,8 +845,8 @@ def _build_contact_jacobians_dense(
     r_Bc_k = contacts_position_B[cid]
 
     # Retrieve the relevant model info for the world
-    nbd = model_info_num_body_dofs[wid]
     bio = model_info_bodies_offset[wid]
+    nbd = 6 * (model_info_bodies_offset[wid + 1] - bio)
     ccgo = data_info_contact_cts_group_offset[wid]
     cjmio = jacobian_cts_offsets[wid]
 
@@ -1429,7 +1426,6 @@ class DenseSystemJacobians:
                 dim=model.size.sum_of_num_joints,
                 inputs=[
                     # Inputs:
-                    model.info.num_body_dofs,
                     model.info.bodies_offset,
                     model.info.joint_dofs_offset,
                     model.info.joint_dynamic_cts_offset,
@@ -1462,7 +1458,6 @@ class DenseSystemJacobians:
                 dim=limits.model_max_limits_host,
                 inputs=[
                     # Inputs:
-                    model.info.num_body_dofs,
                     model.info.bodies_offset,
                     model.info.joint_dofs_offset,
                     data.info.limit_cts_group_offset,
@@ -1488,7 +1483,6 @@ class DenseSystemJacobians:
                 dim=contacts.model_max_contacts_host,
                 inputs=[
                     # Inputs:
-                    model.info.num_body_dofs,
                     model.info.bodies_offset,
                     data.info.contact_cts_group_offset,
                     data.bodies.q_i,

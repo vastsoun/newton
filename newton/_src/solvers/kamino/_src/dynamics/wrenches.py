@@ -51,7 +51,6 @@ wp.set_module_options({"enable_backward": False})
 @wp.kernel
 def _compute_joint_dof_body_wrenches_dense(
     # Inputs:
-    model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
     model_info_joint_dofs_offset: wp.array(dtype=int32),
     model_joints_dofs_offset: wp.array(dtype=int32),
@@ -79,11 +78,11 @@ def _compute_joint_dof_body_wrenches_dense(
     dio_j = model_joints_dofs_offset[jid]
     d_j = model_joints_dofs_offset[jid + 1] - dio_j
 
-    # Retrieve the number of body DoFs in the world
-    nbd = model_info_num_body_dofs[wid]
-
     # Retrieve the element index offset of the bodies of the world
     bio = model_info_bodies_offset[wid]
+
+    # Compute the number of body DoFs in the world
+    nbd = 6 * (model_info_bodies_offset[wid + 1] - bio)
 
     # Compute the DoF block index offsets of the world's actuation
     # Jacobian matrix and generalized joint actuation force vector
@@ -168,7 +167,6 @@ def _compute_joint_dof_body_wrenches_sparse(
 @wp.kernel
 def _compute_joint_cts_body_wrenches_dense(
     # Inputs:
-    model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
     model_info_joint_dynamic_cts_offset: wp.array(dtype=int32),
     model_info_joint_kinematic_cts_offset: wp.array(dtype=int32),
@@ -204,11 +202,11 @@ def _compute_joint_cts_body_wrenches_dense(
     kin_cts_start_j = model_joints_kinematic_cts_offset[jid]
     num_kin_cts_j = model_joints_kinematic_cts_offset[jid + 1] - kin_cts_start_j
 
-    # Retrieve the number of body DoFs in the world
-    nbd = model_info_num_body_dofs[wid]
-
     # Retrieve the element index offset of the bodies of the world
     bio = model_info_bodies_offset[wid]
+
+    # Compute the number of body DoFs in the world
+    nbd = 6 * (model_info_bodies_offset[wid + 1] - bio)
 
     # Retrieve the index offsets of the active joint dynamic and kinematic constraints of the world
     world_jdcgo = model_info_joint_dynamic_cts_group_offset[wid]
@@ -271,7 +269,6 @@ def _compute_joint_cts_body_wrenches_dense(
 @wp.kernel
 def _compute_limit_cts_body_wrenches_dense(
     # Inputs:
-    model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
     data_info_limit_cts_group_offset: wp.array(dtype=int32),
     model_time_inv_dt: wp.array(dtype=float32),
@@ -310,8 +307,8 @@ def _compute_limit_cts_body_wrenches_dense(
     inv_dt = model_time_inv_dt[wid]
 
     # Retrieve the world-specific info
-    nbd = model_info_num_body_dofs[wid]
     bio = model_info_bodies_offset[wid]
+    nbd = 6 * (model_info_bodies_offset[wid + 1] - bio)
     mio = jacobian_cts_offset[wid]
     vio = lambdas_offsets[wid]
 
@@ -359,7 +356,6 @@ def _compute_limit_cts_body_wrenches_dense(
 @wp.kernel
 def _compute_contact_cts_body_wrenches_dense(
     # Inputs:
-    model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
     data_info_contact_cts_group_offset: wp.array(dtype=int32),
     model_time_inv_dt: wp.array(dtype=float32),
@@ -398,8 +394,8 @@ def _compute_contact_cts_body_wrenches_dense(
     inv_dt = model_time_inv_dt[wid]
 
     # Retrieve the world-specific info data
-    nbd = model_info_num_body_dofs[wid]
     bio = model_info_bodies_offset[wid]
+    nbd = 6 * (model_info_bodies_offset[wid + 1] - bio)
     mio = jacobian_cts_offset[wid]
     vio = lambdas_offsets[wid]
 
@@ -540,7 +536,6 @@ def compute_joint_dof_body_wrenches_dense(
         dim=model.size.sum_of_num_joints,
         inputs=[
             # Inputs:
-            model.info.num_body_dofs,
             model.info.bodies_offset,
             model.info.joint_dofs_offset,
             model.joints.dofs_offset,
@@ -636,7 +631,6 @@ def compute_constraint_body_wrenches_dense(
             dim=model.size.sum_of_num_joints,
             inputs=[
                 # Inputs:
-                model.info.num_body_dofs,
                 model.info.bodies_offset,
                 model.info.joint_dynamic_cts_offset,
                 model.info.joint_kinematic_cts_offset,
@@ -665,7 +659,6 @@ def compute_constraint_body_wrenches_dense(
             dim=limits.model_max_limits_host,
             inputs=[
                 # Inputs:
-                model.info.num_body_dofs,
                 model.info.bodies_offset,
                 data.info.limit_cts_group_offset,
                 model.time.inv_dt,
@@ -691,7 +684,6 @@ def compute_constraint_body_wrenches_dense(
             dim=contacts.model_max_contacts_host,
             inputs=[
                 # Inputs:
-                model.info.num_body_dofs,
                 model.info.bodies_offset,
                 data.info.contact_cts_group_offset,
                 model.time.inv_dt,

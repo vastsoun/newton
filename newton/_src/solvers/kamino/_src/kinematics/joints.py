@@ -787,14 +787,9 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
     @wp.kernel
     def _compute_joints_data(
         # Inputs:
-        model_info_joint_coords_offset: wp.array(dtype=int32),
-        model_info_joint_dofs_offset: wp.array(dtype=int32),
-        model_info_joint_dynamic_cts_offset: wp.array(dtype=int32),
-        model_info_joint_kinematic_cts_offset: wp.array(dtype=int32),
         model_time_dt: wp.array(dtype=float32),
         model_joint_wid: wp.array(dtype=int32),
         model_joint_dof_type: wp.array(dtype=int32),
-        model_joint_num_dynamic_cts: wp.array(dtype=int32),
         model_joint_coords_offset: wp.array(dtype=int32),
         model_joint_dofs_offset: wp.array(dtype=int32),
         model_joint_dynamic_cts_offset: wp.array(dtype=int32),
@@ -830,7 +825,6 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         # Retrieve the joint model data
         wid = model_joint_wid[jid]
         dof_type = model_joint_dof_type[jid]
-        num_dynamic_cts = model_joint_num_dynamic_cts[jid]
         bid_B = model_joint_bid_B[jid]
         bid_F = model_joint_bid_F[jid]
         B_r_Bj = model_joint_B_r_Bj[jid]
@@ -840,25 +834,12 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
         # Retrieve the time step
         dt = model_time_dt[wid]
 
-        # Retrieve world offsets
-        # NOTE: We load data together for better memory coalescing
-        world_coords_offset = model_info_joint_coords_offset[wid]
-        world_dofs_offset = model_info_joint_dofs_offset[wid]
-        world_dynamic_cts_offset = model_info_joint_dynamic_cts_offset[wid]
-        world_kinematic_cts_offset = model_info_joint_kinematic_cts_offset[wid]
-
-        # Retrieve joint-specific offsets
-        # NOTE: We load data together for better memory coalescing
-        joint_coords_offset = model_joint_coords_offset[jid]
-        joint_dofs_offset = model_joint_dofs_offset[jid]
-        joint_dynamic_cts_offset = model_joint_dynamic_cts_offset[jid]
-        joint_kinematic_cts_offset = model_joint_kinematic_cts_offset[jid]
-
-        # Construct offsets from world + current joint offset
-        coords_offset = world_coords_offset + joint_coords_offset
-        dofs_offset = world_dofs_offset + joint_dofs_offset
-        dynamic_cts_offset = world_dynamic_cts_offset + joint_dynamic_cts_offset
-        kinematic_cts_offset = world_kinematic_cts_offset + joint_kinematic_cts_offset
+        # Retrieve joint-specific offsets/sizes
+        coords_offset = model_joint_coords_offset[jid]
+        dofs_offset = model_joint_dofs_offset[jid]
+        dynamic_cts_offset = model_joint_dynamic_cts_offset[jid]
+        num_dynamic_cts = model_joint_dynamic_cts_offset[jid + 1] - dynamic_cts_offset
+        kinematic_cts_offset = model_joint_kinematic_cts_offset[jid]
 
         # If the Base body is the world (bid=-1), use the identity transform (frame
         # of the world's origin), otherwise retrieve the Base body's pose and twist
@@ -926,14 +907,8 @@ def make_compute_joints_data_kernel(correction: JointCorrectionMode = JointCorre
 def _extract_actuators_state_from_joints(
     # Inputs:
     world_mask: wp.array(dtype=int32),
-    model_info_joint_coords_offset: wp.array(dtype=int32),
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_actuated_coords_offset: wp.array(dtype=int32),
-    model_info_joint_actuated_dofs_offset: wp.array(dtype=int32),
     model_joint_wid: wp.array(dtype=int32),
     model_joint_act_type: wp.array(dtype=int32),
-    model_joint_num_coords: wp.array(dtype=int32),
-    model_joint_num_dofs: wp.array(dtype=int32),
     model_joint_coords_offset: wp.array(dtype=int32),
     model_joint_dofs_offset: wp.array(dtype=int32),
     model_joint_actuated_coords_offset: wp.array(dtype=int32),
@@ -956,24 +931,12 @@ def _extract_actuators_state_from_joints(
         return
 
     # Retrieve the joint model data
-    num_coords = model_joint_num_coords[jid]
-    num_dofs = model_joint_num_dofs[jid]
-    coords_offset = model_joint_coords_offset[jid]
-    dofs_offset = model_joint_dofs_offset[jid]
-    actuated_coords_offset = model_joint_actuated_coords_offset[jid]
-    actuated_dofs_offset = model_joint_actuated_dofs_offset[jid]
-
-    # Retrieve the index offsets of the joint's constraint and DoF dimensions
-    world_joint_coords_offset = model_info_joint_coords_offset[wid]
-    world_joint_dofs_offset = model_info_joint_dofs_offset[wid]
-    world_joint_actuated_coords_offset = model_info_joint_actuated_coords_offset[wid]
-    world_joint_actuated_dofs_offset = model_info_joint_actuated_dofs_offset[wid]
-
-    # Append the index offsets of the world's joint blocks
-    jq_start = world_joint_coords_offset + coords_offset
-    jd_start = world_joint_dofs_offset + dofs_offset
-    aq_start = world_joint_actuated_coords_offset + actuated_coords_offset
-    ad_start = world_joint_actuated_dofs_offset + actuated_dofs_offset
+    jq_start = model_joint_coords_offset[jid]
+    num_coords = model_joint_coords_offset[jid + 1] - jq_start
+    jd_start = model_joint_dofs_offset[jid]
+    num_dofs = model_joint_dofs_offset[jid + 1] - jd_start
+    aq_start = model_joint_actuated_coords_offset[jid]
+    ad_start = model_joint_actuated_dofs_offset[jid]
 
     # TODO: Change to use array slice assignment when supported in Warp
     # # Store the actuated joint coordinates and velocities
@@ -991,14 +954,8 @@ def _extract_actuators_state_from_joints(
 def _extract_joints_state_from_actuators(
     # Inputs:
     world_mask: wp.array(dtype=int32),
-    model_info_joint_coords_offset: wp.array(dtype=int32),
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_actuated_coords_offset: wp.array(dtype=int32),
-    model_info_joint_actuated_dofs_offset: wp.array(dtype=int32),
     model_joint_wid: wp.array(dtype=int32),
     model_joint_act_type: wp.array(dtype=int32),
-    model_joint_num_coords: wp.array(dtype=int32),
-    model_joint_num_dofs: wp.array(dtype=int32),
     model_joint_coords_offset: wp.array(dtype=int32),
     model_joint_dofs_offset: wp.array(dtype=int32),
     model_joint_actuated_coords_offset: wp.array(dtype=int32),
@@ -1021,24 +978,12 @@ def _extract_joints_state_from_actuators(
         return
 
     # Retrieve the joint model data
-    num_coords = model_joint_num_coords[jid]
-    num_dofs = model_joint_num_dofs[jid]
-    coords_offset = model_joint_coords_offset[jid]
-    dofs_offset = model_joint_dofs_offset[jid]
-    actuated_coords_offset = model_joint_actuated_coords_offset[jid]
-    actuated_dofs_offset = model_joint_actuated_dofs_offset[jid]
-
-    # Retrieve the index offsets of the joint's constraint and DoF dimensions
-    world_joint_coords_offset = model_info_joint_coords_offset[wid]
-    world_joint_dofs_offset = model_info_joint_dofs_offset[wid]
-    world_joint_actuated_coords_offset = model_info_joint_actuated_coords_offset[wid]
-    world_joint_actuated_dofs_offset = model_info_joint_actuated_dofs_offset[wid]
-
-    # Append the index offsets of the world's joint blocks
-    jq_start = world_joint_coords_offset + coords_offset
-    jd_start = world_joint_dofs_offset + dofs_offset
-    aq_start = world_joint_actuated_coords_offset + actuated_coords_offset
-    ad_start = world_joint_actuated_dofs_offset + actuated_dofs_offset
+    jq_start = model_joint_coords_offset[jid]
+    num_coords = model_joint_coords_offset[jid + 1] - jq_start
+    jd_start = model_joint_dofs_offset[jid]
+    num_dofs = model_joint_dofs_offset[jid + 1] - jd_start
+    aq_start = model_joint_actuated_coords_offset[jid]
+    ad_start = model_joint_actuated_dofs_offset[jid]
 
     # TODO: Change to use array slice assignment when supported in Warp
     # # Store the actuated joint coordinates and velocities
@@ -1091,14 +1036,9 @@ def compute_joints_data(
         dim=model.size.sum_of_num_joints,
         inputs=[
             # Inputs:
-            model.info.joint_coords_offset,
-            model.info.joint_dofs_offset,
-            model.info.joint_dynamic_cts_offset,
-            model.info.joint_kinematic_cts_offset,
             model.time.dt,
             model.joints.wid,
             model.joints.dof_type,
-            model.joints.num_dynamic_cts,
             model.joints.coords_offset,
             model.joints.dofs_offset,
             model.joints.dynamic_cts_offset,
@@ -1170,14 +1110,8 @@ def extract_actuators_state_from_joints(
         dim=model.size.sum_of_num_joints,
         inputs=[
             world_mask,
-            model.info.joint_coords_offset,
-            model.info.joint_dofs_offset,
-            model.info.joint_actuated_coords_offset,
-            model.info.joint_actuated_dofs_offset,
             model.joints.wid,
             model.joints.act_type,
-            model.joints.num_coords,
-            model.joints.num_dofs,
             model.joints.coords_offset,
             model.joints.dofs_offset,
             model.joints.actuated_coords_offset,
@@ -1231,14 +1165,8 @@ def extract_joints_state_from_actuators(
         dim=model.size.sum_of_num_joints,
         inputs=[
             world_mask,
-            model.info.joint_coords_offset,
-            model.info.joint_dofs_offset,
-            model.info.joint_actuated_coords_offset,
-            model.info.joint_actuated_dofs_offset,
             model.joints.wid,
             model.joints.act_type,
-            model.joints.num_coords,
-            model.joints.num_dofs,
             model.joints.coords_offset,
             model.joints.dofs_offset,
             model.joints.actuated_coords_offset,

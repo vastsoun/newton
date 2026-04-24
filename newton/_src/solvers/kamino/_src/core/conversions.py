@@ -486,22 +486,16 @@ def joint_indexing_kernel(
             num_actuated_j += 1
             num_actuated_coords += ncoords_j
             num_actuated_dofs += ndofs_j
-            joint_passive_coord_start[joint_id] = -1
-            joint_passive_dofs_start[joint_id] = -1
         else:
             num_passive_j += 1
             num_passive_coords += ncoords_j
             num_passive_dofs += ndofs_j
-            joint_actuated_coord_start[joint_id] = -1
-            joint_actuated_dofs_start[joint_id] = -1
 
         # Update sizes based on whether joint is dynamic
         if n_dyn_cts_j > 0:
             num_dynamic_cts += n_dyn_cts_j
             num_cts += n_dyn_cts_j
             num_dynamic_j += 1
-        else:
-            joint_dynamic_cts_start[joint_id] = -1
 
     # Write sizes for this world
     num_passive_joints[world_id] = num_passive_j
@@ -516,6 +510,43 @@ def joint_indexing_kernel(
     num_joint_actuated_dofs[world_id] = num_actuated_dofs
     num_joint_passive_coords[world_id] = num_passive_coords
     num_joint_passive_dofs[world_id] = num_passive_dofs
+
+
+@wp.kernel
+def _globalize_joint_offsets(
+    # Inputs:
+    joint_world: wp.array(dtype=int32),
+    world_coord_offset: wp.array(dtype=int32),
+    world_dof_offset: wp.array(dtype=int32),
+    world_passive_coord_offset: wp.array(dtype=int32),
+    world_passive_dof_offset: wp.array(dtype=int32),
+    world_actuated_coord_offset: wp.array(dtype=int32),
+    world_actuated_dof_offset: wp.array(dtype=int32),
+    world_cts_offset: wp.array(dtype=int32),
+    world_dynamic_cts_offset: wp.array(dtype=int32),
+    world_kinematic_cts_offset: wp.array(dtype=int32),
+    # Outputs:
+    joint_coord_start: wp.array(dtype=int32),
+    joint_dofs_start: wp.array(dtype=int32),
+    joint_passive_coord_start: wp.array(dtype=int32),
+    joint_passive_dofs_start: wp.array(dtype=int32),
+    joint_actuated_coord_start: wp.array(dtype=int32),
+    joint_actuated_dofs_start: wp.array(dtype=int32),
+    joint_cts_start: wp.array(dtype=int32),
+    joint_dynamic_cts_start: wp.array(dtype=int32),
+    joint_kinematic_cts_start: wp.array(dtype=int32),
+):
+    jid = wp.tid()
+    w = joint_world[jid]
+    joint_coord_start[jid] += world_coord_offset[w]
+    joint_dofs_start[jid] += world_dof_offset[w]
+    joint_passive_coord_start[jid] += world_passive_coord_offset[w]
+    joint_passive_dofs_start[jid] += world_passive_dof_offset[w]
+    joint_actuated_coord_start[jid] += world_actuated_coord_offset[w]
+    joint_actuated_dofs_start[jid] += world_actuated_dof_offset[w]
+    joint_cts_start[jid] += world_cts_offset[w]
+    joint_dynamic_cts_start[jid] += world_dynamic_cts_offset[w]
+    joint_kinematic_cts_start[jid] += world_kinematic_cts_offset[w]
 
 
 @wp.kernel
@@ -565,13 +596,9 @@ def geometry_conversion_kernel(
 @wp.kernel
 def target_dofs_to_coords_conversion_kernel(
     # Inputs
-    model_joints_wid: wp.array(dtype=int32),
     model_joints_dof_type: wp.array(dtype=int32),
     model_joints_dofs_offset: wp.array(dtype=int32),
     model_joints_coords_offset: wp.array(dtype=int32),
-    model_joints_num_dofs: wp.array(dtype=int32),
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_coords_offset: wp.array(dtype=int32),
     joint_target_dofs: wp.array(dtype=float32),
     # Outputs
     joint_target_coords: wp.array(dtype=float32),
@@ -580,10 +607,9 @@ def target_dofs_to_coords_conversion_kernel(
     jid = wp.tid()
 
     # Get dof/coords offsets and number of dofs
-    wid = model_joints_wid[jid]
-    num_dofs = model_joints_num_dofs[jid]
-    dof_offset = model_info_joint_dofs_offset[wid] + model_joints_dofs_offset[jid]
-    coord_offset = model_info_joint_coords_offset[wid] + model_joints_coords_offset[jid]
+    dof_offset = model_joints_dofs_offset[jid]
+    num_dofs = model_joints_dofs_offset[jid + 1] - dof_offset
+    coord_offset = model_joints_coords_offset[jid]
 
     # Check whether coords = dofs for this joint
     dof_type = model_joints_dof_type[jid]
@@ -614,13 +640,9 @@ def target_dofs_to_coords_conversion_kernel(
 @wp.kernel
 def target_coords_to_dofs_conversion_kernel(
     # Inputs
-    model_joints_wid: wp.array(dtype=int32),
     model_joints_dof_type: wp.array(dtype=int32),
     model_joints_dofs_offset: wp.array(dtype=int32),
     model_joints_coords_offset: wp.array(dtype=int32),
-    model_joints_num_dofs: wp.array(dtype=int32),
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_coords_offset: wp.array(dtype=int32),
     joint_target_coords: wp.array(dtype=float32),
     # Outputs
     joint_target_dofs: wp.array(dtype=float32),
@@ -629,10 +651,9 @@ def target_coords_to_dofs_conversion_kernel(
     jid = wp.tid()
 
     # Get dof/coords offsets and number of dofs
-    wid = model_joints_wid[jid]
-    num_dofs = model_joints_num_dofs[jid]
-    dof_offset = model_info_joint_dofs_offset[wid] + model_joints_dofs_offset[jid]
-    coord_offset = model_info_joint_coords_offset[wid] + model_joints_coords_offset[jid]
+    dof_offset = model_joints_dofs_offset[jid]
+    num_dofs = model_joints_dofs_offset[jid + 1] - dof_offset
+    coord_offset = model_joints_coords_offset[jid]
 
     # Check whether coords = dofs for this joint
     dof_type = model_joints_dof_type[jid]
@@ -659,6 +680,12 @@ def target_coords_to_dofs_conversion_kernel(
         angles_offset = dof_offset + orientation_dofs_offset
         for k in range(3):
             joint_target_dofs[angles_offset + k] = angles[k]
+
+
+@wp.kernel
+def write_coeff_kernel(a: wp.array(dtype=int32), idx: int, v: int):
+    """Helper kernel writing a single array coefficient"""
+    a[idx] = v
 
 
 ###
@@ -931,7 +958,7 @@ def convert_rigid_bodies(
     num_bodies = wp.zeros((model.world_count,), dtype=int32)
     num_shapes = wp.zeros((model.world_count,), dtype=int32)
     num_body_dofs = wp.zeros((model.world_count,), dtype=int32)
-    world_body_offset = wp.zeros((model.world_count,), dtype=int32)
+    world_body_offset = wp.zeros((model.world_count + 1,), dtype=int32)
     world_shape_offset = wp.zeros((model.world_count,), dtype=int32)
     world_body_dof_offset = wp.zeros((model.world_count,), dtype=int32)
 
@@ -987,6 +1014,13 @@ def convert_rigid_bodies(
     model_size.max_of_num_geoms = int(num_shapes.numpy().max())
     model_size.sum_of_num_body_dofs = 6 * model.body_count
     model_size.max_of_num_body_dofs = int(num_body_dofs.numpy().max())
+
+    # Write the N+1 entry (grand total) into the bodies offset array.
+    wp.launch(
+        write_coeff_kernel,
+        dim=1,
+        inputs=[world_body_offset, model_size.num_worlds, model_size.sum_of_num_bodies],
+    )
 
     # Per-world heterogeneous model info
     model_info.num_bodies = num_bodies
@@ -1125,15 +1159,15 @@ def convert_joints(
     num_joint_dynamic_cts = wp.zeros(shape=(model.world_count,), dtype=int32)
     num_joint_kinematic_cts = wp.zeros(shape=(model.world_count,), dtype=int32)
 
-    joint_coord_start = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_dofs_start = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_actuated_coord_start = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_actuated_dofs_start = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_passive_coord_start = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_passive_dofs_start = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_cts_start = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_dynamic_cts_start = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_kinematic_cts_start = wp.zeros(shape=(model.joint_count,), dtype=int32)
+    joint_coord_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+    joint_dofs_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+    joint_actuated_coord_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+    joint_actuated_dofs_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+    joint_passive_coord_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+    joint_passive_dofs_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+    joint_cts_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+    joint_dynamic_cts_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+    joint_kinematic_cts_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
 
     wp.launch(
         kernel=joint_indexing_kernel,
@@ -1344,6 +1378,82 @@ def convert_joints(
     model_info.base_body_index = wp.array(base_body_idx_np, dtype=int32)
     model_info.base_joint_index = wp.array(base_joint_idx_np, dtype=int32)
 
+    # Convert local (per-world) joint offsets to global by adding per-world prefix offsets in-place
+    wp.launch(
+        kernel=_globalize_joint_offsets,
+        dim=model.joint_count,
+        inputs=[
+            model.joint_world,
+            model_info.joint_coords_offset,
+            model_info.joint_dofs_offset,
+            model_info.joint_passive_coords_offset,
+            model_info.joint_passive_dofs_offset,
+            model_info.joint_actuated_coords_offset,
+            model_info.joint_actuated_dofs_offset,
+            model_info.joint_cts_offset,
+            model_info.joint_dynamic_cts_offset,
+            model_info.joint_kinematic_cts_offset,
+        ],
+        outputs=[
+            joint_coord_start,
+            joint_dofs_start,
+            joint_passive_coord_start,
+            joint_passive_dofs_start,
+            joint_actuated_coord_start,
+            joint_actuated_dofs_start,
+            joint_cts_start,
+            joint_dynamic_cts_start,
+            joint_kinematic_cts_start,
+        ],
+    )
+
+    # Write the N+1 entry (grand total) into each offset array.
+    wp.launch(
+        write_coeff_kernel,
+        dim=1,
+        inputs=[joint_coord_start, model_size.sum_of_num_joints, model_size.sum_of_num_joint_coords],
+    )
+    wp.launch(
+        write_coeff_kernel,
+        dim=1,
+        inputs=[joint_dofs_start, model_size.sum_of_num_joints, model_size.sum_of_num_joint_dofs],
+    )
+    wp.launch(
+        write_coeff_kernel,
+        dim=1,
+        inputs=[joint_passive_coord_start, model_size.sum_of_num_joints, model_size.sum_of_num_passive_joint_coords],
+    )
+    wp.launch(
+        write_coeff_kernel,
+        dim=1,
+        inputs=[joint_passive_dofs_start, model_size.sum_of_num_joints, model_size.sum_of_num_passive_joint_dofs],
+    )
+    wp.launch(
+        write_coeff_kernel,
+        dim=1,
+        inputs=[joint_actuated_coord_start, model_size.sum_of_num_joints, model_size.sum_of_num_actuated_joint_coords],
+    )
+    wp.launch(
+        write_coeff_kernel,
+        dim=1,
+        inputs=[joint_actuated_dofs_start, model_size.sum_of_num_joints, model_size.sum_of_num_actuated_joint_dofs],
+    )
+    wp.launch(
+        write_coeff_kernel,
+        dim=1,
+        inputs=[joint_cts_start, model_size.sum_of_num_joints, model_size.sum_of_num_joint_cts],
+    )
+    wp.launch(
+        write_coeff_kernel,
+        dim=1,
+        inputs=[joint_dynamic_cts_start, model_size.sum_of_num_joints, model_size.sum_of_num_dynamic_joint_cts],
+    )
+    wp.launch(
+        write_coeff_kernel,
+        dim=1,
+        inputs=[joint_kinematic_cts_start, model_size.sum_of_num_joints, model_size.sum_of_num_kinematic_joint_cts],
+    )
+
     # Joints
     model_joints = JointsModel(
         num_joints=model.joint_count,
@@ -1518,13 +1628,9 @@ def convert_target_dofs_to_target_coords(
         target_dofs_to_coords_conversion_kernel,
         dim=model.size.sum_of_num_joints,
         inputs=[
-            model.joints.wid,
             model.joints.dof_type,
             model.joints.dofs_offset,
             model.joints.coords_offset,
-            model.joints.num_dofs,
-            model.info.joint_dofs_offset,
-            model.info.joint_coords_offset,
             joint_target_dofs,
             joint_target_coords,
         ],
@@ -1539,13 +1645,9 @@ def convert_target_coords_to_target_dofs(
         target_coords_to_dofs_conversion_kernel,
         dim=model.size.sum_of_num_joints,
         inputs=[
-            model.joints.wid,
             model.joints.dof_type,
             model.joints.dofs_offset,
             model.joints.coords_offset,
-            model.joints.num_dofs,
-            model.info.joint_dofs_offset,
-            model.info.joint_coords_offset,
             joint_target_coords,
             joint_target_dofs,
         ],

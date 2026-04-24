@@ -321,7 +321,7 @@ class TestKinematicsLimits(unittest.TestCase):
                 self.assertEqual(limits_wid_np[i], i)
                 self.assertEqual(limits_lid_np[i], j)
                 self.assertEqual(limits_jid_np[i], i * limits_num_np[i] + j)
-                self.assertEqual(limits_dof_np[i], j)
+                self.assertEqual(limits_dof_np[i], i + j)  # global DoF index (1 DoF per world)
                 self.assertEqual(limits_side_np[i], -1)
                 self.assertAlmostEqual(limits_r_q_np[i * limits_num_np[i] + j], Q_X_J_MAX - Q_X_J, places=6)
 

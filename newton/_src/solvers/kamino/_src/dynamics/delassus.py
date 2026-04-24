@@ -117,7 +117,6 @@ wp.set_module_options({"enable_backward": False})
 @wp.kernel
 def _build_delassus_elementwise_dense(
     # Inputs:
-    model_info_num_bodies: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
     model_bodies_inv_m_i: wp.array(dtype=float32),
     data_bodies_inv_I_i: wp.array(dtype=mat33f),
@@ -132,8 +131,8 @@ def _build_delassus_elementwise_dense(
     wid, tid = wp.tid()
 
     # Retrieve the world dimensions
-    nb = model_info_num_bodies[wid]
     bio = model_info_bodies_offset[wid]
+    nb = model_info_bodies_offset[wid + 1] - bio
 
     # Retrieve the problem dimensions
     ncts = delassus_dim[wid]
@@ -975,7 +974,6 @@ class DelassusOperator:
                 dim=(self._size.num_worlds, upper_tri_size),
                 inputs=[
                     # Inputs:
-                    model.info.num_bodies,
                     model.info.bodies_offset,
                     model.bodies.inv_m_i,
                     data.bodies.inv_I_i,

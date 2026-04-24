@@ -658,15 +658,13 @@ class PADMMSolver:
             inputs=[
                 # Inputs:
                 model.time.dt,
-                model.info.joint_cts_offset,
-                model.info.total_cts_offset,
-                model.info.joint_dynamic_cts_group_offset,
-                model.info.joint_kinematic_cts_group_offset,
                 model.joints.wid,
                 model.joints.num_dynamic_cts,
                 model.joints.num_kinematic_cts,
-                model.joints.dynamic_cts_offset,
-                model.joints.kinematic_cts_offset,
+                model.joints.dynamic_cts_offset_joint_cts,
+                model.joints.kinematic_cts_offset_joint_cts,
+                model.joints.dynamic_cts_offset_total_cts,
+                model.joints.kinematic_cts_offset_total_cts,
                 data.joints.lambda_j,
                 problem.data.P,
                 # Outputs:

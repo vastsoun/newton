@@ -229,7 +229,9 @@ class ModelKaminoInfo:
     bodies_offset: wp.array | None = None
     """
     The body index offset of each world w.r.t the model.\n
-    Shape of ``(num_worlds,)`` and type :class:`int`.
+    Shape of ``(num_worlds + 1,)`` and type :class:`int`.
+    The last entry is the total bodies count, so that the per-world
+    bodies count is encoded as ``bodies_offset[w+1] - bodies_offset[w]``.
     """
 
     joints_offset: wp.array | None = None

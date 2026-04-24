@@ -84,11 +84,8 @@ class PIDControllerData:
 @wp.kernel
 def _reset_jointspace_pid_references(
     # Inputs
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_actuated_dofs_offset: wp.array(dtype=int32),
     model_joints_wid: wp.array(dtype=int32),
     model_joints_act_type: wp.array(dtype=int32),
-    model_joints_num_dofs: wp.array(dtype=int32),
     model_joints_dofs_offset: wp.array(dtype=int32),
     model_joints_actuated_dofs_offset: wp.array(dtype=int32),
     state_joints_q_j: wp.array(dtype=float32),
@@ -106,26 +103,15 @@ def _reset_jointspace_pid_references(
     # Retrieve the joint actuation type
     act_type = model_joints_act_type[jid]
 
-    # Retrieve the world index from the thread indices
-    wid = model_joints_wid[jid]
-
     # Only proceed for force actuated joints and at
     # simulation steps matching the control decimation
     if act_type != JointActuationType.FORCE:
         return
 
-    # Retrieve the offset of the world's joints in the global DoF vector
-    world_dof_offset = model_info_joint_dofs_offset[wid]
-    world_actuated_dof_offset = model_info_joint_actuated_dofs_offset[wid]
-
-    # Retrieve the number of DoFs and offset of the joint
-    num_dofs = model_joints_num_dofs[jid]
+    # Retrieve the number of DoFs and offsets of the joint
     dofs_offset = model_joints_dofs_offset[jid]
+    num_dofs = model_joints_dofs_offset[jid + 1] - dofs_offset
     actuated_dofs_offset = model_joints_actuated_dofs_offset[jid]
-
-    # Compute the global DoF offset of the joint
-    dofs_offset += world_dof_offset
-    actuated_dofs_offset += world_actuated_dof_offset
 
     # Iterate over the DoFs of the joint
     for dof in range(num_dofs):
@@ -147,11 +133,8 @@ def _reset_jointspace_pid_references(
 @wp.kernel
 def _compute_jointspace_pid_control(
     # Inputs
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_actuated_dofs_offset: wp.array(dtype=int32),
     model_joints_wid: wp.array(dtype=int32),
     model_joints_act_type: wp.array(dtype=int32),
-    model_joints_num_dofs: wp.array(dtype=int32),
     model_joints_dofs_offset: wp.array(dtype=int32),
     model_joints_actuated_dofs_offset: wp.array(dtype=int32),
     model_joints_tau_j_max: wp.array(dtype=float32),
@@ -200,18 +183,10 @@ def _compute_jointspace_pid_control(
     # decimation to get the effective control time-step
     dt *= float32(decimation)
 
-    # Retrieve the offset of the world's joints in the global DoF vector
-    world_dof_offset = model_info_joint_dofs_offset[wid]
-    world_actuated_dof_offset = model_info_joint_actuated_dofs_offset[wid]
-
-    # Retrieve the number of DoFs and offset of the joint
-    num_dofs = model_joints_num_dofs[jid]
+    # Retrieve the number of DoFs and offsets of the joint
     dofs_offset = model_joints_dofs_offset[jid]
+    num_dofs = model_joints_dofs_offset[jid + 1] - dofs_offset
     actuated_dofs_offset = model_joints_actuated_dofs_offset[jid]
-
-    # Compute the global DoF offset of the joint
-    dofs_offset += world_dof_offset
-    actuated_dofs_offset += world_actuated_dof_offset
 
     # Iterate over the DoFs of the joint
     for dof in range(num_dofs):
@@ -282,11 +257,8 @@ def reset_jointspace_pid_references(
         dim=model.size.sum_of_num_joints,
         inputs=[
             # Inputs
-            model.info.joint_dofs_offset,
-            model.info.joint_actuated_dofs_offset,
             model.joints.wid,
             model.joints.act_type,
-            model.joints.num_dofs,
             model.joints.dofs_offset,
             model.joints.actuated_dofs_offset,
             state.q_j,
@@ -315,11 +287,8 @@ def compute_jointspace_pid_control(
         dim=model.size.sum_of_num_joints,
         inputs=[
             # Inputs
-            model.info.joint_dofs_offset,
-            model.info.joint_actuated_dofs_offset,
             model.joints.wid,
             model.joints.act_type,
-            model.joints.num_dofs,
             model.joints.dofs_offset,
             model.joints.actuated_dofs_offset,
             model.joints.tau_j_max,

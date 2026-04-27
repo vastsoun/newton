@@ -558,7 +558,7 @@ class ConjugateSolver:
                 f"operator total_vec_size ({A.total_vec_size})."
             )
 
-        self.scalar_type = wp.types.type_scalar_type(A.dtype)
+        self.scalar_type = A.dtype
         self.n_worlds = A.n_worlds
         self.maxdims = A.max_dim
         self.total_vec_size = A.total_vec_size

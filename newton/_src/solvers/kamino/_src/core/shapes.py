@@ -359,8 +359,14 @@ class PlaneShape(ShapeDescriptor):
     A shape descriptor for planes.
 
     Attributes:
-        normal (Vec3): The normal vector of the plane.
-        distance (float): The distance from the origin to the plane along its normal.
+        normal:
+            The normal vector of the plane in world coordinates.
+            Defaults to (0, 0, 1) for a horizontal plane.
+        distance: The distance from the origin to the plane along its normal [m].
+        width: The width of the plane [m]. Defaults to 0, which represents an infinite plane.
+        length: The length of the plane [m]. Defaults to 0, which represents an infinite plane.
+        name: Optional name of the shape descriptor.
+        uid: Optional unique identifier of the shape descriptor.
     """
 
     def __init__(

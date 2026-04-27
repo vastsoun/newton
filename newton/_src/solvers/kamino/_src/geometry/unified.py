@@ -443,14 +443,14 @@ class CollisionPipelineUnifiedKamino:
         # plus a dedicated global-only segment, matching precompute_world_map.
         if self._model.geoms.wid is not None:
             wid_np = self._model.geoms.wid.numpy()
-            global_count = int(np.count_nonzero(wid_np == -1))
-            regular_wids = np.unique(wid_np[wid_np >= 0])
+            unique_wids, counts = np.unique(wid_np, return_counts=True)
+            global_count = counts[unique_wids == -1][0] if -1 in unique_wids else 0
             per_world_pairs = 0
-            for uid in regular_wids:
-                n = int(np.count_nonzero(wid_np == uid)) + global_count
-                per_world_pairs += (n * (n - 1)) // 2
-            per_world_pairs += (global_count * (global_count - 1)) // 2
-            self._max_shape_pairs: int = per_world_pairs
+            for uwid, count in zip(unique_wids, counts, strict=True):
+                if uwid >= 0:
+                    n = count + global_count
+                    per_world_pairs += (n * (n - 1)) // 2
+            self._max_shape_pairs: int = int(per_world_pairs)
         else:
             self._max_shape_pairs: int = (self._num_geoms * (self._num_geoms - 1)) // 2
         self._max_contacts: int = self._max_shape_pairs * self._max_contacts_per_pair

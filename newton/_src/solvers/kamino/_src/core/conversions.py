@@ -167,7 +167,7 @@ def world_max_contacts_kernel(
     # Retrieve the shape pair index from the thread grid
     shape_pair_id = wp.tid()
 
-    # Extract the shape types for this pair and determine the world they belong to. If both
+    # Extract the shape types for this pair.
     shape_pair = model_shape_contact_pair[shape_pair_id]
     shape_type_a = model_shape_type[shape_pair[0]]
     shape_type_b = model_shape_type[shape_pair[1]]

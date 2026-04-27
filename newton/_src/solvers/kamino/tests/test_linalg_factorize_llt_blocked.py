@@ -60,7 +60,7 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
 
     def test_01_single_problem_dims_all_active(self):
         """
-        Test the sequential LLT solver on a single small problem.
+        Test the blocked LLT solver on a single small problem.
         """
         # Constants
         # N = 12  # Use this for visual debugging with small matrices
@@ -217,7 +217,7 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
 
     def test_02_single_problem_dims_partially_active(self):
         """
-        Test the sequential LLT solver on a single small problem.
+        Test the blocked LLT solver on a single small problem.
         """
         # Constants
         # N_max = 16  # Use this for visual debugging with small matrices
@@ -378,7 +378,7 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
 
     def test_03_multiple_problems_dims_all_active(self):
         """
-        Test the sequential LLT solver on multiple small problems.
+        Test the blocked LLT solver on multiple small problems.
         """
         # Constants
         N = [7, 8, 9, 10, 11]
@@ -547,7 +547,7 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
 
     def test_04_multiple_problems_dims_partially_active(self):
         """
-        Test the sequential LLT solver on multiple small problems.
+        Test the blocked LLT solver on multiple small problems.
         """
         # Constants
         # N_max = [7, 8, 9, 14, 21]  # Use this for visual debugging with small matrices

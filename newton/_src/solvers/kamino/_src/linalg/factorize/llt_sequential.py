@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """KAMINO: Linear Algebra: Sequential LLT (i.e. Cholesky) factorization w/o intra-parallelism"""
 
@@ -45,7 +33,7 @@ wp.set_module_options({"enable_backward": False})
 ###
 
 
-@wp.kernel
+@wp.kernel(enable_backward=False)
 def _llt_sequential_factorize(
     # Inputs:
     dim_in: wp.array(dtype=int32),
@@ -83,7 +71,7 @@ def _llt_sequential_factorize(
                 L_out[m_ij] = (A_ij - sum) / L_jj
 
 
-@wp.kernel
+@wp.kernel(enable_backward=False)
 def _llt_sequential_solve(
     # Inputs:
     dim_in: wp.array(dtype=int32),
@@ -126,7 +114,7 @@ def _llt_sequential_solve(
         x_out[vio + i] = sum_i / LT_ii
 
 
-@wp.kernel
+@wp.kernel(enable_backward=False)
 def _llt_sequential_solve_inplace(
     # Inputs:
     dim_in: wp.array(dtype=int32),

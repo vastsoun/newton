@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 # This code is based on the MPR implementation from Jitter Physics 2
 # Original: https://github.com/notgiven688/jitterphysics2
@@ -46,6 +34,8 @@ to any convex shape that provides a support function.
 from typing import Any
 
 import warp as wp
+
+from .support_function import GeoTypeEx, closest_point_on_triangle
 
 
 @wp.struct
@@ -133,7 +123,7 @@ def create_support_map_function(support_func: Any):
             direction: Support direction
             orientation_b: Orientation of shape B
             position_b: Position of shape B
-            extend: Contact offset extension
+            extend: Combined margin extension [m]
             data_provider: Support mapping data provider
 
         Returns:
@@ -148,10 +138,11 @@ def create_support_map_function(support_func: Any):
         tmp_direction = -direction
         v.B = support_map_b(geom_b, tmp_direction, orientation_b, position_b, data_provider)
 
-        # Apply contact offset extension
-        d = wp.normalize(direction) * extend * 0.5
-        point_a = point_a + d
-        v.B = v.B - d
+        # Apply contact offset extension (skip normalize when extend is zero)
+        if extend != 0.0:
+            d = wp.normalize(direction) * extend * 0.5
+            point_a = point_a + d
+            v.B = v.B - d
 
         # Store BtoA vector
         v.BtoA = point_a - v.B
@@ -169,6 +160,12 @@ def create_support_map_function(support_func: Any):
         """
         Compute geometric center of Minkowski difference.
 
+        For generic shapes both centers are at their local origins.  For
+        triangles (and triangle prisms) the "center" on shape A is replaced
+        by the closest point on the triangle to the convex center
+        (``position_b``), giving MPR and GJK a much better starting point
+        when the triangle is large relative to the convex.
+
         Args:
             geom_a: Shape A geometry data
             geom_b: Shape B geometry data
@@ -181,34 +178,61 @@ def create_support_map_function(support_func: Any):
         """
         center = Vert()
 
-        # Get geometric center of shape A
-        point_a = wp.vec3(0.0)  # center_func(geom_a, data_provider)
+        center_a = wp.vec3(0.0, 0.0, 0.0)
 
-        # Get geometric center of shape B and transform to world space
-        center.B = wp.vec3(0.0)  # center_func(geom_b, data_provider)
-        center.B = wp.quat_rotate(orientation_b, center.B)
-        center.B = position_b + center.B
+        if geom_a.shape_type == int(GeoTypeEx.TRIANGLE) or geom_a.shape_type == int(GeoTypeEx.TRIANGLE_PRISM):
+            # Project shape B's center onto the triangle for a starting
+            # point near the contact region — this dramatically improves
+            # MPR convergence for large triangles.
+            #
+            # Blend 1% toward the centroid so the point is strictly in the
+            # face interior.  This does NOT prevent an MPR degeneracy (MPR
+            # works fine from an edge point); it improves *manifold quality*.
+            # When shape B projects onto a shared mesh edge, both adjacent
+            # triangles get the same v0, producing MPR witness points biased
+            # toward the edge.  The manifold builder (multicontact.py) uses
+            # these witness points as its center for perturbed support
+            # mapping, so edge-biased centers cause overlapping contact
+            # polygons across the two triangles instead of distinct ones —
+            # resulting in asymmetric force distribution and spurious torque.
+            # The 1% nudge gives each triangle a unique v0 pulled toward its
+            # own interior, yielding well-separated manifold centers.
+            tri_a = wp.vec3(0.0, 0.0, 0.0)
+            tri_b = geom_a.scale
+            tri_c = geom_a.auxiliary
+            proj = closest_point_on_triangle(position_b, tri_a, tri_b, tri_c)
+            centroid = (tri_a + tri_b + tri_c) / 3.0
+            center_a = proj + 0.01 * (centroid - proj)
 
-        # Store BtoA vector
-        center.BtoA = point_a - center.B
+        center.B = position_b
+        center.BtoA = center_a - position_b
 
         return center
 
     return support_map_b, minkowski_support, geometric_center
 
 
-def create_solve_mpr(support_func: Any):
+def create_solve_mpr(support_func: Any, _support_funcs: Any = None):
     """
     Factory function to create MPR solver with specific support and center functions.
 
     Args:
-        support_func: Support mapping function for shapes
+        support_func: Support mapping function for shapes.
+        _support_funcs: Pre-built support functions tuple from
+            :func:`create_support_map_function`. When provided, these are reused
+            instead of creating new ones, allowing multiple solvers to share
+            compiled support code.
 
     Returns:
-        MPR solver function
+        ``solve_mpr`` wrapper function.  The core function is available as
+        ``solve_mpr.core`` for callers that want to handle the relative-frame
+        transform themselves (e.g. fused MPR+GJK).
     """
 
-    _support_map_b, minkowski_support, geometric_center = create_support_map_function(support_func)
+    if _support_funcs is not None:
+        _support_map_b, minkowski_support, geometric_center = _support_funcs
+    else:
+        _support_map_b, minkowski_support, geometric_center = create_support_map_function(support_func)
 
     @wp.func
     def solve_mpr_core(
@@ -259,13 +283,21 @@ def create_solve_mpr(support_func: Any):
         v0 = geometric_center(geom_a, geom_b, orientation_b, position_b, data_provider)
 
         normal = v0.BtoA
-        if (
-            wp.abs(normal[0]) < NUMERIC_EPSILON
-            and wp.abs(normal[1]) < NUMERIC_EPSILON
-            and wp.abs(normal[2]) < NUMERIC_EPSILON
-        ):
-            # Any direction is fine - add small perturbation
-            v0.BtoA = wp.vec3(1e-05, 0.0, 0.0)
+        if wp.length_sq(normal) < NUMERIC_EPSILON:
+            # Centers coincide — probe three orthogonal directions and
+            # pick the one with the largest Minkowski support, giving
+            # MPR the most room to find a valid portal.
+            best_dot = float(-1.0e30)
+            best_dir = wp.vec3(1.0, 0.0, 0.0)
+            for axis_idx in range(3):
+                probe = wp.vec3(0.0, 0.0, 0.0)
+                probe[axis_idx] = 1.0
+                sv = minkowski_support(geom_a, geom_b, probe, orientation_b, position_b, extend, data_provider)
+                d = wp.dot(sv.BtoA, probe)
+                if d > best_dot:
+                    best_dot = d
+                    best_dir = probe
+            v0.BtoA = best_dir * 1e-05
 
         normal = -v0.BtoA
 
@@ -428,7 +460,7 @@ def create_solve_mpr(support_func: Any):
         orientation_b: wp.quat,
         position_a: wp.vec3,
         position_b: wp.vec3,
-        sum_of_contact_offsets: float,
+        combined_margin: float,
         data_provider: Any,
         MAX_ITER: int = 30,
         COLLIDE_EPSILON: float = 1e-5,
@@ -443,10 +475,10 @@ def create_solve_mpr(support_func: Any):
             orientation_b: Orientation of shape B
             position_a: Position of shape A
             position_b: Position of shape B
-            sum_of_contact_offsets: Sum of contact offsets for both shapes
+            combined_margin: Sum of margin extensions for both shapes [m]
             data_provider: Support mapping data provider
             MAX_ITER: Maximum number of iterations for MPR algorithm
-            NUMERIC_EPSILON: Small number for numerical comparisons
+            COLLIDE_EPSILON: Small number for numerical comparisons
 
         Returns:
             Tuple of:
@@ -465,7 +497,7 @@ def create_solve_mpr(support_func: Any):
             geom_b,
             relative_orientation_b,
             relative_position_b,
-            sum_of_contact_offsets,
+            combined_margin,
             data_provider,
             MAX_ITER,
             COLLIDE_EPSILON,
@@ -484,4 +516,5 @@ def create_solve_mpr(support_func: Any):
 
         return collision, signed_distance, point, normal
 
+    solve_mpr.core = solve_mpr_core
     return solve_mpr

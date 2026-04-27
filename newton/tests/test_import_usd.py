@@ -1,22 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import math
 import os
 import tempfile
 import unittest
+import warnings
 from unittest import mock
 
 import numpy as np
@@ -81,6 +70,40 @@ def Xform "Root" (
             i for i in range(builder.shape_count) if builder.shape_flags[i] & int(newton.ShapeFlags.COLLIDE_SHAPES)
         ]
         self.assertEqual(len(collision_shapes), 13)
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_import_body_newton_armature_warns_deprecated(self):
+        from pxr import Sdf, Usd, UsdGeom, UsdPhysics
+
+        stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+        UsdPhysics.Scene.Define(stage, "/physicsScene")
+
+        body = UsdGeom.Xform.Define(stage, "/World/Body")
+        UsdPhysics.RigidBodyAPI.Apply(body.GetPrim())
+        body.GetPrim().CreateAttribute("newton:armature", Sdf.ValueTypeNames.Float, True).Set(0.125)
+
+        collider = UsdGeom.Cube.Define(stage, "/World/Body/Collision")
+        UsdPhysics.CollisionAPI.Apply(collider.GetPrim())
+
+        builder = newton.ModelBuilder()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            builder.add_usd(stage)
+
+        deprecations = [item for item in caught if issubclass(item.category, DeprecationWarning)]
+        self.assertEqual(len(deprecations), 1)
+        message = str(deprecations[0].message)
+        self.assertIn("newton:armature", message)
+        self.assertIn("/World/Body", message)
+        self.assertNotIn("add_link(..., armature=...)", message)
+
+        # Verify the armature was applied to body inertia (default cube: half-extents
+        # (1,1,1), density 1000 → mass 8000, diagonal = 16000/3; plus armature 0.125)
+        inertia = builder.body_inertia[0]
+        expected_diag = 16000.0 / 3.0 + 0.125
+        for j in range(3):
+            self.assertAlmostEqual(float(inertia[j, j]), expected_diag, places=2)
 
     @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
     def test_import_non_articulated_joints(self):
@@ -1755,6 +1778,109 @@ def Xform "Articulation" (
 
         self.assertTrue(found_joint1, f"Expected solimplimit {expected_joint1} not found in model")
         self.assertTrue(found_joint2, f"Expected default solimplimit {expected_joint2} not found in model")
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_solreflimit_parsing(self):
+        """Joint mjc:solreflimit on MjcJointAPI must populate joint_limit_ke / joint_limit_kd.
+
+        Uses prismatic joints so the authored solreflimit values flow straight through to
+        joint_limit_ke / joint_limit_kd without the revolute degree->radian rescaling that
+        import_usd.py applies to angular limits.
+        """
+        from pxr import Usd
+
+        from newton._src.usd.schemas import SchemaResolverMjc  # noqa: PLC0415
+
+        # Joint1 authors mjc:solreflimit = [0.08, 1]; Joint2 omits it and should fall back to the
+        # ModelBuilder defaults (import_usd passes those as the resolver `default=`, which wins
+        # over resolver mapping defaults). Standard-mode solref → ke = 1/(t^2 * d^2), kd = 2/t.
+        usd_content = """#usda 1.0
+(
+    upAxis = "Z"
+)
+
+def PhysicsScene "physicsScene"
+{
+}
+
+def Xform "Articulation" (
+    prepend apiSchemas = ["PhysicsArticulationRootAPI"]
+)
+{
+    def Xform "Body1" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI"]
+    )
+    {
+        def Cube "Collision1" (
+            prepend apiSchemas = ["PhysicsCollisionAPI"]
+        )
+        {
+            double size = 0.2
+        }
+    }
+
+    def PhysicsPrismaticJoint "Joint1" (
+        prepend apiSchemas = ["MjcJointAPI"]
+    )
+    {
+        rel physics:body0 = </Articulation/Body1>
+        token physics:axis = "X"
+        float physics:lowerLimit = -1
+        float physics:upperLimit = 1
+
+        uniform double[] mjc:solreflimit = [0.08, 1]
+    }
+
+    def Xform "Body2" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI"]
+    )
+    {
+        double3 xformOp:translate = (1, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Sphere "Collision2" (
+            prepend apiSchemas = ["PhysicsCollisionAPI"]
+        )
+        {
+            double radius = 0.1
+        }
+    }
+
+    def PhysicsPrismaticJoint "Joint2" (
+        prepend apiSchemas = ["MjcJointAPI"]
+    )
+    {
+        rel physics:body0 = </Articulation/Body1>
+        rel physics:body1 = </Articulation/Body2>
+        token physics:axis = "Z"
+        float physics:lowerLimit = -1
+        float physics:upperLimit = 1
+    }
+}
+"""
+        stage = Usd.Stage.CreateInMemory()
+        stage.GetRootLayer().ImportFromString(usd_content)
+
+        builder = newton.ModelBuilder()
+        SolverMuJoCo.register_custom_attributes(builder)
+        builder.add_usd(stage, schema_resolvers=[SchemaResolverMjc()])
+        model = builder.finalize()
+
+        joint1_idx = model.joint_label.index("/Articulation/Joint1")
+        joint2_idx = model.joint_label.index("/Articulation/Joint2")
+        joint_qd_start = model.joint_qd_start.numpy()
+        limit_ke = model.joint_limit_ke.numpy()
+        limit_kd = model.joint_limit_kd.numpy()
+
+        # Joint1: solreflimit=[0.08, 1] -> ke=1/(0.08^2)=156.25, kd=2/0.08=25.0
+        dof1 = joint_qd_start[joint1_idx]
+        self.assertAlmostEqual(float(limit_ke[dof1]), 156.25, places=4)
+        self.assertAlmostEqual(float(limit_kd[dof1]), 25.0, places=4)
+
+        # Joint2: no solreflimit authored -> ModelBuilder defaults
+        dof2 = joint_qd_start[joint2_idx]
+        self.assertAlmostEqual(float(limit_ke[dof2]), builder.default_joint_cfg.limit_ke, places=4)
+        self.assertAlmostEqual(float(limit_kd[dof2]), builder.default_joint_cfg.limit_kd, places=4)
 
     def test_limit_margin_parsing(self):
         """Test importing limit_margin from USD with mjc:margin on joint."""
@@ -6545,8 +6671,8 @@ def Xform "BodyWithoutVisuals" (
         self.assertAlmostEqual(mesh.mass, physics_mesh.mass, places=6)
 
     @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
-    def test_visualized_collision_mesh_remains_visible_when_body_has_visual_shapes(self):
-        """Mesh colliders with visual material data stay visible even when body visuals exist."""
+    def test_hide_collision_shapes_overrides_visual_material(self):
+        """hide_collision_shapes=True hides colliders even when they have visual material data."""
         stage = self._create_stage_with_pbr_collision_mesh(
             color=(0.9, 0.1, 0.2), roughness=0.55, metallic=0.25, add_visual_sphere=True
         )
@@ -6562,13 +6688,214 @@ def Xform "BodyWithoutVisuals" (
         collision_shape = path_shape_map["/Body/CollisionMesh"]
         flags = builder.shape_flags[collision_shape]
         self.assertTrue(flags & ShapeFlags.COLLIDE_SHAPES)
+        self.assertFalse(flags & ShapeFlags.VISIBLE)
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_hide_collision_shapes_fallback_with_material(self):
+        """Colliders with material stay visible when the body has no other visual shapes."""
+        stage = self._create_stage_with_pbr_collision_mesh(
+            color=(0.2, 0.4, 0.6), roughness=0.35, metallic=0.75, add_visual_sphere=False
+        )
+
+        builder = newton.ModelBuilder()
+        result = builder.add_usd(stage, hide_collision_shapes=True)
+        collision_shape = result["path_shape_map"]["/Body/CollisionMesh"]
+
+        flags = builder.shape_flags[collision_shape]
+        self.assertTrue(flags & ShapeFlags.COLLIDE_SHAPES)
         self.assertTrue(flags & ShapeFlags.VISIBLE)
 
-        mesh = builder.shape_source[collision_shape]
-        self.assertIsNotNone(mesh)
-        np.testing.assert_allclose(np.array(mesh.color), np.array([0.9, 0.1, 0.2]), atol=1e-6, rtol=1e-6)
-        self.assertAlmostEqual(mesh.roughness, 0.55, places=6)
-        self.assertAlmostEqual(mesh.metallic, 0.25, places=6)
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_invisible_collision_shape_is_hidden(self):
+        """Effective USD invisibility clears VISIBLE on colliders while preserving collision."""
+        from pxr import Usd
+
+        usd_content = """#usda 1.0
+
+def PhysicsScene "physicsScene"
+{
+}
+
+def Xform "Body" (
+    prepend apiSchemas = ["PhysicsRigidBodyAPI"]
+)
+{
+    double3 xformOp:translate = (0, 0, 1)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+
+    def Cube "CollisionBox" (
+        prepend apiSchemas = ["PhysicsCollisionAPI"]
+    )
+    {
+        token visibility = "invisible"
+        double size = 1.0
+    }
+}
+"""
+        stage = Usd.Stage.CreateInMemory()
+        stage.GetRootLayer().ImportFromString(usd_content)
+
+        builder = newton.ModelBuilder()
+        result = builder.add_usd(stage)
+        collision_shape = result["path_shape_map"]["/Body/CollisionBox"]
+
+        flags = builder.shape_flags[collision_shape]
+        self.assertTrue(flags & ShapeFlags.COLLIDE_SHAPES)
+        self.assertFalse(flags & ShapeFlags.VISIBLE)
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_inherited_invisible_body_hides_collider_and_visual(self):
+        """Parent invisibility propagates to child colliders and visual-only geometry."""
+        from pxr import Usd
+
+        usd_content = """#usda 1.0
+
+def PhysicsScene "physicsScene"
+{
+}
+
+def Xform "Body" (
+    prepend apiSchemas = ["PhysicsRigidBodyAPI"]
+)
+{
+    token visibility = "invisible"
+    double3 xformOp:translate = (0, 0, 1)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+
+    def Cube "CollisionBox" (
+        prepend apiSchemas = ["PhysicsCollisionAPI"]
+    )
+    {
+        double size = 1.0
+    }
+
+    def Sphere "VisualSphere"
+    {
+        double radius = 0.3
+    }
+}
+"""
+        stage = Usd.Stage.CreateInMemory()
+        stage.GetRootLayer().ImportFromString(usd_content)
+
+        builder = newton.ModelBuilder()
+        result = builder.add_usd(stage)
+        path_shape_map = result["path_shape_map"]
+
+        collision_shape = path_shape_map["/Body/CollisionBox"]
+        flags = builder.shape_flags[collision_shape]
+        self.assertTrue(flags & ShapeFlags.COLLIDE_SHAPES)
+        self.assertFalse(flags & ShapeFlags.VISIBLE)
+        self.assertIn("/Body/VisualSphere", path_shape_map)
+        visual_shape = path_shape_map["/Body/VisualSphere"]
+        self.assertFalse(builder.shape_flags[visual_shape] & ShapeFlags.COLLIDE_SHAPES)
+        self.assertFalse(builder.shape_flags[visual_shape] & ShapeFlags.VISIBLE)
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_invisible_visual_sibling_does_not_suppress_collider_visibility(self):
+        """An invisible visual shape must not prevent fallback-visible colliders."""
+        from pxr import Usd
+
+        usd_content = """#usda 1.0
+
+def PhysicsScene "physicsScene"
+{
+}
+
+def Xform "Body" (
+    prepend apiSchemas = ["PhysicsRigidBodyAPI"]
+)
+{
+    double3 xformOp:translate = (0, 0, 1)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+
+    def Cube "CollisionBox" (
+        prepend apiSchemas = ["PhysicsCollisionAPI"]
+    )
+    {
+        double size = 1.0
+    }
+
+    def Sphere "InvisibleVisual"
+    {
+        token visibility = "invisible"
+        double radius = 0.3
+    }
+}
+"""
+        stage = Usd.Stage.CreateInMemory()
+        stage.GetRootLayer().ImportFromString(usd_content)
+
+        builder = newton.ModelBuilder()
+        result = builder.add_usd(stage)
+        path_shape_map = result["path_shape_map"]
+
+        # The invisible visual should still be imported (as hidden).
+        self.assertIn("/Body/InvisibleVisual", path_shape_map)
+        vis_shape = path_shape_map["/Body/InvisibleVisual"]
+        self.assertFalse(builder.shape_flags[vis_shape] & ShapeFlags.VISIBLE)
+
+        # Collider must remain visible because no *visible* visual shapes
+        # exist for this body.
+        collision_shape = path_shape_map["/Body/CollisionBox"]
+        flags = builder.shape_flags[collision_shape]
+        self.assertTrue(flags & ShapeFlags.COLLIDE_SHAPES)
+        self.assertTrue(flags & ShapeFlags.VISIBLE)
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_primitive_collider_with_roughness_only_material_stays_hidden(self):
+        """Primitive (non-mesh) colliders must not become visible from roughness-only materials.
+
+        When a body already has visual shapes, ``show_collider_by_policy`` is
+        ``False``. Only ``collider_has_visual_material`` can promote a collider
+        to visible, and that promotion is restricted to mesh colliders only.
+        """
+        from pxr import Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
+
+        usd_content = """#usda 1.0
+
+def PhysicsScene "physicsScene"
+{
+}
+
+def Xform "Body" (
+    prepend apiSchemas = ["PhysicsRigidBodyAPI"]
+)
+{
+    double3 xformOp:translate = (0, 0, 1)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+
+    def Sphere "VisualSphere"
+    {
+        double radius = 0.3
+    }
+}
+"""
+        stage = Usd.Stage.CreateInMemory()
+        stage.GetRootLayer().ImportFromString(usd_content)
+
+        # Add a collision box with a roughness-only PBR material.
+        box_prim = UsdGeom.Cube.Define(stage, "/Body/CollisionBox").GetPrim()
+        UsdPhysics.CollisionAPI.Apply(box_prim)
+        material = UsdShade.Material.Define(stage, "/Materials/RoughnessOnly")
+        shader = UsdShade.Shader.Define(stage, "/Materials/RoughnessOnly/PreviewSurface")
+        shader.CreateIdAttr("UsdPreviewSurface")
+        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.8)
+        material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+        UsdShade.MaterialBindingAPI.Apply(box_prim).Bind(material)
+
+        builder = newton.ModelBuilder()
+        # Default hide_collision_shapes=False so the MeshShape guard
+        # is the deciding factor, not the unconditional hide override.
+        result = builder.add_usd(stage)
+        path_shape_map = result["path_shape_map"]
+
+        collision_shape = path_shape_map["/Body/CollisionBox"]
+        flags = builder.shape_flags[collision_shape]
+        self.assertTrue(flags & ShapeFlags.COLLIDE_SHAPES)
+        # Primitive colliders should NOT be promoted to visible just because
+        # they have roughness metadata — only mesh colliders qualify.
+        self.assertFalse(flags & ShapeFlags.VISIBLE)
 
 
 class TestImportUsdMimicJoint(unittest.TestCase):
@@ -7557,6 +7884,29 @@ class TestTetMesh(unittest.TestCase):
         assert_np_equal(tm.tet_indices[4:], np.array([1, 2, 3, 4], dtype=np.int32))
 
     @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_get_tetmesh_left_handed(self):
+        """Test that left-handed TetMesh orientation flips winding order."""
+        from pxr import Usd
+
+        stage = Usd.Stage.CreateInMemory()
+        stage.GetRootLayer().ImportFromString(
+            """#usda 1.0
+def TetMesh "LeftHandedTet" ()
+{
+    uniform token orientation = "leftHanded"
+    point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 1)]
+    int4[] tetVertexIndices = [(0, 1, 2, 3), (1, 2, 3, 4)]
+}
+"""
+        )
+        prim = stage.GetPrimAtPath("/LeftHandedTet")
+        tm = usd.get_tetmesh(prim)
+
+        # Indices 1 and 2 of each tet should be swapped compared to the original
+        assert_np_equal(tm.tet_indices[:4], np.array([0, 2, 1, 3], dtype=np.int32))
+        assert_np_equal(tm.tet_indices[4:], np.array([1, 3, 2, 4], dtype=np.int32))
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
     def test_tetmesh_create_from_usd(self):
         """Test TetMesh.create_from_usd() static factory method."""
         from pxr import Usd
@@ -7677,6 +8027,103 @@ def Mesh "JustAMesh" ()
         self.assertIsNone(tm.k_mu)
         self.assertIsNone(tm.k_lambda)
         self.assertIsNone(tm.density)
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_add_usd_imports_tetmesh(self):
+        """Test that add_usd imports TetMesh prims as soft meshes."""
+        asset_path = os.path.join(os.path.dirname(__file__), "assets", "tetmesh_with_material.usda")
+
+        builder = newton.ModelBuilder()
+        builder.add_usd(asset_path)
+
+        self.assertEqual(len(builder.particle_q), 4)
+        self.assertEqual(len(builder.tet_indices), 1)
+        self.assertEqual(len(builder.tri_indices), 4)
+        self.assertAlmostEqual(builder.tet_materials[0][0], 300000.0 / (2.0 * 1.3), places=0)
+        self.assertAlmostEqual(builder.tet_materials[0][1], 300000.0 * 0.3 / (1.3 * 0.4), places=0)
+        self.assertAlmostEqual(sum(builder.particle_mass), 40.0 / 6.0, places=5)
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_add_usd_imports_instanced_tetmesh_once_per_instance(self):
+        """Test that instance proxies import one TetMesh per instance."""
+        from pxr import Sdf, Usd, UsdGeom
+
+        stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+
+        world = UsdGeom.Xform.Define(stage, "/World")
+        stage.SetDefaultPrim(world.GetPrim())
+
+        UsdGeom.Xform.Define(stage, "/Prototypes/TetProto")
+        tetmesh = stage.DefinePrim("/Prototypes/TetProto/SoftBody", "TetMesh")
+        tetmesh.CreateAttribute("points", Sdf.ValueTypeNames.Point3fArray).Set(
+            [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
+        )
+        tetmesh.CreateAttribute("tetVertexIndices", Sdf.ValueTypeNames.Int4Array).Set([(0, 1, 2, 3)])
+
+        for i in range(2):
+            instance = UsdGeom.Xform.Define(stage, f"/World/Instance{i}")
+            instance_prim = instance.GetPrim()
+            instance_prim.GetReferences().AddInternalReference("/Prototypes/TetProto")
+            instance_prim.SetInstanceable(True)
+
+        builder = newton.ModelBuilder()
+        builder.add_usd(stage)
+
+        self.assertEqual(len(builder.particle_q), 8)
+        self.assertEqual(len(builder.tet_indices), 2)
+        self.assertEqual(len(builder.tri_indices), 8)
+
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_add_usd_imports_tetmesh_with_transforms(self):
+        """Test that add_usd applies TetMesh rotation and non-uniform scale transforms."""
+        from pxr import Usd
+
+        stage = Usd.Stage.CreateInMemory()
+        stage.GetRootLayer().ImportFromString(
+            """#usda 1.0
+(
+    defaultPrim = "World"
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    double3 xformOp:translate = (1, 2, 3)
+    float xformOp:rotateZ = 90
+    float3 xformOp:scale = (2, 3, 4)
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ", "xformOp:scale"]
+
+    def Xform "Offset"
+    {
+        double3 xformOp:translate = (0.5, -1, 2)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def TetMesh "SoftBody" ()
+        {
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
+            int4[] tetVertexIndices = [(0, 1, 2, 3)]
+        }
+    }
+}
+"""
+        )
+
+        import_quat = wp.quat_from_axis_angle(wp.vec3(0.0, 0.0, 1.0), np.pi)
+        builder = newton.ModelBuilder()
+        builder.add_usd(stage, xform=wp.transform((4.0, 5.0, 6.0), import_quat))
+
+        positions = np.array(builder.particle_q, dtype=np.float32)
+        expected = np.array(
+            [
+                [0.0, 2.0, 17.0],
+                [0.0, 0.0, 17.0],
+                [3.0, 2.0, 17.0],
+                [0.0, 2.0, 21.0],
+            ],
+            dtype=np.float32,
+        )
+        np.testing.assert_allclose(positions, expected, atol=1e-6)
 
     def test_tetmesh_save_load_npz(self):
         """Test TetMesh round-trip save/load via .npz."""
@@ -7916,6 +8363,61 @@ def Mesh "JustAMesh" ()
         self.assertEqual(len(region_arr), model.tet_count)
         np.testing.assert_array_equal(region_arr, region_id)
 
+    @unittest.skipUnless(USD_AVAILABLE, "Requires usd-core")
+    def test_add_usd_does_not_mutate_loaded_tetmesh_custom_attributes(self):
+        """Test that add_usd filters TetMesh custom attributes without mutating the loaded mesh."""
+        from pxr import Usd
+
+        stage = Usd.Stage.CreateInMemory()
+        stage.GetRootLayer().ImportFromString(
+            """#usda 1.0
+(
+    defaultPrim = "World"
+)
+
+def Xform "World"
+{
+    def TetMesh "SoftBody" ()
+    {
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
+        int4[] tetVertexIndices = [(0, 1, 2, 3)]
+    }
+}
+"""
+        )
+
+        source_tetmesh = newton.TetMesh(
+            vertices=np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float32),
+            tet_indices=np.array([0, 1, 2, 3], dtype=np.int32),
+            custom_attributes={
+                "temperature": (
+                    np.array([100.0, 200.0, 300.0, 400.0], dtype=np.float32),
+                    newton.Model.AttributeFrequency.PARTICLE,
+                ),
+                "regionId": (
+                    np.array([7], dtype=np.int32),
+                    newton.Model.AttributeFrequency.TETRAHEDRON,
+                ),
+            },
+        )
+
+        builder = newton.ModelBuilder()
+        builder.add_custom_attribute(
+            newton.ModelBuilder.CustomAttribute(
+                name="temperature",
+                dtype=wp.float32,
+                frequency=newton.Model.AttributeFrequency.PARTICLE,
+            )
+        )
+
+        with mock.patch("newton._src.utils.import_usd.usd.get_tetmesh", return_value=source_tetmesh):
+            builder.add_usd(stage)
+
+        self.assertEqual(set(source_tetmesh.custom_attributes), {"temperature", "regionId"})
+        model = builder.finalize()
+        self.assertTrue(hasattr(model, "temperature"))
+        self.assertFalse(hasattr(model, "regionId"))
+
     def test_mesh_create_from_file_obj(self):
         """Test Mesh.create_from_file with an OBJ file."""
 
@@ -8088,6 +8590,174 @@ def Mesh "JustAMesh" ()
         self.assertEqual(len(builder.particle_q), 10)
         self.assertEqual(len(builder.tet_indices), 4)
         self.assertEqual(len(builder.tri_indices), 12)
+
+
+class TestResolveUsdFromUrl(unittest.TestCase):
+    """Tests for recursive USD reference resolution in :func:`resolve_usd_from_url`."""
+
+    def _run_resolve(self, url_to_layer, base_url="https://example.com/assets/scene.usd"):
+        """Run resolve_usd_from_url with mocked network and USD stage I/O.
+
+        Args:
+            url_to_layer: mapping from URL to USDA layer string content.
+            base_url: the top-level URL passed to resolve_usd_from_url.
+
+        Returns:
+            Tuple of (result_path, target_dir, downloaded_urls).
+        """
+        downloaded_urls = []
+
+        def fake_get(url, **_kwargs):
+            downloaded_urls.append(url)
+            resp = mock.MagicMock()
+            layer = url_to_layer.get(url)
+            if layer is None:
+                resp.status_code = 404
+                return resp
+            resp.status_code = 200
+            resp.content = layer.encode("utf-8")
+            return resp
+
+        # Map cache-relative path -> layer string so the mock stage can return it.
+        file_to_layer = {}
+        tmpdir = tempfile.mkdtemp()
+
+        # Precompute exact local-key -> layer mapping from URLs.
+        base_url_dir = base_url.rsplit("/", 1)[0]
+        local_key_to_layer = {}
+        for url, layer in url_to_layer.items():
+            if url.startswith(base_url_dir + "/"):
+                local_key_to_layer[url[len(base_url_dir) + 1 :]] = layer
+
+        def _local_key(path):
+            return os.path.relpath(path, tmpdir).replace(os.sep, "/")
+
+        def fake_stage_open(path, _load_policy):
+            layer_str = file_to_layer.get(_local_key(path), "")
+            stage = mock.MagicMock()
+            stage.GetRootLayer().ExportToString.return_value = layer_str
+            return stage
+
+        # Track writes so we can populate file_to_layer when the function
+        # writes a downloaded file to disk.
+        real_open = open
+
+        def tracking_open(path, mode="r", **kwargs):
+            fh = real_open(path, mode, **kwargs)
+            if "w" in mode or "b" in mode:
+                key = _local_key(path)
+                if key in local_key_to_layer:
+                    file_to_layer[key] = local_key_to_layer[key]
+            return fh
+
+        mock_requests = mock.MagicMock()
+        mock_requests.get = fake_get
+
+        mock_usd = mock.MagicMock()
+        mock_usd.Stage.Open = fake_stage_open
+        mock_usd.Stage.LoadNone = None
+
+        mock_pxr = mock.MagicMock()
+        mock_pxr.Usd = mock_usd
+
+        from newton._src.utils.import_usd import resolve_usd_from_url  # noqa: PLC0415
+
+        with (
+            mock.patch.dict(
+                "sys.modules",
+                {"requests": mock_requests, "pxr": mock_pxr, "pxr.Usd": mock_usd},
+            ),
+            mock.patch("builtins.open", tracking_open),
+        ):
+            result = resolve_usd_from_url(base_url, target_folder_name=tmpdir)
+
+        return result, tmpdir, downloaded_urls
+
+    def test_single_level_references(self):
+        """References in the root stage are downloaded."""
+        url_to_layer = {
+            "https://example.com/assets/scene.usd": "references = @./child_a.usd@\nreferences = @./child_b.usd@",
+            "https://example.com/assets/child_a.usd": "",
+            "https://example.com/assets/child_b.usd": "",
+        }
+        _result, tmpdir, downloaded_urls = self._run_resolve(url_to_layer)
+        self.assertIn("https://example.com/assets/child_a.usd", downloaded_urls)
+        self.assertIn("https://example.com/assets/child_b.usd", downloaded_urls)
+        self.assertTrue(os.path.exists(os.path.join(tmpdir, "child_a.usd")))
+        self.assertTrue(os.path.exists(os.path.join(tmpdir, "child_b.usd")))
+
+    def test_recursive_references(self):
+        """References in child stages are resolved recursively."""
+        url_to_layer = {
+            "https://example.com/assets/scene.usd": "references = @./robot.usd@",
+            "https://example.com/assets/robot.usd": "references = @./collisions.usd@",
+            "https://example.com/assets/collisions.usd": "",
+        }
+        _result, tmpdir, downloaded_urls = self._run_resolve(url_to_layer)
+        self.assertIn("https://example.com/assets/robot.usd", downloaded_urls)
+        self.assertIn("https://example.com/assets/collisions.usd", downloaded_urls)
+        self.assertTrue(os.path.exists(os.path.join(tmpdir, "collisions.usd")))
+
+    def test_deep_recursive_references(self):
+        """Three levels of nesting are resolved."""
+        url_to_layer = {
+            "https://example.com/assets/scene.usd": "references = @./level1.usd@",
+            "https://example.com/assets/level1.usd": "references = @./level2.usd@",
+            "https://example.com/assets/level2.usd": "references = @./level3.usd@",
+            "https://example.com/assets/level3.usd": "",
+        }
+        _result, tmpdir, downloaded_urls = self._run_resolve(url_to_layer)
+        self.assertIn("https://example.com/assets/level3.usd", downloaded_urls)
+        self.assertTrue(os.path.exists(os.path.join(tmpdir, "level3.usd")))
+
+    def test_no_duplicate_downloads(self):
+        """The same reference appearing in multiple stages is downloaded only once."""
+        url_to_layer = {
+            "https://example.com/assets/scene.usd": "references = @./a.usd@\nreferences = @./b.usd@",
+            "https://example.com/assets/a.usd": "references = @./shared.usd@",
+            "https://example.com/assets/b.usd": "references = @./shared.usd@",
+            "https://example.com/assets/shared.usd": "",
+        }
+        _result, _tmpdir, downloaded_urls = self._run_resolve(url_to_layer)
+        shared_downloads = [u for u in downloaded_urls if u.endswith("shared.usd")]
+        self.assertEqual(len(shared_downloads), 1)
+
+    def test_cyclic_references(self):
+        """Cyclic references (including back to root) do not cause infinite recursion."""
+        url_to_layer = {
+            "https://example.com/assets/scene.usd": "references = @./a.usd@",
+            "https://example.com/assets/a.usd": "references = @./b.usd@",
+            "https://example.com/assets/b.usd": "references = @./scene.usd@",
+        }
+        _result, _tmpdir, downloaded_urls = self._run_resolve(url_to_layer)
+        # Root URL is fetched once at the top level; recursive refs back to it must not re-download.
+        self.assertEqual(downloaded_urls.count("https://example.com/assets/scene.usd"), 1)
+        self.assertEqual(downloaded_urls.count("https://example.com/assets/a.usd"), 1)
+        self.assertEqual(downloaded_urls.count("https://example.com/assets/b.usd"), 1)
+
+    def test_nested_subdirectory_references(self):
+        """References in subdirectories preserve correct local paths."""
+        url_to_layer = {
+            "https://example.com/assets/scene.usd": "references = @robots/robot.usd@",
+            "https://example.com/assets/robots/robot.usd": "references = @./collisions.usd@",
+            "https://example.com/assets/robots/collisions.usd": "",
+        }
+        _result, tmpdir, downloaded_urls = self._run_resolve(url_to_layer)
+        self.assertIn("https://example.com/assets/robots/collisions.usd", downloaded_urls)
+        # collisions.usd must be inside robots/, not at cache root
+        self.assertTrue(os.path.exists(os.path.join(tmpdir, "robots", "collisions.usd")))
+        self.assertFalse(os.path.exists(os.path.join(tmpdir, "collisions.usd")))
+
+    def test_path_traversal_rejected(self):
+        """References with .. that escape the target folder are skipped."""
+        url_to_layer = {
+            "https://example.com/assets/scene.usd": "references = @../secret.usd@",
+        }
+        _result, tmpdir, downloaded_urls = self._run_resolve(url_to_layer)
+        # Escaped reference must not be fetched or written.
+        escaped_urls = [u for u in downloaded_urls if "secret.usd" in u]
+        self.assertEqual(len(escaped_urls), 0)
+        self.assertFalse(os.path.exists(os.path.join(tmpdir, "..", "secret.usd")))
 
 
 if __name__ == "__main__":

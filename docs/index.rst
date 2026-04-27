@@ -17,7 +17,6 @@ Newton Physics
    Overview <guide/overview>
    guide/installation
    guide/visualization
-   guide/key-concepts
    guide/tutorials
    Development <guide/development>
 
@@ -36,6 +35,7 @@ Newton Physics
    Custom Attributes <concepts/custom_attributes>
    Extended Attributes <concepts/extended_attributes>
    Collisions and Contacts <concepts/collisions>
+   Actuators <concepts/actuators>
    
 .. toctree::
    :maxdepth: 1

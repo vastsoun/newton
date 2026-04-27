@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """
 Support mapping functions for collision detection primitives.
@@ -45,10 +33,16 @@ import warp as wp
 
 from .types import GeoType
 
+# Relative deadband factor for box support-map sign decisions.
+# Near-zero direction components (e.g. from quaternion rotation noise ~1e-14)
+# are treated as non-negative, biasing toward the +1 vertex.
+BOX_SUPPORT_DEADBAND = 1.0e-10
+
 
 # Is not allowed to share values with GeoType
 class GeoTypeEx(enum.IntEnum):
     TRIANGLE = 1000
+    TRIANGLE_PRISM = 1001
 
 
 @wp.struct
@@ -101,6 +95,7 @@ class GenericShapeData:
       - CONE: radius in x, half-height in y (axis +Z, apex at +Z)
       - PLANE: half-width in x, half-length in y (lies in XY plane at z=0, normal along +Z)
       - TRIANGLE: vertex B-A stored in scale, vertex C-A stored in auxiliary
+      - TRIANGLE_PRISM: same as TRIANGLE; support function extrudes 1 m along -Z
     """
 
     shape_type: int
@@ -125,12 +120,7 @@ def support_map(geom: GenericShapeData, direction: wp.vec3, data_provider: Suppo
     - TRIANGLE: scale contains vector B-A, auxiliary contains vector C-A (relative to vertex A at origin)
     """
 
-    # handle zero direction robustly
     eps = 1.0e-12
-    dir_len_sq = wp.length_sq(direction)
-    dir_safe = wp.vec3(1.0, 0.0, 0.0)
-    if dir_len_sq > eps:
-        dir_safe = direction
 
     result = wp.vec3(0.0, 0.0, 0.0)
 
@@ -139,38 +129,32 @@ def support_map(geom: GenericShapeData, direction: wp.vec3, data_provider: Suppo
         mesh_ptr = unpack_mesh_ptr(geom.auxiliary)
         mesh = wp.mesh_get(mesh_ptr)
 
-        # The shape scale is stored in geom.scale
         mesh_scale = geom.scale
-
-        # Find the vertex with the maximum dot product with the direction
-        max_dot = float(-1.0e10)
-        best_vertex = wp.vec3(0.0, 0.0, 0.0)
-
         num_verts = mesh.points.shape[0]
 
+        # Pre-scale direction: dot(scale*v, d) == dot(v, scale*d)
+        # This moves the per-vertex cw_mul out of the loop (only 1 at the end)
+        scaled_dir = wp.cw_mul(direction, mesh_scale)
+
+        max_dot = float(-1.0e10)
+        best_idx = int(0)
         for i in range(num_verts):
-            # Get vertex position (applying scale)
-            vertex = wp.cw_mul(mesh.points[i], mesh_scale)
-
-            # Compute dot product with direction
-            dot_val = wp.dot(vertex, dir_safe)
-
-            # Track the maximum
+            dot_val = wp.dot(mesh.points[i], scaled_dir)
             if dot_val > max_dot:
                 max_dot = dot_val
-                best_vertex = vertex
-        result = best_vertex
+                best_idx = i
+        result = wp.cw_mul(mesh.points[best_idx], mesh_scale)
 
-    elif geom.shape_type == GeoTypeEx.TRIANGLE:
+    elif geom.shape_type == GeoTypeEx.TRIANGLE or geom.shape_type == GeoTypeEx.TRIANGLE_PRISM:
         # Triangle vertices: a at origin, b at scale, c at auxiliary
         tri_a = wp.vec3(0.0, 0.0, 0.0)
         tri_b = geom.scale
         tri_c = geom.auxiliary
 
         # Compute dot products with direction for each vertex
-        dot_a = wp.dot(tri_a, dir_safe)
-        dot_b = wp.dot(tri_b, dir_safe)
-        dot_c = wp.dot(tri_c, dir_safe)
+        dot_a = wp.dot(tri_a, direction)
+        dot_b = wp.dot(tri_b, direction)
+        dot_c = wp.dot(tri_c, direction)
 
         # Find the vertex with maximum dot product (furthest in the direction)
         if dot_a >= dot_b and dot_a >= dot_c:
@@ -179,17 +163,34 @@ def support_map(geom: GenericShapeData, direction: wp.vec3, data_provider: Suppo
             result = tri_b
         else:
             result = tri_c
+
+        # TRIANGLE_PRISM: extrude 1 m along -Z to form a solid prism so
+        # that GJK/MPR naturally resolves shapes on the back side.
+        # The support function is queried in the heightfield's local
+        # frame (orientation_a = heightfield rotation), where -Z is
+        # always the heightfield's down direction.
+        if geom.shape_type == GeoTypeEx.TRIANGLE_PRISM:
+            if direction[2] < 0.0:
+                result = result + wp.vec3(0.0, 0.0, -1.0)
     elif geom.shape_type == GeoType.BOX:
-        sx = 1.0 if dir_safe[0] >= 0.0 else -1.0
-        sy = 1.0 if dir_safe[1] >= 0.0 else -1.0
-        sz = 1.0 if dir_safe[2] >= 0.0 else -1.0
+        # Use a relative deadband so near-zero direction components
+        # (from quaternion rotation noise ~1e-14) cannot flip the sign
+        # and select a different box vertex.  For face-aligned queries
+        # the non-primary components are zero; any vertex on that face
+        # is an equally valid support point, so biasing toward +1 is
+        # correct and keeps MPR's initial portal construction stable.
+        threshold = BOX_SUPPORT_DEADBAND * wp.length(direction)
+        sx = 1.0 if direction[0] >= -threshold else -1.0
+        sy = 1.0 if direction[1] >= -threshold else -1.0
+        sz = 1.0 if direction[2] >= -threshold else -1.0
 
         result = wp.vec3(sx * geom.scale[0], sy * geom.scale[1], sz * geom.scale[2])
 
     elif geom.shape_type == GeoType.SPHERE:
         radius = geom.scale[0]
+        dir_len_sq = wp.length_sq(direction)
         if dir_len_sq > eps:
-            n = wp.normalize(dir_safe)
+            n = wp.normalize(direction)
         else:
             n = wp.vec3(1.0, 0.0, 0.0)
         result = n * radius
@@ -200,15 +201,16 @@ def support_map(geom: GenericShapeData, direction: wp.vec3, data_provider: Suppo
 
         # Capsule = segment + sphere (adapted from C# code to Z-axis convention)
         # Sphere part: support in normalized direction
+        dir_len_sq = wp.length_sq(direction)
         if dir_len_sq > eps:
-            n = wp.normalize(dir_safe)
+            n = wp.normalize(direction)
         else:
             n = wp.vec3(1.0, 0.0, 0.0)
         result = n * radius
 
         # Segment endpoints are at (0, 0, +half_height) and (0, 0, -half_height)
         # Use sign of Z-component to pick the correct endpoint
-        if dir_safe[2] >= 0.0:
+        if direction[2] >= 0.0:
             result = result + wp.vec3(0.0, 0.0, half_height)
         else:
             result = result + wp.vec3(0.0, 0.0, -half_height)
@@ -219,15 +221,16 @@ def support_map(geom: GenericShapeData, direction: wp.vec3, data_provider: Suppo
         a = geom.scale[0]
         b = geom.scale[1]
         c = geom.scale[2]
+        dir_len_sq = wp.length_sq(direction)
         if dir_len_sq > eps:
-            adx = a * dir_safe[0]
-            bdy = b * dir_safe[1]
-            cdz = c * dir_safe[2]
+            adx = a * direction[0]
+            bdy = b * direction[1]
+            cdz = c * direction[2]
             denom_sq = adx * adx + bdy * bdy + cdz * cdz
             if denom_sq > eps:
                 denom = wp.sqrt(denom_sq)
                 result = wp.vec3(
-                    (a * a) * dir_safe[0] / denom, (b * b) * dir_safe[1] / denom, (c * c) * dir_safe[2] / denom
+                    (a * a) * direction[0] / denom, (b * b) * direction[1] / denom, (c * c) * direction[2] / denom
                 )
             else:
                 result = wp.vec3(a, 0.0, 0.0)
@@ -239,7 +242,7 @@ def support_map(geom: GenericShapeData, direction: wp.vec3, data_provider: Suppo
         half_height = geom.scale[1]
 
         # Cylinder support: project direction to XY plane for lateral surface
-        dir_xy = wp.vec3(dir_safe[0], dir_safe[1], 0.0)
+        dir_xy = wp.vec3(direction[0], direction[1], 0.0)
         dir_xy_len_sq = wp.length_sq(dir_xy)
 
         if dir_xy_len_sq > eps:
@@ -249,9 +252,9 @@ def support_map(geom: GenericShapeData, direction: wp.vec3, data_provider: Suppo
             lateral_point = wp.vec3(radius, 0.0, 0.0)
 
         # Choose between top cap, bottom cap, or lateral surface
-        if dir_safe[2] > 0.0:
+        if direction[2] > 0.0:
             result = wp.vec3(lateral_point[0], lateral_point[1], half_height)
-        elif dir_safe[2] < 0.0:
+        elif direction[2] < 0.0:
             result = wp.vec3(lateral_point[0], lateral_point[1], -half_height)
         else:
             result = lateral_point
@@ -264,18 +267,18 @@ def support_map(geom: GenericShapeData, direction: wp.vec3, data_provider: Suppo
         # Using slope k = radius / (2*half_height), the optimal support is:
         #   apex if dz >= k * ||d_xy||, otherwise base rim in d_xy direction.
         apex = wp.vec3(0.0, 0.0, half_height)
-        dir_xy = wp.vec3(dir_safe[0], dir_safe[1], 0.0)
+        dir_xy = wp.vec3(direction[0], direction[1], 0.0)
         dir_xy_len = wp.length(dir_xy)
         k = radius / (2.0 * half_height) if half_height > eps else 0.0
 
         if dir_xy_len <= eps:
             # Purely vertical direction
-            if dir_safe[2] >= 0.0:
+            if direction[2] >= 0.0:
                 result = apex
             else:
                 result = wp.vec3(radius, 0.0, -half_height)
         else:
-            if dir_safe[2] >= k * dir_xy_len:
+            if direction[2] >= k * dir_xy_len:
                 result = apex
             else:
                 n_xy = dir_xy / dir_xy_len
@@ -288,8 +291,8 @@ def support_map(geom: GenericShapeData, direction: wp.vec3, data_provider: Suppo
         half_length = geom.scale[1]
 
         # Clamp the direction to the plane boundaries
-        sx = 1.0 if dir_safe[0] >= 0.0 else -1.0
-        sy = 1.0 if dir_safe[1] >= 0.0 else -1.0
+        sx = 1.0 if direction[0] >= 0.0 else -1.0
+        sy = 1.0 if direction[1] >= 0.0 else -1.0
 
         # The support point is at the corner in the XY plane (z=0)
         result = wp.vec3(sx * half_width, sy * half_length, 0.0)
@@ -302,12 +305,55 @@ def support_map(geom: GenericShapeData, direction: wp.vec3, data_provider: Suppo
 
 
 @wp.func
+def support_map_lean(geom: GenericShapeData, direction: wp.vec3, data_provider: SupportMapDataProvider) -> wp.vec3:
+    """
+    Lean support function for common shape types only: CONVEX_MESH, BOX, SPHERE.
+
+    This is a specialized version of support_map with reduced code size to improve
+    GPU instruction cache utilization. It omits support for CAPSULE, ELLIPSOID,
+    CYLINDER, CONE, PLANE, and TRIANGLE shapes.
+    """
+    result = wp.vec3(0.0, 0.0, 0.0)
+
+    if geom.shape_type == GeoType.CONVEX_MESH:
+        mesh_ptr = unpack_mesh_ptr(geom.auxiliary)
+        mesh = wp.mesh_get(mesh_ptr)
+        scaled_dir = wp.cw_mul(direction, geom.scale)
+        max_dot = float(-1.0e10)
+        best_idx = int(0)
+        for i in range(mesh.points.shape[0]):
+            dot_val = wp.dot(mesh.points[i], scaled_dir)
+            if dot_val > max_dot:
+                max_dot = dot_val
+                best_idx = i
+        result = wp.cw_mul(mesh.points[best_idx], geom.scale)
+
+    elif geom.shape_type == GeoType.BOX:
+        threshold = BOX_SUPPORT_DEADBAND * wp.length(direction)
+        sx = 1.0 if direction[0] >= -threshold else -1.0
+        sy = 1.0 if direction[1] >= -threshold else -1.0
+        sz = 1.0 if direction[2] >= -threshold else -1.0
+        result = wp.vec3(sx * geom.scale[0], sy * geom.scale[1], sz * geom.scale[2])
+
+    elif geom.shape_type == GeoType.SPHERE:
+        radius = geom.scale[0]
+        dir_len_sq = wp.length_sq(direction)
+        if dir_len_sq > 1.0e-12:
+            n = wp.normalize(direction)
+        else:
+            n = wp.vec3(1.0, 0.0, 0.0)
+        result = n * radius
+
+    return result
+
+
+@wp.func
 def extract_shape_data(
     shape_idx: int,
-    shape_transform: wp.array(dtype=wp.transform),
-    shape_types: wp.array(dtype=int),
-    shape_data: wp.array(dtype=wp.vec4),  # scale (xyz), margin_offset (w) or other data
-    shape_source: wp.array(dtype=wp.uint64),
+    shape_transform: wp.array[wp.transform],
+    shape_types: wp.array[int],
+    shape_data: wp.array[wp.vec4],  # scale (xyz), margin_offset (w) or other data
+    shape_source: wp.array[wp.uint64],
 ):
     """
     Extract shape data from the narrow phase API arrays.
@@ -345,3 +391,89 @@ def extract_shape_data(
         result.auxiliary = pack_mesh_ptr(shape_source[shape_idx])
 
     return position, orientation, result, scale, margin_offset
+
+
+@wp.func
+def closest_point_on_triangle(
+    p: wp.vec3,
+    tri_a: wp.vec3,
+    tri_b: wp.vec3,
+    tri_c: wp.vec3,
+) -> wp.vec3:
+    """
+    Closest point on a triangle to a query point.
+
+    Uses Voronoi-region tests with barycentric coordinates to handle
+    vertex, edge, and face regions without branching on degenerate normals.
+
+    Args:
+        p: Query point
+        tri_a: Triangle vertex A
+        tri_b: Triangle vertex B
+        tri_c: Triangle vertex C
+
+    Returns:
+        The closest point on the triangle to *p*.
+    """
+    ab = tri_b - tri_a
+    ac = tri_c - tri_a
+
+    # Guard degenerate triangles: if the triangle has near-zero area, fall
+    # back to the closest point on the longest non-degenerate edge (or the
+    # nearest vertex when fully collapsed).
+    ab_sq = wp.dot(ab, ab)
+    ac_sq = wp.dot(ac, ac)
+    EPS2 = 1.0e-20
+    if wp.dot(wp.cross(ab, ac), wp.cross(ab, ac)) < EPS2:
+        bc = tri_c - tri_b
+        bc_sq = wp.dot(bc, bc)
+        if ab_sq >= ac_sq and ab_sq >= bc_sq:
+            if ab_sq < EPS2:
+                return tri_a
+            t = wp.clamp(wp.dot(p - tri_a, ab) / ab_sq, 0.0, 1.0)
+            return tri_a + t * ab
+        elif ac_sq >= bc_sq:
+            t = wp.clamp(wp.dot(p - tri_a, ac) / ac_sq, 0.0, 1.0)
+            return tri_a + t * ac
+        else:
+            t = wp.clamp(wp.dot(p - tri_b, bc) / bc_sq, 0.0, 1.0)
+            return tri_b + t * bc
+
+    ap = p - tri_a
+
+    d1 = wp.dot(ab, ap)
+    d2 = wp.dot(ac, ap)
+    if d1 <= 0.0 and d2 <= 0.0:
+        return tri_a
+
+    bp = p - tri_b
+    d3 = wp.dot(ab, bp)
+    d4 = wp.dot(ac, bp)
+    if d3 >= 0.0 and d4 <= d3:
+        return tri_b
+
+    cp = p - tri_c
+    d5 = wp.dot(ab, cp)
+    d6 = wp.dot(ac, cp)
+    if d6 >= 0.0 and d5 <= d6:
+        return tri_c
+
+    vc = d1 * d4 - d3 * d2
+    if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0:
+        v = d1 / (d1 - d3)
+        return tri_a + v * ab
+
+    vb = d5 * d2 - d1 * d6
+    if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0:
+        w = d2 / (d2 - d6)
+        return tri_a + w * ac
+
+    va = d3 * d6 - d5 * d4
+    if va <= 0.0 and (d4 - d3) >= 0.0 and (d5 - d6) >= 0.0:
+        w = (d4 - d3) / ((d4 - d3) + (d5 - d6))
+        return tri_b + w * (tri_c - tri_b)
+
+    denom = 1.0 / (va + vb + vc)
+    v = vb * denom
+    w = vc * denom
+    return tri_a + v * ab + w * ac

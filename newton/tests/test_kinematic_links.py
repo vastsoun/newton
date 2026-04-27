@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import unittest
 
@@ -633,7 +621,7 @@ solvers = {
     "mujoco_warp": lambda model: newton.solvers.SolverMuJoCo(model, use_mujoco_cpu=False),
     "xpbd": lambda model: newton.solvers.SolverXPBD(model, iterations=5, angular_damping=0.0),
     "semi_implicit": lambda model: newton.solvers.SolverSemiImplicit(model, angular_damping=0.0),
-    "vbd": lambda model: newton.solvers.SolverVBD(model),
+    "vbd": newton.solvers.SolverVBD,
 }
 for device in devices:
     for solver_name, solver_fn in solvers.items():
@@ -649,14 +637,13 @@ for device in devices:
             devices=[device],
             solver_fn=solver_fn,
         )
-        if solver_name != "vbd":  # VBD does not support revolute joints.
-            add_function_test(
-                TestKinematicLinksCanonical,
-                f"test_kinematic_revolute_root_pendulum_prescribed_motion_{solver_name}",
-                test_kinematic_revolute_root_pendulum_prescribed_motion,
-                devices=[device],
-                solver_fn=solver_fn,
-            )
+        add_function_test(
+            TestKinematicLinksCanonical,
+            f"test_kinematic_revolute_root_pendulum_prescribed_motion_{solver_name}",
+            test_kinematic_revolute_root_pendulum_prescribed_motion,
+            devices=[device],
+            solver_fn=solver_fn,
+        )
         add_function_test(
             TestKinematicLinksCanonical,
             f"test_kinematic_fixed_root_static_force_immune_{solver_name}",

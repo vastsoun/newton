@@ -4,6 +4,7 @@
 newton.geometry
 ===============
 
+.. py:module:: newton.geometry
 .. currentmodule:: newton.geometry
 
 .. rubric:: Classes
@@ -37,6 +38,7 @@ newton.geometry
    collide_sphere_cylinder
    collide_sphere_sphere
    compute_inertia_shape
+   compute_offset_mesh
    create_empty_sdf_data
    sdf_box
    sdf_capsule
@@ -46,3 +48,15 @@ newton.geometry
    sdf_plane
    sdf_sphere
    transform_inertia
+
+.. rubric:: Constants
+
+.. list-table::
+   :header-rows: 1
+
+   * - Name
+     - Value
+   * - ``MATCH_BROKEN``
+     - ``-2``
+   * - ``MATCH_NOT_FOUND``
+     - ``-1``

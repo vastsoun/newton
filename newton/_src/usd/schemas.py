@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """Concrete USD schema resolvers used by :mod:`newton.usd`."""
 
@@ -304,23 +292,23 @@ class SchemaResolverMjc(SchemaResolver):
         PrimType.JOINT: {
             "armature": SchemaAttribute("mjc:armature", 0.0),
             "friction": SchemaAttribute("mjc:frictionloss", 0.0),
-            # Per-axis linear aliases mapped to solref
-            "limit_transX_ke": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_stiffness),
-            "limit_transY_ke": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_stiffness),
-            "limit_transZ_ke": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_stiffness),
-            "limit_transX_kd": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_damping),
-            "limit_transY_kd": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_damping),
-            "limit_transZ_kd": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_damping),
-            "limit_linear_ke": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_stiffness),
-            "limit_angular_ke": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_stiffness),
-            "limit_rotX_ke": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_stiffness),
-            "limit_rotY_ke": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_stiffness),
-            "limit_rotZ_ke": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_stiffness),
-            "limit_linear_kd": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_damping),
-            "limit_angular_kd": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_damping),
-            "limit_rotX_kd": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_damping),
-            "limit_rotY_kd": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_damping),
-            "limit_rotZ_kd": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_damping),
+            # Per-axis aliases mapped to solreflimit (MjcJointAPI authors joint limit solref here)
+            "limit_transX_ke": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_stiffness),
+            "limit_transY_ke": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_stiffness),
+            "limit_transZ_ke": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_stiffness),
+            "limit_transX_kd": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_damping),
+            "limit_transY_kd": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_damping),
+            "limit_transZ_kd": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_damping),
+            "limit_linear_ke": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_stiffness),
+            "limit_angular_ke": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_stiffness),
+            "limit_rotX_ke": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_stiffness),
+            "limit_rotY_ke": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_stiffness),
+            "limit_rotZ_ke": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_stiffness),
+            "limit_linear_kd": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_damping),
+            "limit_angular_kd": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_damping),
+            "limit_rotX_kd": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_damping),
+            "limit_rotY_kd": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_damping),
+            "limit_rotZ_kd": SchemaAttribute("mjc:solreflimit", [0.02, 1.0], solref_to_damping),
         },
         PrimType.SHAPE: {
             # Mesh
@@ -347,10 +335,6 @@ class SchemaResolverMjc(SchemaResolver):
             "weight": SchemaAttribute("mjc:solmix", 1.0),
             "stiffness": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_stiffness),
             "damping": SchemaAttribute("mjc:solref", [0.02, 1.0], solref_to_damping),
-        },
-        PrimType.BODY: {
-            # Rigid body / joint domain
-            "rigid_body_linear_damping": SchemaAttribute("mjc:damping", 0.0),
         },
         PrimType.ACTUATOR: {
             # Actuators

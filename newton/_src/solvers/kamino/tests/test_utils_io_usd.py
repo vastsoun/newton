@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """Unit tests for the USD importer utility."""
 
@@ -24,10 +12,10 @@ import warp as wp
 
 import newton
 from newton import Model, ModelBuilder
+from newton._src.geometry.types import GeoType
 from newton._src.solvers.kamino import SolverKamino
 from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino._src.core.joints import JOINT_QMAX, JOINT_QMIN, JointActuationType, JointDoFType
-from newton._src.solvers.kamino._src.core.shapes import ShapeType
 from newton._src.solvers.kamino._src.models import get_basics_usd_assets_path, get_testing_usd_assets_path
 from newton._src.solvers.kamino._src.models.builders import basics
 from newton._src.solvers.kamino._src.utils import logger as msg
@@ -749,9 +737,9 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.geoms[0][0].gid, 0)
         self.assertEqual(builder_usd.geoms[0][0].body, 0)
         shape = builder_usd.shapes[builder_usd.geoms[0][0].uid]
-        self.assertEqual(shape.type, ShapeType.CAPSULE)
+        self.assertEqual(shape.type, GeoType.CAPSULE)
         self.assertAlmostEqual(shape.radius, 0.2)
-        self.assertAlmostEqual(shape.height, 3.3)
+        self.assertAlmostEqual(shape.half_height, 1.65)
         self.assertEqual(builder_usd.geoms[0][0].mid, -1)
         self.assertEqual(builder_usd.geoms[0][0].group, 0)
         self.assertEqual(builder_usd.geoms[0][0].collides, 0)
@@ -762,9 +750,9 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.geoms[0][1].gid, 1)
         self.assertEqual(builder_usd.geoms[0][1].body, 0)
         shape = builder_usd.shapes[builder_usd.geoms[0][1].uid]
-        self.assertEqual(shape.type, ShapeType.CAPSULE)
+        self.assertEqual(shape.type, GeoType.CAPSULE)
         self.assertAlmostEqual(shape.radius, 0.1)
-        self.assertAlmostEqual(shape.height, 2.2)
+        self.assertAlmostEqual(shape.half_height, 1.1)
         self.assertEqual(builder_usd.geoms[0][1].mid, 0)
         self.assertEqual(builder_usd.geoms[0][1].group, 1)
         self.assertEqual(builder_usd.geoms[0][1].collides, 1)
@@ -786,9 +774,9 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.geoms[0][0].gid, 0)
         self.assertEqual(builder_usd.geoms[0][0].body, 0)
         shape = builder_usd.shapes[builder_usd.geoms[0][0].uid]
-        self.assertEqual(shape.type, ShapeType.CONE)
+        self.assertEqual(shape.type, GeoType.CONE)
         self.assertAlmostEqual(shape.radius, 0.2)
-        self.assertAlmostEqual(shape.height, 3.3)
+        self.assertAlmostEqual(shape.half_height, 1.65)
         self.assertEqual(builder_usd.geoms[0][0].mid, -1)
         self.assertEqual(builder_usd.geoms[0][0].group, 0)
         self.assertEqual(builder_usd.geoms[0][0].collides, 0)
@@ -799,9 +787,9 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.geoms[0][1].gid, 1)
         self.assertEqual(builder_usd.geoms[0][1].body, 0)
         shape = builder_usd.shapes[builder_usd.geoms[0][1].uid]
-        self.assertEqual(shape.type, ShapeType.CONE)
+        self.assertEqual(shape.type, GeoType.CONE)
         self.assertAlmostEqual(shape.radius, 0.1)
-        self.assertAlmostEqual(shape.height, 2.2)
+        self.assertAlmostEqual(shape.half_height, 1.1)
         self.assertEqual(builder_usd.geoms[0][1].mid, 0)
         self.assertEqual(builder_usd.geoms[0][1].group, 1)
         self.assertEqual(builder_usd.geoms[0][1].collides, 1)
@@ -823,9 +811,9 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.geoms[0][0].gid, 0)
         self.assertEqual(builder_usd.geoms[0][0].body, 0)
         shape = builder_usd.shapes[builder_usd.geoms[0][0].uid]
-        self.assertEqual(shape.type, ShapeType.CYLINDER)
+        self.assertEqual(shape.type, GeoType.CYLINDER)
         self.assertAlmostEqual(shape.radius, 0.2)
-        self.assertAlmostEqual(shape.height, 3.3)
+        self.assertAlmostEqual(shape.half_height, 1.65)
         self.assertEqual(builder_usd.geoms[0][0].mid, -1)
         self.assertEqual(builder_usd.geoms[0][0].group, 0)
         self.assertEqual(builder_usd.geoms[0][0].collides, 0)
@@ -836,9 +824,9 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.geoms[0][1].gid, 1)
         self.assertEqual(builder_usd.geoms[0][1].body, 0)
         shape = builder_usd.shapes[builder_usd.geoms[0][1].uid]
-        self.assertEqual(shape.type, ShapeType.CYLINDER)
+        self.assertEqual(shape.type, GeoType.CYLINDER)
         self.assertAlmostEqual(shape.radius, 0.1)
-        self.assertAlmostEqual(shape.height, 2.2)
+        self.assertAlmostEqual(shape.half_height, 1.1)
         self.assertEqual(builder_usd.geoms[0][1].mid, 0)
         self.assertEqual(builder_usd.geoms[0][1].group, 1)
         self.assertEqual(builder_usd.geoms[0][1].collides, 1)
@@ -860,7 +848,7 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.geoms[0][0].gid, 0)
         self.assertEqual(builder_usd.geoms[0][0].body, 0)
         shape = builder_usd.shapes[builder_usd.geoms[0][0].uid]
-        self.assertEqual(shape.type, ShapeType.SPHERE)
+        self.assertEqual(shape.type, GeoType.SPHERE)
         self.assertAlmostEqual(shape.radius, 0.22)
         self.assertEqual(builder_usd.geoms[0][0].mid, -1)
         self.assertEqual(builder_usd.geoms[0][0].group, 0)
@@ -872,7 +860,7 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.geoms[0][1].gid, 1)
         self.assertEqual(builder_usd.geoms[0][1].body, 0)
         shape = builder_usd.shapes[builder_usd.geoms[0][1].uid]
-        self.assertEqual(shape.type, ShapeType.SPHERE)
+        self.assertEqual(shape.type, GeoType.SPHERE)
         self.assertAlmostEqual(shape.radius, 0.11)
         self.assertEqual(builder_usd.geoms[0][1].mid, 0)
         self.assertEqual(builder_usd.geoms[0][1].group, 1)
@@ -895,10 +883,10 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.geoms[0][0].gid, 0)
         self.assertEqual(builder_usd.geoms[0][0].body, 0)
         shape = builder_usd.shapes[builder_usd.geoms[0][0].uid]
-        self.assertEqual(shape.type, ShapeType.ELLIPSOID)
-        self.assertAlmostEqual(shape.a, 0.22)
-        self.assertAlmostEqual(shape.b, 0.33)
-        self.assertAlmostEqual(shape.c, 0.44)
+        self.assertEqual(shape.type, GeoType.ELLIPSOID)
+        self.assertAlmostEqual(shape.rx, 0.22)
+        self.assertAlmostEqual(shape.ry, 0.33)
+        self.assertAlmostEqual(shape.rz, 0.44)
         self.assertEqual(builder_usd.geoms[0][0].mid, -1)
         self.assertEqual(builder_usd.geoms[0][0].group, 0)
         self.assertEqual(builder_usd.geoms[0][0].collides, 0)
@@ -909,10 +897,10 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.geoms[0][1].gid, 1)
         self.assertEqual(builder_usd.geoms[0][1].body, 0)
         shape = builder_usd.shapes[builder_usd.geoms[0][1].uid]
-        self.assertEqual(shape.type, ShapeType.ELLIPSOID)
-        self.assertAlmostEqual(shape.a, 0.11)
-        self.assertAlmostEqual(shape.b, 0.22)
-        self.assertAlmostEqual(shape.c, 0.33)
+        self.assertEqual(shape.type, GeoType.ELLIPSOID)
+        self.assertAlmostEqual(shape.rx, 0.11)
+        self.assertAlmostEqual(shape.ry, 0.22)
+        self.assertAlmostEqual(shape.rz, 0.33)
         self.assertEqual(builder_usd.geoms[0][1].mid, 0)
         self.assertEqual(builder_usd.geoms[0][1].group, 1)
         self.assertEqual(builder_usd.geoms[0][1].collides, 1)
@@ -934,10 +922,10 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.geoms[0][0].gid, 0)
         self.assertEqual(builder_usd.geoms[0][0].body, 0)
         shape = builder_usd.shapes[builder_usd.geoms[0][0].uid]
-        self.assertEqual(shape.type, ShapeType.BOX)
-        self.assertAlmostEqual(shape.depth, 0.222)
-        self.assertAlmostEqual(shape.width, 0.444)
-        self.assertAlmostEqual(shape.height, 0.666)
+        self.assertEqual(shape.type, GeoType.BOX)
+        self.assertAlmostEqual(shape.hx, 0.111)
+        self.assertAlmostEqual(shape.hy, 0.222)
+        self.assertAlmostEqual(shape.hz, 0.333)
         self.assertEqual(builder_usd.geoms[0][0].mid, -1)
         self.assertEqual(builder_usd.geoms[0][0].group, 0)
         self.assertEqual(builder_usd.geoms[0][0].collides, 0)
@@ -948,10 +936,10 @@ class TestUSDImporter(unittest.TestCase):
         self.assertEqual(builder_usd.geoms[0][1].gid, 1)
         self.assertEqual(builder_usd.geoms[0][1].body, 0)
         shape = builder_usd.shapes[builder_usd.geoms[0][1].uid]
-        self.assertEqual(shape.type, ShapeType.BOX)
-        self.assertAlmostEqual(shape.depth, 0.22)
-        self.assertAlmostEqual(shape.width, 0.44)
-        self.assertAlmostEqual(shape.height, 0.66)
+        self.assertEqual(shape.type, GeoType.BOX)
+        self.assertAlmostEqual(shape.hx, 0.11)
+        self.assertAlmostEqual(shape.hy, 0.22)
+        self.assertAlmostEqual(shape.hz, 0.33)
         self.assertEqual(builder_usd.geoms[0][1].mid, 0)
         self.assertEqual(builder_usd.geoms[0][1].group, 1)
         self.assertEqual(builder_usd.geoms[0][1].collides, 1)

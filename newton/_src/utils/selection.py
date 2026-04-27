@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import functools
 from fnmatch import fnmatch
@@ -24,16 +12,16 @@ from warp.types import is_array
 from ..sim import Control, JointType, Model, State, eval_fk, eval_jacobian, eval_mass_matrix
 
 if TYPE_CHECKING:
-    from newton_actuators import Actuator
+    from ..actuators.actuator import Actuator
 
 AttributeFrequency = Model.AttributeFrequency
 
 
 @wp.kernel
 def set_model_articulation_mask_kernel(
-    world_arti_mask: wp.array2d(dtype=bool),  # (world, arti) mask in ArticulationView
-    view_to_model_map: wp.array2d(dtype=int),  # map (world, arti) indices to Model articulation id
-    model_articulation_mask: wp.array(dtype=bool),  # output: mask of Model articulation indices
+    world_arti_mask: wp.array2d[bool],  # (world, arti) mask in ArticulationView
+    view_to_model_map: wp.array2d[int],  # map (world, arti) indices to Model articulation id
+    model_articulation_mask: wp.array[bool],  # output: mask of Model articulation indices
 ):
     """
     Set Model articulation mask from a 2D (world, arti) mask in an ArticulationView.
@@ -45,9 +33,9 @@ def set_model_articulation_mask_kernel(
 
 @wp.kernel
 def set_model_articulation_mask_per_world_kernel(
-    world_mask: wp.array(dtype=bool),  # world mask in ArticulationView
-    view_to_model_map: wp.array2d(dtype=int),  # map (world, arti) indices to Model articulation id
-    model_articulation_mask: wp.array(dtype=bool),  # output: mask of Model articulation indices
+    world_mask: wp.array[bool],  # world mask in ArticulationView
+    view_to_model_map: wp.array2d[int],  # map (world, arti) indices to Model articulation id
+    model_articulation_mask: wp.array[bool],  # output: mask of Model articulation indices
 ):
     """
     Set Model articulation mask from a 1D world mask in an ArticulationView.
@@ -59,7 +47,7 @@ def set_model_articulation_mask_per_world_kernel(
 
 # @wp.kernel
 # def set_articulation_attribute_1d_kernel(
-#     view_mask: wp.array2d(dtype=bool),  # (world, arti) mask in ArticulationView
+#     view_mask: wp.array2d[bool],  # (world, arti) mask in ArticulationView
 #     values: Any,  # 1d array or indexedarray
 #     attrib: Any,  # 1d array or indexedarray
 # ):
@@ -70,7 +58,7 @@ def set_model_articulation_mask_per_world_kernel(
 
 # @wp.kernel
 # def set_articulation_attribute_2d_kernel(
-#     view_mask: wp.array2d(dtype=bool),  # (world, arti) mask in ArticulationView
+#     view_mask: wp.array2d[bool],  # (world, arti) mask in ArticulationView
 #     values: Any,  # 2d array or indexedarray
 #     attrib: Any,  # 2d array or indexedarray
 # ):
@@ -81,7 +69,7 @@ def set_model_articulation_mask_per_world_kernel(
 
 @wp.kernel
 def set_articulation_attribute_3d_kernel(
-    view_mask: wp.array2d(dtype=bool),  # (world, arti) mask in ArticulationView
+    view_mask: wp.array2d[bool],  # (world, arti) mask in ArticulationView
     values: Any,  # 3d array or indexedarray
     attrib: Any,  # 3d array or indexedarray
 ):
@@ -92,7 +80,7 @@ def set_articulation_attribute_3d_kernel(
 
 @wp.kernel
 def set_articulation_attribute_4d_kernel(
-    view_mask: wp.array2d(dtype=bool),  # (world, arti) mask in ArticulationView
+    view_mask: wp.array2d[bool],  # (world, arti) mask in ArticulationView
     values: Any,  # 4d array or indexedarray
     attrib: Any,  # 4d array or indexedarray
 ):
@@ -103,7 +91,7 @@ def set_articulation_attribute_4d_kernel(
 
 # @wp.kernel
 # def set_articulation_attribute_1d_per_world_kernel(
-#     view_mask: wp.array(dtype=bool),  # world mask in ArticulationView
+#     view_mask: wp.array[bool],  # world mask in ArticulationView
 #     values: Any,  # 1d array or indexedarray
 #     attrib: Any,  # 1d array or indexedarray
 # ):
@@ -114,7 +102,7 @@ def set_articulation_attribute_4d_kernel(
 
 # @wp.kernel
 # def set_articulation_attribute_2d_per_world_kernel(
-#     view_mask: wp.array(dtype=bool),  # world mask in ArticulationView
+#     view_mask: wp.array[bool],  # world mask in ArticulationView
 #     values: Any,  # 2d array or indexedarray
 #     attrib: Any,  # 2d array or indexedarray
 # ):
@@ -125,7 +113,7 @@ def set_articulation_attribute_4d_kernel(
 
 @wp.kernel
 def set_articulation_attribute_3d_per_world_kernel(
-    view_mask: wp.array(dtype=bool),  # world mask in ArticulationView
+    view_mask: wp.array[bool],  # world mask in ArticulationView
     values: Any,  # 3d array or indexedarray
     attrib: Any,  # 3d array or indexedarray
 ):
@@ -136,7 +124,7 @@ def set_articulation_attribute_3d_per_world_kernel(
 
 @wp.kernel
 def set_articulation_attribute_4d_per_world_kernel(
-    view_mask: wp.array(dtype=bool),  # world mask in ArticulationView
+    view_mask: wp.array[bool],  # world mask in ArticulationView
     values: Any,  # 4d array or indexedarray
     attrib: Any,  # 4d array or indexedarray
 ):
@@ -176,12 +164,47 @@ for dtype in [float, int, wp.transform, wp.spatial_vector]:
 
 
 # ========================================================================================
+# Differentiable gather kernels for indexed -> contiguous copy
+
+
+@wp.kernel
+def _gather_indexed_3d_kernel(
+    src: Any,  # 3d wp.array (pre-indexed, has .grad)
+    indices: wp.array[int],  # index mapping for dimension 2
+    dst: Any,  # 3d wp.array (contiguous staging buffer, has .grad)
+):
+    i, j, k = wp.tid()
+    dst[i, j, k] = src[i, j, indices[k]]
+
+
+@wp.kernel
+def _gather_indexed_4d_kernel(
+    src: Any,  # 4d wp.array
+    indices: wp.array[int],
+    dst: Any,  # 4d wp.array
+):
+    i, j, k, l = wp.tid()
+    dst[i, j, k, l] = src[i, j, indices[k], l]
+
+
+for _dtype in [float, wp.transform, wp.spatial_vector]:
+    wp.overload(
+        _gather_indexed_3d_kernel,
+        {"src": wp.array3d[_dtype], "dst": wp.array3d[_dtype]},
+    )
+    wp.overload(
+        _gather_indexed_4d_kernel,
+        {"src": wp.array4d[_dtype], "dst": wp.array4d[_dtype]},
+    )
+
+
+# ========================================================================================
 # Actuator scatter/gather kernels
 
 
 @wp.kernel
 def build_actuator_dof_mapping_slice_kernel(
-    actuator_input_indices: wp.array(dtype=wp.uint32),
+    actuator_input_indices: wp.array[wp.uint32],
     actuators_per_world: int,
     base_offset: int,
     slice_start: int,
@@ -191,7 +214,7 @@ def build_actuator_dof_mapping_slice_kernel(
     dofs_per_arti: int,
     dofs_per_world: int,
     num_worlds: int,
-    mapping: wp.array(dtype=int),
+    mapping: wp.array[int],
 ):
     """Build DOF-to-actuator mapping for slice-based view selection.
 
@@ -219,8 +242,8 @@ def build_actuator_dof_mapping_slice_kernel(
 
 @wp.kernel
 def build_actuator_dof_mapping_indices_kernel(
-    actuator_input_indices: wp.array(dtype=wp.uint32),
-    view_dof_indices: wp.array(dtype=int),
+    actuator_input_indices: wp.array[wp.uint32],
+    view_dof_indices: wp.array[int],
     base_offset: int,
     stride_within_worlds: int,
     count_per_world: int,
@@ -228,7 +251,7 @@ def build_actuator_dof_mapping_indices_kernel(
     dofs_per_arti: int,
     dofs_per_world: int,
     num_worlds: int,
-    mapping: wp.array(dtype=int),
+    mapping: wp.array[int],
 ):
     """Build DOF-to-actuator mapping for index-array-based view selection.
 
@@ -255,12 +278,12 @@ def build_actuator_dof_mapping_indices_kernel(
 
 
 @wp.kernel
-def gather_actuator_by_indices_kernel(
-    src: wp.array(dtype=float),
-    indices: wp.array(dtype=int),
-    dst: wp.array(dtype=float),
+def _gather_1d_kernel(
+    src: Any,
+    indices: wp.array[int],
+    dst: Any,
 ):
-    """Gather values from src at specified indices into dst. Index -1 means skip (leave dst unchanged)."""
+    """Gather ``dst[tid] = src[indices[tid]]``. Index -1 means skip (leave dst unchanged)."""
     tid = wp.tid()
     idx = indices[tid]
     if idx >= 0:
@@ -268,26 +291,22 @@ def gather_actuator_by_indices_kernel(
 
 
 @wp.kernel
-def scatter_actuator_with_mask_kernel(
-    values: wp.array2d(dtype=float),
-    mapping: wp.array(dtype=int),
-    mask: wp.array(dtype=bool),
-    dofs_per_world: int,
-    dst: wp.array(dtype=float),
+def _scatter_masked_2d_kernel(
+    values: Any,
+    mapping: wp.array[int],
+    mask: wp.array[bool],
+    cols: int,
+    dst: Any,
 ):
-    """Scatter actuator values with articulation mask support.
+    """Scatter ``dst[mapping[row * cols + col]] = values[row, col]`` where ``mask[row]`` is true.
 
-    values: shape (world_count, dofs_per_world)
-    mapping: flat array mapping DOF positions to actuator indices (-1 = not actuated)
-    mask: per-world mask, shape (world_count,)
-    dst: flat actuator parameter array
+    Mapping entries of -1 are skipped.
     """
-    world_idx, local_idx = wp.tid()
-    if mask[world_idx]:
-        flat_idx = world_idx * dofs_per_world + local_idx
-        actuator_idx = mapping[flat_idx]
-        if actuator_idx >= 0:
-            dst[actuator_idx] = values[world_idx, local_idx]
+    row, col = wp.tid()
+    if mask[row]:
+        dst_idx = mapping[row * cols + col]
+        if dst_idx >= 0:
+            dst[dst_idx] = values[row, col]
 
 
 # NOTE: Python slice objects are not hashable in Python < 3.12, so we use this instead.
@@ -357,7 +376,7 @@ def get_name_from_label(label: str):
     Returns:
         The final path component of the label.
     """
-    return label.split("/")[-1]
+    return label.rsplit("/", maxsplit=1)[-1]
 
 
 def find_matching_ids(pattern: str, labels: list[str], world_ids, world_count: int):
@@ -396,10 +415,25 @@ def match_labels(labels: list[str], pattern: str | list[str] | list[int]) -> lis
     if isinstance(pattern, str):
         return [idx for idx, label in enumerate(labels) if fnmatch(label, pattern)]
 
-    if all(isinstance(item, int) for item in pattern):
+    if not isinstance(pattern, list):
+        raise TypeError(f"Expected a list of str patterns or a list of int indices, got: {type(pattern)}")
+
+    if len(pattern) == 0:
         return pattern
-    if all(isinstance(item, str) for item in pattern):
+
+    validation_failure = False
+
+    if isinstance(pattern[0], int):
+        # fast path for list[int]
+        for item in pattern:
+            if not isinstance(item, int):
+                validation_failure = True
+                break
+        if not validation_failure:
+            return pattern
+    elif all(isinstance(item, str) for item in pattern):
         return [idx for idx, label in enumerate(labels) if any(fnmatch(label, p) for p in pattern)]
+
     types = {type(item).__name__ for item in pattern}
     raise TypeError(f"Expected a list of str patterns or a list of int indices, got: {', '.join(sorted(types))}")
 
@@ -1163,7 +1197,25 @@ class ArticulationView:
             result.ptr = None
             return result
 
-        # construct reshaped attribute array
+        # construct reshaped attribute array, preserving grad connectivity
+        source_grad = attrib.grad if attrib.requires_grad else None
+        grad_view = None
+        if source_grad is not None:
+            grad_stride = source_grad.strides[0]
+            grad_view = wp.array(
+                ptr=int(source_grad.ptr) + layout.offset * grad_stride,
+                dtype=source_grad.dtype,
+                shape=shape,
+                strides=(
+                    layout.stride_between_worlds * grad_stride,
+                    layout.stride_within_worlds * grad_stride,
+                    grad_stride,
+                    *source_grad.strides[1:],
+                ),
+                device=source_grad.device,
+                copy=False,
+            )
+
         attrib = wp.array(
             ptr=int(attrib.ptr) + layout.offset * value_stride,
             dtype=attrib.dtype,
@@ -1171,14 +1223,19 @@ class ArticulationView:
             strides=strides,
             device=attrib.device,
             copy=False,
+            grad=grad_view,
         )
 
         # apply selection (slices or indices)
+        pre_indexed = attrib
         attrib = attrib[slices]
 
         if is_indexed:
-            # create a contiguous staging array
             attrib._staging_array = wp.empty_like(attrib)
+            if grad_view is not None:
+                attrib._staging_array.requires_grad = True
+                attrib._gather_src = pre_indexed
+                attrib._gather_indices = layout.indices
         else:
             # fixup for empty slices - FIXME: this should be handled by Warp, above
             if attrib.size == 0:
@@ -1189,10 +1246,23 @@ class ArticulationView:
     def _get_attribute_values(self, name: str, source: Model | State | Control, _slice: slice | None = None):
         attrib = self._get_attribute_array(name, source, _slice=_slice)
         if hasattr(attrib, "_staging_array"):
-            wp.copy(attrib._staging_array, attrib)
+            if hasattr(attrib, "_gather_src"):
+                kernel = _gather_indexed_4d_kernel if attrib.ndim == 4 else _gather_indexed_3d_kernel
+                wp.launch(
+                    kernel,
+                    dim=attrib._staging_array.shape,
+                    inputs=[attrib._gather_src, attrib._gather_indices],
+                    outputs=[attrib._staging_array],
+                )
+                src_grad = attrib._gather_src.grad
+                dst_grad = attrib._staging_array.grad
+                if src_grad is not None and dst_grad is not None:
+                    grad_slices = tuple(attrib._gather_indices if d == 2 else slice(None) for d in range(src_grad.ndim))
+                    wp.copy(dst_grad, src_grad[grad_slices])
+            else:
+                wp.copy(attrib._staging_array, attrib)
             return attrib._staging_array
-        else:
-            return attrib
+        return attrib
 
     def _set_attribute_values(
         self, name: str, target: Model | State | Control, values, mask=None, _slice: slice | None = None
@@ -1374,6 +1444,9 @@ class ArticulationView:
         """
         Get the world-space spatial velocities of all links in the selected articulations.
 
+        The returned ``body_qd`` values follow Newton's public convention:
+        ``(v_com_world, omega_world)``.
+
         Args:
             source (Model | State): The source from which to retrieve the link velocities.
 
@@ -1510,6 +1583,9 @@ class ArticulationView:
         """
         Evaluates forward kinematics given the joint coordinates and updates the body information.
 
+        The written ``target.body_qd`` values follow Newton's public body-twist
+        convention ``(v_com_world, omega_world)``.
+
         Args:
             target (Model | State): The target where to evaluate forward kinematics (Model or State).
             mask (array): Mask of articulations in this ArticulationView (all by default).
@@ -1522,7 +1598,8 @@ class ArticulationView:
         """Evaluate spatial Jacobian for articulations in this view.
 
         Computes the spatial Jacobian J that maps joint velocities to spatial
-        velocities of each link in world frame.
+        velocities of each link in world frame, matching ``state.body_qd`` under
+        Newton's public COM/world body-twist convention.
 
         Args:
             state: The state containing body transforms (body_q).
@@ -1541,7 +1618,9 @@ class ArticulationView:
         """Evaluate generalized mass matrix for articulations in this view.
 
         Computes the generalized mass matrix H = J^T * M * J, where J is the spatial
-        Jacobian and M is the block-diagonal spatial mass matrix.
+        Jacobian and M is the block-diagonal spatial mass matrix. The resulting
+        matrix is consistent with kinetic energy computed from COM-referenced
+        body twists.
 
         Args:
             state: The state containing body transforms (body_q).
@@ -1564,20 +1643,18 @@ class ArticulationView:
     # Actuator parameter access
 
     @functools.cache  # noqa: B019 - cache is tied to view lifetime
-    def _get_actuator_dof_mapping(self, actuator: "Actuator") -> wp.array:
+    def _get_actuator_dof_mapping(self, actuator: "Actuator"):
         """
         Build mapping from view DOF positions to actuator parameter indices.
 
         Note:
-            For selection we assume that input_indices is 1D (one input per actuator),
-            not the general 2D case (multiple inputs per actuator) which is supported
-            by the library.
+            Assumes SISO actuators (one DOF per actuator).
 
         Returns array of shape (world_count * dofs_per_world,) where each element is:
         - actuator parameter index if that DOF is actuated
         - -1 if that DOF is not actuated by this actuator
         """
-        num_actuators = actuator.input_indices.shape[0]
+        num_actuators = actuator.indices.shape[0]
         actuators_per_world = num_actuators // self.world_count
 
         dof_layout = self.frequency_layouts[AttributeFrequency.JOINT_DOF]
@@ -1594,7 +1671,7 @@ class ArticulationView:
                 build_actuator_dof_mapping_slice_kernel,
                 dim=actuators_per_world,
                 inputs=[
-                    actuator.input_indices,
+                    actuator.indices,
                     actuators_per_world,
                     dof_layout.offset,
                     dof_layout.slice.start,
@@ -1613,7 +1690,7 @@ class ArticulationView:
                 build_actuator_dof_mapping_indices_kernel,
                 dim=actuators_per_world,
                 inputs=[
-                    actuator.input_indices,
+                    actuator.indices,
                     dof_layout.indices,
                     dof_layout.offset,
                     dof_layout.stride_within_worlds,
@@ -1629,57 +1706,78 @@ class ArticulationView:
 
         return mapping
 
-    def _get_actuator_attribute_array(self, actuator: "Actuator", name: str) -> wp.array:
-        """Get actuator parameter array shaped (world_count, dofs_per_world), zeros for non-actuated DOFs."""
+    def get_actuator_parameter(self, actuator: "Actuator", component: Any, name: str):
+        """Read an actuator-component parameter for every DOF in this view.
+
+        The returned array covers all DOFs selected by the view (one column
+        per DOF, one row per world).  DOFs that are not driven by
+        *actuator* are left at zero; driven DOFs contain the
+        corresponding value gathered from ``component.<name>``.
+
+        Args:
+            actuator: Actuator instance whose DOF indices determine which
+                view DOFs are considered actuated.
+            component: The component that owns the parameter — a
+                :class:`~newton.actuators.Controller`,
+                :class:`~newton.actuators.Clamping`, or
+                :class:`~newton.actuators.Delay` instance.
+            name: Attribute name on *component* (e.g. ``"kp"``, ``"max_effort"``,
+                ``"delay_steps"``).
+
+        Returns:
+            Parameter values shaped ``(world_count, dofs_per_world)`` where
+            ``dofs_per_world`` is the total number of DOFs in the view (not
+            just the actuated subset).
+        """
         mapping = self._get_actuator_dof_mapping(actuator)
         if len(mapping) == 0:
             return wp.empty((self.world_count, 0), dtype=float, device=self.device)
 
-        src = getattr(actuator, name)
+        src = getattr(component, name)
         dofs_per_world = len(mapping) // self.world_count
 
         dst = wp.zeros(len(mapping), dtype=src.dtype, device=self.device)
         wp.launch(
-            gather_actuator_by_indices_kernel,
+            _gather_1d_kernel,
             dim=len(mapping),
             inputs=[src, mapping],
             outputs=[dst],
             device=self.device,
         )
-
-        batched_shape = (self.world_count, dofs_per_world, *src.shape[1:])
-        return dst.reshape(batched_shape)
-
-    def get_actuator_parameter(self, actuator: "Actuator", name: str) -> wp.array:
-        """
-        Get actuator parameter values for actuators corresponding to this view's DOFs.
-
-        Args:
-            actuator: An actuator instance with input_indices and parameter arrays.
-            name (str): Parameter name (e.g., 'kp', 'kd', 'max_force', 'gear', 'constant_force').
-
-        Returns:
-            wp.array: Parameter values shaped (world_count, dofs_per_world).
-        """
-        return self._get_actuator_attribute_array(actuator, name)
+        return dst.reshape((self.world_count, dofs_per_world))
 
     def set_actuator_parameter(
-        self, actuator: "Actuator", name: str, values: wp.array, mask: wp.array | None = None
+        self,
+        actuator: "Actuator",
+        component: Any,
+        name: str,
+        values: wp.array,
+        mask=None,
     ) -> None:
-        """
-        Set actuator parameter values for actuators corresponding to this view's DOFs.
+        """Write an actuator-component parameter for every DOF in this view.
+
+        *values* must cover all DOFs in the view (one column per DOF, one row
+        per world).  Only entries whose DOFs are actually driven by *actuator*
+        are written back to ``component.<name>``; the rest are ignored.
 
         Args:
-            actuator: An actuator instance with input_indices and parameter arrays.
-            name (str): Parameter name (e.g., 'kp', 'kd', 'max_force', 'gear', 'constant_force').
-            values: New parameter values shaped (world_count, dofs_per_world). Non-actuated DOFs are ignored.
-            mask (array, optional): Per-world mask (world_count,). Only masked worlds are updated.
+            actuator: Actuator instance whose DOF indices determine which
+                view DOFs are considered actuated.
+            component: The component that owns the parameter — a
+                :class:`~newton.actuators.Controller`,
+                :class:`~newton.actuators.Clamping`, or
+                :class:`~newton.actuators.Delay` instance.
+            name: Attribute name on *component* (e.g. ``"kp"``, ``"max_effort"``,
+                ``"delay_steps"``).
+            values: New parameter values shaped ``(world_count, dofs_per_world)``
+                where ``dofs_per_world`` is the total number of DOFs in the view.
+            mask: Per-world mask ``(world_count,)``. Only masked worlds are updated.
         """
         mapping = self._get_actuator_dof_mapping(actuator)
         if len(mapping) == 0:
             return
 
-        dst = getattr(actuator, name)
+        dst = getattr(component, name)
         dofs_per_world = len(mapping) // self.world_count
         expected_shape = (self.world_count, dofs_per_world, *dst.shape[1:])
 
@@ -1698,7 +1796,7 @@ class ArticulationView:
                 raise ValueError(f"Expected mask shape ({self.world_count},), got {mask.shape}")
 
         wp.launch(
-            scatter_actuator_with_mask_kernel,
+            _scatter_masked_2d_kernel,
             dim=(self.world_count, dofs_per_world),
             inputs=[values, mapping, mask, dofs_per_world],
             outputs=[dst],

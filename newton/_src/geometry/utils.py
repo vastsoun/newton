@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import contextlib
 import os
@@ -22,7 +10,7 @@ from typing import Any, Literal
 import numpy as np
 import warp as wp
 
-from ..core.types import Vec3, nparray
+from ..core.types import Vec3
 from .inertia import compute_inertia_mesh
 from .types import (
     GeoType,
@@ -34,11 +22,11 @@ from .types import (
 # Warp kernel for inertia-based OBB computation
 @wp.kernel(enable_backward=False)
 def compute_obb_candidates(
-    vertices: wp.array(dtype=wp.vec3),
+    vertices: wp.array[wp.vec3],
     base_quat: wp.quat,
-    volumes: wp.array2d(dtype=float),
-    transforms: wp.array2d(dtype=wp.transform),
-    extents: wp.array2d(dtype=wp.vec3),
+    volumes: wp.array2d[float],
+    transforms: wp.array2d[wp.transform],
+    extents: wp.array2d[wp.vec3],
 ):
     """Compute OBB candidates for different rotations around principal axes."""
     angle_idx, axis_idx = wp.tid()
@@ -100,18 +88,18 @@ def compute_shape_radius(geo_type: int, scale: Vec3, src: Mesh | Heightfield | N
         return np.linalg.norm(vmax)
     elif geo_type == GeoType.PLANE:
         if scale[0] > 0.0 and scale[1] > 0.0:
-            # finite plane
-            return np.linalg.norm(scale)
+            return np.linalg.norm(scale) * 0.5
         else:
             return 1.0e6
     elif geo_type == GeoType.HFIELD:
-        # Heightfield bounding sphere — hx/hy are already half-extents
+        # Heightfield bounding sphere centered at the shape origin.
+        # X/Y are symmetric ([-hx, +hx], [-hy, +hy]), but Z spans [min_z, max_z]
+        # which may not be symmetric around 0.
         if src is not None:
             half_x = src.hx * scale[0]
             half_y = src.hy * scale[1]
-            # Vertical range: from min_z to max_z, centered at midpoint
-            half_z = (src.max_z - src.min_z) / 2.0 * scale[2]
-            return np.sqrt(half_x**2 + half_y**2 + half_z**2)
+            max_abs_z = max(abs(src.min_z), abs(src.max_z)) * scale[2]
+            return np.sqrt(half_x**2 + half_y**2 + max_abs_z**2)
         else:
             return np.linalg.norm(scale)
     elif geo_type == GeoType.GAUSSIAN:
@@ -127,14 +115,82 @@ def compute_shape_radius(geo_type: int, scale: Vec3, src: Mesh | Heightfield | N
         return 10.0
 
 
-def compute_aabb(vertices: nparray) -> tuple[Vec3, Vec3]:
+def compute_aabb(vertices: np.ndarray) -> tuple[Vec3, Vec3]:
     """Compute the axis-aligned bounding box of a set of vertices."""
     min_coords = np.min(vertices, axis=0)
     max_coords = np.max(vertices, axis=0)
     return min_coords, max_coords
 
 
-def compute_pca_obb(vertices: nparray) -> tuple[wp.transform, wp.vec3]:
+def compute_inertia_box_mesh(
+    vertices: np.ndarray,
+    indices: np.ndarray,
+    is_solid: bool = True,
+) -> tuple[wp.vec3, wp.vec3, wp.quat]:
+    """Compute the equivalent inertia box of a triangular mesh.
+
+    The equivalent inertia box is the box whose inertia tensor matches that of
+    the mesh.  Unlike a bounding box it does **not** necessarily enclose the
+    geometry — it characterises the mass distribution.
+
+    The half-sizes are derived from the principal inertia eigenvalues
+    (*I₀*, *I₁*, *I₂*) and volume *V* of the mesh:
+
+    .. math::
+
+        h_i = \\tfrac{1}{2}\\sqrt{\\frac{6\\,(I_j + I_k - I_i)}{V}}
+
+    where *(i, j, k)* is a cyclic permutation of *(0, 1, 2)*.
+
+    Args:
+        vertices: Vertex positions, shape ``(N, 3)``.
+        indices: Triangle indices (flattened or ``(M, 3)``).
+        is_solid: If ``True`` treat the mesh as solid; otherwise as a thin
+            shell (see :func:`compute_inertia_mesh`).
+
+    Returns:
+        Tuple of ``(center, half_extents, rotation)`` where *center* is the
+        center of mass, *half_extents* are the box half-sizes along the
+        principal axes (not necessarily sorted), and *rotation* is the
+        quaternion rotating from the principal-axis frame to the mesh frame.
+    """
+    _mass, com, inertia_tensor, volume = compute_inertia_mesh(
+        density=1.0,
+        vertices=vertices.tolist() if isinstance(vertices, np.ndarray) else vertices,
+        indices=np.asarray(indices).flatten().tolist(),
+        is_solid=is_solid,
+    )
+
+    if volume < 1e-12:
+        return wp.vec3(0.0, 0.0, 0.0), wp.vec3(0.0, 0.0, 0.0), wp.quat_identity()
+
+    inertia = np.array(inertia_tensor).reshape(3, 3)
+    eigvals, eigvecs = np.linalg.eigh(inertia)
+
+    # Sort eigenvalues (and eigenvectors) in ascending order.
+    order = np.argsort(eigvals)
+    eigvals = eigvals[order]
+    eigvecs = eigvecs[:, order]
+
+    # Ensure right-handed frame.
+    if np.linalg.det(eigvecs) < 0:
+        eigvecs[:, 0] = -eigvecs[:, 0]
+
+    # Derive equivalent box half-sizes from principal inertia eigenvalues.
+    half_extents = np.zeros(3)
+    for i in range(3):
+        j, k = (i + 1) % 3, (i + 2) % 3
+        arg = 6.0 * (eigvals[j] + eigvals[k] - eigvals[i]) / volume
+        half_extents[i] = 0.5 * np.sqrt(max(arg, 0.0))
+
+    # Convert the eigenvector matrix (columns = principal axes in mesh frame)
+    # to a quaternion.
+    rotation = wp.quat_from_matrix(wp.mat33(*eigvecs.T.flatten().tolist()))
+
+    return wp.vec3(*np.array(com)), wp.vec3(*half_extents), rotation
+
+
+def compute_pca_obb(vertices: np.ndarray) -> tuple[wp.transform, wp.vec3]:
     """Compute the oriented bounding box of a set of vertices.
 
     Args:
@@ -205,7 +261,7 @@ def compute_pca_obb(vertices: nparray) -> tuple[wp.transform, wp.vec3]:
 
 
 def compute_inertia_obb(
-    vertices: nparray,
+    vertices: np.ndarray,
     num_angle_steps: int = 360,
 ) -> tuple[wp.transform, wp.vec3]:
     """
@@ -608,7 +664,7 @@ def remesh(
     method: RemeshingMethod = "quadratic",
     visualize: bool = False,
     **remeshing_kwargs: Any,
-) -> tuple[nparray, nparray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Remeshes a 3D triangular surface mesh using the specified method.
 
@@ -687,7 +743,7 @@ def remesh_mesh(
     return mesh
 
 
-def transform_points(points: nparray, transform: wp.transform, scale: Vec3 | None = None) -> nparray:
+def transform_points(points: np.ndarray, transform: wp.transform, scale: Vec3 | None = None) -> np.ndarray:
     if scale is not None:
         points = points * np.array(scale, dtype=np.float32)
     return points @ np.array(wp.quat_to_matrix(transform.q)).reshape(3, 3) + transform.p
@@ -695,11 +751,11 @@ def transform_points(points: nparray, transform: wp.transform, scale: Vec3 | Non
 
 @wp.kernel(enable_backward=False)
 def get_total_kernel(
-    counts: wp.array(dtype=int),
-    prefix_sums: wp.array(dtype=int),
-    num_elements: wp.array(dtype=int),
+    counts: wp.array[int],
+    prefix_sums: wp.array[int],
+    num_elements: wp.array[int],
     max_elements: int,
-    total: wp.array(dtype=int),
+    total: wp.array[int],
 ):
     """
     Get the total of an array of counts and prefix sums.
@@ -715,10 +771,10 @@ def get_total_kernel(
 
 
 def scan_with_total(
-    counts: wp.array(dtype=int),
-    prefix_sums: wp.array(dtype=int),
-    num_elements: wp.array(dtype=int),
-    total: wp.array(dtype=int),
+    counts: wp.array[int],
+    prefix_sums: wp.array[int],
+    num_elements: wp.array[int],
+    total: wp.array[int],
 ):
     """
     Computes an exclusive prefix sum and total of a counts array.
@@ -735,6 +791,7 @@ def scan_with_total(
         dim=[1],
         inputs=[counts, prefix_sums, num_elements, counts.shape[0], total],
         device=counts.device,
+        record_tape=False,
     )
 
 

@@ -1,18 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
+import ast
 import importlib
 import os
 import warnings
@@ -36,6 +25,20 @@ def get_asset_directory() -> str:
 
 def get_asset(filename: str) -> str:
     return os.path.join(get_asset_directory(), filename)
+
+
+def _enable_example_deprecation_warnings() -> None:
+    """Show Newton deprecations during example runs.
+
+    Skipped when ``PYTHONWARNINGS`` is already set so that
+    ``test_examples.py`` (or a user) can escalate warnings to errors
+    without this filter overriding their policy.
+    """
+    if "PYTHONWARNINGS" in os.environ or getattr(_enable_example_deprecation_warnings, "_installed", False):
+        return
+
+    warnings.filterwarnings("default", category=DeprecationWarning, module=r"newton(\.|$)")
+    _enable_example_deprecation_warnings._installed = True
 
 
 def download_external_git_folder(git_url: str, folder_path: str, force_refresh: bool = False):
@@ -77,11 +80,11 @@ def test_body_state(
 
     @wp.kernel
     def test_fn_kernel(
-        body_q: wp.array(dtype=wp.transform),
-        body_qd: wp.array(dtype=wp.spatial_vector),
-        indices: wp.array(dtype=int),
+        body_q: wp.array[wp.transform],
+        body_qd: wp.array[wp.spatial_vector],
+        indices: wp.array[int],
         # output
-        failures: wp.array(dtype=bool),
+        failures: wp.array[bool],
     ):
         world_id = wp.tid()
         index = indices[world_id]
@@ -149,11 +152,11 @@ def test_particle_state(
 
     @wp.kernel
     def test_fn_kernel(
-        particle_q: wp.array(dtype=wp.vec3),
-        particle_qd: wp.array(dtype=wp.vec3),
-        indices: wp.array(dtype=int),
+        particle_q: wp.array[wp.vec3],
+        particle_qd: wp.array[wp.vec3],
+        indices: wp.array[int],
         # output
-        failures: wp.array(dtype=bool),
+        failures: wp.array[bool],
     ):
         world_id = wp.tid()
         index = indices[world_id]
@@ -250,6 +253,15 @@ class _ExampleBrowser:
         return new_example
 
 
+def _format_fps(fps: float) -> str:
+    """Format an FPS value with sufficient significant digits."""
+    if fps >= 10:
+        return f"{fps:.1f}"
+    if fps >= 1:
+        return f"{fps:.2f}"
+    return f"{fps:.3f}"
+
+
 def run(example, args):
     viewer = example.viewer
     example_class = type(example)
@@ -293,6 +305,13 @@ def run(example, args):
             raise NotImplementedError("Example does not have a test_final or test_post_step method")
 
     viewer.close()
+
+    if hasattr(viewer, "benchmark_result"):
+        result = viewer.benchmark_result()
+        if result is not None:
+            print(
+                f"Benchmark: {_format_fps(result['fps'])} FPS ({result['frames']} frames in {result['elapsed']:.2f}s)"
+            )
 
     if perform_test:
         # generic tests for finiteness of Newton objects
@@ -388,6 +407,12 @@ def get_examples() -> dict[str, str]:
     return example_map
 
 
+def _print_examples(examples: dict[str, str]) -> None:
+    print("Available examples:")
+    for name in examples:
+        print(f"  {name}")
+
+
 def create_parser():
     """Create a base argument parser with common parameters for Newton examples.
 
@@ -435,6 +460,28 @@ def create_parser():
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Suppress Warp compilation messages.",
+    )
+    parser.add_argument(
+        "--benchmark",
+        type=int,
+        default=False,
+        nargs="?",
+        const=None,
+        metavar="SECONDS",
+        help="Run in benchmark mode: measure FPS after a warmup period. If SECONDS is given, stop after that many seconds or --num-frames, whichever comes first.",
+    )
+    parser.add_argument(
+        "--warp-config",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Override a warp.config attribute (repeatable).",
+    )
+    parser.add_argument(
+        "--realtime",
+        action="store_true",
+        default=False,
+        help="Use the most aggressive process priority in benchmark mode.",
     )
 
     return parser
@@ -499,6 +546,80 @@ def default_args(parser=None):
     return parser.parse_known_args([])[0]
 
 
+def _apply_warp_config(parser, args):
+    """Apply ``--warp-config`` overrides to :obj:`warp.config`.
+
+    Each entry in ``args.warp_config`` must have the form ``KEY=VALUE``.  The
+    key is validated to be an existing attribute of :obj:`warp.config`.  The
+    value is parsed with :func:`ast.literal_eval`; if that fails the raw
+    string is kept.
+
+    Args:
+        parser: The argument parser, used for error reporting.
+        args: Parsed argument namespace containing ``warp_config``.
+    """
+    if not args.warp_config:
+        return
+
+    for entry in args.warp_config:
+        if "=" not in entry:
+            parser.error(f"invalid --warp-config format '{entry}': expected KEY=VALUE")
+
+        key, value_str = entry.split("=", 1)
+
+        if not hasattr(wp.config, key):
+            parser.error(f"invalid --warp-config key '{key}': not a recognized warp.config setting")
+
+        try:
+            value = ast.literal_eval(value_str)
+        except (ValueError, SyntaxError):
+            value = value_str
+
+        setattr(wp.config, key, value)
+
+
+def _raise_benchmark_priority(realtime=False):
+    """Raise process/thread priority for stable benchmark measurements.
+
+    When *realtime* is True, try to use the most aggressive process priority; failure to raise priority is a fatal error.
+    """
+    import sys  # noqa: PLC0415
+
+    def _fail(msg):
+        if realtime:
+            raise SystemExit(f"Error: {msg}")
+        print(f"Warning: Benchmark running at default process priority. Results may vary. {msg}")
+
+    if sys.platform == "win32":
+        try:
+            import psutil  # noqa: PLC0415
+
+            priority = psutil.REALTIME_PRIORITY_CLASS if realtime else psutil.HIGH_PRIORITY_CLASS
+            psutil.Process().nice(priority)
+        except ModuleNotFoundError:
+            _fail("Install 'psutil' to automatically raise priority.")
+    elif sys.platform == "linux":
+        try:
+            os.nice(-20 if realtime else -15)
+        except PermissionError:
+            _fail("Run with elevated privileges to automatically raise priority.")
+    elif sys.platform == "darwin":
+        import ctypes  # noqa: PLC0415
+        import ctypes.util  # noqa: PLC0415
+
+        try:
+            libsystem = ctypes.CDLL(ctypes.util.find_library("System"))
+            # From <sys/qos.h>
+            QOS_CLASS_USER_INITIATED = 0x19
+            QOS_CLASS_USER_INTERACTIVE = 0x21
+            qos = QOS_CLASS_USER_INTERACTIVE if realtime else QOS_CLASS_USER_INITIATED
+            rc = libsystem.pthread_set_qos_class_self_np(qos, 0)
+            if rc != 0:
+                _fail(f"Failed to automatically raise priority (error {rc}).")
+        except OSError as e:
+            _fail(f"Failed to automatically raise priority: {e}")
+
+
 def init(parser=None):
     """Initialize Newton example components from parsed arguments.
 
@@ -516,6 +637,8 @@ def init(parser=None):
 
     import newton.viewer  # noqa: PLC0415
 
+    _enable_example_deprecation_warnings()
+
     # parse args
     if parser is None:
         parser = create_parser()
@@ -524,6 +647,9 @@ def init(parser=None):
         # When parser is provided, use parse_args() to properly handle --help
         args = parser.parse_args()
 
+    # Apply --warp-config overrides before any Warp API calls
+    _apply_warp_config(parser, args)
+
     # Suppress Warp compilation messages if requested
     if args.quiet:
         wp.config.quiet = True
@@ -531,6 +657,11 @@ def init(parser=None):
     # Set device if specified
     if args.device:
         wp.set_device(args.device)
+
+    # Benchmark mode forces null viewer and raises process/thread priority
+    if args.benchmark is not False:
+        args.viewer = "null"
+        _raise_benchmark_priority(realtime=args.realtime)
 
     # Create viewer based on type
     if args.viewer == "gl":
@@ -542,7 +673,11 @@ def init(parser=None):
     elif args.viewer == "rerun":
         viewer = newton.viewer.ViewerRerun(address=args.rerun_address)
     elif args.viewer == "null":
-        viewer = newton.viewer.ViewerNull(num_frames=args.num_frames)
+        viewer = newton.viewer.ViewerNull(
+            num_frames=args.num_frames,
+            benchmark=args.benchmark is not False,
+            benchmark_timeout=args.benchmark or None,
+        )
     elif args.viewer == "viser":
         viewer = newton.viewer.ViewerViser()
     else:
@@ -575,22 +710,31 @@ def main():
     import runpy  # noqa: PLC0415
     import sys  # noqa: PLC0415
 
+    _enable_example_deprecation_warnings()
+
     examples = get_examples()
 
-    if len(sys.argv) < 2:
-        print("Usage: python -m newton.examples <example_name>")
-        print("\nAvailable examples:")
-        for name in examples:
-            print(f"  {name}")
-        sys.exit(1)
+    if len(sys.argv) >= 2 and sys.argv[1] in ("-h", "--help"):
+        print("Usage: python -m newton.examples <example_name> [options]")
+        print("       python -m newton.examples          # run default basic_pendulum")
+        print("       python -m newton.examples --list   # print available examples")
+        print()
+        print("Run 'python -m newton.examples <example_name> --help' to see the")
+        print("options supported by a given example.")
+        sys.exit(0)
 
-    example_name = sys.argv[1]
+    if len(sys.argv) >= 2 and sys.argv[1] == "--list":
+        _print_examples(examples)
+        sys.exit(0)
+
+    if len(sys.argv) < 2:
+        example_name = "basic_pendulum"
+    else:
+        example_name = sys.argv[1]
 
     if example_name not in examples:
-        print(f"Error: Unknown example '{example_name}'")
-        print("\nAvailable examples:")
-        for name in examples:
-            print(f"  {name}")
+        print(f"Error: Unknown example '{example_name}'\n")
+        _print_examples(examples)
         sys.exit(1)
 
     # Set up sys.argv for the target script

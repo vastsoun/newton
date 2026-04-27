@@ -1,17 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """KAMINO: Linear Algebra: Blocked Semi-Sparse LLT (i.e. Cholesky) factorization using Warp's Tile API."""
 
@@ -80,7 +68,7 @@ def compute_inverse_ordering(ordering):
     return inv_ordering
 
 
-@wp.kernel
+@wp.kernel(enable_backward=False)
 def reorder_rows_kernel(
     src: wp.array3d(dtype=float),
     dst: wp.array3d(dtype=float),
@@ -98,7 +86,7 @@ def reorder_rows_kernel(
         dst[batch_id, i, j] = src[batch_id, src_row, src_col]
 
 
-@wp.kernel
+@wp.kernel(enable_backward=False)
 def reorder_rows_kernel_col_vector(
     src: wp.array3d(dtype=float),
     dst: wp.array3d(dtype=float),
@@ -177,7 +165,7 @@ def symbolic_cholesky_dense(M, tile_size):
 
 @cache
 def create_blocked_cholesky_kernel(block_size: int):
-    @wp.kernel
+    @wp.kernel(enable_backward=False)
     def blocked_cholesky_kernel(
         A_batched: wp.array(dtype=float, ndim=3),
         L_batched: wp.array(dtype=float, ndim=3),
@@ -304,7 +292,7 @@ def create_blocked_cholesky_kernel(block_size: int):
 
 @cache
 def create_blocked_cholesky_solve_kernel(block_size: int):
-    @wp.kernel
+    @wp.kernel(enable_backward=False)
     def blocked_cholesky_solve_kernel(
         L_batched: wp.array(dtype=float, ndim=3),
         L_tile_pattern_batched: wp.array(dtype=int, ndim=3),

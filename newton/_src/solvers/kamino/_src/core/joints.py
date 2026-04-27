@@ -1889,113 +1889,151 @@ class JointsModel:
 
     coords_offset: wp.array | None = None
     """
-    Index offset of each joint's coordinates w.r.t the start
-    index of joint coordinates of the corresponding world.\n
+    Index offset of each joint's coordinates block, in model-wide
+    flattened joint coordinates arrays.
 
     Used to index into joint-specific blocks of:
     - array of initial joint generalized coordinates :attr:`JointsModel.q_j_0`
     - array of joint generalized coordinates :attr:`JointsData.q_j`
     - array of previous joint generalized coordinates :attr:`JointsData.q_j_p`
 
-    Shape of ``(num_joints,)`` and type :class:`int`.
+    Shape of ``(num_joints + 1,)`` and type :class:`int`.
+
+    The last entry is the total coordinates count, so that the per-joint
+    coordinates count is encoded as ``coords_offset[j+1] - coords_offset[j]``.
     """
 
     dofs_offset: wp.array | None = None
     """
-    Index offset of each joint's DoFs w.r.t the start
-    index of joint DoFs of the corresponding world.
+    Index offset of each joint's DoFs block, in model-wide
+    flattened joint DoFs arrays.
 
     Used to index into joint-specific blocks of:
     - array of initial joint generalized velocities :attr:`JointsModel.dq_j_0`
     - array of joint generalized velocities :attr:`JointsData.dq_j`
     - array of joint generalized forces :attr:`JointsData.tau_j`
 
-    Shape of ``(num_joints,)`` and type :class:`int`.
+    Shape of ``(num_joints + 1,)`` and type :class:`int`.
+
+    The last entry is the total DoFs count, so that the per-joint
+    DoFs count is encoded as ``dofs_offset[j+1] - dofs_offset[j]``.
     """
 
     passive_coords_offset: wp.array | None = None
     """
-    Index offset of each joint's passive coordinates w.r.t the start
-    index of passive joint coordinates of the corresponding world.\n
-    Used to index into passive-specific blocks of flattened passive joint coordinates arrays.\n
-    Shape of ``(num_joints,)`` and type :class:`int`.
+    Index offset of each joint's passive coordinates block, in model-wide
+    flattened passive joint coordinates arrays.
+
+    Shape of ``(num_joints + 1,)`` and type :class:`int`.
+
+    The last entry is the total passive coordinates count, so that the per-joint
+    passive coordinates count is encoded as ``passive_coords_offset[j+1] - passive_coords_offset[j]``.
     """
 
     passive_dofs_offset: wp.array | None = None
     """
-    Index offset of each joint's passive DoFs w.r.t the start
-    index of passive joint DoFs of the corresponding world.\n
-    Used to index into passive-specific blocks of flattened passive joint coordinates and DoFs arrays.\n
-    Shape of ``(num_joints,)`` and type :class:`int`.
+    Index offset of each joint's passive DoFs block, in model-wide
+    flattened passive joint DoFs arrays.
+
+    Shape of ``(num_joints + 1,)`` and type :class:`int`.
+
+    The last entry is the total passive DoFs count, so that the per-joint
+    passive DoFs count is encoded as ``passive_dofs_offset[j+1] - passive_dofs_offset[j]``.
     """
 
     actuated_coords_offset: wp.array | None = None
     """
-    Index offset of each joint's actuated coordinates w.r.t the start
-    index of actuated joint coordinates of the corresponding world.\n
-    Used to index into actuator-specific blocks of flattened actuator coordinates arrays.\n
-    Shape of ``(num_joints,)`` and type :class:`int`.
+    Index offset of each joint's actuated coordinates block, in model-wide
+    flattened actuated joint coordinates arrays.
+
+    Shape of ``(num_joints + 1,)`` and type :class:`int`.
+
+    The last entry is the total actuated coordinates count, so that the per-joint
+    actuated coordinates count is encoded as ``actuated_coords_offset[j+1] - actuated_coords_offset[j]``.
     """
 
     actuated_dofs_offset: wp.array | None = None
     """
-    Index offset of each joint's actuated DoFs w.r.t the start
-    index of actuated joint DoFs of the corresponding world.\n
-    Used to index into actuator-specific blocks of flattened actuator DoFs arrays.\n
-    Shape of ``(num_joints,)`` and type :class:`int`.
+    Index offset of each joint's actuated DoFs block, in model-wide
+    flattened actuated joint DoFs arrays.
+
+    Shape of ``(num_joints + 1,)`` and type :class:`int`.
+
+    The last entry is the total actuated DoFs count, so that the per-joint
+    actuated DoFs count is encoded as ``actuated_dofs_offset[j+1] - actuated_dofs_offset[j]``.
     """
 
     cts_offset: wp.array | None = None
     """
-    Index offset of each joint's constraints w.r.t the start
-    index of constraints of the corresponding world.
+    Index offset of each joint's constraints block, in model-wide
+    flattened joint constraints arrays (dynamic + kinematic).
 
-    Shape of ``(num_joints,)`` and type :class:`int`.
+    Shape of ``(num_joints + 1,)`` and type :class:`int`.
 
-    Used together with :attr:`ModelKaminoInfo.joint_cts_offset`
-    to index into the joint-specific blocks of:
-    - array of joint constraint Lagrange multipliers `lambda_j`
-
-    For a joint `j` of world `w`, its constraint multipliers can be accessed as:
-    ```
-    # Retrieve dimensions and start indices
-    joint_num_cts = model.joints.num_cts[j]
-    world_cts_start_idx = model.info.joint_cts_offset[w]
-    joint_cts_start_idx = model.joints.cts_offset[j]
-
-    # Compute the start and end indices for the joint's constraints
-    start_idx = world_cts_start_idx + joint_cts_start_idx
-    end_idx = start_idx + joint_num_cts
-
-    # Access the joint's constraint multipliers
-    lambda_j = lambda_j[start_idx:end_idx]
-    ```
+    The last entry is the total joint constraints count, so that the per-joint
+    constraints count is encoded as ``cts_offset[j+1] - cts_offset[j]``.
     """
 
     dynamic_cts_offset: wp.array | None = None
     """
-    Index offset of each joint's dynamic constraints w.r.t the start
-    index of dynamic joint constraints of the corresponding world.\n
+    Index offset of each joint's dynamic constraints block, in model-wide
+    flattened joint dynamic constraints arrays.
 
-        Used together with :attr:`ModelKaminoInfo.joint_dynamic_cts_offset`
-        to index into the joint-specific blocks of:
+    Used to index into joint-specific blocks of:
     - array of effective joint-space inertia :attr:`JointsData.m_j`
     - array of joint-space damping :attr:`JointsData.b_j`
     - array of joint-space P gains :attr:`JointsData.k_p_j`
     - array of joint-space D gains :attr:`JointsData.k_d_j`
 
-    Shape of ``(num_joints,)`` and type :class:`int`.
+    Shape of ``(num_joints + 1,)`` and type :class:`int`.
+
+    The last entry is the total joint dynamic constraints count, so that the per-joint
+    dynamic constraints count is encoded as ``dynamic_cts_offset[j+1] - dynamic_cts_offset[j]``.
     """
 
     kinematic_cts_offset: wp.array | None = None
     """
-    Index offset of each joint's kinematic constraints w.r.t the start
-    index of kinematic joint constraints of the corresponding world.\n
+    Index offset of each joint's kinematic constraints block, in model-wide
+    flattened joint kinematic constraints arrays.
 
-    Used together with :attr:`ModelKaminoInfo.joint_kinematic_cts_offset`
-    to index into the joint-specific blocks of:
+    Used to index into joint-specific blocks of:
     - array of joint constraint residuals :attr:`JointsData.r_j`
     - array of joint constraint residual time-derivatives :attr:`JointsData.dr_j`
+
+    Shape of ``(num_joints + 1,)`` and type :class:`int`.
+
+    The last entry is the total joint kinematic constraints count, so that the per-joint
+    kinematic constraints count is encoded as ``kinematic_cts_offset[j+1] - kinematic_cts_offset[j]``.
+    """
+
+    dynamic_cts_offset_joint_cts: wp.array | None = None
+    """
+    Index offset of each joint's dynamic constraints block, in model-wide
+    flattened joint constraints arrays.
+
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
+
+    kinematic_cts_offset_joint_cts: wp.array | None = None
+    """
+    Index offset of each joint's kinematic constraints block, in model-wide
+    flattened joint constraints arrays.
+
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
+
+    dynamic_cts_offset_total_cts: wp.array | None = None
+    """
+    Index offset of each joint's dynamic constraints block, in model-wide
+    flattened total constraints arrays (joints + limits + contacts).
+
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    """
+
+    kinematic_cts_offset_total_cts: wp.array | None = None
+    """
+    Index offset of each joint's kinematic constraints block, in model-wide
+    flattened total constraints arrays (joints + limits + contacts).
 
     Shape of ``(num_joints,)`` and type :class:`int`.
     """

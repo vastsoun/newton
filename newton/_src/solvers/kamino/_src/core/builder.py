@@ -1125,7 +1125,8 @@ class ModelBuilderKamino:
         # A helper function to collect model joints data
         def collect_joint_model_data():
             for joint in self.all_joints:
-                world_bio = self._worlds[joint.wid].bodies_idx_offset
+                world = self._worlds[joint.wid]
+                world_bio = world.bodies_idx_offset
                 joints_label.append(joint.name)
                 joints_wid.append(joint.wid)
                 joints_jid.append(joint.jid)
@@ -1149,17 +1150,28 @@ class ModelBuilderKamino:
                 joints_ncts_j.append(joint.num_cts)
                 joints_ndyncts_j.append(joint.num_dynamic_cts)
                 joints_nkincts_j.append(joint.num_kinematic_cts)
-                joints_q_start.append(joint.coords_offset)
-                joints_dq_start.append(joint.dofs_offset)
-                joints_pq_start.append(joint.passive_coords_offset)
-                joints_pdq_start.append(joint.passive_dofs_offset)
-                joints_aq_start.append(joint.actuated_coords_offset)
-                joints_adq_start.append(joint.actuated_dofs_offset)
-                joints_cts_start.append(joint.cts_offset)
-                joints_dcts_start.append(joint.dynamic_cts_offset)
-                joints_kcts_start.append(joint.kinematic_cts_offset)
+                joints_q_start.append(joint.coords_offset + world.joint_coords_idx_offset)
+                joints_dq_start.append(joint.dofs_offset + world.joint_dofs_idx_offset)
+                joints_pq_start.append(joint.passive_coords_offset + world.joint_passive_coords_idx_offset)
+                joints_pdq_start.append(joint.passive_dofs_offset + world.joint_passive_dofs_idx_offset)
+                joints_aq_start.append(joint.actuated_coords_offset + world.joint_actuated_coords_idx_offset)
+                joints_adq_start.append(joint.actuated_dofs_offset + world.joint_actuated_dofs_idx_offset)
+                joints_cts_start.append(joint.cts_offset + world.joint_cts_idx_offset)
+                joints_dcts_start.append(joint.dynamic_cts_offset + world.joint_dynamic_cts_idx_offset)
+                joints_kcts_start.append(joint.kinematic_cts_offset + world.joint_kinematic_cts_idx_offset)
                 joints_bid_B.append(joint.bid_B + world_bio if joint.bid_B >= 0 else -1)
                 joints_bid_F.append(joint.bid_F + world_bio if joint.bid_F >= 0 else -1)
+
+            # Append the N+1 entry (grand total) to each offset list
+            joints_q_start.append(self._num_joint_coords)
+            joints_dq_start.append(self._num_joint_dofs)
+            joints_pq_start.append(self._num_joint_passive_coords)
+            joints_pdq_start.append(self._num_joint_passive_dofs)
+            joints_aq_start.append(self._num_joint_actuated_coords)
+            joints_adq_start.append(self._num_joint_actuated_dofs)
+            joints_cts_start.append(self._num_joint_cts)
+            joints_dcts_start.append(self._num_joint_dynamic_cts)
+            joints_kcts_start.append(self._num_joint_kinematic_cts)
 
         # A helper function to collect model collision geometries data
         def collect_geometry_model_data():
@@ -1261,6 +1273,9 @@ class ModelBuilderKamino:
             sum_of_max_total_cts=self._num_joint_cts,
             max_of_max_total_cts=max([world.num_joint_cts for world in self._worlds]),
         )
+
+        # Append total number of bodies to body offsets
+        info_bio.append(model_size.sum_of_num_bodies)
 
         ###
         # Collision detection and contact-allocation meta-data

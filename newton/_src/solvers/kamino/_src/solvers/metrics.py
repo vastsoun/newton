@@ -662,12 +662,12 @@ def _compute_eom_residual(
 @wp.kernel
 def _compute_joint_kinematics_residual_dense(
     # Inputs:
-    model_info_num_body_dofs: wp.array(dtype=int32),
     model_info_bodies_offset: wp.array(dtype=int32),
+    model_info_total_cts_offset: wp.array(dtype=int32),
     model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     model_joint_wid: wp.array(dtype=int32),
     model_joint_num_kinematic_cts: wp.array(dtype=int32),
-    model_joint_kinematic_cts_offset: wp.array(dtype=int32),
+    model_joint_kinematic_cts_offset_total_cts: wp.array(dtype=int32),
     model_joint_bid_B: wp.array(dtype=int32),
     model_joint_bid_F: wp.array(dtype=int32),
     data_bodies_u_i: wp.array(dtype=vec6f),
@@ -690,11 +690,11 @@ def _compute_joint_kinematics_residual_dense(
 
     # Retrieve the size and index offset of the joint constraint
     num_cts_j = model_joint_num_kinematic_cts[jid]
-    cts_offset_j = model_joint_kinematic_cts_offset[jid]
+    cts_offset_j = model_joint_kinematic_cts_offset_total_cts[jid] - model_info_total_cts_offset[wid]
 
     # Retrieve the world-specific info
-    nbd = model_info_num_body_dofs[wid]
     bio = model_info_bodies_offset[wid]
+    nbd = 6 * (model_info_bodies_offset[wid + 1] - bio)
     kgo = model_info_joint_kinematic_cts_group_offset[wid]
     mio = jacobian_cts_offset[wid]
 
@@ -703,14 +703,14 @@ def _compute_joint_kinematics_residual_dense(
     u_i_F = data_bodies_u_i[bid_F_j]
     dio_F = 6 * (bid_F_j - bio)
     for j in range(num_cts_j):
-        mio_j = mio + nbd * (kgo + cts_offset_j + j) + dio_F
+        mio_j = mio + nbd * (cts_offset_j + j) + dio_F
         for i in range(6):
             j_v_j[j] += jacobian_cts_data[mio_j + i] * u_i_F[i]
     if bid_B_j >= 0:
         u_i_B = data_bodies_u_i[bid_B_j]
         dio_B = 6 * (bid_B_j - bio)
         for j in range(num_cts_j):
-            mio_j = mio + nbd * (kgo + cts_offset_j + j) + dio_B
+            mio_j = mio + nbd * (cts_offset_j + j) + dio_B
             for i in range(6):
                 j_v_j[j] += jacobian_cts_data[mio_j + i] * u_i_B[i]
 
@@ -720,13 +720,14 @@ def _compute_joint_kinematics_residual_dense(
     # Update the per-world maximum residual and argmax index
     previous_max = wp.atomic_max(metric_r_kinematics, wid, r_kinematics_j)
     if r_kinematics_j >= previous_max:
-        argmax_key = int64(build_pair_key2(uint32(jid), uint32(cts_offset_j)))
+        argmax_key = int64(build_pair_key2(uint32(jid), uint32(cts_offset_j - kgo)))
         wp.atomic_exch(metric_r_kinematics_argmax, wid, argmax_key)
 
 
 @wp.kernel
 def _compute_joint_kinematics_residual_sparse(
     # Inputs:
+    model_info_joint_kinematic_cts_offset: wp.array(dtype=int32),
     model_joint_wid: wp.array(dtype=int32),
     model_joint_num_dynamic_cts: wp.array(dtype=int32),
     model_joint_num_kinematic_cts: wp.array(dtype=int32),
@@ -754,7 +755,7 @@ def _compute_joint_kinematics_residual_sparse(
     # Retrieve the size and index offset of the joint constraint
     num_dyn_cts_j = model_joint_num_dynamic_cts[jid]
     num_kin_cts_j = model_joint_num_kinematic_cts[jid]
-    kin_cts_offset_j = model_joint_kinematic_cts_offset[jid]
+    kin_cts_offset_j = model_joint_kinematic_cts_offset[jid] - model_info_joint_kinematic_cts_offset[wid]
 
     # Retrieve the starting index for the non-zero blocks for the current joint
     jac_j_nzb_start = jac_joint_nzb_offsets[jid] + (2 * num_dyn_cts_j if bid_B_j >= 0 else num_dyn_cts_j)
@@ -799,11 +800,7 @@ def _compute_cts_joints_residual(
     # Retrieve the joint-specific model data
     wid = model_joint_wid[jid]
     num_cts_j = model_joint_num_kinematic_cts[jid]
-    cts_offset_j = model_joint_kinematic_cts_offset[jid]
-
-    # Compute the global constraint index offset for the specific joint
-    world_kinematic_cts_offset = model_info_joint_kinematic_cts_offset[wid]
-    cio_j = world_kinematic_cts_offset + cts_offset_j
+    cio_j = model_joint_kinematic_cts_offset[jid]
 
     # Compute the per-joint constraint residual (infinity-norm)
     r_cts_joints_j = float32(0.0)
@@ -813,7 +810,8 @@ def _compute_cts_joints_residual(
     # Update the per-world maximum residual and argmax index
     previous_max = wp.atomic_max(metric_r_cts_joints, wid, r_cts_joints_j)
     if r_cts_joints_j >= previous_max:
-        argmax_key = int64(build_pair_key2(uint32(jid), uint32(cts_offset_j)))
+        cio_j_loc = cio_j - model_info_joint_kinematic_cts_offset[wid]
+        argmax_key = int64(build_pair_key2(uint32(jid), uint32(cio_j_loc)))
         wp.atomic_exch(metric_r_cts_joints_argmax, wid, argmax_key)
 
 
@@ -1403,12 +1401,12 @@ class SolutionMetrics:
                     dim=model.size.sum_of_num_joints,
                     inputs=[
                         # Inputs:
-                        model.info.num_body_dofs,
                         model.info.bodies_offset,
+                        model.info.total_cts_offset,
                         model.info.joint_kinematic_cts_group_offset,
                         model.joints.wid,
                         model.joints.num_kinematic_cts,
-                        model.joints.kinematic_cts_offset,
+                        model.joints.kinematic_cts_offset_total_cts,
                         model.joints.bid_B,
                         model.joints.bid_F,
                         data.bodies.u_i,
@@ -1427,6 +1425,7 @@ class SolutionMetrics:
                     dim=model.size.sum_of_num_joints,
                     inputs=[
                         # Inputs:
+                        model.info.joint_kinematic_cts_offset,
                         model.joints.wid,
                         model.joints.num_dynamic_cts,
                         model.joints.num_kinematic_cts,

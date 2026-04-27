@@ -162,20 +162,13 @@ def _reset_body_state_from_base(
 def _reset_joint_state_of_select_worlds(
     # Inputs:
     world_mask: wp.array(dtype=int32),
-    model_info_joint_coords_offset: wp.array(dtype=int32),
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_cts_offset: wp.array(dtype=int32),
-    model_info_joint_dynamic_cts_group_offset: wp.array(dtype=int32),
-    model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     model_joint_wid: wp.array(dtype=int32),
-    model_joint_num_coords: wp.array(dtype=int32),
-    model_joint_num_dofs: wp.array(dtype=int32),
     model_joint_num_dynamic_cts: wp.array(dtype=int32),
     model_joint_num_kinematic_cts: wp.array(dtype=int32),
     model_joint_coords_offset: wp.array(dtype=int32),
     model_joint_dofs_offset: wp.array(dtype=int32),
-    model_joint_dynamic_cts_offset: wp.array(dtype=int32),
-    model_joint_kinematic_cts_offset: wp.array(dtype=int32),
+    model_joint_dynamic_cts_offset_joint_cts: wp.array(dtype=int32),
+    model_joint_kinematic_cts_offset_joint_cts: wp.array(dtype=int32),
     model_joint_q_j_ref: wp.array(dtype=float32),
     # Outputs:
     state_q_j: wp.array(dtype=float32),
@@ -194,27 +187,14 @@ def _reset_joint_state_of_select_worlds(
         return
 
     # Retrieve the joint model data
-    num_coords = model_joint_num_coords[jid]
-    num_dofs = model_joint_num_dofs[jid]
+    coords_offset = model_joint_coords_offset[jid]
+    num_coords = model_joint_coords_offset[jid + 1] - coords_offset
+    dofs_offset = model_joint_dofs_offset[jid]
+    num_dofs = model_joint_dofs_offset[jid + 1] - dofs_offset
+    dynamic_cts_offset = model_joint_dynamic_cts_offset_joint_cts[jid]
+    kinematic_cts_offset = model_joint_kinematic_cts_offset_joint_cts[jid]
     num_dynamic_cts = model_joint_num_dynamic_cts[jid]
     num_kinematic_cts = model_joint_num_kinematic_cts[jid]
-    coords_offset = model_joint_coords_offset[jid]
-    dofs_offset = model_joint_dofs_offset[jid]
-    dynamic_cts_offset = model_joint_dynamic_cts_offset[jid]
-    kinematic_cts_offset = model_joint_kinematic_cts_offset[jid]
-
-    # Retrieve the index offsets of the joint's constraint and DoF dimensions
-    world_joint_coords_offset = model_info_joint_coords_offset[wid]
-    world_joint_dofs_offset = model_info_joint_dofs_offset[wid]
-    world_joint_cts_offset = model_info_joint_cts_offset[wid]
-    world_joint_dynamic_cts_group_offset = model_info_joint_dynamic_cts_group_offset[wid]
-    world_joint_kinematic_cts_group_offset = model_info_joint_kinematic_cts_group_offset[wid]
-
-    # Append the index offsets of the world's joint blocks
-    coords_offset += world_joint_coords_offset
-    dofs_offset += world_joint_dofs_offset
-    dynamic_cts_offset += world_joint_cts_offset + world_joint_dynamic_cts_group_offset
-    kinematic_cts_offset += world_joint_cts_offset + world_joint_kinematic_cts_group_offset
 
     # Reset all joint state data
     for j in range(num_coords):
@@ -318,14 +298,11 @@ def _reset_body_net_wrenches(
 def _reset_joint_constraint_reactions(
     # Inputs:
     world_mask: wp.array(dtype=int32),
-    model_info_joint_cts_offset: wp.array(dtype=int32),
-    model_info_joint_dynamic_cts_group_offset: wp.array(dtype=int32),
-    model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     model_joint_wid: wp.array(dtype=int32),
     model_joint_num_dynamic_cts: wp.array(dtype=int32),
     model_joint_num_kinematic_cts: wp.array(dtype=int32),
-    model_joint_dynamic_cts_offset: wp.array(dtype=int32),
-    model_joint_kinematic_cts_offset: wp.array(dtype=int32),
+    model_joint_dynamic_cts_offset_total_cts: wp.array(dtype=int32),
+    model_joint_kinematic_cts_offset_total_cts: wp.array(dtype=int32),
     # Outputs:
     lambda_j: wp.array(dtype=float32),
 ):
@@ -342,17 +319,8 @@ def _reset_joint_constraint_reactions(
     # Retrieve the joint model data
     num_dynamic_cts = model_joint_num_dynamic_cts[jid]
     num_kinematic_cts = model_joint_num_kinematic_cts[jid]
-    dynamic_cts_offset = model_joint_dynamic_cts_offset[jid]
-    kinematic_cts_offset = model_joint_kinematic_cts_offset[jid]
-
-    # Retrieve the index offsets of the joint's constraint dimensions
-    world_joint_cts_offset = model_info_joint_cts_offset[wid]
-    world_joint_dynamic_cts_group_offset = model_info_joint_dynamic_cts_group_offset[wid]
-    world_joint_kinematic_cts_group_offset = model_info_joint_kinematic_cts_group_offset[wid]
-
-    # Append the index offsets of the world's joint blocks
-    dynamic_cts_offset += world_joint_cts_offset + world_joint_dynamic_cts_group_offset
-    kinematic_cts_offset += world_joint_cts_offset + world_joint_kinematic_cts_group_offset
+    dynamic_cts_offset = model_joint_dynamic_cts_offset_total_cts[jid]
+    kinematic_cts_offset = model_joint_kinematic_cts_offset_total_cts[jid]
 
     # Reset the joint constraint reactions
     for j in range(num_dynamic_cts):
@@ -366,19 +334,14 @@ def _reset_joints_of_select_worlds(
     # Inputs:
     reset_constraints: bool,
     mask: wp.array(dtype=int32),
-    model_info_joint_coords_offset: wp.array(dtype=int32),
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_cts_offset: wp.array(dtype=int32),
-    model_info_joint_dynamic_cts_group_offset: wp.array(dtype=int32),
-    model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
     model_joint_wid: wp.array(dtype=int32),
     model_joint_dof_type: wp.array(dtype=int32),
     model_joint_num_dynamic_cts: wp.array(dtype=int32),
     model_joint_num_kinematic_cts: wp.array(dtype=int32),
     model_joint_coords_offset: wp.array(dtype=int32),
     model_joint_dofs_offset: wp.array(dtype=int32),
-    model_joint_dynamic_cts_offset: wp.array(dtype=int32),
-    model_joint_kinematic_cts_offset: wp.array(dtype=int32),
+    model_joint_dynamic_cts_offset_joint_cts: wp.array(dtype=int32),
+    model_joint_kinematic_cts_offset_joint_cts: wp.array(dtype=int32),
     model_joint_bid_B: wp.array(dtype=int32),
     model_joint_bid_F: wp.array(dtype=int32),
     model_joint_B_r_Bj: wp.array(dtype=vec3f),
@@ -415,20 +378,13 @@ def _reset_joints_of_select_worlds(
     num_kinematic_cts = model_joint_num_kinematic_cts[jid]
     coords_offset = model_joint_coords_offset[jid]
     dofs_offset = model_joint_dofs_offset[jid]
-    dynamic_cts_offset = model_joint_dynamic_cts_offset[jid]
-    kinematic_cts_offset = model_joint_kinematic_cts_offset[jid]
+    dynamic_cts_offset = model_joint_dynamic_cts_offset_joint_cts[jid]
+    kinematic_cts_offset = model_joint_kinematic_cts_offset_joint_cts[jid]
     bid_B = model_joint_bid_B[jid]
     bid_F = model_joint_bid_F[jid]
     B_r_Bj = model_joint_B_r_Bj[jid]
     F_r_Fj = model_joint_F_r_Fj[jid]
     X_j = model_joint_X_j[jid]
-
-    # Retrieve the index offsets of the joint's constraint and DoF dimensions
-    world_joint_coords_offset = model_info_joint_coords_offset[wid]
-    world_joint_dofs_offset = model_info_joint_dofs_offset[wid]
-    world_joint_cts_offset = model_info_joint_cts_offset[wid]
-    world_joint_dynamic_cts_group_offset = model_info_joint_dynamic_cts_group_offset[wid]
-    world_joint_kinematic_cts_group_offset = model_info_joint_kinematic_cts_group_offset[wid]
 
     # If the Base body is the world (bid=-1), use the identity transform (frame
     # of the world's origin), otherwise retrieve the Base body's pose and twist
@@ -441,12 +397,6 @@ def _reset_joints_of_select_worlds(
     # Retrieve the Follower body's pose and twist
     T_F_j = state_q_i[bid_F]
     u_F_j = state_u_i[bid_F]
-
-    # Append the index offsets of the world's joint blocks
-    coords_offset += world_joint_coords_offset
-    dofs_offset += world_joint_dofs_offset
-    dynamic_cts_offset += world_joint_cts_offset + world_joint_dynamic_cts_group_offset
-    kinematic_cts_offset += world_joint_cts_offset + world_joint_kinematic_cts_group_offset
 
     # Compute the joint frame pose and relative motion
     p_j, j_r_j, j_q_j, j_u_j = compute_joint_pose_and_relative_motion(T_B_j, T_F_j, u_B_j, u_F_j, B_r_Bj, F_r_Fj, X_j)
@@ -561,14 +511,11 @@ def reset_joint_constraint_reactions(
         inputs=[
             # Inputs:
             world_mask,
-            model.info.joint_cts_offset,
-            model.info.joint_dynamic_cts_group_offset,
-            model.info.joint_kinematic_cts_group_offset,
             model.joints.wid,
             model.joints.num_dynamic_cts,
             model.joints.num_kinematic_cts,
-            model.joints.dynamic_cts_offset,
-            model.joints.kinematic_cts_offset,
+            model.joints.dynamic_cts_offset_total_cts,
+            model.joints.kinematic_cts_offset_total_cts,
             # Outputs:
             lambda_j,
         ],
@@ -654,20 +601,13 @@ def reset_state_from_bodies_state(
         inputs=[
             # Inputs:
             world_mask,
-            model.info.joint_coords_offset,
-            model.info.joint_dofs_offset,
-            model.info.joint_cts_offset,
-            model.info.joint_dynamic_cts_group_offset,
-            model.info.joint_kinematic_cts_group_offset,
             model.joints.wid,
-            model.joints.num_coords,
-            model.joints.num_dofs,
             model.joints.num_dynamic_cts,
             model.joints.num_kinematic_cts,
             model.joints.coords_offset,
             model.joints.dofs_offset,
-            model.joints.dynamic_cts_offset,
-            model.joints.kinematic_cts_offset,
+            model.joints.dynamic_cts_offset_joint_cts,
+            model.joints.kinematic_cts_offset_joint_cts,
             model.joints.q_j_0,
             # Outputs:
             state_out.q_j,
@@ -793,19 +733,14 @@ def reset_select_worlds_to_initial_state(
             # Inputs:
             reset_constraints,
             mask,
-            model.info.joint_coords_offset,
-            model.info.joint_dofs_offset,
-            model.info.joint_cts_offset,
-            model.info.joint_dynamic_cts_group_offset,
-            model.info.joint_kinematic_cts_group_offset,
             model.joints.wid,
             model.joints.dof_type,
             model.joints.num_dynamic_cts,
             model.joints.num_kinematic_cts,
             model.joints.coords_offset,
             model.joints.dofs_offset,
-            model.joints.dynamic_cts_offset,
-            model.joints.kinematic_cts_offset,
+            model.joints.dynamic_cts_offset_joint_cts,
+            model.joints.kinematic_cts_offset_joint_cts,
             model.joints.bid_B,
             model.joints.bid_F,
             model.joints.B_r_Bj,
@@ -889,19 +824,14 @@ def reset_select_worlds_to_state(
             # Inputs:
             reset_constraints,
             mask,
-            model.info.joint_coords_offset,
-            model.info.joint_dofs_offset,
-            model.info.joint_cts_offset,
-            model.info.joint_dynamic_cts_group_offset,
-            model.info.joint_kinematic_cts_group_offset,
             model.joints.wid,
             model.joints.dof_type,
             model.joints.num_dynamic_cts,
             model.joints.num_kinematic_cts,
             model.joints.coords_offset,
             model.joints.dofs_offset,
-            model.joints.dynamic_cts_offset,
-            model.joints.kinematic_cts_offset,
+            model.joints.dynamic_cts_offset_joint_cts,
+            model.joints.kinematic_cts_offset_joint_cts,
             model.joints.bid_B,
             model.joints.bid_F,
             model.joints.B_r_Bj,

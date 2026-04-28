@@ -113,9 +113,10 @@ class TestPairKeyOps(unittest.TestCase):
         msg.info("test_cases: %s", test_cases)
 
         # Create Warp arrays for inputs and outputs
-        index_A = wp.array([index_A for index_A, _ in test_cases], dtype=uint32)
-        index_B = wp.array([index_B for _, index_B in test_cases], dtype=uint32)
-        keys = wp.zeros(num_test_cases, dtype=uint64)
+        with wp.ScopedDevice(device=self.default_device):
+            index_A = wp.array([index_A for index_A, _ in test_cases], dtype=uint32)
+            index_B = wp.array([index_B for _, index_B in test_cases], dtype=uint32)
+            keys = wp.zeros(num_test_cases, dtype=uint64)
         msg.info("Inputs: index_A: %s", index_A)
         msg.info("Inputs: index_B: %s", index_B)
         msg.info("Inputs: keys: %s", keys)
@@ -124,7 +125,12 @@ class TestPairKeyOps(unittest.TestCase):
         self.assertEqual(keys.size, num_test_cases)
 
         # Launch the test kernel to generate keys for the given index pairs
-        wp.launch(_test_kernel_build_pair_key2, dim=num_test_cases, inputs=[index_A, index_B, keys])
+        wp.launch(
+            _test_kernel_build_pair_key2,
+            dim=num_test_cases,
+            inputs=[index_A, index_B, keys],
+            device=self.default_device,
+        )
 
         # Verify the generated keys against expected values
         keys_np = keys.numpy()
@@ -169,10 +175,11 @@ class TestPairKeyOps(unittest.TestCase):
         msg.info("test_cases: %s", test_cases)
 
         # Create Warp arrays for inputs and outputs
-        index_A = wp.array([index_A for index_A, _, _ in test_cases], dtype=uint32)
-        index_B = wp.array([index_B for _, index_B, _ in test_cases], dtype=uint32)
-        index_C = wp.array([index_C for *_, index_C in test_cases], dtype=uint32)
-        keys = wp.zeros(num_test_cases, dtype=uint64)
+        with wp.ScopedDevice(device=self.default_device):
+            index_A = wp.array([index_A for index_A, _, _ in test_cases], dtype=uint32)
+            index_B = wp.array([index_B for _, index_B, _ in test_cases], dtype=uint32)
+            index_C = wp.array([index_C for *_, index_C in test_cases], dtype=uint32)
+            keys = wp.zeros(num_test_cases, dtype=uint64)
         msg.info("Inputs: index_A: %s", index_A)
         msg.info("Inputs: index_B: %s", index_B)
         msg.info("Inputs: index_C: %s", index_C)
@@ -190,7 +197,12 @@ class TestPairKeyOps(unittest.TestCase):
             _test_kernel_build_pair_key2 = make_test_kernel_build_pair_key3(main_key_bits, aux_key_bits)
 
             # Launch the test kernel to generate keys for the given index pairs
-            wp.launch(_test_kernel_build_pair_key2, dim=num_test_cases, inputs=[index_A, index_B, index_C, keys])
+            wp.launch(
+                _test_kernel_build_pair_key2,
+                dim=num_test_cases,
+                inputs=[index_A, index_B, index_C, keys],
+                device=self.default_device,
+            )
             keys_np = keys.numpy()
             msg.info("Output: keys: %s", keys_np)
 
@@ -254,8 +266,9 @@ class TestBinarySearchOps(unittest.TestCase):
         # Define sorted array of unique integer pairs with some inactive dummy pairs at the end
         pairs_list = [(1, 1), (1, 2), (3, 1), (5, 6), (5, 5), (7, 8), (9, 10), (0, 0), (0, 0)]
         num_all_pairs = len(pairs_list)
-        pairs = wp.array(pairs_list, dtype=wp.vec2i)
-        num_active_pairs = wp.array([7], dtype=wp.int32)  # Only first 7 pairs are active
+        with wp.ScopedDevice(device=self.default_device):
+            pairs = wp.array(pairs_list, dtype=wp.vec2i)
+            num_active_pairs = wp.array([7], dtype=wp.int32)  # Only first 7 pairs are active
         msg.info("pairs:\n%s", pairs)
         msg.info("num_active_pairs: %s", num_active_pairs)
         msg.info("num_all_pairs: %s", num_all_pairs)
@@ -264,8 +277,9 @@ class TestBinarySearchOps(unittest.TestCase):
         target_pairs_list = [(1, 1), (3, 1), (7, 8), (0, 0), (9, 10), (11, 12)]
         expected_idxs = [0, 2, 5, -1, 6, -1]  # Expected indices or -1 if not found
         num_target_pairs = len(target_pairs_list)
-        target_pairs = wp.array(target_pairs_list, dtype=wp.vec2i)
-        target_idxs = wp.zeros(num_target_pairs, dtype=wp.int32)
+        with wp.ScopedDevice(device=self.default_device):
+            target_pairs = wp.array(target_pairs_list, dtype=wp.vec2i)
+            target_idxs = wp.zeros(num_target_pairs, dtype=wp.int32)
         msg.info("target_pairs:\n%s", target_pairs)
         msg.info("expected_idxs: %s", expected_idxs)
 
@@ -274,6 +288,7 @@ class TestBinarySearchOps(unittest.TestCase):
             _test_kernel_binary_search_find_pair,
             dim=num_target_pairs,
             inputs=[num_active_pairs, pairs, target_pairs, target_idxs],
+            device=self.default_device,
         )
 
         # Verify results
@@ -302,8 +317,9 @@ class TestBinarySearchOps(unittest.TestCase):
         # Define sorted array of unique integer keys with some inactive dummy keys at the end
         keys_list = [0, 1, 1, 3, 5, 5, 9, 11, 11, 0, 0, 0, 0]
         num_all_keys = len(keys_list)
-        keys = wp.array(keys_list, dtype=uint64)
-        num_active_keys = wp.array([9], dtype=int32)  # Only first 9 keys are active
+        with wp.ScopedDevice(device=self.default_device):
+            keys = wp.array(keys_list, dtype=uint64)
+            num_active_keys = wp.array([9], dtype=int32)  # Only first 9 keys are active
         msg.info("keys:\n%s", keys)
         msg.info("num_active_keys: %s", num_active_keys)
         msg.info("num_all_keys: %s", num_all_keys)
@@ -312,8 +328,9 @@ class TestBinarySearchOps(unittest.TestCase):
         target_keys_list = [1, 5, 11, 2, 9, 12]
         expected_range_start_idxs = [1, 4, 7, -1, 6, -1]  # Expected start indices or -1 if not found
         num_target_elements = len(target_keys_list)
-        target_keys = wp.array(target_keys_list, dtype=uint64)
-        target_start_idxs = wp.zeros(num_target_elements, dtype=int32)
+        with wp.ScopedDevice(device=self.default_device):
+            target_keys = wp.array(target_keys_list, dtype=uint64)
+            target_start_idxs = wp.zeros(num_target_elements, dtype=int32)
         msg.info("target_keys:\n%s", target_keys)
         msg.info("expected_range_start_idxs: %s", expected_range_start_idxs)
 
@@ -322,6 +339,7 @@ class TestBinarySearchOps(unittest.TestCase):
             _test_kernel_binary_search_find_range_start,
             dim=num_target_elements,
             inputs=[num_active_keys, keys, target_keys, target_start_idxs],
+            device=self.default_device,
         )
 
         # Verify results
@@ -379,9 +397,9 @@ class TestKeySorter(unittest.TestCase):
         # Generate random keys
         sentinel = make_bitmask(64)
         num_active_keys_const = 8
-        num_active_keys = wp.array([num_active_keys_const], dtype=int32)
+        num_active_keys = wp.array([num_active_keys_const], dtype=int32, device=self.default_device)
         keys_list = [5, 3, 9, 1, 7, 3, 5, 11, sentinel, sentinel]
-        keys = wp.array(keys_list, dtype=uint64)
+        keys = wp.array(keys_list, dtype=uint64, device=self.default_device)
         msg.info("num_active_keys: %s", num_active_keys)
         msg.info("keys: %s", keys)
 
@@ -424,10 +442,10 @@ class TestKeySorter(unittest.TestCase):
 
         # Generate random keys
         num_active_keys_const = 8
-        num_active_keys = wp.array([num_active_keys_const], dtype=int32)
+        num_active_keys = wp.array([num_active_keys_const], dtype=int32, device=self.default_device)
         random_keys_np = rng.integers(low=0, high=100, size=max_num_keys, dtype=np.uint64)
         random_keys_np[-2:] = make_bitmask(63)  # Set last two keys to sentinel value
-        random_keys = wp.array(random_keys_np, dtype=uint64)
+        random_keys = wp.array(random_keys_np, dtype=uint64, device=self.default_device)
         msg.info("num_active_keys: %s", num_active_keys)
         msg.info("random_keys: %s", random_keys)
 

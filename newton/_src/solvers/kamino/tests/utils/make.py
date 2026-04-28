@@ -212,13 +212,13 @@ def make_test_problem(
     # Construct and allocate the limits container
     limits = None
     if with_limits:
-        limits = LimitsKamino(model=model, device=device)
+        limits = LimitsKamino(model=model)
 
     # Create the collision detector
     contacts = None
     if with_contacts:
         config = CollisionDetector.Config(max_contacts_per_world=max_world_contacts, pipeline="primitive")
-        detector = CollisionDetector(model=model, config=config, device=device)
+        detector = CollisionDetector(model=model, config=config)
         contacts = detector.contacts
 
     # Create the constraints info
@@ -227,7 +227,6 @@ def make_test_problem(
         data=data,
         limits=limits,
         contacts=contacts,
-        device=device,
     )
     if verbose:
         print("")  # Add a newline for better readability
@@ -390,6 +389,7 @@ def set_fourbar_body_states(model: ModelKamino, data: DataKamino):
             data.bodies.q_i,
             data.bodies.u_i,
         ],
+        device=model.device,
     )
 
 

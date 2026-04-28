@@ -111,7 +111,6 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
             mio=operator.info.mio,
             A=problem.A_wp,
             L=L_wp,
-            device=self.default_device,
         )
 
         # Convert the warp array to numpy for verification
@@ -153,7 +152,6 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
             b=problem.b_wp,
             y=y_wp,
             x=x_wp,
-            device=self.default_device,
         )
 
         # Convert the warp array to numpy for verification
@@ -194,7 +192,6 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
             L=L_wp,
             y=y_wp,
             x=x_wp,
-            device=self.default_device,
         )
 
         # Convert the warp array to numpy for verification
@@ -274,7 +271,6 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
             mio=operator.info.mio,
             A=problem.A_wp,
             L=L_wp,
-            device=self.default_device,
         )
 
         # Convert the warp array to numpy for verification
@@ -316,7 +312,6 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
             b=problem.b_wp,
             y=y_wp,
             x=x_wp,
-            device=self.default_device,
         )
 
         # Convert the warp array to numpy for verification
@@ -355,7 +350,6 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
             L=L_wp,
             y=y_wp,
             x=x_wp,
-            device=self.default_device,
         )
 
         # Convert the warp array to numpy for verification
@@ -432,7 +426,6 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
             mio=operator.info.mio,
             A=problem.A_wp,
             L=L_wp,
-            device=self.default_device,
         )
 
         # Iterate over all problems for verification
@@ -477,7 +470,6 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
             b=problem.b_wp,
             y=y_wp,
             x=x_wp,
-            device=self.default_device,
         )
 
         # Iterate over all problems for verification
@@ -520,7 +512,6 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
             L=L_wp,
             y=y_wp,
             x=x_wp,
-            device=self.default_device,
         )
 
         # Iterate over all problems for verification
@@ -607,7 +598,6 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
             mio=operator.info.mio,
             A=problem.A_wp,
             L=L_wp,
-            device=self.default_device,
         )
 
         # Iterate over all problems for verification
@@ -652,7 +642,6 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
             b=problem.b_wp,
             y=y_wp,
             x=x_wp,
-            device=self.default_device,
         )
 
         # Iterate over all problems for verification
@@ -695,7 +684,6 @@ class TestLinAlgLLTBlocked(unittest.TestCase):
             L=L_wp,
             y=y_wp,
             x=x_wp,
-            device=self.default_device,
         )
 
         # Iterate over all problems for verification

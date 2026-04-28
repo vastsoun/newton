@@ -509,7 +509,6 @@ class LLTSequentialSolver(DirectSolver):
             mio=self._operator.info.mio,
             A=A,
             L=self._L,
-            device=self._device,
         )
 
     @override
@@ -528,7 +527,6 @@ class LLTSequentialSolver(DirectSolver):
             b=b,
             y=self._y,
             x=x,
-            device=self._device,
         )
 
     @override
@@ -661,7 +659,6 @@ class LLTBlockedSolver(DirectSolver):
             b=b,
             y=self._y,
             x=x,
-            device=self._device,
         )
 
     @override
@@ -677,7 +674,6 @@ class LLTBlockedSolver(DirectSolver):
             L=self._L,
             y=self._y,
             x=x,
-            device=self._device,
         )
 
 

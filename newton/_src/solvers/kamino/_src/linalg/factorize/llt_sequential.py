@@ -165,7 +165,6 @@ def llt_sequential_factorize(
     mio: wp.array(dtype=int32),
     A: wp.array(dtype=float32),
     L: wp.array(dtype=float32),
-    device: wp.DeviceLike = None,
 ):
     """
     Launches the sequential Cholesky factorization kernel for a block partitioned matrix.
@@ -181,7 +180,7 @@ def llt_sequential_factorize(
         kernel=_llt_sequential_factorize,
         dim=num_blocks,
         inputs=[dim, mio, A, L],
-        device=device,
+        device=A.device,
     )
 
 
@@ -194,7 +193,6 @@ def llt_sequential_solve(
     b: wp.array(dtype=float32),
     y: wp.array(dtype=float32),
     x: wp.array(dtype=float32),
-    device: wp.DeviceLike = None,
 ):
     """
     Launches the sequential solve kernel using the Cholesky factorization of a block partitioned matrix.
@@ -213,7 +211,7 @@ def llt_sequential_solve(
         kernel=_llt_sequential_solve,
         dim=num_blocks,
         inputs=[dim, mio, vio, L, b, y, x],
-        device=device,
+        device=L.device,
     )
 
 
@@ -224,7 +222,6 @@ def llt_sequential_solve_inplace(
     vio: wp.array(dtype=int32),
     L: wp.array(dtype=float32),
     x: wp.array(dtype=float32),
-    device: wp.DeviceLike = None,
 ):
     """
     Launches the sequential in-place solve kernel using the Cholesky factorization of a block partitioned matrix.
@@ -241,5 +238,5 @@ def llt_sequential_solve_inplace(
         kernel=_llt_sequential_solve_inplace,
         dim=num_blocks,
         inputs=[dim, mio, vio, L, x],
-        device=device,
+        device=L.device,
     )

@@ -132,6 +132,7 @@ def set_joint_follower_body_state(model: ModelKamino, data: DataKamino):
             data.bodies.q_i,
             data.bodies.u_i,
         ],
+        device=model.device,
     )
 
 
@@ -164,7 +165,7 @@ class TestKinematicsLimits(unittest.TestCase):
         Tests the creation of an empty LimitsKamino container (for deferred allocation).
         """
         # Create a LimitsKamino container
-        limits = LimitsKamino(device=self.default_device)
+        limits = LimitsKamino()
 
         # Check the initial state of the limits
         self.assertEqual(limits._data.model_max_limits_host, 0)
@@ -179,7 +180,7 @@ class TestKinematicsLimits(unittest.TestCase):
         model = builder.finalize(device=self.default_device)
 
         # Create a LimitsKamino container
-        limits = LimitsKamino(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model)
 
         # Check the initial state of the limits
         self.assertIsNotNone(limits.model_max_limits)
@@ -252,7 +253,7 @@ class TestKinematicsLimits(unittest.TestCase):
         msg.info("data.joints.dq_j: %s\n\n", data.joints.dq_j)
 
         # Create a LimitsKamino container
-        limits = LimitsKamino(model=model, device=self.default_device)
+        limits = LimitsKamino(model=model)
 
         # Optional verbose output
         msg.info("[before]: limits.model_max_limits_host: %s", limits.model_max_limits_host)

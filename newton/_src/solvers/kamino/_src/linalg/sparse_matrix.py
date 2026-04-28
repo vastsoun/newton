@@ -294,6 +294,7 @@ class BlockSparseMatrices:
             ptr=self.dims.ptr,
             strides=(2 * index_dtype_size_bytes,),
             copy=False,
+            device=self.device,
         )
 
     @property
@@ -306,6 +307,7 @@ class BlockSparseMatrices:
             ptr=self.dims.ptr + index_dtype_size_bytes,
             strides=(2 * index_dtype_size_bytes,),
             copy=False,
+            device=self.device,
         )
 
     @property
@@ -318,6 +320,7 @@ class BlockSparseMatrices:
             ptr=self.nzb_coords.ptr,
             strides=(2 * index_dtype_size_bytes,),
             copy=False,
+            device=self.device,
         )
 
     @property
@@ -330,6 +333,7 @@ class BlockSparseMatrices:
             ptr=self.nzb_coords.ptr + index_dtype_size_bytes,
             strides=(2 * index_dtype_size_bytes,),
             copy=False,
+            device=self.device,
         )
 
     ###

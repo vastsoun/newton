@@ -536,6 +536,7 @@ def compute_joint_dof_body_wrenches_dense(
             # Outputs:
             data.bodies.w_a_i,
         ],
+        device=model.device,
     )
 
 
@@ -572,6 +573,7 @@ def compute_joint_dof_body_wrenches_sparse(
             # Outputs:
             data.bodies.w_a_i,
         ],
+        device=model.device,
     )
 
 
@@ -637,6 +639,7 @@ def compute_constraint_body_wrenches_dense(
                 # Outputs:
                 data.bodies.w_j_i,
             ],
+            device=model.device,
         )
 
     if limits is not None and limits.model_max_limits_host > 0:
@@ -662,6 +665,7 @@ def compute_constraint_body_wrenches_dense(
                 # Outputs:
                 data.bodies.w_l_i,
             ],
+            device=model.device,
         )
 
     if contacts is not None and contacts.model_max_contacts_host > 0:
@@ -687,6 +691,7 @@ def compute_constraint_body_wrenches_dense(
                 # Outputs:
                 data.bodies.w_c_i,
             ],
+            device=model.device,
         )
 
 
@@ -734,6 +739,7 @@ def compute_constraint_body_wrenches_sparse(
             data.bodies.w_l_i,
             data.bodies.w_c_i,
         ],
+        device=model.device,
     )
 
 

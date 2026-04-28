@@ -416,7 +416,6 @@ class ContactAggregation:
         model: ModelKamino | None = None,
         contacts: ContactsKamino | None = None,
         enable_positions_normals: bool = False,
-        device: wp.DeviceLike = None,
     ):
         """Initialize contact aggregation.
 
@@ -427,13 +426,11 @@ class ContactAggregation:
             contacts (ContactsKamino | None):
                 The contacts container with per-contact data.
                 If None, call ``finalize()`` later.
-            device: Device for computation.
-                If None, uses model's device.
             enable_positions_normals:
                 Whether to compute average contact positions and normals per body.
         """
-        # Cache the device
-        self._device: wp.DeviceLike | None = device
+        # Declare the device cache
+        self._device: wp.DeviceLike = None
 
         # Forward declarations
         self._model: ModelKamino | None = None
@@ -447,9 +444,7 @@ class ContactAggregation:
 
         # Proceed with memory allocations if model and contacts are provided
         if model is not None and contacts is not None:
-            self.finalize(
-                model=model, contacts=contacts, enable_positions_normals=enable_positions_normals, device=device
-            )
+            self.finalize(model=model, contacts=contacts, enable_positions_normals=enable_positions_normals)
 
     ###
     # Properties
@@ -494,20 +489,15 @@ class ContactAggregation:
         model: ModelKamino,
         contacts: ContactsKamino,
         enable_positions_normals: bool = False,
-        device: wp.DeviceLike = None,
     ) -> None:
         """Finalizes memory allocations for the contact aggregation data.
 
         Args:
             model (ModelKamino): The model container describing the system to be simulated.
             contacts (ContactsKamino): The contacts container with per-contact data.
-            device (wp.DeviceLike | None): Device for computation. If None, uses model's device.
         """
-        # Override the device if specified
-        if device is not None:
-            self._device = device
-        if self._device is None:
-            self._device = model.device
+        # Use the model's device
+        self._device = model.device
 
         # Override the positions/normals flag if different from current setting
         if enable_positions_normals != self._enable_positions_normals:

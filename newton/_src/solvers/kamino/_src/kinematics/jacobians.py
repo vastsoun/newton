@@ -1273,7 +1273,6 @@ class DenseSystemJacobians:
         model: ModelKamino | None = None,
         limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
-        device: wp.DeviceLike = None,
     ):
         """
         Creates a :class:`DenseSystemJacobians` container and allocates the Jacobian data if a model is provided.\n
@@ -1295,16 +1294,13 @@ class DenseSystemJacobians:
             contacts (`ContactsKamino`, optional):
                 The contacts container describing the active contacts in the system,
                 used to compute the matrix block sizes and index offsets if provided.
-            device (`Device` or `str`, optional):
-                The device on which the Jacobian data should be allocated.\n
-                If `None`, the Jacobian data will be allocated on same device as the model.
         """
         # Declare and initialize the Jacobian data container
         self._data = DenseSystemJacobiansData()
 
         # If a model is provided, allocate the Jacobians data
         if model is not None:
-            self.finalize(model=model, limits=limits, contacts=contacts, device=device)
+            self.finalize(model=model, limits=limits, contacts=contacts)
 
     @property
     def data(self) -> DenseSystemJacobiansData:
@@ -1318,7 +1314,6 @@ class DenseSystemJacobians:
         model: ModelKamino,
         limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
-        device: wp.DeviceLike = None,
     ):
         # Ensure the model container is valid
         if model is None:
@@ -1361,9 +1356,8 @@ class DenseSystemJacobians:
             J_cts_offsets[w] = J_cts_offsets[w - 1] + J_cts_sizes[w - 1]
             J_dofs_offsets[w] = J_dofs_offsets[w - 1] + J_dofs_sizes[w - 1]
 
-        # Set the device to that of the model if not specified
-        if device is None:
-            device = model.device
+        # Use the model's device
+        device = model.device
 
         # Allocate the Jacobian arrays
         with wp.ScopedDevice(device):
@@ -1437,6 +1431,7 @@ class DenseSystemJacobians:
                     self._data.J_cts_data,
                     self._data.J_dofs_data,
                 ],
+                device=model.device,
             )
 
         # Build the limit constraints Jacobians if a limits data container is provided
@@ -1462,6 +1457,7 @@ class DenseSystemJacobians:
                     # Outputs:
                     self._data.J_cts_data,
                 ],
+                device=model.device,
             )
 
         # Build the contact constraints Jacobians if a contacts data container is provided
@@ -1486,6 +1482,7 @@ class DenseSystemJacobians:
                     # Outputs:
                     self._data.J_cts_data,
                 ],
+                device=model.device,
             )
 
 
@@ -1499,7 +1496,6 @@ class SparseSystemJacobians:
         model: ModelKamino | None = None,
         limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
-        device: wp.DeviceLike = None,
     ):
         """
         Creates a :class:`SparseSystemJacobians` container and allocates the Jacobian data if a model is provided.\n
@@ -1517,8 +1513,6 @@ class SparseSystemJacobians:
             contacts (`ContactsKamino`, optional):
                 The contacts container describing the active contacts in the system, used to
                 compute the non-zero block coordinates of the contact constraint Jacobian.
-            device (`wp.DeviceLike`, optional):
-                The device on which to allocate the Jacobian data.
         """
         # Declare and initialize the Jacobian data containers
         self._J_cts: BlockSparseLinearOperators | None = None
@@ -1536,14 +1530,13 @@ class SparseSystemJacobians:
 
         # If a model is provided, allocate the Jacobians data
         if model is not None:
-            self.finalize(model=model, limits=limits, contacts=contacts, device=device)
+            self.finalize(model=model, limits=limits, contacts=contacts)
 
     def finalize(
         self,
         model: ModelKamino,
         limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
-        device: wp.DeviceLike = None,
     ):
         """
         Finalizes the Jacobian data by allocating the Jacobian arrays and computing the non-zero block coordinates
@@ -1687,9 +1680,8 @@ class SparseSystemJacobians:
         J_dofs_nzb_row = [i for rows in J_dofs_nzb_row for i in rows]
         J_dofs_nzb_col = [j for cols in J_dofs_nzb_col for j in cols]
 
-        # Set the device to that of the model if not specified
-        if device is None:
-            device = model.device
+        # Use the model's device
+        device = model.device
 
         # Allocate the block-sparse linear-operator data to represent each system Jacobian
         with wp.ScopedDevice(device):
@@ -1794,6 +1786,7 @@ class SparseSystemJacobians:
                 # Outputs:
                 jacobian_cts.num_rows,
             ],
+            device=model.device,
         )
 
         # Build the joint constraints and actuation Jacobians
@@ -1818,6 +1811,7 @@ class SparseSystemJacobians:
                     jacobian_cts.nzb_values,
                     jacobian_dofs.nzb_values,
                 ],
+                device=model.device,
             )
 
             # Initialize the number of NZB with the number of NZB for all joints
@@ -1851,6 +1845,7 @@ class SparseSystemJacobians:
                     jacobian_cts.nzb_values,
                     self._J_cts_limit_nzb_offsets,
                 ],
+                device=model.device,
             )
 
         # Build the contact constraints Jacobians if a contacts data container is provided
@@ -1878,6 +1873,7 @@ class SparseSystemJacobians:
                     jacobian_cts.nzb_values,
                     self._J_cts_contact_nzb_offsets,
                 ],
+                device=model.device,
             )
 
 
@@ -1901,7 +1897,6 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
         limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
         jacobians: SparseSystemJacobians | None = None,
-        device: wp.DeviceLike = None,
     ):
         """
         Constructs a column-major sparse constraint Jacobian.
@@ -1919,9 +1914,6 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
             jacobians (`SparseSystemJacobians`, optional):
                 Row-major sparse Jacobians. If provided, the column-major Jacobian will be
                 immediately updated with values from the provided Jacobians after allocation.
-            device (`wp.DeviceLike`, optional):
-                The device on which to allocate memory for the Jacobian data structures.\n
-                If `None`, the device of the model will be used.
         """
         super().__init__()
 
@@ -1929,7 +1921,7 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
         self._num_joint_nzb: wp.array | None = None
 
         if model is not None:
-            self.finalize(model=model, limits=limits, contacts=contacts, jacobians=jacobians, device=device)
+            self.finalize(model=model, limits=limits, contacts=contacts, jacobians=jacobians)
 
     def finalize(
         self,
@@ -1937,7 +1929,6 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
         limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
         jacobians: SparseSystemJacobians | None = None,
-        device: wp.DeviceLike = None,
     ):
         """
         Initializes the data structure of the column-major constraint Jacobian.
@@ -1954,9 +1945,6 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
             jacobians (`SparseSystemJacobians`, optional):
                 Row-major sparse Jacobians. If provided, the column-major Jacobian will be
                 immediately updated with values from the provided Jacobians after allocation.
-            device (`wp.DeviceLike`, optional):
-                The device on which to allocate memory for the Jacobian data structures.\n
-                If `None`, the device of the model will be used.
         """
         # Extract the constraint and DoF sizes of each world
         num_worlds = model.info.num_worlds
@@ -2054,9 +2042,8 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
         J_cts_nzb_row = [i for rows in J_cts_nzb_row for i in rows]
         J_cts_nzb_col = [j for cols in J_cts_nzb_col for j in cols]
 
-        # Set the device to that of the model if not specified
-        if device is None:
-            device = model.device
+        # Use the model's device
+        device = model.device
 
         # Allocate the block-sparse linear-operator data to represent each system Jacobian
         with wp.ScopedDevice(device):
@@ -2136,6 +2123,7 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
                     # Outputs:
                     self.bsm.nzb_values,
                 ],
+                device=model.device,
             )
 
         # Initialize the number of NZB with the number of NZB for all joints
@@ -2161,6 +2149,7 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
                     self.bsm.nzb_coords,
                     self.bsm.nzb_values,
                 ],
+                device=model.device,
             )
 
         # Build the contact constraints Jacobians if a contacts data container is provided
@@ -2183,6 +2172,7 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
                     self.bsm.nzb_coords,
                     self.bsm.nzb_values,
                 ],
+                device=model.device,
             )
 
 

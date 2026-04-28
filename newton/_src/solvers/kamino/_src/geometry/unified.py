@@ -399,7 +399,6 @@ class CollisionPipelineUnifiedKamino:
         default_gap: float = DEFAULT_GEOM_PAIR_CONTACT_GAP,
         default_friction: float = DEFAULT_FRICTION,
         default_restitution: float = DEFAULT_RESTITUTION,
-        device: wp.DeviceLike = None,
     ):
         """
         Initialize an instance of Kamino's wrapper of the unified collision detection pipeline.
@@ -413,17 +412,12 @@ class CollisionPipelineUnifiedKamino:
             default_gap: Default detection gap [m] applied as a floor to per-geometry gaps.
             default_friction: Default contact friction coefficient.
             default_restitution: Default impact restitution coefficient.
-            device: Warp device used to allocate memory and operate on.
         """
         # Cache a reference to the Kamino model
         self._model: ModelKamino = model
 
-        # Determine device to use for pipeline data and computations
-        self._device: wp.DeviceLike = None
-        if device is not None:
-            self._device = device
-        else:
-            self._device = self._model.device
+        # Use the model's device
+        self._device: wp.DeviceLike = self._model.device
 
         # Cache pipeline settings
         self._broadphase: str = broadphase

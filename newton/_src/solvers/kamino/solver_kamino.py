@@ -604,7 +604,8 @@ class SolverKamino(SolverBase):
             pass  # TODO: ???
 
         if flags & SolverNotifyFlags.JOINT_PROPERTIES:
-            self._update_joint_transforms()
+            # TODO: FIX THIS: self._update_joint_transforms()
+            pass
 
         if flags & SolverNotifyFlags.JOINT_DOF_PROPERTIES:
             # Joint limits (q_j_min, q_j_max, dq_j_max, tau_j_max) are direct

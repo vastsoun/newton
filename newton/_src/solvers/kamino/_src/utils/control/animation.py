@@ -250,7 +250,6 @@ class AnimationJointReference:
         rate: int | list[int] = 1,
         loop: bool | list[bool] = True,
         use_fd: bool = False,
-        device: wp.DeviceLike = None,
     ):
         """
         Initialize the animation joint reference interface.
@@ -270,11 +269,10 @@ class AnimationJointReference:
                 the simulation step matches the set decimation. Defaults to 1 for all worlds.
             loop (bool | list[bool]): Flag(s) indicating whether the animation should loop.
             use_fd (bool): Whether to compute finite-difference velocities from the input coordinates.
-            device (wp.DeviceLike | None): Device to use for allocations and execution.
         """
 
-        # Cache the device
-        self._device: wp.DeviceLike = device
+        # Declare the device cache
+        self._device: wp.DeviceLike = None
 
         # Declare the model dimensions meta-data
         self._num_worlds: int = 0
@@ -295,7 +293,6 @@ class AnimationJointReference:
                 rate=rate,
                 loop=loop,
                 use_fd=use_fd,
-                device=device,
             )
 
     ###
@@ -439,7 +436,6 @@ class AnimationJointReference:
         rate: int | list[int] = 1,
         loop: bool | list[bool] = True,
         use_fd: bool = False,
-        device: wp.DeviceLike = None,
     ) -> None:
         """
         Allocate the animation joint reference data.
@@ -457,7 +453,6 @@ class AnimationJointReference:
                 the simulation step matches the set decimation. Defaults to 1 for all worlds.
             loop (bool | list[bool]): Flag(s) indicating whether the animation should loop.
             use_fd (bool): Whether to compute finite-difference velocities from the input coordinates.
-            device (wp.DeviceLike | None): Device to use for allocations and execution.
 
         Raises:
             ValueError: If the model is not valid or actuated DoFs are not properly configured.
@@ -556,9 +551,8 @@ class AnimationJointReference:
         rate_np = np.array(rate, dtype=np.int32)
         loop_np = np.array([1 if _l else 0 for _l in loop], dtype=np.int32)
 
-        # Override the device if provided
-        if device is not None:
-            self._device = device
+        # Use the model's device
+        self._device = model.device
 
         # Allocate the controller data
         with wp.ScopedDevice(self._device):

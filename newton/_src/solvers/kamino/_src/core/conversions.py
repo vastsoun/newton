@@ -726,7 +726,9 @@ def convert_entity_local_transforms(model: Model) -> dict[str, wp.array]:
     # correction q_corr to the child body's frame and immediately propagate
     # to all downstream joints that reference the corrected body as parent.
     # body_corr: dict[int, np.ndarray] = {}  # body_index -> cumulative q_corr
-    body_corr = wp.full(shape=(model.joint_count,), value=wp.quat_identity(dtype=float32), dtype=quatf)
+    body_corr = wp.full(
+        shape=(model.joint_count,), value=wp.quat_identity(dtype=float32), dtype=quatf, device=model.device
+    )
 
     # Convert bodies, sequentially per world
     wp.launch(
@@ -747,19 +749,16 @@ def convert_entity_local_transforms(model: Model) -> dict[str, wp.array]:
             joint_X_p,
             joint_X_c,
         ],
+        device=model.device,
     )
 
     # Convert shapes based on body corrections
     wp.launch(
         kernel=shape_transform_conversion_kernel,
         dim=model.shape_count,
-        inputs=[
-            model.shape_body,
-            body_corr,
-        ],
-        outputs=[
-            shape_transform,
-        ],
+        inputs=[model.shape_body, body_corr],
+        outputs=[shape_transform],
+        device=model.device,
     )
 
     # Return the converted transforms as warp arrays
@@ -814,7 +813,7 @@ def compute_required_contact_capacity(
         return 0, [0] * model.world_count
 
     # Compute maximum contacts per world
-    world_max_contacts_wp = wp.zeros((model.world_count,), dtype=int32)
+    world_max_contacts_wp = wp.zeros((model.world_count,), dtype=int32, device=model.device)
     wp.launch(
         kernel=world_max_contacts_kernel,
         dim=model.shape_contact_pair_count,
@@ -824,9 +823,8 @@ def compute_required_contact_capacity(
             model.shape_world,
             model.shape_contact_pairs,
         ],
-        outputs=[
-            world_max_contacts_wp,
-        ],
+        outputs=[world_max_contacts_wp],
+        device=model.device,
     )
     world_max_contacts = world_max_contacts_wp.numpy()
 
@@ -839,6 +837,7 @@ def compute_required_contact_capacity(
 
 
 # TODO: Re-implement this using a kernel to run in parallel on the GPU if possible
+# TODO: FIX THIS: This is not correct, it is not using the new joint_X_p and joint_X_c transforms.
 def convert_model_joint_transforms(model: Model, joints: JointsModel) -> None:
     """
     Converts the joint model parameterization of Newton's to Kamino's format.
@@ -859,10 +858,7 @@ def convert_model_joint_transforms(model: Model, joints: JointsModel) -> None:
     joint_parent_np = model.joint_parent.numpy()
     joint_child_np = model.joint_child.numpy()
     joint_axis_np = model.joint_axis.numpy()
-    joint_dof_dim_np = model.joint_dof_dim.numpy()
     joint_qd_start_np = model.joint_qd_start.numpy()
-    joint_limit_lower_np = model.joint_limit_lower.numpy()
-    joint_limit_upper_np = model.joint_limit_upper.numpy()
     dof_type_np = joints.dof_type.numpy()
 
     n_joints = model.joint_count
@@ -872,13 +868,10 @@ def convert_model_joint_transforms(model: Model, joints: JointsModel) -> None:
 
     for j in range(n_joints):
         dof_type_j = JointDoFType(int(dof_type_np[j]))
-        dof_dim_j = (int(joint_dof_dim_np[j][0]), int(joint_dof_dim_np[j][1]))
         dofs_start_j = int(joint_qd_start_np[j])
         ndofs_j = dof_type_j.num_dofs
-        joint_axes_j = joint_axis_np[dofs_start_j : dofs_start_j + ndofs_j]
-        joint_q_min_j = joint_limit_lower_np[dofs_start_j : dofs_start_j + ndofs_j]
-        joint_q_max_j = joint_limit_upper_np[dofs_start_j : dofs_start_j + ndofs_j]
-        R_axis_j = JointDoFType.from_newton(dof_type_j, dof_dim_j, joint_axes_j, joint_q_min_j, joint_q_max_j)
+        joint_axes_j = mat63f(joint_axis_np[dofs_start_j : dofs_start_j + ndofs_j])
+        R_axis_j = JointDoFType.axes_matrix_from_joint_type(dof_type=dof_type_j, dof_axes=joint_axes_j)
 
         parent_bid = int(joint_parent_np[j])
         p_r_p_com = wp.vec3f(body_com_np[parent_bid]) if parent_bid >= 0 else wp.vec3f(0.0)
@@ -933,14 +926,14 @@ def convert_rigid_bodies(
     """
 
     # Compute the offsets and number of entities per world
-    body_bid = wp.zeros((model.body_count,), dtype=int32)
-    num_bodies = wp.zeros((model.world_count,), dtype=int32)
-    num_shapes = wp.zeros((model.world_count,), dtype=int32)
-    num_body_dofs = wp.zeros((model.world_count,), dtype=int32)
-    world_body_offset = wp.zeros((model.world_count + 1,), dtype=int32)
-    world_shape_offset = wp.zeros((model.world_count,), dtype=int32)
-    world_body_dof_offset = wp.zeros((model.world_count,), dtype=int32)
-
+    with wp.ScopedDevice(model.device):
+        body_bid = wp.zeros((model.body_count,), dtype=int32)
+        num_bodies = wp.zeros((model.world_count,), dtype=int32)
+        num_shapes = wp.zeros((model.world_count,), dtype=int32)
+        num_body_dofs = wp.zeros((model.world_count,), dtype=int32)
+        world_body_offset = wp.zeros((model.world_count + 1,), dtype=int32)
+        world_shape_offset = wp.zeros((model.world_count,), dtype=int32)
+        world_body_dof_offset = wp.zeros((model.world_count,), dtype=int32)
     wp.launch(
         kernel=rigid_bodies_indexing_kernel,
         dim=model.world_count,
@@ -957,14 +950,15 @@ def convert_rigid_bodies(
             world_shape_offset,
             world_body_dof_offset,
         ],
+        device=model.device,
     )
 
     # Construct per-world inertial summaries
-    mass_total = wp.empty((model.world_count,), dtype=float32)
-    mass_min = wp.empty((model.world_count,), dtype=float32)
-    mass_max = wp.empty((model.world_count,), dtype=float32)
-    inertia_total = wp.empty((model.world_count,), dtype=float32)
-
+    with wp.ScopedDevice(model.device):
+        mass_total = wp.empty((model.world_count,), dtype=float32)
+        mass_min = wp.empty((model.world_count,), dtype=float32)
+        mass_max = wp.empty((model.world_count,), dtype=float32)
+        inertia_total = wp.empty((model.world_count,), dtype=float32)
     wp.launch(
         kernel=mass_prop_accumulation_kernel,
         dim=model.world_count,
@@ -979,11 +973,12 @@ def convert_rigid_bodies(
             mass_max,
             inertia_total,
         ],
+        device=model.device,
     )
 
     # model.body_q stores body-origin world poses, but Kamino expects
     # COM world poses (joint attachment vectors are COM-relative).
-    q_i_0 = wp.empty((model.body_count,), dtype=transformf)
+    q_i_0 = wp.empty((model.body_count,), dtype=transformf, device=model.device)
     convert_body_origin_to_com(body_com, body_q, q_i_0)
 
     # Fill in size data for bodies
@@ -999,6 +994,7 @@ def convert_rigid_bodies(
         write_coeff_kernel,
         dim=1,
         inputs=[world_body_offset, model_size.num_worlds, model_size.sum_of_num_bodies],
+        device=model.device,
     )
 
     # Per-world heterogeneous model info
@@ -1061,20 +1057,19 @@ def convert_joints(
     joint_world_start_np = model.joint_world_start.numpy()
     num_joints_np = joint_world_start_np[1 : model.world_count + 1] - joint_world_start_np[: model.world_count]
 
-    # Convert all joint properties to the Kamino data structure
-
     # Create joint property arrays
-    joint_jid = wp.empty(shape=(model.joint_count,), dtype=int32)
-    joint_dof_type = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_act_type = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_num_coords = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_num_dofs = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_num_cts = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_num_dynamic_cts = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_num_kinematic_cts = wp.zeros(shape=(model.joint_count,), dtype=int32)
-    joint_B_r_B = wp.empty(shape=(model.joint_count,), dtype=vec3f)
-    joint_F_r_F = wp.empty(shape=(model.joint_count,), dtype=vec3f)
-    joint_X = wp.empty(shape=(model.joint_count,), dtype=mat33f)
+    with wp.ScopedDevice(model.device):
+        joint_jid = wp.empty(shape=(model.joint_count,), dtype=int32)
+        joint_dof_type = wp.zeros(shape=(model.joint_count,), dtype=int32)
+        joint_act_type = wp.zeros(shape=(model.joint_count,), dtype=int32)
+        joint_num_coords = wp.zeros(shape=(model.joint_count,), dtype=int32)
+        joint_num_dofs = wp.zeros(shape=(model.joint_count,), dtype=int32)
+        joint_num_cts = wp.zeros(shape=(model.joint_count,), dtype=int32)
+        joint_num_dynamic_cts = wp.zeros(shape=(model.joint_count,), dtype=int32)
+        joint_num_kinematic_cts = wp.zeros(shape=(model.joint_count,), dtype=int32)
+        joint_B_r_B = wp.empty(shape=(model.joint_count,), dtype=vec3f)
+        joint_F_r_F = wp.empty(shape=(model.joint_count,), dtype=vec3f)
+        joint_X = wp.empty(shape=(model.joint_count,), dtype=mat33f)
 
     # Copy limit arrays
     joint_limit_lower = wp.clone(model.joint_limit_lower)
@@ -1121,32 +1116,32 @@ def convert_joints(
             joint_F_r_F,
             joint_X,
         ],
+        device=model.device,
     )
 
     # Compute sizes and indices for all joint properties
-
-    num_passive_joints = wp.zeros(shape=(model.world_count,), dtype=int32)
-    num_actuated_joints = wp.zeros(shape=(model.world_count,), dtype=int32)
-    num_dynamic_joints = wp.zeros(shape=(model.world_count,), dtype=int32)
-    num_joint_coords = wp.zeros(shape=(model.world_count,), dtype=int32)
-    num_joint_dofs = wp.zeros(shape=(model.world_count,), dtype=int32)
-    num_joint_passive_coords = wp.zeros(shape=(model.world_count,), dtype=int32)
-    num_joint_passive_dofs = wp.zeros(shape=(model.world_count,), dtype=int32)
-    num_joint_actuated_coords = wp.zeros(shape=(model.world_count,), dtype=int32)
-    num_joint_actuated_dofs = wp.zeros(shape=(model.world_count,), dtype=int32)
-    num_joint_cts = wp.zeros(shape=(model.world_count,), dtype=int32)
-    num_joint_dynamic_cts = wp.zeros(shape=(model.world_count,), dtype=int32)
-    num_joint_kinematic_cts = wp.zeros(shape=(model.world_count,), dtype=int32)
-
-    joint_coord_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
-    joint_dofs_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
-    joint_actuated_coord_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
-    joint_actuated_dofs_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
-    joint_passive_coord_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
-    joint_passive_dofs_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
-    joint_cts_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
-    joint_dynamic_cts_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
-    joint_kinematic_cts_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+    with wp.ScopedDevice(model.device):
+        num_passive_joints = wp.zeros(shape=(model.world_count,), dtype=int32)
+        num_actuated_joints = wp.zeros(shape=(model.world_count,), dtype=int32)
+        num_dynamic_joints = wp.zeros(shape=(model.world_count,), dtype=int32)
+        num_joint_coords = wp.zeros(shape=(model.world_count,), dtype=int32)
+        num_joint_dofs = wp.zeros(shape=(model.world_count,), dtype=int32)
+        num_joint_passive_coords = wp.zeros(shape=(model.world_count,), dtype=int32)
+        num_joint_passive_dofs = wp.zeros(shape=(model.world_count,), dtype=int32)
+        num_joint_actuated_coords = wp.zeros(shape=(model.world_count,), dtype=int32)
+        num_joint_actuated_dofs = wp.zeros(shape=(model.world_count,), dtype=int32)
+        num_joint_cts = wp.zeros(shape=(model.world_count,), dtype=int32)
+        num_joint_dynamic_cts = wp.zeros(shape=(model.world_count,), dtype=int32)
+        num_joint_kinematic_cts = wp.zeros(shape=(model.world_count,), dtype=int32)
+        joint_coord_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+        joint_dofs_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+        joint_actuated_coord_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+        joint_actuated_dofs_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+        joint_passive_coord_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+        joint_passive_dofs_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+        joint_cts_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+        joint_dynamic_cts_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
+        joint_kinematic_cts_start = wp.zeros(shape=(model.joint_count + 1,), dtype=int32)
 
     wp.launch(
         kernel=joint_indexing_kernel,
@@ -1182,6 +1177,7 @@ def convert_joints(
             joint_dynamic_cts_start,
             joint_kinematic_cts_start,
         ],
+        device=model.device,
     )
 
     # Get on-device copies of the per-world sizes
@@ -1209,7 +1205,6 @@ def convert_joints(
     world_joint_cts_offset_np = np.zeros((model.world_count,), dtype=int)
     world_joint_dynamic_cts_offset_np = np.zeros((model.world_count,), dtype=int)
     world_joint_kinematic_cts_offset_np = np.zeros((model.world_count,), dtype=int)
-
     for w in range(1, model.world_count):
         world_joint_offset_np[w] = world_joint_offset_np[w - 1] + num_joints_np[w - 1]
         world_joint_coord_offset_np[w] = world_joint_coord_offset_np[w - 1] + num_joint_coords_np[w - 1]
@@ -1330,7 +1325,6 @@ def convert_joints(
     model_size.max_of_max_total_cts = int(num_joint_cts_np.max())
 
     # Update per-world heterogeneous model info
-    model_info.num_joints = wp.array(num_joints_np, dtype=int32)
     model_info.num_passive_joints = num_passive_joints
     model_info.num_actuated_joints = num_actuated_joints
     model_info.num_dynamic_joints = num_dynamic_joints
@@ -1343,18 +1337,20 @@ def convert_joints(
     model_info.num_joint_cts = num_joint_cts
     model_info.num_joint_dynamic_cts = num_joint_dynamic_cts
     model_info.num_joint_kinematic_cts = num_joint_kinematic_cts
-    model_info.joints_offset = wp.array(world_joint_offset_np, dtype=int32)
-    model_info.joint_coords_offset = wp.array(world_joint_coord_offset_np, dtype=int32)
-    model_info.joint_dofs_offset = wp.array(world_joint_dof_offset_np, dtype=int32)
-    model_info.joint_passive_coords_offset = wp.array(world_passive_joint_coord_offset_np, dtype=int32)
-    model_info.joint_passive_dofs_offset = wp.array(world_passive_joint_dofs_offset_np, dtype=int32)
-    model_info.joint_actuated_coords_offset = wp.array(world_actuated_joint_coord_offset_np, dtype=int32)
-    model_info.joint_actuated_dofs_offset = wp.array(world_actuated_joint_dofs_offset_np, dtype=int32)
-    model_info.joint_cts_offset = wp.array(world_joint_cts_offset_np, dtype=int32)
-    model_info.joint_dynamic_cts_offset = wp.array(world_joint_dynamic_cts_offset_np, dtype=int32)
-    model_info.joint_kinematic_cts_offset = wp.array(world_joint_kinematic_cts_offset_np, dtype=int32)
-    model_info.base_body_index = wp.array(base_body_idx_np, dtype=int32)
-    model_info.base_joint_index = wp.array(base_joint_idx_np, dtype=int32)
+    with wp.ScopedDevice(model.device):
+        model_info.num_joints = wp.array(num_joints_np, dtype=int32)
+        model_info.joints_offset = wp.array(world_joint_offset_np, dtype=int32)
+        model_info.joint_coords_offset = wp.array(world_joint_coord_offset_np, dtype=int32)
+        model_info.joint_dofs_offset = wp.array(world_joint_dof_offset_np, dtype=int32)
+        model_info.joint_passive_coords_offset = wp.array(world_passive_joint_coord_offset_np, dtype=int32)
+        model_info.joint_passive_dofs_offset = wp.array(world_passive_joint_dofs_offset_np, dtype=int32)
+        model_info.joint_actuated_coords_offset = wp.array(world_actuated_joint_coord_offset_np, dtype=int32)
+        model_info.joint_actuated_dofs_offset = wp.array(world_actuated_joint_dofs_offset_np, dtype=int32)
+        model_info.joint_cts_offset = wp.array(world_joint_cts_offset_np, dtype=int32)
+        model_info.joint_dynamic_cts_offset = wp.array(world_joint_dynamic_cts_offset_np, dtype=int32)
+        model_info.joint_kinematic_cts_offset = wp.array(world_joint_kinematic_cts_offset_np, dtype=int32)
+        model_info.base_body_index = wp.array(base_body_idx_np, dtype=int32)
+        model_info.base_joint_index = wp.array(base_joint_idx_np, dtype=int32)
 
     # Convert local (per-world) joint offsets to global by adding per-world prefix offsets in-place
     wp.launch(
@@ -1383,6 +1379,7 @@ def convert_joints(
             joint_dynamic_cts_start,
             joint_kinematic_cts_start,
         ],
+        device=model.device,
     )
 
     # Write the N+1 entry (grand total) into each offset array.
@@ -1390,46 +1387,55 @@ def convert_joints(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_coord_start, model_size.sum_of_num_joints, model_size.sum_of_num_joint_coords],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_dofs_start, model_size.sum_of_num_joints, model_size.sum_of_num_joint_dofs],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_passive_coord_start, model_size.sum_of_num_joints, model_size.sum_of_num_passive_joint_coords],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_passive_dofs_start, model_size.sum_of_num_joints, model_size.sum_of_num_passive_joint_dofs],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_actuated_coord_start, model_size.sum_of_num_joints, model_size.sum_of_num_actuated_joint_coords],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_actuated_dofs_start, model_size.sum_of_num_joints, model_size.sum_of_num_actuated_joint_dofs],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_cts_start, model_size.sum_of_num_joints, model_size.sum_of_num_joint_cts],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_dynamic_cts_start, model_size.sum_of_num_joints, model_size.sum_of_num_dynamic_joint_cts],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_kinematic_cts_start, model_size.sum_of_num_joints, model_size.sum_of_num_kinematic_joint_cts],
+        device=model.device,
     )
 
     # Joints
@@ -1482,7 +1488,7 @@ def register_materials(model: Model, materials_manager: MaterialManager) -> np.n
         materials_manager: Materials manager to register the materials to.
 
     Returns:
-        List of material indices for each geom.
+        NumPy array of material indices for each geom.
     """
     # Set up material parameter dictionary
     material_param_indices: dict[tuple[float, float], int] = {}
@@ -1553,6 +1559,7 @@ def convert_geometries(
             geom_gid,
             model_num_collidable_geoms,
         ],
+        device=model.device,
     )
 
     # Compute total number of required contacts per world
@@ -1585,7 +1592,7 @@ def convert_geometries(
         gap=model.shape_gap,
         margin=model.shape_margin,
         collidable_pairs=model.shape_contact_pairs,
-        excluded_pairs=wp.array(sorted(model.shape_collision_filter_pairs), dtype=vec2i),
+        excluded_pairs=wp.array(sorted(model.shape_collision_filter_pairs), dtype=vec2i, device=model.device),
         # Mesh / heightfield data pass-through from Newton model
         heightfield_index=model.shape_heightfield_index,
         heightfield_data=model.heightfield_data,

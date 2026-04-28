@@ -63,6 +63,13 @@ class PIDControllerData:
     decimation: wp.array | None = None
     """The control decimation for each world expressed as a multiple of simulation steps."""
 
+    @property
+    def device(self) -> wp.DeviceLike:
+        """The device used for allocations and execution."""
+        if self.q_j_ref is None:
+            raise RuntimeError("Controller data is not allocated. Call finalize() first.")
+        return self.q_j_ref.device
+
 
 ###
 # Kernels
@@ -255,6 +262,7 @@ def reset_jointspace_pid_references(
             controller.q_j_ref,
             controller.dq_j_ref,
         ],
+        device=controller.device,
     )
 
 
@@ -295,6 +303,7 @@ def compute_jointspace_pid_control(
             # Outputs
             control.tau_j,
         ],
+        device=control.device,
     )
 
 
@@ -317,7 +326,6 @@ class JointSpacePIDController:
         K_i: FloatArrayLike | None = None,
         K_d: FloatArrayLike | None = None,
         decimation: IntArrayLike | None = None,
-        device: wp.DeviceLike = None,
     ):
         """
         A simple PID controller in joint space.
@@ -330,18 +338,17 @@ class JointSpacePIDController:
             K_d (FloatArrayLike | None): Derivative gains per actuated joint DoF.
             decimation (IntArrayLike | None): Control decimation for each world
                 expressed as a multiple of simulation steps.
-            device (wp.DeviceLike | None): Device to use for allocations and execution.
         """
 
-        # Cache the device
-        self._device: wp.DeviceLike = device
+        # Declare the device cache
+        self._device: wp.DeviceLike = None
 
         # Declare the internal controller data
         self._data: PIDControllerData | None = None
 
         # If a model is provided, allocate the controller data
         if model is not None:
-            self.finalize(model, K_p, K_i, K_d, decimation, device)
+            self.finalize(model, K_p, K_i, K_d, decimation)
 
     ###
     # Properties
@@ -370,7 +377,6 @@ class JointSpacePIDController:
         K_i: FloatArrayLike,
         K_d: FloatArrayLike,
         decimation: IntArrayLike | None = None,
-        device: wp.DeviceLike = None,
     ) -> None:
         """
         Allocates all internal data arrays of the controller.
@@ -382,7 +388,6 @@ class JointSpacePIDController:
             K_d (FloatArrayLike): Derivative gains per actuated joint DoF.
             decimation (IntArrayLike | None): Control decimation for each world expressed
                 as a multiple of simulation steps. Defaults to 1 for all worlds if None.
-            device (wp.DeviceLike | None): Device to use for allocations and execution.
 
         Raises:
             ValueError: If the model has no actuated DoFs.
@@ -416,9 +421,8 @@ class JointSpacePIDController:
         if decimation is not None and len(decimation) != model.size.num_worlds:
             raise ValueError(f"decimation must have length {model.size.num_worlds}, but has length {len(decimation)}")
 
-        # Override the device if provided
-        if device is not None:
-            self._device = device
+        # Use the model's device
+        self._device = model.device
 
         # Set default decimation if not provided
         if decimation is None:

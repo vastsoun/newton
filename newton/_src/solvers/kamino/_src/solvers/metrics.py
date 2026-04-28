@@ -1103,21 +1103,16 @@ class SolutionMetrics:
     about the specific metrics computed, please refer to the documentation of that class.
     """
 
-    def __init__(self, model: ModelKamino | None = None, device: wp.DeviceLike = None):
+    def __init__(self, model: ModelKamino | None = None):
         """
         Initializes the solution metrics evaluator.
 
         Args:
             model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
-            device (wp.DeviceLike, optional):
-                The device where the metrics data should be allocated.\n
-                If not specified, the model's device will be used by default.
         """
-        # Declare and initialize the target device
-        # NOTE: This can be overridden during a
-        # later call to `finalize()` if needed
-        self._device: wp.DeviceLike = device
+        # Declare the device cache
+        self._device: wp.DeviceLike = None
 
         # Declare the metrics data container
         self._data: SolutionMetricsData | None = None
@@ -1128,28 +1123,22 @@ class SolutionMetrics:
 
         # If a model is provided, finalize the metrics data allocations
         if model is not None:
-            self.finalize(model, device)
+            self.finalize(model)
 
-    def finalize(self, model: ModelKamino, device: wp.DeviceLike = None):
+    def finalize(self, model: ModelKamino):
         """
         Finalizes the metrics data allocations on the specified device.
 
         Args:
             model (ModelKamino):
                 The model containing the time-invariant data of the simulation.
-            device (wp.DeviceLike, optional):
-                The device where the metrics data should be allocated.\n
-                If not specified, the model's device will be used by default.
         """
         # Ensure the model is valid
         if not isinstance(model, ModelKamino):
             raise TypeError("Expected 'model' to be of type ModelKamino.")
 
-        # Set the target device for metrics data allocation and execution
-        # If no device is specified, use the model's device by default
-        self._device = device
-        if self._device is None:
-            self._device = model.device
+        # Use the model's device
+        self._device = model.device
 
         # Allocate metrics data on the target device
         with wp.ScopedDevice(self._device):

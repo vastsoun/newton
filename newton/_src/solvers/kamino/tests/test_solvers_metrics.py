@@ -680,7 +680,6 @@ class TestSolverMetrics(unittest.TestCase):
             model=test.model,
             limits=test.limits,
             contacts=test.detector.contacts,
-            device=self.default_device,
         )
         jacobians_sparse.build(
             model=test.model,
@@ -696,7 +695,6 @@ class TestSolverMetrics(unittest.TestCase):
             limits=test.limits,
             contacts=test.contacts,
             jacobians=jacobians_sparse,
-            device=self.default_device,
             sparse=True,
         )
         problem_sparse.build(

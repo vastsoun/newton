@@ -81,6 +81,17 @@ class ControlKamino:
     """Owned coords-space reference buffer used when ``dofs != coords``."""
 
     ###
+    # Properties
+    ###
+
+    @property
+    def device(self) -> wp.DeviceLike:
+        """The device used for allocations and execution."""
+        if self.tau_j is None:
+            raise RuntimeError("ControlKamino data is not allocated.")
+        return self.tau_j.device
+
+    ###
     # Operations
     ###
 
@@ -106,7 +117,7 @@ class ControlKamino:
             raise ValueError("Error copying from/to uninitialized ControlKamino")
         wp.copy(self.tau_j, other.tau_j)
 
-    def finalize(self, model: ModelKamino, device: wp.DeviceLike | None = None) -> None:
+    def finalize(self, model: ModelKamino) -> None:
         """
         Allocates any required internal buffer to interface with a :class:`newton.Control`.
 
@@ -116,14 +127,13 @@ class ControlKamino:
 
         Args:
             model: The Kamino model describing the system.
-            device: Optional device to allocate buffers on. If ``None``, uses the model's device.
         """
         if model.size.sum_of_num_joint_dofs != model.size.sum_of_num_joint_coords:
             self._needs_coord_conversion = True
             self._q_j_ref_coords_space = wp.zeros(
                 shape=model.size.sum_of_num_joint_coords,
                 dtype=float32,
-                device=device if device is not None else model.device,
+                device=model.device,
             )
         else:
             self._needs_coord_conversion = False
@@ -136,8 +146,8 @@ class ControlKamino:
         target DoFs to coords is performed.
 
         Args:
-            control: The source :class:`newton.Control` object.
-            model: The Kamino model.
+            control: The source :class:`newton.Control` object to be interfaced.
+            model: The source Kamino model holding the time-invariant description of the system.
         """
         self.tau_j = control.joint_f
         self.tau_j_ref = control.joint_act
@@ -159,8 +169,8 @@ class ControlKamino:
         target coords to DoFs is performed.
 
         Args:
-            control: The destination :class:`newton.Control` object.
-            model: The Kamino model.
+            control: The destination :class:`newton.Control` object to be interfaced.
+            model: The source Kamino model holding the time-invariant description of the system.
         """
         control.joint_f = self.tau_j
         control.joint_act = self.tau_j_ref

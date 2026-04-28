@@ -163,7 +163,6 @@ class RandomJointController:
     def __init__(
         self,
         model: ModelKamino | None = None,
-        device: wp.DeviceLike = None,
         decimation: int | IntArrayLike | None = None,
         scale: float | FloatArrayLike | None = None,
         seed: int | None = None,
@@ -176,9 +175,6 @@ class RandomJointController:
             model (`ModelKamino`, optional):
                 The model container describing the system to be simulated.\n
                 If `None`, a call to ``finalize()`` must be made later.
-            device (`wp.DeviceLike`, optional):
-                Device to use for allocations and execution.\n
-                Defaults to `None`, in which case the model device is used.
             decimation (`int` or `IntArrayLike`, optional):
                 Control decimation for each world expressed as a multiple of simulation steps.\n
                 Defaults to `1` for all worlds if `None`.
@@ -194,8 +190,10 @@ class RandomJointController:
         # for which this controller is created
         self._model: ModelKamino | None = None
 
+        # Declare the device cache
+        self._device: wp.DeviceLike = None
+
         # Cache constructor arguments for potential later
-        self._device: wp.DeviceLike = device
         self._decimation: int | IntArrayLike | None = decimation
         self._scale: float | FloatArrayLike | None = scale
         self._seed: int = seed
@@ -205,7 +203,7 @@ class RandomJointController:
 
         # If a model is provided, allocate the controller data
         if model is not None:
-            self.finalize(model=model, seed=seed, decimation=decimation, scale=scale, device=device)
+            self.finalize(model=model, seed=seed, decimation=decimation, scale=scale)
 
     ###
     # Properties
@@ -256,7 +254,6 @@ class RandomJointController:
         seed: int | None = None,
         decimation: int | IntArrayLike | None = None,
         scale: float | FloatArrayLike | None = None,
-        device: wp.DeviceLike = None,
     ):
         """
         Finalizes the random controller by allocating
@@ -265,9 +262,6 @@ class RandomJointController:
         Args:
             model (`ModelKamino`):
                 The model container describing the system to be simulated.
-            device (`wp.DeviceLike`, optional):
-                Device to use for allocations and execution.\n
-                Defaults to `None`, in which case the model device is used.
             decimation (`int` or `IntArrayLike`, optional):
                 Control decimation for each world expressed as a multiple of simulation steps.\n
                 Defaults to `1` for all worlds if `None`.
@@ -306,11 +300,8 @@ class RandomJointController:
             seed=seed if seed is not None else self._seed,
         )
 
-        # Override the device if provided, otherwise use the model device
-        if device is not None:
-            self._device = device
-        else:
-            self._device = model.device
+        # Use the model's device
+        self._device = model.device
 
         # Allocate the controller data
         with wp.ScopedDevice(self._device):
@@ -358,6 +349,7 @@ class RandomJointController:
                 # (e.g. position and velocity targets)
                 control.tau_j,
             ],
+            device=self._device,
         )
 
     ###

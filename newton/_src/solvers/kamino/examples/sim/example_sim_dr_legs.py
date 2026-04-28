@@ -130,6 +130,7 @@ def pd_control_callback(sim: Simulator, animation: AnimationJointReference, deci
             sim.control.dq_j_ref,
             sim.control.tau_j_ref,
         ],
+        device=sim._device,
     )
 
 
@@ -267,7 +268,6 @@ class Example:
             rate=1,
             loop=False,
             use_fd=True,
-            device=device,
         )
 
         # Create a joint-space PID controller
@@ -277,7 +277,7 @@ class Example:
         K_i = 0.01 * np.ones(njaq, dtype=np.float32)
         decimation = 1 * np.ones(self.sim.model.size.num_worlds, dtype=np.int32)
         self.controller = JointSpacePIDController(
-            model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
+            model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation
         )
 
         # Define a callback function to reset the controller

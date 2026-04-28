@@ -660,6 +660,11 @@ class ModelKamino:
                 dq_j_ref=wp.clone(self.joints.dq_j_0, requires_grad=requires_grad),
                 tau_j_ref=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
             )
+
+        # Post-processing to finalize the control container
+        # NOTE: This is currently necessary to handle the case when
+        # the total number of joint coordinates and DoFs differ, in
+        # which case a temporary buffer is allocated for the conversion.
         control.finalize(self)
 
         # Return the constructed control container

@@ -127,13 +127,13 @@ class ControlKamino:
 
         Args:
             model: The Kamino model describing the system.
-            device: Optional device to allocate buffers on. If ``None``, uses the model's device.
         """
         if model.size.sum_of_num_joint_dofs != model.size.sum_of_num_joint_coords:
             self._needs_coord_conversion = True
             self._q_j_ref_coords_space = wp.zeros(
                 shape=model.size.sum_of_num_joint_coords,
                 dtype=float32,
+                device=model.device,
             )
         else:
             self._needs_coord_conversion = False
@@ -146,8 +146,8 @@ class ControlKamino:
         target DoFs to coords is performed.
 
         Args:
-            control: The source :class:`newton.Control` object.
-            model: The Kamino model.
+            control: The source :class:`newton.Control` object to be interfaced.
+            model: The source Kamino model holding the time-invariant description of the system.
         """
         self.tau_j = control.joint_f
         self.tau_j_ref = control.joint_act
@@ -169,8 +169,8 @@ class ControlKamino:
         target coords to DoFs is performed.
 
         Args:
-            control: The destination :class:`newton.Control` object.
-            model: The Kamino model.
+            control: The destination :class:`newton.Control` object to be interfaced.
+            model: The source Kamino model holding the time-invariant description of the system.
         """
         control.joint_f = self.tau_j
         control.joint_act = self.tau_j_ref

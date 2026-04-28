@@ -554,7 +554,6 @@ def update_body_inertias(model: RigidBodiesModel, data: RigidBodiesData):
             data.I_i,
             data.inv_I_i,
         ],
-        device=model.i_I_i.device,
     )
 
 

@@ -65,7 +65,6 @@ def setup_tests(verbose: bool = False, device: wp.DeviceLike | str | None = None
     # Update test context
     test_context.verbose = verbose
     test_context.device = wp.get_device(device)
-    wp.set_device(test_context.device)
     test_context.setup_done = True
 
     # Set the cache directory for optional test output, if any

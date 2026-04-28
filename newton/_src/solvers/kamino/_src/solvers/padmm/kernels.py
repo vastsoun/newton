@@ -1614,23 +1614,31 @@ def _update_acceleration_and_cache_previous(
     solver_state_a_p_out: wp.array(dtype=float32),
 ):
     """Fused kernel: Nesterov acceleration update + cache previous state."""
+    # Retrieve the thread indices as the world and constraint index
     wid, tid = wp.tid()
 
+    # Retrieve the total number of active constraints
+    # in the world and the current solver status
     ncts = problem_dim[wid]
     status = solver_status[wid]
 
+    # Skip if row index exceed the problem size
     if tid >= ncts:
         return
 
+    # Retrieve the index offset of the vector block of the world
     vio = problem_vio[wid]
     vid = vio + tid
 
+    # Read current state and old previous state
     x = solver_state_x[vid]
     y = solver_state_y[vid]
     z = solver_state_z[vid]
     y_p = solver_state_y_p[vid]
     z_p = solver_state_z_p[vid]
 
+    # Update the auxiliary primal-dual state with Nesterov acceleration
+    # if not restarting, else reset to the previous slack and dual state
     if status.converged == 0:
         if status.restart == 0:
             factor = solver_state_a_factor[wid]
@@ -1640,10 +1648,12 @@ def _update_acceleration_and_cache_previous(
             solver_state_y_hat[vid] = y_p
             solver_state_z_hat[vid] = z_p
 
+    # Cache current → previous state for the next iteration
     solver_state_x_p_out[vid] = x
     solver_state_y_p_out[vid] = y
     solver_state_z_p_out[vid] = z
 
+    # Only one thread needs to cache the scalar acceleration parameter
     if tid == 0:
         solver_state_a_p_out[wid] = solver_state_a[wid]
 

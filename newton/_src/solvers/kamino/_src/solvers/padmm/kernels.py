@@ -857,9 +857,7 @@ def _compute_projection_argument_and_project(
     ccgo = problem_ccgo[wid]
 
     # Check if this constraint index falls within the limit range
-    limit_start = lcgo
-    limit_end = lcgo + nl
-    if nl > 0 and tid >= limit_start and tid < limit_end:
+    if nl > 0 and tid >= lcgo and tid < lcgo + nl:
         solver_y[thread_offset] = wp.max(y_val, 0.0)
 
     # Check if this constraint index falls within a contact block
@@ -1346,6 +1344,7 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
         # Outputs:
         solver_state_done: wp.array(dtype=int32),
         solver_state_a: wp.array(dtype=float32),
+        solver_state_a_factor: wp.array(dtype=float32),
         solver_status: wp.array(dtype=PADMMStatus),
         solver_penalty: wp.array(dtype=PADMMPenalty),
         linear_solver_atol: wp.array(dtype=float32),
@@ -1511,12 +1510,15 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
             if status.r_a < config.restart_tolerance * status.r_a_p:
                 status.restart = 0
                 a_p = solver_state_a_p[wid]
-                solver_state_a[wid] = (1.0 + wp.sqrt(1.0 + 4.0 * a_p * a_p)) / 2.0
+                a = (1.0 + wp.sqrt(1.0 + 4.0 * a_p * a_p)) / 2.0
+                solver_state_a[wid] = a
+                solver_state_a_factor[wid] = (a_p - 1.0) / a
             else:
                 status.restart = 1
                 status.num_restarts += 1
                 status.r_a = status.r_a_p / config.restart_tolerance
                 solver_state_a[wid] = float(config.a_0)
+                solver_state_a_factor[wid] = float32(0.0)
             status.r_a_pp = status.r_a_p
             status.r_a_p = status.r_a
 
@@ -1597,10 +1599,10 @@ def _update_acceleration_and_cache_previous(
     problem_vio: wp.array(dtype=int32),
     solver_status: wp.array(dtype=PADMMStatus),
     solver_state_a: wp.array(dtype=float32),
+    solver_state_a_factor: wp.array(dtype=float32),
     solver_state_x: wp.array(dtype=float32),
     solver_state_y: wp.array(dtype=float32),
     solver_state_z: wp.array(dtype=float32),
-    solver_state_a_p: wp.array(dtype=float32),
     solver_state_y_p: wp.array(dtype=float32),
     solver_state_z_p: wp.array(dtype=float32),
     # Outputs:
@@ -1611,47 +1613,37 @@ def _update_acceleration_and_cache_previous(
     solver_state_z_p_out: wp.array(dtype=float32),
     solver_state_a_p_out: wp.array(dtype=float32),
 ):
-    """Fused kernel: Nesterov acceleration update + cache previous state.
-
-    Combines _update_state_with_acceleration and wp.copy(x to x_p, y to y_p, z to z_p, a to a_p)
-    into a single kernel to reduce kernel launch overhead.
-    """
+    """Fused kernel: Nesterov acceleration update + cache previous state."""
     wid, tid = wp.tid()
 
     ncts = problem_dim[wid]
     status = solver_status[wid]
 
-    if tid >= ncts or status.converged > 0:
+    if tid >= ncts:
         return
 
     vio = problem_vio[wid]
     vid = vio + tid
 
-    # Read current state and old previous state
     x = solver_state_x[vid]
     y = solver_state_y[vid]
     z = solver_state_z[vid]
     y_p = solver_state_y_p[vid]
     z_p = solver_state_z_p[vid]
 
-    # Cache current → previous
+    if status.converged == 0:
+        if status.restart == 0:
+            factor = solver_state_a_factor[wid]
+            solver_state_y_hat[vid] = y + factor * (y - y_p)
+            solver_state_z_hat[vid] = z + factor * (z - z_p)
+        else:
+            solver_state_y_hat[vid] = y_p
+            solver_state_z_hat[vid] = z_p
+
     solver_state_x_p_out[vid] = x
     solver_state_y_p_out[vid] = y
     solver_state_z_p_out[vid] = z
 
-    # Nesterov acceleration update using saved old values
-    if status.restart == 0:
-        a = solver_state_a[wid]
-        a_p = solver_state_a_p[wid]
-
-        factor = (a_p - 1.0) / a
-        solver_state_y_hat[vid] = y + factor * (y - y_p)
-        solver_state_z_hat[vid] = z + factor * (z - z_p)
-    else:
-        solver_state_y_hat[vid] = y_p
-        solver_state_z_hat[vid] = z_p
-
-    # Cache acceleration parameter (only first thread per world)
     if tid == 0:
         solver_state_a_p_out[wid] = solver_state_a[wid]
 

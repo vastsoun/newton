@@ -1252,6 +1252,7 @@ class PADMMSolver:
                 # Outputs:
                 self._data.state.done,
                 self._data.state.a,
+                self._data.state.a_factor,
                 self._data.status,
                 self._data.penalty,
                 self._data.linear_solver_atol,
@@ -1453,10 +1454,7 @@ class PADMMSolver:
         self._update_previous_state()
 
     def _update_acceleration_and_cache_previous(self, problem: DualProblem):
-        """Fused kernel: Nesterov acceleration update + cache previous state variables.
-
-        Replaces _update_acceleration + _update_previous_state_accel with a single kernel launch.
-        """
+        """Fused kernel: Nesterov acceleration update + cache previous state variables."""
         wp.launch(
             kernel=_update_acceleration_and_cache_previous,
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
@@ -1466,10 +1464,10 @@ class PADMMSolver:
                 problem.data.vio,
                 self._data.status,
                 self._data.state.a,
+                self._data.state.a_factor,
                 self._data.state.x,
                 self._data.state.y,
                 self._data.state.z,
-                self._data.state.a_p,
                 self._data.state.y_p,
                 self._data.state.z_p,
                 # Outputs:

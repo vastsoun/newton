@@ -849,7 +849,6 @@ def _compute_projection_argument_and_project(
     z_hat = solver_z_hat[thread_offset]
     x = solver_x[thread_offset]
     y_val = x - (1.0 / rho) * z_hat
-    solver_y[thread_offset] = y_val
 
     # Step 2: Project unilateral constraints to the feasible set
     nl = problem_nl[wid]
@@ -865,13 +864,13 @@ def _compute_projection_argument_and_project(
 
     # Check if this constraint index falls within a contact block
     # Contact constraints are 3D blocks: [tx, ty, n] at offsets ccgo + 3*cid + {0,1,2}
-    elif nc > 0 and tid >= ccgo:
+    elif nc > 0 and tid >= ccgo and tid < ccgo + 3 * nc:
         local_offset = tid - ccgo
         cid = local_offset // 3
         component = local_offset - 3 * cid
-        if cid < nc and component == 0:
+        if component == 0:
             # This thread handles the first component of a contact — do the full 3D projection
-            # Recompute y for all 3 components locally to avoid inter-thread race conditions
+            # Recompute y for all 3 components locally so no other thread writes this contact block.
             cio = problem_cio[wid]
             ccio_j = vio + ccgo + 3 * cid
             inv_rho = 1.0 / rho
@@ -882,6 +881,8 @@ def _compute_projection_argument_and_project(
             solver_y[ccio_j] = y_proj[0]
             solver_y[ccio_j + 1] = y_proj[1]
             solver_y[ccio_j + 2] = y_proj[2]
+    else:
+        solver_y[thread_offset] = y_val
 
 
 def make_update_dual_variables_and_compute_primal_dual_residuals(use_acceleration: bool = False):

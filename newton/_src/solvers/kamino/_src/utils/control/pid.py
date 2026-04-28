@@ -63,6 +63,13 @@ class PIDControllerData:
     decimation: wp.array | None = None
     """The control decimation for each world expressed as a multiple of simulation steps."""
 
+    @property
+    def device(self) -> wp.DeviceLike:
+        """The device used for allocations and execution."""
+        if self.q_j_ref is None:
+            raise RuntimeError("Controller data is not allocated. Call finalize() first.")
+        return self.q_j_ref.device
+
 
 ###
 # Kernels
@@ -255,6 +262,7 @@ def reset_jointspace_pid_references(
             controller.q_j_ref,
             controller.dq_j_ref,
         ],
+        device=controller.device,
     )
 
 
@@ -295,6 +303,7 @@ def compute_jointspace_pid_control(
             # Outputs
             control.tau_j,
         ],
+        device=control.device,
     )
 
 

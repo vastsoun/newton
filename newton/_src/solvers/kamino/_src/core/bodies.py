@@ -554,6 +554,7 @@ def update_body_inertias(model: RigidBodiesModel, data: RigidBodiesData):
             data.I_i,
             data.inv_I_i,
         ],
+        device=model.i_I_i.device,
     )
 
 
@@ -571,6 +572,7 @@ def update_body_wrenches(model: RigidBodiesModel, data: RigidBodiesData):
             # Outputs:
             data.w_i,
         ],
+        device=data.w_i.device,
     )
 
 
@@ -617,4 +619,5 @@ def convert_base_origin_to_com(
         dim=base_body_index.shape[0],
         inputs=[base_body_index, body_com, base_q],
         outputs=[base_q_com],
+        device=base_q_com.device,
     )

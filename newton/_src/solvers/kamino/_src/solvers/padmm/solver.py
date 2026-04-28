@@ -314,6 +314,7 @@ class PADMMSolver:
                     self._data.solution.lambdas,
                     self._data.solution.v_plus,
                 ],
+                device=self.device,
             )
 
     def coldstart(self):
@@ -461,6 +462,7 @@ class PADMMSolver:
                 self._data.state.a_p,
                 self._data.linear_solver_atol,
             ],
+            device=self.device,
         )
 
         # Initialize the global while condition flag
@@ -482,6 +484,7 @@ class PADMMSolver:
                 self._data.status,
                 problem.delassus._eta,
             ],
+            device=self.device,
         )
         problem.delassus.set_needs_update()
 
@@ -510,6 +513,7 @@ class PADMMSolver:
                     # Outputs:
                     problem.data.D,
                 ],
+                device=self.device,
             )
 
             # Compute Cholesky/LDLT factorization of the Delassus matrix
@@ -617,6 +621,7 @@ class PADMMSolver:
                 # Outputs:
                 z,
             ],
+            device=self.device,
         )
 
     def _warmstart_joint_constraints(
@@ -660,6 +665,7 @@ class PADMMSolver:
                 y_0,
                 z_0,
             ],
+            device=self.device,
         )
 
     def _warmstart_limit_constraints(
@@ -704,6 +710,7 @@ class PADMMSolver:
                 y_0,
                 z_0,
             ],
+            device=self.device,
         )
 
     def _warmstart_contact_constraints(
@@ -749,6 +756,7 @@ class PADMMSolver:
                 y_0,
                 z_0,
             ],
+            device=self.device,
         )
 
     def _warmstart_from_solution(self, problem: DualProblem):
@@ -773,6 +781,7 @@ class PADMMSolver:
                 self._data.solution.lambdas,
                 self._data.solution.v_plus,
             ],
+            device=self.device,
         )
 
         # Capture references to the warm-start variables
@@ -858,6 +867,7 @@ class PADMMSolver:
                 # Outputs:
                 self._data.state.s,
             ],
+            device=self.device,
         )
 
     def _update_velocity_bias(self, problem: DualProblem, y: wp.array, z: wp.array):
@@ -890,6 +900,7 @@ class PADMMSolver:
                 # Outputs:
                 self._data.state.v,
             ],
+            device=self.device,
         )
 
     def _update_desaxce_and_velocity_bias(self, problem: DualProblem, y: wp.array, z: wp.array):
@@ -929,6 +940,7 @@ class PADMMSolver:
                 self._data.state.v,
                 self._data.state.s,
             ],
+            device=self.device,
         )
 
     def _update_unconstrained_solution(self, problem: DualProblem):
@@ -972,6 +984,7 @@ class PADMMSolver:
                 # Outputs:
                 self._data.state.y,
             ],
+            device=self.device,
         )
 
     def _update_projection_to_feasible_set(self, problem: DualProblem):
@@ -1002,6 +1015,7 @@ class PADMMSolver:
                 # Outputs:
                 self._data.state.y,
             ],
+            device=self.device,
         )
 
     def _update_projection_argument_and_project(self, problem: DualProblem, z: wp.array):
@@ -1026,6 +1040,7 @@ class PADMMSolver:
                 # Outputs:
                 self._data.state.y,
             ],
+            device=self.device,
         )
 
     def _update_complementarity_residuals(self, problem: DualProblem):
@@ -1054,6 +1069,7 @@ class PADMMSolver:
                 # Outputs:
                 self._data.residuals.r_compl,
             ],
+            device=self.device,
         )
 
     def _update_dual_variables_and_residuals(self, problem: DualProblem):
@@ -1092,6 +1108,7 @@ class PADMMSolver:
                 self._data.residuals.r_dy,
                 self._data.residuals.r_dz,
             ],
+            device=self.device,
         )
 
         # Compute complementarity residual from the current state
@@ -1133,6 +1150,7 @@ class PADMMSolver:
                 self._data.residuals.r_dy,
                 self._data.residuals.r_dz,
             ],
+            device=self.device,
         )
 
         # Compute complementarity residual from the current state
@@ -1171,6 +1189,7 @@ class PADMMSolver:
                 self._data.residuals.r_dy,
                 self._data.residuals.r_dz,
             ],
+            device=self.device,
         )
 
     def _update_convergence_check(self, problem: DualProblem):
@@ -1211,6 +1230,7 @@ class PADMMSolver:
                 self._data.penalty,
                 self._data.linear_solver_atol,
             ],
+            device=self.device,
         )
 
     def _update_convergence_check_accel(self, problem: DualProblem):
@@ -1257,6 +1277,7 @@ class PADMMSolver:
                 self._data.penalty,
                 self._data.linear_solver_atol,
             ],
+            device=self.device,
         )
 
     def _update_acceleration(self, problem: DualProblem):
@@ -1286,6 +1307,7 @@ class PADMMSolver:
                 self._data.state.y_hat,
                 self._data.state.z_hat,
             ],
+            device=self.device,
         )
 
     def _update_solver_info(self, problem: DualProblem):
@@ -1372,6 +1394,7 @@ class PADMMSolver:
                     self._data.info.r_ncp_compl,
                     self._data.info.r_ncp_natmap,
                 ],
+                device=self.device,
             )
         else:
             wp.launch(
@@ -1432,6 +1455,7 @@ class PADMMSolver:
                     self._data.info.r_ncp_compl,
                     self._data.info.r_ncp_natmap,
                 ],
+                device=self.device,
             )
 
     def _update_previous_state(self):
@@ -1478,6 +1502,7 @@ class PADMMSolver:
                 self._data.state.z_p,
                 self._data.state.a_p,
             ],
+            device=self.device,
         )
 
     ###
@@ -1506,6 +1531,7 @@ class PADMMSolver:
                 self._data.state.y,
                 self._data.state.z,
             ],
+            device=self.device,
         )
 
         # Update the De Saxce correction from terminal PADMM dual variables
@@ -1523,6 +1549,7 @@ class PADMMSolver:
                 # Outputs:
                 self._data.state.s,
             ],
+            device=self.device,
         )
 
         # Update solution vectors from the terminal PADMM state
@@ -1540,4 +1567,5 @@ class PADMMSolver:
                 self._data.solution.v_plus,
                 self._data.solution.lambdas,
             ],
+            device=self.device,
         )

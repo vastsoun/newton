@@ -972,6 +972,7 @@ class DelassusOperator:
                     # Outputs:
                     self._operator.mat,
                 ],
+                device=self._device,
             )
         else:
             jacobian_cts = jacobians._J_cts.bsm
@@ -992,6 +993,7 @@ class DelassusOperator:
                     # Outputs:
                     self._operator.mat,
                 ],
+                device=self._device,
             )
 
         # Add armature regularization to the upper diagonal if dynamic joint constraints are present
@@ -1009,6 +1011,7 @@ class DelassusOperator:
                     # Outputs:
                     self._operator.mat,
                 ],
+                device=self._device,
             )
 
     def regularize(self, eta: wp.array):
@@ -1024,6 +1027,7 @@ class DelassusOperator:
             kernel=_regularize_delassus_diagonal_dense,
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
             inputs=[self._operator.info.dim, self._operator.info.vio, self._operator.info.mio, eta, self._operator.mat],
+            device=self._device,
         )
 
     def compute(self, reset_to_zero: bool = True):

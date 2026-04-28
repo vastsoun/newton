@@ -349,6 +349,7 @@ class IntegratorMoreauJean(IntegratorBase):
                 # Outputs:
                 data.bodies.q_i,
             ],
+            device=model.device,
         )
 
     def _integrate2(self, model: ModelKamino, data: DataKamino):
@@ -381,4 +382,5 @@ class IntegratorMoreauJean(IntegratorBase):
                 data.bodies.q_i,
                 data.bodies.u_i,
             ],
+            device=model.device,
         )

@@ -747,6 +747,7 @@ def convert_entity_local_transforms(model: Model) -> dict[str, wp.array]:
             joint_X_p,
             joint_X_c,
         ],
+        device=model.device,
     )
 
     # Convert shapes based on body corrections
@@ -760,6 +761,7 @@ def convert_entity_local_transforms(model: Model) -> dict[str, wp.array]:
         outputs=[
             shape_transform,
         ],
+        device=model.device,
     )
 
     # Return the converted transforms as warp arrays
@@ -827,6 +829,7 @@ def compute_required_contact_capacity(
         outputs=[
             world_max_contacts_wp,
         ],
+        device=model.device,
     )
     world_max_contacts = world_max_contacts_wp.numpy()
 
@@ -957,6 +960,7 @@ def convert_rigid_bodies(
             world_shape_offset,
             world_body_dof_offset,
         ],
+        device=model.device,
     )
 
     # Construct per-world inertial summaries
@@ -979,6 +983,7 @@ def convert_rigid_bodies(
             mass_max,
             inertia_total,
         ],
+        device=model.device,
     )
 
     # model.body_q stores body-origin world poses, but Kamino expects
@@ -999,6 +1004,7 @@ def convert_rigid_bodies(
         write_coeff_kernel,
         dim=1,
         inputs=[world_body_offset, model_size.num_worlds, model_size.sum_of_num_bodies],
+        device=model.device,
     )
 
     # Per-world heterogeneous model info
@@ -1121,6 +1127,7 @@ def convert_joints(
             joint_F_r_F,
             joint_X,
         ],
+        device=model.device,
     )
 
     # Compute sizes and indices for all joint properties
@@ -1182,6 +1189,7 @@ def convert_joints(
             joint_dynamic_cts_start,
             joint_kinematic_cts_start,
         ],
+        device=model.device,
     )
 
     # Get on-device copies of the per-world sizes
@@ -1383,6 +1391,7 @@ def convert_joints(
             joint_dynamic_cts_start,
             joint_kinematic_cts_start,
         ],
+        device=model.device,
     )
 
     # Write the N+1 entry (grand total) into each offset array.
@@ -1390,46 +1399,55 @@ def convert_joints(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_coord_start, model_size.sum_of_num_joints, model_size.sum_of_num_joint_coords],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_dofs_start, model_size.sum_of_num_joints, model_size.sum_of_num_joint_dofs],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_passive_coord_start, model_size.sum_of_num_joints, model_size.sum_of_num_passive_joint_coords],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_passive_dofs_start, model_size.sum_of_num_joints, model_size.sum_of_num_passive_joint_dofs],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_actuated_coord_start, model_size.sum_of_num_joints, model_size.sum_of_num_actuated_joint_coords],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_actuated_dofs_start, model_size.sum_of_num_joints, model_size.sum_of_num_actuated_joint_dofs],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_cts_start, model_size.sum_of_num_joints, model_size.sum_of_num_joint_cts],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_dynamic_cts_start, model_size.sum_of_num_joints, model_size.sum_of_num_dynamic_joint_cts],
+        device=model.device,
     )
     wp.launch(
         write_coeff_kernel,
         dim=1,
         inputs=[joint_kinematic_cts_start, model_size.sum_of_num_joints, model_size.sum_of_num_kinematic_joint_cts],
+        device=model.device,
     )
 
     # Joints
@@ -1553,6 +1571,7 @@ def convert_geometries(
             geom_gid,
             model_num_collidable_geoms,
         ],
+        device=model.device,
     )
 
     # Compute total number of required contacts per world

@@ -1437,6 +1437,7 @@ class DenseSystemJacobians:
                     self._data.J_cts_data,
                     self._data.J_dofs_data,
                 ],
+                device=model.device,
             )
 
         # Build the limit constraints Jacobians if a limits data container is provided
@@ -1462,6 +1463,7 @@ class DenseSystemJacobians:
                     # Outputs:
                     self._data.J_cts_data,
                 ],
+                device=model.device,
             )
 
         # Build the contact constraints Jacobians if a contacts data container is provided
@@ -1486,6 +1488,7 @@ class DenseSystemJacobians:
                     # Outputs:
                     self._data.J_cts_data,
                 ],
+                device=model.device,
             )
 
 
@@ -1794,6 +1797,7 @@ class SparseSystemJacobians:
                 # Outputs:
                 jacobian_cts.num_rows,
             ],
+            device=model.device,
         )
 
         # Build the joint constraints and actuation Jacobians
@@ -1818,6 +1822,7 @@ class SparseSystemJacobians:
                     jacobian_cts.nzb_values,
                     jacobian_dofs.nzb_values,
                 ],
+                device=model.device,
             )
 
             # Initialize the number of NZB with the number of NZB for all joints
@@ -1851,6 +1856,7 @@ class SparseSystemJacobians:
                     jacobian_cts.nzb_values,
                     self._J_cts_limit_nzb_offsets,
                 ],
+                device=model.device,
             )
 
         # Build the contact constraints Jacobians if a contacts data container is provided
@@ -1878,6 +1884,7 @@ class SparseSystemJacobians:
                     jacobian_cts.nzb_values,
                     self._J_cts_contact_nzb_offsets,
                 ],
+                device=model.device,
             )
 
 
@@ -2136,6 +2143,7 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
                     # Outputs:
                     self.bsm.nzb_values,
                 ],
+                device=model.device,
             )
 
         # Initialize the number of NZB with the number of NZB for all joints
@@ -2161,6 +2169,7 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
                     self.bsm.nzb_coords,
                     self.bsm.nzb_values,
                 ],
+                device=model.device,
             )
 
         # Build the contact constraints Jacobians if a contacts data container is provided
@@ -2183,6 +2192,7 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators):
                     self.bsm.nzb_coords,
                     self.bsm.nzb_values,
                 ],
+                device=model.device,
             )
 
 

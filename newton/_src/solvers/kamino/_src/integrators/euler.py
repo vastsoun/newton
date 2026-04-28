@@ -176,6 +176,7 @@ def integrate_euler_semi_implicit(model: ModelKamino, data: DataKamino, alpha: f
             data.bodies.q_i,
             data.bodies.u_i,
         ],
+        device=model.device,
     )
 
 

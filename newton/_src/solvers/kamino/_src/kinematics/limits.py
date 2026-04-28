@@ -888,6 +888,7 @@ class LimitsKamino:
                 self._data.r_q,
                 self._data.key,
             ],
+            device=self._device,
         )
 
     ###

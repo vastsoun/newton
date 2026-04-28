@@ -455,6 +455,7 @@ def reset_time(
             time,
             steps,
         ],
+        device=model.device,
     )
 
 
@@ -481,6 +482,7 @@ def reset_body_net_wrenches(
             # Outputs:
             body_w,
         ],
+        device=model.device,
     )
 
 
@@ -592,6 +594,7 @@ def reset_state_from_bodies_state(
             state_out.w_i,
             state_out.w_i_e,
         ],
+        device=model.device,
     )
 
     # Reset joints
@@ -615,6 +618,7 @@ def reset_state_from_bodies_state(
             state_out.dq_j,
             state_out.lambda_j,
         ],
+        device=model.device,
     )
 
 
@@ -666,6 +670,7 @@ def reset_state_from_base_state(
             state_out.u_i,
             state_out.w_i,
         ],
+        device=model.device,
     )
 
 
@@ -697,6 +702,7 @@ def reset_select_worlds_to_initial_state(
             data.time.time,
             data.time.steps,
         ],
+        device=model.device,
     )
 
     # Reset bodies
@@ -723,6 +729,7 @@ def reset_select_worlds_to_initial_state(
             data.bodies.w_c_i,
             data.bodies.w_e_i,
         ],
+        device=model.device,
     )
 
     # Reset joints
@@ -758,6 +765,7 @@ def reset_select_worlds_to_initial_state(
             data.joints.dq_j,
             data.joints.lambda_j,
         ],
+        device=model.device,
     )
 
 
@@ -788,6 +796,7 @@ def reset_select_worlds_to_state(
             data.time.time,
             data.time.steps,
         ],
+        device=model.device,
     )
 
     # Reset bodies
@@ -814,6 +823,7 @@ def reset_select_worlds_to_state(
             data.bodies.w_c_i,
             data.bodies.w_e_i,
         ],
+        device=model.device,
     )
 
     # Reset joints
@@ -849,4 +859,5 @@ def reset_select_worlds_to_state(
             data.joints.dq_j,
             data.joints.lambda_j,
         ],
+        device=model.device,
     )

@@ -1428,6 +1428,7 @@ class DualProblem:
                     # Outputs:
                     self._data.v_f,
                 ],
+                device=self.device,
             )
         else:
             wp.launch(
@@ -1447,6 +1448,7 @@ class DualProblem:
                     # Outputs:
                     self._data.v_f,
                 ],
+                device=self.device,
             )
 
         # Optionally build and apply the Delassus diagonal preconditioner
@@ -1505,6 +1507,7 @@ class DualProblem:
                 # Outputs:
                 problem.h,
             ],
+            device=model.device,
         )
 
     def _build_generalized_free_velocity(self, model: ModelKamino, data: DataKamino):
@@ -1529,6 +1532,7 @@ class DualProblem:
                 # Outputs:
                 self._data.u_f,
             ],
+            device=self.device,
         )
 
     def _build_free_velocity_bias(
@@ -1556,6 +1560,7 @@ class DualProblem:
                         # Outputs:
                         self._data.v_b,
                     ],
+                    device=self.device,
                 )
             wp.launch(
                 _build_free_velocity_bias_joint_kinematics,
@@ -1571,6 +1576,7 @@ class DualProblem:
                     # Outputs:
                     self._data.v_b,
                 ],
+                device=self.device,
             )
 
         if limits is not None and limits.model_max_limits_host > 0:
@@ -1591,6 +1597,7 @@ class DualProblem:
                     # Outputs:
                     self._data.v_b,
                 ],
+                device=self.device,
             )
 
         if contacts is not None and contacts.model_max_contacts_host > 0:
@@ -1615,6 +1622,7 @@ class DualProblem:
                     self._data.v_i,
                     self._data.mu,
                 ],
+                device=self.device,
             )
 
     def _build_free_velocity(self, model: ModelKamino, data: DataKamino, jacobians: DenseSystemJacobians):
@@ -1638,6 +1646,7 @@ class DualProblem:
                 # Outputs:
                 self._data.v_f,
             ],
+            device=self.device,
         )
 
     def _build_dual_preconditioner(self):
@@ -1659,6 +1668,7 @@ class DualProblem:
                     # Outputs:
                     self._data.P,
                 ],
+                device=self.device,
             )
         else:
             wp.launch(
@@ -1676,6 +1686,7 @@ class DualProblem:
                     # Outputs:
                     self._data.P,
                 ],
+                device=self.device,
             )
 
     def _apply_dual_preconditioner_to_dual(self):
@@ -1699,6 +1710,7 @@ class DualProblem:
                     # Outputs:
                     self._data.D,
                 ],
+                device=self.device,
             )
 
         wp.launch(
@@ -1712,6 +1724,7 @@ class DualProblem:
                 # Outputs:
                 self._data.v_f,
             ],
+            device=self.device,
         )
 
     def _apply_dual_preconditioner_to_matrix(self, X: wp.array):
@@ -1730,6 +1743,7 @@ class DualProblem:
                 # Outputs:
                 X,
             ],
+            device=self.device,
         )
 
     def _apply_dual_preconditioner_to_vector(self, x: wp.array):
@@ -1747,4 +1761,5 @@ class DualProblem:
                 # Outputs:
                 x,
             ],
+            device=self.device,
         )

@@ -358,6 +358,7 @@ class RandomJointController:
                 # (e.g. position and velocity targets)
                 control.tau_j,
             ],
+            device=self._device,
         )
 
     ###

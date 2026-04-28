@@ -506,6 +506,7 @@ def update_constraints_info(
             data.info.limit_cts_group_offset,
             data.info.contact_cts_group_offset,
         ],
+        device=model.device,
     )
 
 
@@ -548,6 +549,7 @@ def unpack_constraint_solutions(
                 # Outputs:
                 data.joints.lambda_j,
             ],
+            device=model.device,
         )
 
     # Unpack limit constraint multipliers if a limits container is provided
@@ -569,6 +571,7 @@ def unpack_constraint_solutions(
                 limits.reaction,
                 limits.velocity,
             ],
+            device=model.device,
         )
 
     # Unpack contact constraint multipliers if a contacts container is provided
@@ -591,4 +594,5 @@ def unpack_constraint_solutions(
                 contacts.reaction,
                 contacts.velocity,
             ],
+            device=model.device,
         )

@@ -81,6 +81,17 @@ class ControlKamino:
     """Owned coords-space reference buffer used when ``dofs != coords``."""
 
     ###
+    # Properties
+    ###
+
+    @property
+    def device(self) -> wp.DeviceLike:
+        """The device used for allocations and execution."""
+        if self.tau_j is None:
+            raise RuntimeError("ControlKamino data is not allocated.")
+        return self.tau_j.device
+
+    ###
     # Operations
     ###
 

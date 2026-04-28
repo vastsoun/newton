@@ -210,4 +210,5 @@ def advance_time(model: TimeModel, data: TimeData):
             data.steps,
             data.time,
         ],
+        device=data.time.device,
     )

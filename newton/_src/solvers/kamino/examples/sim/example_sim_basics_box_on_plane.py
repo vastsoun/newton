@@ -86,6 +86,7 @@ def control_callback(sim: Simulator):
             sim.solver.data.time.time,
             sim.state.w_i_e,
         ],
+        device=sim._device,
     )
 
 

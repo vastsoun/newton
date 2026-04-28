@@ -195,7 +195,7 @@ class SolverKaminoImpl(SolverBase):
         self._data = self._model.data()
 
         # Allocate a joint-limits interface
-        self._limits = LimitsKamino(model=self._model, device=self._model.device)
+        self._limits = LimitsKamino(model=self._model)
 
         # Construct the unilateral constraints members in the model info
         make_unilateral_constraints_info(model=self._model, data=self._data, limits=self._limits, contacts=contacts)
@@ -206,14 +206,12 @@ class SolverKaminoImpl(SolverBase):
                 model=self._model,
                 limits=self._limits,
                 contacts=contacts,
-                device=self._model.device,
             )
         else:
             self._jacobians = DenseSystemJacobians(
                 model=self._model,
                 limits=self._limits,
                 contacts=contacts,
-                device=self._model.device,
             )
 
         # Allocate the dual problem data on the device
@@ -227,7 +225,6 @@ class SolverKaminoImpl(SolverBase):
             solver=linear_solver_type,
             solver_kwargs=linear_solver_kwargs,
             sparse=self._config.sparse_dynamics,
-            device=self._model.device,
         )
 
         # Allocate the forward dynamics solver on the device
@@ -238,7 +235,6 @@ class SolverKaminoImpl(SolverBase):
             use_acceleration=self._config.padmm.use_acceleration,
             use_graph_conditionals=self._config.padmm.use_graph_conditionals,
             collect_info=self._config.collect_solver_info,
-            device=self._model.device,
         )
 
         # Allocate the forward kinematics solver on the device

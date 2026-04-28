@@ -86,6 +86,7 @@ def test_prestep_callback(
             solver._data.time.time,
             control.tau_j,
         ],
+        device=solver.device,
     )
 
 

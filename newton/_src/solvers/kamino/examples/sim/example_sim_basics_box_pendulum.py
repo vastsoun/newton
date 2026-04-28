@@ -95,7 +95,7 @@ class Example:
         K_d = 60.0 * np.ones(njq, dtype=np.float32)
         decimation = 1 * np.ones(self.sim.model.size.num_worlds, dtype=np.int32)  # Control on every step
         self.controller = JointSpacePIDController(
-            model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation, device=device
+            model=self.sim.model, K_p=K_p, K_i=K_i, K_d=K_d, decimation=decimation
         )
         self.controller.reset(model=self.sim.model, state=self.sim.data.state_n)
         q_j_ref = np.zeros(njq, dtype=np.float32)

@@ -84,7 +84,6 @@ def make_unilateral_constraints_info(
     data: DataKamino,
     limits: LimitsKamino | None = None,
     contacts: ContactsKamino | None = None,
-    device: wp.DeviceLike = None,
 ):
     """
     Constructs constraints entries in the ModelKaminoInfo member of a model.
@@ -94,8 +93,6 @@ def make_unilateral_constraints_info(
         data (DataKamino): The solver container holding time-varying data.
         limits (LimitsKamino, optional): The limits container holding the joint-limit data.
         contacts (ContactsKamino, optional): The contacts container holding the contact data.
-        device (wp.DeviceLike, optional): The device on which to allocate the constraint info arrays.\n
-            If None, the model's device will be used.
     """
 
     # Ensure the model is valid
@@ -106,9 +103,8 @@ def make_unilateral_constraints_info(
     if not isinstance(data, DataKamino):
         raise TypeError("`data` must be an instance of `DataKamino`")
 
-    # Device is not specified, use the model's device
-    if device is None:
-        device = model.device
+    # Use the model's device
+    device = model.device
 
     # Retrieve the number of worlds in the model
     num_worlds = model.size.num_worlds

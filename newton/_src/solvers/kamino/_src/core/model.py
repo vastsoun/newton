@@ -660,6 +660,7 @@ class ModelKamino:
                 dq_j_ref=wp.clone(self.joints.dq_j_0, requires_grad=requires_grad),
                 tau_j_ref=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
             )
+        control.finalize(self)
 
         # Return the constructed control container
         return control

@@ -84,14 +84,14 @@ single edge or corner, generating only 1 contact point.
 
 
 class PrimitiveBroadPhaseTestBS:
-    def __init__(self, model: ModelKamino, device: wp.DeviceLike = None):
+    def __init__(self, model: ModelKamino):
         # Retrieve the number of world
         num_worlds = model.size.num_worlds
         num_geoms = model.geoms.num_geoms
         # Construct collision pairs
         world_num_geom_pairs, model_wid = CollisionPipelinePrimitive._assert_shapes_supported(model, True)
         # Allocate the collision model data
-        with wp.ScopedDevice(device):
+        with wp.ScopedDevice(model.device):
             # Allocate the bounding volumes data
             self.bvdata = BoundingVolumesData(radius=wp.zeros(shape=(num_geoms,), dtype=float32))
             # Allocate the time-invariant collision candidates model
@@ -119,14 +119,14 @@ class PrimitiveBroadPhaseTestBS:
 
 
 class PrimitiveBroadPhaseTestAABB:
-    def __init__(self, model: ModelKamino, device: wp.DeviceLike = None):
+    def __init__(self, model: ModelKamino):
         # Retrieve the number of world
         num_worlds = model.size.num_worlds
         num_geoms = model.geoms.num_geoms
         # Construct collision pairs
         world_num_geom_pairs, model_wid = CollisionPipelinePrimitive._assert_shapes_supported(model, True)
         # Allocate the collision model data
-        with wp.ScopedDevice(device):
+        with wp.ScopedDevice(model.device):
             # Allocate the bounding volumes data
             self.bvdata = BoundingVolumesData(aabb=wp.zeros(shape=(num_geoms,), dtype=vec6f))
             # Allocate the time-invariant collision candidates model
@@ -205,7 +205,7 @@ def test_broadphase(
     state = model.state()
 
     # Create a broad-phase backend
-    broadphase = broadphase_type(model=model, device=device)
+    broadphase = broadphase_type(model=model)
     check_broadphase_allocations(testcase, builder, broadphase)
 
     # Perform broad-phase collision detection and check results
@@ -386,7 +386,7 @@ def test_narrowphase(
         state = model.state()
 
         # Create a broad-phase backend
-        broadphase = bp_type(model=model, device=device)
+        broadphase = bp_type(model=model)
         broadphase.collide(model, data, state, default_gap=gap)
 
         # Create a contacts container
@@ -1066,7 +1066,7 @@ class TestPipelinePrimitive(unittest.TestCase):
         contacts.clear()
 
         # Create the collision pipeline
-        pipeline = CollisionPipelinePrimitive(model=model, device=self.default_device)
+        pipeline = CollisionPipelinePrimitive(model=model)
 
         # Run collision detection
         pipeline.collide(data, state, contacts)

@@ -123,7 +123,6 @@ def test_unified_pipeline(
             model=model,
             broadphase=bp_mode,
             default_gap=margin,
-            device=device,
         )
 
         # Create a contacts container using the worst-case capacity of NxN over model-wise geom pairs
@@ -528,7 +527,6 @@ class TestUnifiedWriterContactDataRegression(unittest.TestCase):
             model=model,
             broadphase="explicit",
             default_gap=default_gap,
-            device=self.default_device,
         )
         n_geoms = builder.num_geoms
         capacity = 8 * ((n_geoms * (n_geoms - 1)) // 2)
@@ -688,7 +686,6 @@ class TestUnifiedPipelineNxnBroadphase(unittest.TestCase):
             model=model,
             broadphase="nxn",
             default_gap=1.0,
-            device=self.default_device,
         )
 
         n_geoms = builder.num_geoms
@@ -717,7 +714,6 @@ class TestUnifiedPipelineNxnBroadphase(unittest.TestCase):
             model=model,
             broadphase="nxn",
             default_gap=1.0,
-            device=self.default_device,
         )
 
         n_geoms = builder.num_geoms

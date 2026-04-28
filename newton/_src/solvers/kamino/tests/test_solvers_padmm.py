@@ -71,7 +71,6 @@ class TestSetup:
             contacts=self.contacts,
             jacobians=self.jacobians,
             solver=ConjugateResidualSolver if sparse else LLTBlockedSolver,
-            device=device,
             sparse=sparse,
         )
 

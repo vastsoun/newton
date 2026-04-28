@@ -703,7 +703,6 @@ class DelassusOperator:
         contacts: ContactsKamino | None = None,
         solver: LinearSolverType = None,
         solver_kwargs: dict[str, Any] | None = None,
-        device: wp.DeviceLike = None,
     ):
         """
         Creates a Delassus operator for the given model, limits and contacts containers.
@@ -722,7 +721,6 @@ class DelassusOperator:
             data (DataKamino, optional): The model data container holding the state info and data.
             limits (LimitsKamino, optional): The container holding the allocated joint-limit data.
             contacts (ContactsKamino, optional): The container holding the allocated contacts data.
-            device (wp.DeviceLike, optional): The device identifier for the Delassus operator. Defaults to None.
             factorizer (CholeskyFactorizer, optional): An optional Cholesky factorization object. Defaults to None.
         """
         # Declare and initialize the host-side cache of the necessary memory allocations
@@ -733,8 +731,8 @@ class DelassusOperator:
         self._world_maxsize: list[int] = []
         self._max_of_max_total_D_size: int = 0
 
-        # Cache the requested device
-        self._device: wp.DeviceLike = device
+        # Declare the device cache
+        self._device: wp.DeviceLike = None
 
         # Declare the model size cache
         self._size: SizeKamino | None = None
@@ -754,7 +752,6 @@ class DelassusOperator:
                 contacts=contacts,
                 solver=solver,
                 solver_kwargs=solver_kwargs,
-                device=device,
             )
 
     @property
@@ -817,16 +814,14 @@ class DelassusOperator:
         limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
         solver: LinearSolverType = None,
-        device: wp.DeviceLike = None,
         solver_kwargs: dict[str, Any] | None = None,
     ):
         """
-        Allocates the Delassus operator with the specified dimensions and device.
+        Allocates the Delassus operator with the specified dimensions.
 
         Args
         ----
             dims (List[int]): The dimensions of the Delassus matrix for each world.
-            device (wp.DeviceLike, optional): The device identifier for the Delassus operator. Defaults to None.
             factorizer (CholeskyFactorizer, optional): An optional Cholesky factorization object. Defaults to None.
         """
 
@@ -870,9 +865,8 @@ class DelassusOperator:
         self._model_maxsize = sum(self._world_size)
         self._max_of_max_total_D_size = max(self._world_size)
 
-        # Override the device identifier if specified, otherwise use the current device
-        if device is not None:
-            self._device = device
+        # Use the model's device
+        self._device = model.device
 
         # Construct the Delassus operator data structure
         self._operator = DenseLinearOperatorData()
@@ -1166,7 +1160,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         jacobians: SparseSystemJacobians | None = None,
         solver: LinearSolverType = None,
         solver_kwargs: dict[str, Any] | None = None,
-        device: wp.DeviceLike = None,
     ):
         """
         Creates a Delassus operator for the given model.
@@ -1196,8 +1189,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 Must be a subclass of `IterativeSolver`.
             solver_kwargs (dict, optional):
                 Additional keyword arguments to pass to the solver constructor.
-            device (wp.DeviceLike, optional):
-                The device identifier for the Delassus operator. Defaults to None.
         """
         super().__init__()
 
@@ -1215,8 +1206,8 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         # TODO: Create more general info object independent of dense matrix representation
         self._info: DenseSquareMultiLinearInfo | None = None
 
-        # Cache the requested device
-        self._device: wp.DeviceLike = device
+        # Declare the device cache
+        self._device: wp.DeviceLike = None
 
         # Declare the optional (iterative) solver
         self._solver: LinearSolverType | None = None
@@ -1242,7 +1233,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 contacts=contacts,
                 jacobians=jacobians,
                 solver=solver,
-                device=device,
                 solver_kwargs=solver_kwargs,
             )
 
@@ -1254,7 +1244,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         limits: LimitsKamino | None,
         contacts: ContactsKamino | None,
         solver: LinearSolverType = None,
-        device: wp.DeviceLike = None,
         solver_kwargs: dict[str, Any] | None = None,
     ):
         """
@@ -1274,9 +1263,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
             solver (LinearSolverType, optional):
                 The linear solver class to use for solving linear systems.
                 Must be a subclass of `IterativeSolver`.
-            device (wp.DeviceLike, optional):
-                The device identifier for the Delassus operator.
-                Defaults to None.
             solver_kwargs (dict, optional):
                 Additional keyword arguments to pass to the solver constructor.
         """
@@ -1309,9 +1295,8 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
         self._limits = limits
         self._contacts = contacts
 
-        # Override the device identifier if specified, otherwise use the current device
-        if device is not None:
-            self._device = device
+        # Use the model's device
+        self._device = model.device
 
         self._info = DenseSquareMultiLinearInfo()
         if model.info is not None and data.info is not None:
@@ -1365,7 +1350,6 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators):
                 limits=self._limits,
                 contacts=self._contacts,
                 jacobians=self._jacobians,
-                device=self.device,
             )
             self._transpose_op_matrix = self._col_major_jacobian.bsm
         else:

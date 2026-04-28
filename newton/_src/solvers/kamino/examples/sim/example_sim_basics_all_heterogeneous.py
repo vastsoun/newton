@@ -69,6 +69,7 @@ def test_control_callback(sim: Simulator):
             sim.data.solver.time.time,
             sim.data.control_n.tau_j,
         ],
+        device=sim._device,
     )
 
 

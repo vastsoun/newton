@@ -254,6 +254,7 @@ def extract_delassus_sparse(
                 # Outputs:
                 vec_query,
             ],
+            device=delassus._device,
         )
         delassus.matvec(vec_query, vec_response, world_mask)
         vec_response_np = vec_response.numpy()

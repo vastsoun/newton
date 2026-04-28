@@ -128,6 +128,7 @@ def set_joint_follower_body_state(model: ModelKamino, data: DataKamino):
             data.bodies.q_i,
             data.bodies.u_i,
         ],
+        device=model.device,
     )
 
 

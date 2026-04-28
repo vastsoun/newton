@@ -188,6 +188,7 @@ class Example:
                     sim.solver.data.time.time,
                     sim.data.control.tau_j,
                 ],
+                device=sim._device,
             )
 
         # Set the test control callback into the simulator

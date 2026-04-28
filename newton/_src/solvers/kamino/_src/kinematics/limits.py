@@ -579,17 +579,16 @@ class LimitsKamino:
     def __init__(
         self,
         model: ModelKamino | None = None,
-        device: wp.DeviceLike = None,
     ):
         # The device on which to allocate the limits data
-        self._device = device
+        self._device: wp.DeviceLike = None
 
         # Declare the joint-limits data container and initialize it to empty
         self._data: LimitsKaminoData = LimitsKaminoData()
 
         # Perform memory allocation if max_limits is specified
         if model is not None:
-            self.finalize(model=model, device=device)
+            self.finalize(model=model)
 
     ###
     # Properties
@@ -757,7 +756,7 @@ class LimitsKamino:
     # Operations
     ###
 
-    def finalize(self, model: ModelKamino, device: wp.DeviceLike = None):
+    def finalize(self, model: ModelKamino):
         # Ensure the model is valid
         if model is None:
             raise ValueError("LimitsKamino: model must be specified for allocation (got None)")
@@ -787,9 +786,8 @@ class LimitsKamino:
             msg.debug("LimitsKamino: Skipping joint-limit data allocations since total requested capacity was `0`.")
             return
 
-        # Override the device if specified
-        if device is not None:
-            self._device = device
+        # Use the model's device
+        self._device = model.device
 
         # Allocate the limits data on the specified device
         with wp.ScopedDevice(self._device):

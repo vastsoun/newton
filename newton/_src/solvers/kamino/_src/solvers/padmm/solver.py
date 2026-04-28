@@ -109,7 +109,6 @@ class PADMMSolver:
         use_acceleration: bool = True,
         use_graph_conditionals: bool = True,
         collect_info: bool = False,
-        device: wp.DeviceLike = None,
     ):
         """
         Initializes a PADMM solver.
@@ -129,7 +128,6 @@ class PADMMSolver:
             collect_info (bool): Set to `True` to enable collection of solver convergence info.\n
                 This setting is intended only for analysis and debugging purposes, as it
                 will increase memory consumption and reduce wall-clock time.
-            device (wp.DeviceLike | None): The target device on which to allocate the solver data.
         """
 
         # Declare the internal solver config cache
@@ -158,7 +156,6 @@ class PADMMSolver:
                 use_acceleration=use_acceleration,
                 use_graph_conditionals=use_graph_conditionals,
                 collect_info=collect_info,
-                device=device,
             )
 
     ###
@@ -208,7 +205,6 @@ class PADMMSolver:
         use_acceleration: bool = True,
         use_graph_conditionals: bool = True,
         collect_info: bool = False,
-        device: wp.DeviceLike = None,
     ):
         """
         Allocates the solver data structures on the specified device.
@@ -225,7 +221,6 @@ class PADMMSolver:
             collect_info (bool): Set to `True` to enable collection of solver convergence info.\n
                 This setting is intended only for analysis and debugging purposes, as it
                 will increase memory consumption and reduce wall-clock time.
-            device (wp.DeviceLike | None): The target device on which to allocate the solver data.
         """
 
         # Ensure the model is valid
@@ -237,8 +232,8 @@ class PADMMSolver:
         # Cache a reference to the model size meta-data container
         self._size = model.size
 
-        # Set the target device if specified, otherwise use the model device
-        self._device = device if device is not None else model.device
+        # Use the model's device
+        self._device = model.device
 
         # Cache solver configs and validate them against the model size
         # NOTE: These are configurations which could potentially be different across

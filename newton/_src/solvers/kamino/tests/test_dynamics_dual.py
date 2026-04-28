@@ -56,7 +56,6 @@ class TestDualProblem(unittest.TestCase):
             contacts=detector.contacts,
             jacobians=jacobians,
             solver=ConjugateGradientSolver,
-            device=self.default_device,
         )
 
         # Optional verbose output
@@ -127,7 +126,6 @@ class TestDualProblem(unittest.TestCase):
             contacts=detector.contacts,
             jacobians=jacobians,
             solver=ConjugateGradientSolver,
-            device=self.default_device,
         )
 
         # Build the dual problem

@@ -1541,9 +1541,10 @@ def convert_geometries(
     model_size.max_of_num_material_pairs = materials_manager.num_material_pairs
 
     # Convert shapes to the Kamino data structure
-    geom_gid = wp.zeros((model.shape_count,), dtype=int32)
-    geom_material = wp.from_numpy(geom_material_np, dtype=int32)
-    model_num_collidable_geoms = wp.zeros((1,), dtype=int32)
+    with wp.ScopedDevice(model.device):
+        geom_gid = wp.zeros((model.shape_count,), dtype=int32)
+        geom_material = wp.from_numpy(geom_material_np, dtype=int32)
+        model_num_collidable_geoms = wp.zeros((1,), dtype=int32)
 
     wp.launch(
         kernel=geometry_conversion_kernel,

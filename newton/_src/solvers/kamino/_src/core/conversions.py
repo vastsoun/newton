@@ -79,14 +79,15 @@ def entity_local_transform_conversion_kernel(
 
         # If the parent body was previously corrected, first update this
         # joint's parent-side transform to the new parent frame.
-        parent_corr = body_corr[parent_id]
         joint_X_p_j = joint_X_p[joint_id]
-        if parent_id >= 0 and not parent_corr[3] == 1.0:
-            p_pos = wp.transform_get_translation(joint_X_p_j)
-            wp.transform_set_translation(joint_X_p_j, wp.quat_rotate_inv(parent_corr, p_pos))
-            p_quat = wp.transform_get_rotation(joint_X_p_j)
-            wp.transform_set_rotation(joint_X_p_j, wp.quat_inverse(parent_corr) * p_quat)
-            joint_X_p[joint_id] = joint_X_p_j
+        if parent_id >= 0:
+            parent_corr = body_corr[parent_id]
+            if not parent_corr[3] == 1.0:
+                p_pos = wp.transform_get_translation(joint_X_p_j)
+                wp.transform_set_translation(joint_X_p_j, wp.quat_rotate_inv(parent_corr, p_pos))
+                p_quat = wp.transform_get_rotation(joint_X_p_j)
+                wp.transform_set_rotation(joint_X_p_j, wp.quat_inverse(parent_corr) * p_quat)
+                joint_X_p[joint_id] = joint_X_p_j
 
         # Now compute the correction for this joint's child body
         joint_X_c_j = joint_X_c[joint_id]
@@ -144,6 +145,9 @@ def shape_transform_conversion_kernel(
     shape_id = wp.tid()
 
     body_id = model_shape_body[shape_id]
+    if body_id < 0:
+        return
+
     q_corr_inv = wp.quat_inverse(body_corr[body_id])
 
     st = shape_transform[shape_id]

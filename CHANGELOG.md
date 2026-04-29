@@ -19,6 +19,9 @@
 - Enable CPU execution of the collision pipeline, including mesh–mesh and mesh–heightfield SDF contacts and contact reduction (`reduce_contacts`) that were previously CUDA-only, by replacing the CUDA `__shared__` fast paths in `sdf_contact.py`, `multicontact.py`, and `collision_core.py` with portable `wp.tile_stack` / `wp.tile_mesh_query_aabb` primitives. CPU runs now execute the same kernels as CUDA; the previous `"NarrowPhase running on CPU: mesh-mesh contacts will be skipped"` warning is no longer emitted.
 - Add `ViewerBase.log_arrows()` for arrow rendering (wide line + arrowhead) in the GL viewer with a dedicated geometry shader
 - Add frame-to-frame contact matching via `CollisionPipeline(contact_matching=...)` with modes `"latest"` (populates `contacts.rigid_contact_match_index`) and `"sticky"` (experimental; additionally replays previous-frame contact geometry on matched contacts — the sticky update strategy may change without warning). Optional `contact_report=True` exposes new/broken contact index lists on `Contacts`.
+- Add VBD rigid-contact warm-starting via `rigid_contact_history`, backed by `Contacts.rigid_contact_match_index` from `CollisionPipeline(contact_matching="latest")`.
+- Add VBD hard/soft controls for body-body contacts and structural joint slots, including `rigid_contact_hard`, `SolverVBD.set_joint_constraint_mode()`, and `SolverVBD.JointSlot`
+- Add AVBD contact/joint alpha overrides and linear/angular beta overrides to `SolverVBD` for stabilization and penalty-ramping control
 - Add `enable_multiccd` parameter to `SolverMuJoCo` for multi-CCD contact generation (up to 4 contact points per geom pair)
 - Warn when `SolverMuJoCo` detects installed `mujoco` or `mujoco-warp` versions that do not satisfy `pyproject.toml` requirements
 - Support `<joint type="ball"/>` in the MJCF importer, and preserve authored damping, stiffness, and frictionloss when exporting ball joints to MuJoCo specs (previously silently dropped)
@@ -45,6 +48,13 @@
 - Migrate all raycast logic to `geometry.raycast`, all raycast functions now return distance and normal information
 - Disable process reuse in the test runner on multi-GPU systems to prevent CUDA errors from cascading across test suites, keeping process reuse enabled on single-GPU systems for faster throughput
 - Default `python -m newton.examples` with no argument to launch `basic_pendulum`; use `--list` to print available examples
+- Reduce default `stretch_stiffness` from `1.0e9` to `1.0e5` in `add_joint_cable()`, `add_rod()`, and `add_rod_graph()`
+- Treat `stretch_stiffness` and `bend_stiffness` in `add_rod()` and `add_rod_graph()` as direct per-joint stiffness values, matching `add_joint_cable()` and other joint stiffness APIs
+- VBD solver uses augmented-Lagrangian hard constraints for body-body contacts by default (`rigid_contact_hard=True`)
+
+### Deprecated
+
+- Deprecate and ignore `rigid_enable_dahl_friction` in `SolverVBD`; Dahl friction is now auto-detected from model attributes (`model.vbd.dahl_eps_max` / `model.vbd.dahl_tau`)
 
 ### Fixed
 

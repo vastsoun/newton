@@ -14,14 +14,21 @@ from typing import ClassVar
 if sys.platform == "win32":
     import ctypes
 
+    # Enable VT sequences only when stdout is a real console.
     kernel32 = ctypes.windll.kernel32
-    handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
-
-    mode = ctypes.c_uint()
-    kernel32.GetConsoleMode(handle, ctypes.byref(mode))
-
-    mode.value |= 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
-    kernel32.SetConsoleMode(handle, mode)
+    try:
+        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        invalid_handle = ctypes.c_void_p(-1).value
+        if handle != 0 and ctypes.c_void_p(handle).value != invalid_handle:
+            mode = ctypes.c_uint()
+            if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                new_mode = mode.value | 0x0004  # Set ENABLE_VIRTUAL_TERMINAL_PROCESSING
+                if new_mode != mode.value:
+                    kernel32.SetConsoleMode(handle, new_mode)
+    except Exception:
+        # For some contexts, getting/setting the console mode fails (e.g.,
+        # redirected stdout, services, CI).
+        pass
 
 
 class LogLevel(IntEnum):

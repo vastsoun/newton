@@ -137,8 +137,18 @@ def _build_delassus_elementwise_dense(
     if tid >= n_upper:
         return
 
-    # Recover row i: largest i such that f(i) <= tid
-    i = int(float32(2 * ncts + 1) - wp.sqrt(float32((2 * ncts + 1) * (2 * ncts + 1) - 8 * tid))) // 2
+    # Recover row i: largest i such that f(i) <= tid (integer binary search; avoids float32 sqrt)
+    lo = int32(0)
+    hi = ncts - int32(1)
+    i = int32(0)
+    while lo <= hi:
+        mid = lo + (hi - lo) // 2
+        fi = mid * ncts - mid * (mid - 1) // 2
+        if fi <= tid:
+            i = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
     # Recover column j: offset within row i, shifted by i (upper triangle starts at diagonal)
     j = tid - i * ncts + i * (i + 1) // 2
     if i < 0 or i >= ncts or j < i or j >= ncts:

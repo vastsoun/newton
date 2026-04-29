@@ -1089,6 +1089,10 @@ class DualProblem:
                 generalized forces vectors in construction of the dual problem.\n
                 Defaults to `False`.
         """
+        # Ensure Jacobians are given if model is provided.
+        if model is not None and jacobians is None:
+            raise ValueError("`jacobians` parameter must be provided if `model` parameter is specified.")
+
         # Declare the device cache
         self._device: wp.DeviceLike = None
 

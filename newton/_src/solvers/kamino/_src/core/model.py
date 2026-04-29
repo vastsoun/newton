@@ -665,7 +665,7 @@ class ModelKamino:
         # NOTE: This is currently necessary to handle the case when
         # the total number of joint coordinates and DoFs differ, in
         # which case a temporary buffer is allocated for the conversion.
-        control.finalize(self)
+        control.finalize(self, device=device)
 
         # Return the constructed control container
         return control

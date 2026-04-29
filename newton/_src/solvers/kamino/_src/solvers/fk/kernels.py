@@ -1196,7 +1196,7 @@ def _eval_linear_combination(
         z: Output stack of vectors
     """
     wd_id, row_id = wp.tid()  # Thread indices (= world index, row index)
-    if wd_id < num_rows.shape[0] and row_id < num_rows[wd_id]:
+    if wd_id < num_rows.shape[0] and world_mask[wd_id] != 0 and row_id < num_rows[wd_id]:
         z[wd_id, row_id] = alpha * x[wd_id, row_id] + beta * y[wd_id, row_id]
 
 

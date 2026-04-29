@@ -376,7 +376,7 @@ def aabb_box(pose: transformf, half_extents: vec3f, margin: float32) -> vec6f:
 
 # TODO: Implement proper AABB for planes
 @wp.func
-def aabb_plane(pose: transformf, normal: vec3f, distance: float32, margin: float32) -> vec6f:
+def aabb_plane(pose: transformf, width: float32, length: float32, margin: float32) -> vec6f:
     return vec6f(0.0)
 
 
@@ -407,7 +407,7 @@ def aabb_geom(sid: int32, params: vec3f, margin: float32, pose: transformf) -> v
     elif sid == GeoType.BOX:
         aabb = aabb_box(pose, params, margin)
     elif sid == GeoType.PLANE:
-        aabb = aabb_plane(pose, params, params[3], margin)
+        aabb = aabb_plane(pose, params[0], params[1], margin)
     return aabb
 
 

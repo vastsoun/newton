@@ -444,6 +444,7 @@ class CollisionPipelineUnifiedKamino:
                 if uwid >= 0:
                     n = count + global_count
                     per_world_pairs += (n * (n - 1)) // 2
+            per_world_pairs += (global_count * (global_count - 1)) // 2
             self._max_shape_pairs: int = int(per_world_pairs)
         else:
             self._max_shape_pairs: int = (self._num_geoms * (self._num_geoms - 1)) // 2

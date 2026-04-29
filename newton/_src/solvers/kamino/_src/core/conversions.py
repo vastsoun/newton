@@ -727,7 +727,7 @@ def convert_entity_local_transforms(model: Model) -> dict[str, wp.array]:
     # to all downstream joints that reference the corrected body as parent.
     # body_corr: dict[int, np.ndarray] = {}  # body_index -> cumulative q_corr
     body_corr = wp.full(
-        shape=(model.joint_count,), value=wp.quat_identity(dtype=float32), dtype=quatf, device=model.device
+        shape=(model.body_count,), value=wp.quat_identity(dtype=float32), dtype=quatf, device=model.device
     )
 
     # Convert bodies, sequentially per world

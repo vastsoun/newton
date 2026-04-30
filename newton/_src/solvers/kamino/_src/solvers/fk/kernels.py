@@ -1285,11 +1285,11 @@ def _line_search_check(
         alpha: Step size per world (in/out)
         val_alpha: Merit function value at alpha, per world
         iteration: Iteration count, per world
-        max_iterations: Max iterations
+        max_iterations: Max iterations (size 1 array)
     Outputs:
         line_search_success: Convergence per world
         line_search_mask: Per-world flag to continue line search (0 = skip)
-        line_search_loop_condition: Loop condition; must be zero-initialized
+        line_search_loop_condition: Loop condition; must be zero-initialized (size 1 array)
     """
     wd_id = wp.tid()  # Thread index (= world index)
     if wd_id < val_0.shape[0] and line_search_mask[wd_id] != 0:
@@ -1323,14 +1323,14 @@ def _newton_check(
 
     Inputs
         max_constraint: Max absolute constraint per world
-        tolerance: Tolerance on max constraint
+        tolerance: Tolerance on max constraint (size 1 array)
         iteration: Iteration count, per world
-        max_iterations: Max iterations
+        max_iterations: Max iterations (size 1 array)
         line_search_success: Per-world line search success flag
     Outputs
         newton_success: Convergence per world
         newton_mask: Flag to keep iterating per world
-        newton_loop_condition: Loop condition; must be zero-initialized
+        newton_loop_condition: Loop condition; must be zero-initialized (size 1 array)
     """
     wd_id = wp.tid()  # Thread index (= world index)
     if wd_id < max_constraint.shape[0] and newton_mask[wd_id] != 0:

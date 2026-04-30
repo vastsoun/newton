@@ -54,18 +54,18 @@ __all__ = [
 @wp.kernel
 def entity_local_transform_conversion_kernel(
     # Inputs:
-    model_joint_world_start: wp.array(dtype=int32),
-    model_joint_parent: wp.array(dtype=int32),
-    model_joint_child: wp.array(dtype=int32),
+    model_joint_world_start: wp.array[int32],
+    model_joint_parent: wp.array[int32],
+    model_joint_child: wp.array[int32],
     # Outputs:
-    body_corr: wp.array(dtype=quatf),
-    body_com: wp.array(dtype=vec3f),
-    body_q: wp.array(dtype=transformf),
-    body_qd: wp.array(dtype=vec6f),
-    body_inertia: wp.array(dtype=mat33f),
-    body_inv_inertia: wp.array(dtype=mat33f),
-    joint_X_p: wp.array(dtype=transformf),
-    joint_X_c: wp.array(dtype=transformf),
+    body_corr: wp.array[quatf],
+    body_com: wp.array[vec3f],
+    body_q: wp.array[transformf],
+    body_qd: wp.array[vec6f],
+    body_inertia: wp.array[mat33f],
+    body_inv_inertia: wp.array[mat33f],
+    joint_X_p: wp.array[transformf],
+    joint_X_c: wp.array[transformf],
 ):
     # Retrieve the world index
     world_id = wp.tid()
@@ -135,10 +135,10 @@ def entity_local_transform_conversion_kernel(
 @wp.kernel
 def shape_transform_conversion_kernel(
     # Inputs:
-    model_shape_body: wp.array(dtype=int32),
-    body_corr: wp.array(dtype=quatf),
+    model_shape_body: wp.array[int32],
+    body_corr: wp.array[quatf],
     # Outputs:
-    shape_transform: wp.array(dtype=transformf),
+    shape_transform: wp.array[transformf],
 ):
     # Retrieve the shape index
     shape_id = wp.tid()
@@ -158,11 +158,11 @@ def shape_transform_conversion_kernel(
 def world_max_contacts_kernel(
     # Inputs:
     max_contacts_per_pair: int,
-    model_shape_type: wp.array(dtype=int32),
-    model_shape_world: wp.array(dtype=int32),
-    model_shape_contact_pair: wp.array(dtype=vec2i),
+    model_shape_type: wp.array[int32],
+    model_shape_world: wp.array[int32],
+    model_shape_contact_pair: wp.array[vec2i],
     # Outputs:
-    world_max_contacts: wp.array(dtype=int32),
+    world_max_contacts: wp.array[int32],
 ):
     # Retrieve the shape pair index from the thread grid
     shape_pair_id = wp.tid()
@@ -196,16 +196,16 @@ def world_max_contacts_kernel(
 @wp.kernel
 def rigid_bodies_indexing_kernel(
     # Inputs:
-    model_body_world_start: wp.array(dtype=int32),
-    model_shape_world_start: wp.array(dtype=int32),
+    model_body_world_start: wp.array[int32],
+    model_shape_world_start: wp.array[int32],
     # Outputs:
-    body_bid: wp.array(dtype=int32),
-    num_bodies: wp.array(dtype=int32),
-    num_shapes: wp.array(dtype=int32),
-    num_body_dofs: wp.array(dtype=int32),
-    world_body_offset: wp.array(dtype=int32),
-    world_shape_offset: wp.array(dtype=int32),
-    world_body_dof_offset: wp.array(dtype=int32),
+    body_bid: wp.array[int32],
+    num_bodies: wp.array[int32],
+    num_shapes: wp.array[int32],
+    num_body_dofs: wp.array[int32],
+    world_body_offset: wp.array[int32],
+    world_shape_offset: wp.array[int32],
+    world_body_dof_offset: wp.array[int32],
 ):
     # Retrieve the world index
     world_id = wp.tid()
@@ -230,14 +230,14 @@ def rigid_bodies_indexing_kernel(
 @wp.kernel
 def mass_prop_accumulation_kernel(
     # Inputs:
-    model_body_world_start: wp.array(dtype=int32),
-    model_body_mass: wp.array(dtype=float32),
-    body_inertia: wp.array(dtype=mat33f),
+    model_body_world_start: wp.array[int32],
+    model_body_mass: wp.array[float32],
+    body_inertia: wp.array[mat33f],
     # Outputs:
-    mass_total: wp.array(dtype=float32),
-    mass_min: wp.array(dtype=float32),
-    mass_max: wp.array(dtype=float32),
-    inertia_total: wp.array(dtype=float32),
+    mass_total: wp.array[float32],
+    mass_min: wp.array[float32],
+    mass_max: wp.array[float32],
+    inertia_total: wp.array[float32],
 ):
     # Retrieve the world index
     world_id = wp.tid()
@@ -269,39 +269,39 @@ def mass_prop_accumulation_kernel(
 @wp.kernel
 def joint_conversion_kernel(
     # Inputs:
-    model_joint_world: wp.array(dtype=int32),
-    model_joint_world_start: wp.array(dtype=int32),
-    model_joint_type: wp.array(dtype=int32),
-    model_joint_target_mode: wp.array(dtype=int32),
-    model_joint_parent: wp.array(dtype=int32),
-    model_joint_child: wp.array(dtype=int32),
-    model_joint_dof_dim: wp.array2d(dtype=int32),
-    model_joint_q_start: wp.array(dtype=int32),
-    model_joint_qd_start: wp.array(dtype=int32),
-    model_joint_armature: wp.array(dtype=float32),
-    model_joint_friction: wp.array(dtype=float32),
-    model_joint_target_ke: wp.array(dtype=float32),
-    model_joint_target_kd: wp.array(dtype=float32),
-    joint_axis: wp.array(dtype=vec3f),
-    body_com: wp.array(dtype=vec3f),
-    joint_X_p: wp.array(dtype=transformf),
-    joint_X_c: wp.array(dtype=transformf),
-    joint_limit_lower: wp.array(dtype=float32),
-    joint_limit_upper: wp.array(dtype=float32),
-    joint_velocity_limit: wp.array(dtype=float32),
-    joint_effort_limit: wp.array(dtype=float32),
+    model_joint_world: wp.array[int32],
+    model_joint_world_start: wp.array[int32],
+    model_joint_type: wp.array[int32],
+    model_joint_target_mode: wp.array[int32],
+    model_joint_parent: wp.array[int32],
+    model_joint_child: wp.array[int32],
+    model_joint_dof_dim: wp.array2d[int32],
+    model_joint_q_start: wp.array[int32],
+    model_joint_qd_start: wp.array[int32],
+    model_joint_armature: wp.array[float32],
+    model_joint_friction: wp.array[float32],
+    model_joint_target_ke: wp.array[float32],
+    model_joint_target_kd: wp.array[float32],
+    joint_axis: wp.array[vec3f],
+    body_com: wp.array[vec3f],
+    joint_X_p: wp.array[transformf],
+    joint_X_c: wp.array[transformf],
+    joint_limit_lower: wp.array[float32],
+    joint_limit_upper: wp.array[float32],
+    joint_velocity_limit: wp.array[float32],
+    joint_effort_limit: wp.array[float32],
     # Outputs:
-    joint_jid: wp.array(dtype=int32),
-    joint_dof_type: wp.array(dtype=int32),
-    joint_act_type: wp.array(dtype=int32),
-    joint_num_coords: wp.array(dtype=int32),
-    joint_num_dofs: wp.array(dtype=int32),
-    joint_num_cts: wp.array(dtype=int32),
-    joint_num_dynamic_cts: wp.array(dtype=int32),
-    joint_num_kinematic_cts: wp.array(dtype=int32),
-    joint_B_r_B: wp.array(dtype=vec3f),
-    joint_F_r_F: wp.array(dtype=vec3f),
-    joint_X: wp.array(dtype=mat33f),
+    joint_jid: wp.array[int32],
+    joint_dof_type: wp.array[int32],
+    joint_act_type: wp.array[int32],
+    joint_num_coords: wp.array[int32],
+    joint_num_dofs: wp.array[int32],
+    joint_num_cts: wp.array[int32],
+    joint_num_dynamic_cts: wp.array[int32],
+    joint_num_kinematic_cts: wp.array[int32],
+    joint_B_r_B: wp.array[vec3f],
+    joint_F_r_F: wp.array[vec3f],
+    joint_X: wp.array[mat33f],
 ):
     # Retrieve the joint index
     joint_id = wp.tid()
@@ -393,34 +393,34 @@ def joint_conversion_kernel(
 @wp.kernel
 def joint_indexing_kernel(
     # Inputs:
-    model_joint_world_start: wp.array(dtype=int32),
-    joint_act_type: wp.array(dtype=int32),
-    joint_num_coords: wp.array(dtype=int32),
-    joint_num_dofs: wp.array(dtype=int32),
-    joint_num_kinematic_cts: wp.array(dtype=int32),
-    joint_num_dynamic_cts: wp.array(dtype=int32),
+    model_joint_world_start: wp.array[int32],
+    joint_act_type: wp.array[int32],
+    joint_num_coords: wp.array[int32],
+    joint_num_dofs: wp.array[int32],
+    joint_num_kinematic_cts: wp.array[int32],
+    joint_num_dynamic_cts: wp.array[int32],
     # Outputs:
-    num_passive_joints: wp.array(dtype=int32),
-    num_actuated_joints: wp.array(dtype=int32),
-    num_dynamic_joints: wp.array(dtype=int32),
-    num_joint_coords: wp.array(dtype=int32),
-    num_joint_dofs: wp.array(dtype=int32),
-    num_joint_passive_coords: wp.array(dtype=int32),
-    num_joint_passive_dofs: wp.array(dtype=int32),
-    num_joint_actuated_coords: wp.array(dtype=int32),
-    num_joint_actuated_dofs: wp.array(dtype=int32),
-    num_joint_cts: wp.array(dtype=int32),
-    num_joint_dynamic_cts: wp.array(dtype=int32),
-    num_joint_kinematic_cts: wp.array(dtype=int32),
-    joint_coord_start: wp.array(dtype=int32),
-    joint_dofs_start: wp.array(dtype=int32),
-    joint_actuated_coord_start: wp.array(dtype=int32),
-    joint_actuated_dofs_start: wp.array(dtype=int32),
-    joint_passive_coord_start: wp.array(dtype=int32),
-    joint_passive_dofs_start: wp.array(dtype=int32),
-    joint_cts_start: wp.array(dtype=int32),
-    joint_dynamic_cts_start: wp.array(dtype=int32),
-    joint_kinematic_cts_start: wp.array(dtype=int32),
+    num_passive_joints: wp.array[int32],
+    num_actuated_joints: wp.array[int32],
+    num_dynamic_joints: wp.array[int32],
+    num_joint_coords: wp.array[int32],
+    num_joint_dofs: wp.array[int32],
+    num_joint_passive_coords: wp.array[int32],
+    num_joint_passive_dofs: wp.array[int32],
+    num_joint_actuated_coords: wp.array[int32],
+    num_joint_actuated_dofs: wp.array[int32],
+    num_joint_cts: wp.array[int32],
+    num_joint_dynamic_cts: wp.array[int32],
+    num_joint_kinematic_cts: wp.array[int32],
+    joint_coord_start: wp.array[int32],
+    joint_dofs_start: wp.array[int32],
+    joint_actuated_coord_start: wp.array[int32],
+    joint_actuated_dofs_start: wp.array[int32],
+    joint_passive_coord_start: wp.array[int32],
+    joint_passive_dofs_start: wp.array[int32],
+    joint_cts_start: wp.array[int32],
+    joint_dynamic_cts_start: wp.array[int32],
+    joint_kinematic_cts_start: wp.array[int32],
 ):
     world_id = wp.tid()
 
@@ -502,26 +502,26 @@ def joint_indexing_kernel(
 @wp.kernel
 def _globalize_joint_offsets(
     # Inputs:
-    joint_world: wp.array(dtype=int32),
-    world_coord_offset: wp.array(dtype=int32),
-    world_dof_offset: wp.array(dtype=int32),
-    world_passive_coord_offset: wp.array(dtype=int32),
-    world_passive_dof_offset: wp.array(dtype=int32),
-    world_actuated_coord_offset: wp.array(dtype=int32),
-    world_actuated_dof_offset: wp.array(dtype=int32),
-    world_cts_offset: wp.array(dtype=int32),
-    world_dynamic_cts_offset: wp.array(dtype=int32),
-    world_kinematic_cts_offset: wp.array(dtype=int32),
+    joint_world: wp.array[int32],
+    world_coord_offset: wp.array[int32],
+    world_dof_offset: wp.array[int32],
+    world_passive_coord_offset: wp.array[int32],
+    world_passive_dof_offset: wp.array[int32],
+    world_actuated_coord_offset: wp.array[int32],
+    world_actuated_dof_offset: wp.array[int32],
+    world_cts_offset: wp.array[int32],
+    world_dynamic_cts_offset: wp.array[int32],
+    world_kinematic_cts_offset: wp.array[int32],
     # Outputs:
-    joint_coord_start: wp.array(dtype=int32),
-    joint_dofs_start: wp.array(dtype=int32),
-    joint_passive_coord_start: wp.array(dtype=int32),
-    joint_passive_dofs_start: wp.array(dtype=int32),
-    joint_actuated_coord_start: wp.array(dtype=int32),
-    joint_actuated_dofs_start: wp.array(dtype=int32),
-    joint_cts_start: wp.array(dtype=int32),
-    joint_dynamic_cts_start: wp.array(dtype=int32),
-    joint_kinematic_cts_start: wp.array(dtype=int32),
+    joint_coord_start: wp.array[int32],
+    joint_dofs_start: wp.array[int32],
+    joint_passive_coord_start: wp.array[int32],
+    joint_passive_dofs_start: wp.array[int32],
+    joint_actuated_coord_start: wp.array[int32],
+    joint_actuated_dofs_start: wp.array[int32],
+    joint_cts_start: wp.array[int32],
+    joint_dynamic_cts_start: wp.array[int32],
+    joint_kinematic_cts_start: wp.array[int32],
 ):
     jid = wp.tid()
     w = joint_world[jid]
@@ -539,14 +539,14 @@ def _globalize_joint_offsets(
 @wp.kernel
 def geometry_conversion_kernel(
     # Inputs:
-    model_shape_world: wp.array(dtype=int32),
-    model_shape_world_start: wp.array(dtype=int32),
-    model_shape_flags: wp.array(dtype=int32),
-    model_shape_collision_groups: wp.array(dtype=int32),
-    geom_material: wp.array(dtype=int32),
+    model_shape_world: wp.array[int32],
+    model_shape_world_start: wp.array[int32],
+    model_shape_flags: wp.array[int32],
+    model_shape_collision_groups: wp.array[int32],
+    geom_material: wp.array[int32],
     # Outputs:
-    geom_gid: wp.array(dtype=int32),
-    model_num_collidable_geoms: wp.array(dtype=int32),
+    geom_gid: wp.array[int32],
+    model_num_collidable_geoms: wp.array[int32],
 ):
     # Retrieve the geom/shape index from the thread grid
     shape_id = wp.tid()
@@ -576,12 +576,12 @@ def geometry_conversion_kernel(
 @wp.kernel
 def target_dofs_to_coords_conversion_kernel(
     # Inputs
-    model_joints_dof_type: wp.array(dtype=int32),
-    model_joints_dofs_offset: wp.array(dtype=int32),
-    model_joints_coords_offset: wp.array(dtype=int32),
-    joint_target_dofs: wp.array(dtype=float32),
+    model_joints_dof_type: wp.array[int32],
+    model_joints_dofs_offset: wp.array[int32],
+    model_joints_coords_offset: wp.array[int32],
+    joint_target_dofs: wp.array[float32],
     # Outputs
-    joint_target_coords: wp.array(dtype=float32),
+    joint_target_coords: wp.array[float32],
 ):
     # Read thread id (= joint id)
     jid = wp.tid()
@@ -620,12 +620,12 @@ def target_dofs_to_coords_conversion_kernel(
 @wp.kernel
 def target_coords_to_dofs_conversion_kernel(
     # Inputs
-    model_joints_dof_type: wp.array(dtype=int32),
-    model_joints_dofs_offset: wp.array(dtype=int32),
-    model_joints_coords_offset: wp.array(dtype=int32),
-    joint_target_coords: wp.array(dtype=float32),
+    model_joints_dof_type: wp.array[int32],
+    model_joints_dofs_offset: wp.array[int32],
+    model_joints_coords_offset: wp.array[int32],
+    joint_target_coords: wp.array[float32],
     # Outputs
-    joint_target_dofs: wp.array(dtype=float32),
+    joint_target_dofs: wp.array[float32],
 ):
     # Read thread id (= joint id)
     jid = wp.tid()
@@ -663,7 +663,7 @@ def target_coords_to_dofs_conversion_kernel(
 
 
 @wp.kernel
-def write_coeff_kernel(a: wp.array(dtype=int32), idx: int, v: int):
+def write_coeff_kernel(a: wp.array[int32], idx: int, v: int):
     """Helper kernel writing a single array coefficient"""
     a[idx] = v
 

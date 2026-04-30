@@ -80,11 +80,11 @@ wp.set_module_options({"enable_backward": False})
 @wp.kernel
 def _reset_solver_data(
     # Outputs:
-    world_mask: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    problem_maxdim: wp.array(dtype=int32),
-    lambdas: wp.array(dtype=float32),
-    v_plus: wp.array(dtype=float32),
+    world_mask: wp.array[int32],
+    problem_vio: wp.array[int32],
+    problem_maxdim: wp.array[int32],
+    lambdas: wp.array[float32],
+    v_plus: wp.array[float32],
 ):
     # Retrieve the world and constraint indices from the 2D thread grid
     wid, tid = wp.tid()
@@ -109,13 +109,13 @@ def _reset_solver_data(
 
 @wp.kernel
 def _warmstart_desaxce_correction(
-    problem_nc: wp.array(dtype=int32),
-    problem_cio: wp.array(dtype=int32),
-    problem_ccgo: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    problem_mu: wp.array(dtype=float32),
+    problem_nc: wp.array[int32],
+    problem_cio: wp.array[int32],
+    problem_ccgo: wp.array[int32],
+    problem_vio: wp.array[int32],
+    problem_mu: wp.array[float32],
     # Outputs:
-    solver_z: wp.array(dtype=float32),
+    solver_z: wp.array[float32],
 ):
     # Retrieve the thread index
     wid, cid = wp.tid()
@@ -157,20 +157,20 @@ def _warmstart_desaxce_correction(
 @wp.kernel
 def _warmstart_joint_constraints(
     # Inputs:
-    model_time_dt: wp.array(dtype=float32),
-    joint_wid: wp.array(dtype=int32),
-    joint_num_dynamic_cts: wp.array(dtype=int32),
-    joint_num_kinematic_cts: wp.array(dtype=int32),
-    joint_dynamic_cts_offset_joint_cts: wp.array(dtype=int32),
-    joint_kinematic_cts_offset_joint_cts: wp.array(dtype=int32),
-    joint_dynamic_cts_offset_total_cts: wp.array(dtype=int32),
-    joint_kinematic_cts_offset_total_cts: wp.array(dtype=int32),
-    joint_lambda_j: wp.array(dtype=float32),
-    problem_P: wp.array(dtype=float32),
+    model_time_dt: wp.array[float32],
+    joint_wid: wp.array[int32],
+    joint_num_dynamic_cts: wp.array[int32],
+    joint_num_kinematic_cts: wp.array[int32],
+    joint_dynamic_cts_offset_joint_cts: wp.array[int32],
+    joint_kinematic_cts_offset_joint_cts: wp.array[int32],
+    joint_dynamic_cts_offset_total_cts: wp.array[int32],
+    joint_kinematic_cts_offset_total_cts: wp.array[int32],
+    joint_lambda_j: wp.array[float32],
+    problem_P: wp.array[float32],
     # Outputs:
-    x_0: wp.array(dtype=float32),
-    y_0: wp.array(dtype=float32),
-    z_0: wp.array(dtype=float32),
+    x_0: wp.array[float32],
+    y_0: wp.array[float32],
+    z_0: wp.array[float32],
 ):
     # Retrieve the thread index as the joint index
     jid = wp.tid()
@@ -208,19 +208,19 @@ def _warmstart_joint_constraints(
 @wp.kernel
 def _warmstart_limit_constraints(
     # Inputs:
-    model_time_dt: wp.array(dtype=float32),
-    model_info_total_cts_offset: wp.array(dtype=int32),
-    data_info_limit_cts_group_offset: wp.array(dtype=int32),
-    limit_model_num_active: wp.array(dtype=int32),
-    limit_wid: wp.array(dtype=int32),
-    limit_lid: wp.array(dtype=int32),
-    limit_reaction: wp.array(dtype=float32),
-    limit_velocity: wp.array(dtype=float32),
-    problem_P: wp.array(dtype=float32),
+    model_time_dt: wp.array[float32],
+    model_info_total_cts_offset: wp.array[int32],
+    data_info_limit_cts_group_offset: wp.array[int32],
+    limit_model_num_active: wp.array[int32],
+    limit_wid: wp.array[int32],
+    limit_lid: wp.array[int32],
+    limit_reaction: wp.array[float32],
+    limit_velocity: wp.array[float32],
+    problem_P: wp.array[float32],
     # Outputs:
-    x_0: wp.array(dtype=float32),
-    y_0: wp.array(dtype=float32),
-    z_0: wp.array(dtype=float32),
+    x_0: wp.array[float32],
+    y_0: wp.array[float32],
+    z_0: wp.array[float32],
 ):
     # Retrieve the thread index as the limit index
     lid = wp.tid()
@@ -268,20 +268,20 @@ def _warmstart_limit_constraints(
 @wp.kernel
 def _warmstart_contact_constraints(
     # Inputs:
-    model_time_dt: wp.array(dtype=float32),
-    model_info_total_cts_offset: wp.array(dtype=int32),
-    data_info_contact_cts_group_offset: wp.array(dtype=int32),
-    contact_model_num_contacts: wp.array(dtype=int32),
-    contact_wid: wp.array(dtype=int32),
-    contact_cid: wp.array(dtype=int32),
-    contact_material: wp.array(dtype=vec2f),
-    contact_reaction: wp.array(dtype=vec3f),
-    contact_velocity: wp.array(dtype=vec3f),
-    problem_P: wp.array(dtype=float32),
+    model_time_dt: wp.array[float32],
+    model_info_total_cts_offset: wp.array[int32],
+    data_info_contact_cts_group_offset: wp.array[int32],
+    contact_model_num_contacts: wp.array[int32],
+    contact_wid: wp.array[int32],
+    contact_cid: wp.array[int32],
+    contact_material: wp.array[vec2f],
+    contact_reaction: wp.array[vec3f],
+    contact_velocity: wp.array[vec3f],
+    problem_P: wp.array[float32],
     # Outputs:
-    x_0: wp.array(dtype=float32),
-    y_0: wp.array(dtype=float32),
-    z_0: wp.array(dtype=float32),
+    x_0: wp.array[float32],
+    y_0: wp.array[float32],
+    z_0: wp.array[float32],
 ):
     # Retrieve the thread index as the contact index
     cid = wp.tid()
@@ -351,13 +351,13 @@ def make_initialize_solver_kernel(use_acceleration: bool = False):
     @wp.kernel
     def _initialize_solver(
         # Inputs:
-        solver_config: wp.array(dtype=PADMMConfigStruct),
+        solver_config: wp.array[PADMMConfigStruct],
         # Outputs:
-        solver_status: wp.array(dtype=PADMMStatus),
-        solver_penalty: wp.array(dtype=PADMMPenalty),
-        solver_state_sigma: wp.array(dtype=vec2f),
-        solver_state_a_p: wp.array(dtype=float32),
-        linear_solver_atol: wp.array(dtype=float32),
+        solver_status: wp.array[PADMMStatus],
+        solver_penalty: wp.array[PADMMPenalty],
+        solver_state_sigma: wp.array[vec2f],
+        solver_state_a_p: wp.array[float32],
+        linear_solver_atol: wp.array[float32],
     ):
         # Retrieve the world index as thread index
         wid = wp.tid()
@@ -420,11 +420,11 @@ def make_update_proximal_regularization_kernel(method: PADMMPenaltyUpdate):
     @wp.kernel
     def _update_proximal_regularization(
         # Inputs:
-        solver_config: wp.array(dtype=PADMMConfigStruct),
-        solver_penalty: wp.array(dtype=PADMMPenalty),
-        solver_status: wp.array(dtype=PADMMStatus),
+        solver_config: wp.array[PADMMConfigStruct],
+        solver_penalty: wp.array[PADMMPenalty],
+        solver_status: wp.array[PADMMStatus],
         # Outputs:
-        solver_state_sigma: wp.array(dtype=vec2f),
+        solver_state_sigma: wp.array[vec2f],
     ):
         # Retrieve the world index from the thread index
         wid = wp.tid()
@@ -460,12 +460,12 @@ def make_update_proximal_regularization_kernel(method: PADMMPenaltyUpdate):
 @wp.kernel
 def _update_delassus_proximal_regularization(
     # Inputs:
-    problem_dim: wp.array(dtype=int32),
-    problem_mio: wp.array(dtype=int32),
-    solver_status: wp.array(dtype=PADMMStatus),
-    solver_state_sigma: wp.array(dtype=vec2f),
+    problem_dim: wp.array[int32],
+    problem_mio: wp.array[int32],
+    solver_status: wp.array[PADMMStatus],
+    solver_state_sigma: wp.array[vec2f],
     # Outputs:
-    D: wp.array(dtype=float32),
+    D: wp.array[float32],
 ):
     # Retrieve the thread index
     wid, tid = wp.tid()
@@ -493,13 +493,13 @@ def _update_delassus_proximal_regularization(
 @wp.kernel
 def _update_delassus_proximal_regularization_sparse(
     # Inputs:
-    problem_dim: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    solver_config: wp.array(dtype=PADMMConfigStruct),
-    solver_penalty: wp.array(dtype=PADMMPenalty),
-    solver_status: wp.array(dtype=PADMMStatus),
+    problem_dim: wp.array[int32],
+    problem_vio: wp.array[int32],
+    solver_config: wp.array[PADMMConfigStruct],
+    solver_penalty: wp.array[PADMMPenalty],
+    solver_status: wp.array[PADMMStatus],
     # Outputs:
-    delassus_eta: wp.array(dtype=float32),
+    delassus_eta: wp.array[float32],
 ):
     # Retrieve the thread index
     wid, tid = wp.tid()
@@ -529,15 +529,15 @@ def _update_delassus_proximal_regularization_sparse(
 @wp.kernel
 def _compute_desaxce_correction(
     # Inputs:
-    problem_nc: wp.array(dtype=int32),
-    problem_cio: wp.array(dtype=int32),
-    problem_ccgo: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    problem_mu: wp.array(dtype=float32),
-    solver_status: wp.array(dtype=PADMMStatus),
-    solver_z_p: wp.array(dtype=float32),
+    problem_nc: wp.array[int32],
+    problem_cio: wp.array[int32],
+    problem_ccgo: wp.array[int32],
+    problem_vio: wp.array[int32],
+    problem_mu: wp.array[float32],
+    solver_status: wp.array[PADMMStatus],
+    solver_z_p: wp.array[float32],
     # Outputs:
-    solver_s: wp.array(dtype=float32),
+    solver_s: wp.array[float32],
 ):
     # Retrieve the thread index as the contact index
     wid, cid = wp.tid()
@@ -581,18 +581,18 @@ def _compute_desaxce_correction(
 @wp.kernel
 def _compute_velocity_bias(
     # Inputs:
-    problem_dim: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    problem_v_f: wp.array(dtype=float32),
-    solver_config: wp.array(dtype=PADMMConfigStruct),
-    solver_penalty: wp.array(dtype=PADMMPenalty),
-    solver_status: wp.array(dtype=PADMMStatus),
-    solver_s: wp.array(dtype=float32),
-    solver_x_p: wp.array(dtype=float32),
-    solver_y_p: wp.array(dtype=float32),
-    solver_z_p: wp.array(dtype=float32),
+    problem_dim: wp.array[int32],
+    problem_vio: wp.array[int32],
+    problem_v_f: wp.array[float32],
+    solver_config: wp.array[PADMMConfigStruct],
+    solver_penalty: wp.array[PADMMPenalty],
+    solver_status: wp.array[PADMMStatus],
+    solver_s: wp.array[float32],
+    solver_x_p: wp.array[float32],
+    solver_y_p: wp.array[float32],
+    solver_z_p: wp.array[float32],
     # Outputs:
-    solver_v: wp.array(dtype=float32),
+    solver_v: wp.array[float32],
 ):
     # Retrieve the thread indices as the world and constraint index
     wid, tid = wp.tid()
@@ -645,22 +645,22 @@ def make_desaxce_correction_and_velocity_bias_kernel(has_contacts: bool, collect
     @wp.kernel
     def _compute_desaxce_correction_and_velocity_bias(
         # Inputs:
-        problem_dim: wp.array(dtype=int32),
-        problem_nc: wp.array(dtype=int32),
-        problem_cio: wp.array(dtype=int32),
-        problem_ccgo: wp.array(dtype=int32),
-        problem_vio: wp.array(dtype=int32),
-        problem_mu: wp.array(dtype=float32),
-        problem_v_f: wp.array(dtype=float32),
-        solver_config: wp.array(dtype=PADMMConfigStruct),
-        solver_penalty: wp.array(dtype=PADMMPenalty),
-        solver_status: wp.array(dtype=PADMMStatus),
-        solver_x_p: wp.array(dtype=float32),
-        solver_y_p: wp.array(dtype=float32),
-        solver_z_p: wp.array(dtype=float32),
+        problem_dim: wp.array[int32],
+        problem_nc: wp.array[int32],
+        problem_cio: wp.array[int32],
+        problem_ccgo: wp.array[int32],
+        problem_vio: wp.array[int32],
+        problem_mu: wp.array[float32],
+        problem_v_f: wp.array[float32],
+        solver_config: wp.array[PADMMConfigStruct],
+        solver_penalty: wp.array[PADMMPenalty],
+        solver_status: wp.array[PADMMStatus],
+        solver_x_p: wp.array[float32],
+        solver_y_p: wp.array[float32],
+        solver_z_p: wp.array[float32],
         # Outputs:
-        solver_v: wp.array(dtype=float32),
-        solver_s: wp.array(dtype=float32),
+        solver_v: wp.array[float32],
+        solver_s: wp.array[float32],
     ):
         wid, tid = wp.tid()
 
@@ -709,14 +709,14 @@ def make_desaxce_correction_and_velocity_bias_kernel(has_contacts: bool, collect
 @wp.kernel
 def _compute_projection_argument(
     # Inputs
-    problem_dim: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    solver_penalty: wp.array(dtype=PADMMPenalty),
-    solver_status: wp.array(dtype=PADMMStatus),
-    solver_z_hat: wp.array(dtype=float32),
-    solver_x: wp.array(dtype=float32),
+    problem_dim: wp.array[int32],
+    problem_vio: wp.array[int32],
+    solver_penalty: wp.array[PADMMPenalty],
+    solver_status: wp.array[PADMMStatus],
+    solver_z_hat: wp.array[float32],
+    solver_x: wp.array[float32],
     # Outputs
-    solver_y: wp.array(dtype=float32),
+    solver_y: wp.array[float32],
 ):
     # Retrieve the thread indices as the world and constraint index
     wid, tid = wp.tid()
@@ -751,16 +751,16 @@ def _compute_projection_argument(
 @wp.kernel
 def _project_to_feasible_cone(
     # Inputs:
-    problem_nl: wp.array(dtype=int32),
-    problem_nc: wp.array(dtype=int32),
-    problem_cio: wp.array(dtype=int32),
-    problem_lcgo: wp.array(dtype=int32),
-    problem_ccgo: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    problem_mu: wp.array(dtype=float32),
-    solver_status: wp.array(dtype=PADMMStatus),
+    problem_nl: wp.array[int32],
+    problem_nc: wp.array[int32],
+    problem_cio: wp.array[int32],
+    problem_lcgo: wp.array[int32],
+    problem_ccgo: wp.array[int32],
+    problem_vio: wp.array[int32],
+    problem_mu: wp.array[float32],
+    solver_status: wp.array[PADMMStatus],
     # Outputs:
-    solver_y: wp.array(dtype=float32),
+    solver_y: wp.array[float32],
 ):
     # Retrieve the thread index as the unilateral entity index
     wid, uid = wp.tid()
@@ -812,20 +812,20 @@ def _project_to_feasible_cone(
 @wp.kernel
 def _compute_projection_argument_and_project(
     # Inputs:
-    problem_dim: wp.array(dtype=int32),
-    problem_nl: wp.array(dtype=int32),
-    problem_nc: wp.array(dtype=int32),
-    problem_cio: wp.array(dtype=int32),
-    problem_lcgo: wp.array(dtype=int32),
-    problem_ccgo: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    problem_mu: wp.array(dtype=float32),
-    solver_penalty: wp.array(dtype=PADMMPenalty),
-    solver_status: wp.array(dtype=PADMMStatus),
-    solver_z_hat: wp.array(dtype=float32),
-    solver_x: wp.array(dtype=float32),
+    problem_dim: wp.array[int32],
+    problem_nl: wp.array[int32],
+    problem_nc: wp.array[int32],
+    problem_cio: wp.array[int32],
+    problem_lcgo: wp.array[int32],
+    problem_ccgo: wp.array[int32],
+    problem_vio: wp.array[int32],
+    problem_mu: wp.array[float32],
+    solver_penalty: wp.array[PADMMPenalty],
+    solver_status: wp.array[PADMMStatus],
+    solver_z_hat: wp.array[float32],
+    solver_x: wp.array[float32],
     # Outputs:
-    solver_y: wp.array(dtype=float32),
+    solver_y: wp.array[float32],
 ):
     """Fused kernel: compute projection argument and project to feasible set.
 
@@ -899,24 +899,24 @@ def make_update_dual_variables_and_compute_primal_dual_residuals(use_acceleratio
     @wp.kernel
     def _update_dual_variables_and_compute_primal_dual_residuals(
         # Inputs:
-        problem_dim: wp.array(dtype=int32),
-        problem_vio: wp.array(dtype=int32),
-        problem_P: wp.array(dtype=float32),
-        solver_config: wp.array(dtype=PADMMConfigStruct),
-        solver_penalty: wp.array(dtype=PADMMPenalty),
-        solver_status: wp.array(dtype=PADMMStatus),
-        solver_x: wp.array(dtype=float32),
-        solver_y: wp.array(dtype=float32),
-        solver_x_p: wp.array(dtype=float32),
-        solver_y_p: wp.array(dtype=float32),
-        solver_z_p: wp.array(dtype=float32),
+        problem_dim: wp.array[int32],
+        problem_vio: wp.array[int32],
+        problem_P: wp.array[float32],
+        solver_config: wp.array[PADMMConfigStruct],
+        solver_penalty: wp.array[PADMMPenalty],
+        solver_status: wp.array[PADMMStatus],
+        solver_x: wp.array[float32],
+        solver_y: wp.array[float32],
+        solver_x_p: wp.array[float32],
+        solver_y_p: wp.array[float32],
+        solver_z_p: wp.array[float32],
         # Outputs:
-        solver_z: wp.array(dtype=float32),
-        solver_r_prim: wp.array(dtype=float32),
-        solver_r_dual: wp.array(dtype=float32),
-        solver_r_dx: wp.array(dtype=float32),
-        solver_r_dy: wp.array(dtype=float32),
-        solver_r_dz: wp.array(dtype=float32),
+        solver_z: wp.array[float32],
+        solver_r_prim: wp.array[float32],
+        solver_r_dual: wp.array[float32],
+        solver_r_dx: wp.array[float32],
+        solver_r_dy: wp.array[float32],
+        solver_r_dz: wp.array[float32],
     ):
         # Retrieve the thread indices as the world and constraint index
         wid, tid = wp.tid()
@@ -984,31 +984,31 @@ def make_update_dual_and_all_residuals(use_acceleration: bool = False):
     @wp.kernel
     def _update_dual_and_all_residuals(
         # Inputs:
-        problem_dim: wp.array(dtype=int32),
-        problem_nl: wp.array(dtype=int32),
-        problem_nc: wp.array(dtype=int32),
-        problem_cio: wp.array(dtype=int32),
-        problem_lcgo: wp.array(dtype=int32),
-        problem_ccgo: wp.array(dtype=int32),
-        problem_vio: wp.array(dtype=int32),
-        problem_uio: wp.array(dtype=int32),
-        problem_P: wp.array(dtype=float32),
-        solver_config: wp.array(dtype=PADMMConfigStruct),
-        solver_penalty: wp.array(dtype=PADMMPenalty),
-        solver_status: wp.array(dtype=PADMMStatus),
-        solver_x: wp.array(dtype=float32),
-        solver_y: wp.array(dtype=float32),
-        solver_x_p: wp.array(dtype=float32),
-        solver_y_p: wp.array(dtype=float32),
-        solver_z_p: wp.array(dtype=float32),
+        problem_dim: wp.array[int32],
+        problem_nl: wp.array[int32],
+        problem_nc: wp.array[int32],
+        problem_cio: wp.array[int32],
+        problem_lcgo: wp.array[int32],
+        problem_ccgo: wp.array[int32],
+        problem_vio: wp.array[int32],
+        problem_uio: wp.array[int32],
+        problem_P: wp.array[float32],
+        solver_config: wp.array[PADMMConfigStruct],
+        solver_penalty: wp.array[PADMMPenalty],
+        solver_status: wp.array[PADMMStatus],
+        solver_x: wp.array[float32],
+        solver_y: wp.array[float32],
+        solver_x_p: wp.array[float32],
+        solver_y_p: wp.array[float32],
+        solver_z_p: wp.array[float32],
         # Outputs:
-        solver_z: wp.array(dtype=float32),
-        solver_r_prim: wp.array(dtype=float32),
-        solver_r_dual: wp.array(dtype=float32),
-        solver_r_compl: wp.array(dtype=float32),
-        solver_r_dx: wp.array(dtype=float32),
-        solver_r_dy: wp.array(dtype=float32),
-        solver_r_dz: wp.array(dtype=float32),
+        solver_z: wp.array[float32],
+        solver_r_prim: wp.array[float32],
+        solver_r_dual: wp.array[float32],
+        solver_r_compl: wp.array[float32],
+        solver_r_dx: wp.array[float32],
+        solver_r_dy: wp.array[float32],
+        solver_r_dz: wp.array[float32],
     ):
         wid, tid = wp.tid()
 
@@ -1084,17 +1084,17 @@ def make_update_dual_and_all_residuals(use_acceleration: bool = False):
 @wp.kernel
 def _compute_complementarity_residuals(
     # Inputs:
-    problem_nl: wp.array(dtype=int32),
-    problem_nc: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    problem_uio: wp.array(dtype=int32),
-    problem_lcgo: wp.array(dtype=int32),
-    problem_ccgo: wp.array(dtype=int32),
-    solver_status: wp.array(dtype=PADMMStatus),
-    solver_x: wp.array(dtype=float32),
-    solver_z: wp.array(dtype=float32),
+    problem_nl: wp.array[int32],
+    problem_nc: wp.array[int32],
+    problem_vio: wp.array[int32],
+    problem_uio: wp.array[int32],
+    problem_lcgo: wp.array[int32],
+    problem_ccgo: wp.array[int32],
+    solver_status: wp.array[PADMMStatus],
+    solver_x: wp.array[float32],
+    solver_z: wp.array[float32],
     # Outputs:
-    solver_r_c: wp.array(dtype=float32),
+    solver_r_c: wp.array[float32],
 ):
     # Retrieve the thread index as the unilateral entity index
     wid, uid = wp.tid()
@@ -1184,20 +1184,20 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_u_m
     @wp.kernel
     def _compute_infnorm_residuals(
         # Inputs:
-        problem_nl: wp.array(dtype=int32),
-        problem_nc: wp.array(dtype=int32),
-        problem_uio: wp.array(dtype=int32),
-        problem_dim: wp.array(dtype=int32),
-        problem_vio: wp.array(dtype=int32),
-        solver_config: wp.array(dtype=PADMMConfigStruct),
-        solver_r_p: wp.array(dtype=float32),
-        solver_r_d: wp.array(dtype=float32),
-        solver_r_c: wp.array(dtype=float32),
+        problem_nl: wp.array[int32],
+        problem_nc: wp.array[int32],
+        problem_uio: wp.array[int32],
+        problem_dim: wp.array[int32],
+        problem_vio: wp.array[int32],
+        solver_config: wp.array[PADMMConfigStruct],
+        solver_r_p: wp.array[float32],
+        solver_r_d: wp.array[float32],
+        solver_r_c: wp.array[float32],
         # Outputs:
-        solver_state_done: wp.array(dtype=int32),
-        solver_status: wp.array(dtype=PADMMStatus),
-        solver_penalty: wp.array(dtype=PADMMPenalty),
-        linear_solver_atol: wp.array(dtype=float32),
+        solver_state_done: wp.array[int32],
+        solver_status: wp.array[PADMMStatus],
+        solver_penalty: wp.array[PADMMPenalty],
+        linear_solver_atol: wp.array[float32],
     ):
         # Retrieve the thread index as the world index + thread index within block
         wid, tid = wp.tid()
@@ -1328,26 +1328,26 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
     @wp.kernel
     def _compute_infnorm_residuals_accel(
         # Inputs:
-        problem_nl: wp.array(dtype=int32),
-        problem_nc: wp.array(dtype=int32),
-        problem_uio: wp.array(dtype=int32),
-        problem_dim: wp.array(dtype=int32),
-        problem_vio: wp.array(dtype=int32),
-        solver_config: wp.array(dtype=PADMMConfigStruct),
-        solver_r_p: wp.array(dtype=float32),
-        solver_r_d: wp.array(dtype=float32),
-        solver_r_c: wp.array(dtype=float32),
-        solver_r_dx: wp.array(dtype=float32),
-        solver_r_dy: wp.array(dtype=float32),
-        solver_r_dz: wp.array(dtype=float32),
-        solver_state_a_p: wp.array(dtype=float32),
+        problem_nl: wp.array[int32],
+        problem_nc: wp.array[int32],
+        problem_uio: wp.array[int32],
+        problem_dim: wp.array[int32],
+        problem_vio: wp.array[int32],
+        solver_config: wp.array[PADMMConfigStruct],
+        solver_r_p: wp.array[float32],
+        solver_r_d: wp.array[float32],
+        solver_r_c: wp.array[float32],
+        solver_r_dx: wp.array[float32],
+        solver_r_dy: wp.array[float32],
+        solver_r_dz: wp.array[float32],
+        solver_state_a_p: wp.array[float32],
         # Outputs:
-        solver_state_done: wp.array(dtype=int32),
-        solver_state_a: wp.array(dtype=float32),
-        solver_state_a_factor: wp.array(dtype=float32),
-        solver_status: wp.array(dtype=PADMMStatus),
-        solver_penalty: wp.array(dtype=PADMMPenalty),
-        linear_solver_atol: wp.array(dtype=float32),
+        solver_state_done: wp.array[int32],
+        solver_state_a: wp.array[float32],
+        solver_state_a_factor: wp.array[float32],
+        solver_status: wp.array[PADMMStatus],
+        solver_penalty: wp.array[PADMMPenalty],
+        linear_solver_atol: wp.array[float32],
     ):
         # Retrieve the thread index as the world index + thread index within block
         wid, tid = wp.tid()
@@ -1534,18 +1534,18 @@ def _make_compute_infnorm_residuals_accel_kernel(tile_size: int, n_cts_max: int,
 @wp.kernel
 def _update_state_with_acceleration(
     # Inputs:
-    problem_dim: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    solver_status: wp.array(dtype=PADMMStatus),
-    solver_state_a: wp.array(dtype=float32),
-    solver_state_y: wp.array(dtype=float32),
-    solver_state_z: wp.array(dtype=float32),
-    solver_state_a_p: wp.array(dtype=float32),
-    solver_state_y_p: wp.array(dtype=float32),
-    solver_state_z_p: wp.array(dtype=float32),
+    problem_dim: wp.array[int32],
+    problem_vio: wp.array[int32],
+    solver_status: wp.array[PADMMStatus],
+    solver_state_a: wp.array[float32],
+    solver_state_y: wp.array[float32],
+    solver_state_z: wp.array[float32],
+    solver_state_a_p: wp.array[float32],
+    solver_state_y_p: wp.array[float32],
+    solver_state_z_p: wp.array[float32],
     # Outputs:
-    solver_state_y_hat: wp.array(dtype=float32),
-    solver_state_z_hat: wp.array(dtype=float32),
+    solver_state_y_hat: wp.array[float32],
+    solver_state_z_hat: wp.array[float32],
 ):
     # Retrieve the thread indices as the world and constraint index
     wid, tid = wp.tid()
@@ -1595,23 +1595,23 @@ def _update_state_with_acceleration(
 @wp.kernel
 def _update_acceleration_and_cache_previous(
     # Inputs:
-    problem_dim: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    solver_status: wp.array(dtype=PADMMStatus),
-    solver_state_a: wp.array(dtype=float32),
-    solver_state_a_factor: wp.array(dtype=float32),
-    solver_state_x: wp.array(dtype=float32),
-    solver_state_y: wp.array(dtype=float32),
-    solver_state_z: wp.array(dtype=float32),
-    solver_state_y_p: wp.array(dtype=float32),
-    solver_state_z_p: wp.array(dtype=float32),
+    problem_dim: wp.array[int32],
+    problem_vio: wp.array[int32],
+    solver_status: wp.array[PADMMStatus],
+    solver_state_a: wp.array[float32],
+    solver_state_a_factor: wp.array[float32],
+    solver_state_x: wp.array[float32],
+    solver_state_y: wp.array[float32],
+    solver_state_z: wp.array[float32],
+    solver_state_y_p: wp.array[float32],
+    solver_state_z_p: wp.array[float32],
     # Outputs:
-    solver_state_y_hat: wp.array(dtype=float32),
-    solver_state_z_hat: wp.array(dtype=float32),
-    solver_state_x_p_out: wp.array(dtype=float32),
-    solver_state_y_p_out: wp.array(dtype=float32),
-    solver_state_z_p_out: wp.array(dtype=float32),
-    solver_state_a_p_out: wp.array(dtype=float32),
+    solver_state_y_hat: wp.array[float32],
+    solver_state_z_hat: wp.array[float32],
+    solver_state_x_p_out: wp.array[float32],
+    solver_state_y_p_out: wp.array[float32],
+    solver_state_z_p_out: wp.array[float32],
+    solver_state_a_p_out: wp.array[float32],
 ):
     """Fused kernel: Nesterov acceleration update + cache previous state."""
     # Retrieve the thread indices as the world and constraint index
@@ -1674,58 +1674,58 @@ def make_collect_solver_info_kernel(use_acceleration: bool):
     @wp.kernel
     def _collect_solver_convergence_info(
         # Inputs:
-        problem_nl: wp.array(dtype=int32),
-        problem_nc: wp.array(dtype=int32),
-        problem_cio: wp.array(dtype=int32),
-        problem_lcgo: wp.array(dtype=int32),
-        problem_ccgo: wp.array(dtype=int32),
-        problem_dim: wp.array(dtype=int32),
-        problem_vio: wp.array(dtype=int32),
-        problem_mio: wp.array(dtype=int32),
-        problem_mu: wp.array(dtype=float32),
-        problem_v_f: wp.array(dtype=float32),
-        problem_D: wp.array(dtype=float32),
-        problem_P: wp.array(dtype=float32),
-        solver_state_sigma: wp.array(dtype=vec2f),
-        solver_state_s: wp.array(dtype=float32),
-        solver_state_x: wp.array(dtype=float32),
-        solver_state_x_p: wp.array(dtype=float32),
-        solver_state_y: wp.array(dtype=float32),
-        solver_state_y_p: wp.array(dtype=float32),
-        solver_state_z: wp.array(dtype=float32),
-        solver_state_z_p: wp.array(dtype=float32),
-        solver_state_a: wp.array(dtype=float32),
-        solver_penalty: wp.array(dtype=PADMMPenalty),
-        solver_status: wp.array(dtype=PADMMStatus),
+        problem_nl: wp.array[int32],
+        problem_nc: wp.array[int32],
+        problem_cio: wp.array[int32],
+        problem_lcgo: wp.array[int32],
+        problem_ccgo: wp.array[int32],
+        problem_dim: wp.array[int32],
+        problem_vio: wp.array[int32],
+        problem_mio: wp.array[int32],
+        problem_mu: wp.array[float32],
+        problem_v_f: wp.array[float32],
+        problem_D: wp.array[float32],
+        problem_P: wp.array[float32],
+        solver_state_sigma: wp.array[vec2f],
+        solver_state_s: wp.array[float32],
+        solver_state_x: wp.array[float32],
+        solver_state_x_p: wp.array[float32],
+        solver_state_y: wp.array[float32],
+        solver_state_y_p: wp.array[float32],
+        solver_state_z: wp.array[float32],
+        solver_state_z_p: wp.array[float32],
+        solver_state_a: wp.array[float32],
+        solver_penalty: wp.array[PADMMPenalty],
+        solver_status: wp.array[PADMMStatus],
         # Outputs:
-        solver_info_lambdas: wp.array(dtype=float32),
-        solver_info_v_plus: wp.array(dtype=float32),
-        solver_info_v_aug: wp.array(dtype=float32),
-        solver_info_s: wp.array(dtype=float32),
-        solver_info_offset: wp.array(dtype=int32),
-        solver_info_num_restarts: wp.array(dtype=int32),
-        solver_info_num_rho_updates: wp.array(dtype=int32),
-        solver_info_a: wp.array(dtype=float32),
-        solver_info_norm_s: wp.array(dtype=float32),
-        solver_info_norm_x: wp.array(dtype=float32),
-        solver_info_norm_y: wp.array(dtype=float32),
-        solver_info_norm_z: wp.array(dtype=float32),
-        solver_info_f_ccp: wp.array(dtype=float32),
-        solver_info_f_ncp: wp.array(dtype=float32),
-        solver_info_r_dx: wp.array(dtype=float32),
-        solver_info_r_dy: wp.array(dtype=float32),
-        solver_info_r_dz: wp.array(dtype=float32),
-        solver_info_r_primal: wp.array(dtype=float32),
-        solver_info_r_dual: wp.array(dtype=float32),
-        solver_info_r_compl: wp.array(dtype=float32),
-        solver_info_r_pd: wp.array(dtype=float32),
-        solver_info_r_dp: wp.array(dtype=float32),
-        solver_info_r_comb: wp.array(dtype=float32),
-        solver_info_r_comb_ratio: wp.array(dtype=float32),
-        solver_info_r_ncp_primal: wp.array(dtype=float32),
-        solver_info_r_ncp_dual: wp.array(dtype=float32),
-        solver_info_r_ncp_compl: wp.array(dtype=float32),
-        solver_info_r_ncp_natmap: wp.array(dtype=float32),
+        solver_info_lambdas: wp.array[float32],
+        solver_info_v_plus: wp.array[float32],
+        solver_info_v_aug: wp.array[float32],
+        solver_info_s: wp.array[float32],
+        solver_info_offset: wp.array[int32],
+        solver_info_num_restarts: wp.array[int32],
+        solver_info_num_rho_updates: wp.array[int32],
+        solver_info_a: wp.array[float32],
+        solver_info_norm_s: wp.array[float32],
+        solver_info_norm_x: wp.array[float32],
+        solver_info_norm_y: wp.array[float32],
+        solver_info_norm_z: wp.array[float32],
+        solver_info_f_ccp: wp.array[float32],
+        solver_info_f_ncp: wp.array[float32],
+        solver_info_r_dx: wp.array[float32],
+        solver_info_r_dy: wp.array[float32],
+        solver_info_r_dz: wp.array[float32],
+        solver_info_r_primal: wp.array[float32],
+        solver_info_r_dual: wp.array[float32],
+        solver_info_r_compl: wp.array[float32],
+        solver_info_r_pd: wp.array[float32],
+        solver_info_r_dp: wp.array[float32],
+        solver_info_r_comb: wp.array[float32],
+        solver_info_r_comb_ratio: wp.array[float32],
+        solver_info_r_ncp_primal: wp.array[float32],
+        solver_info_r_ncp_dual: wp.array[float32],
+        solver_info_r_ncp_compl: wp.array[float32],
+        solver_info_r_ncp_natmap: wp.array[float32],
     ):
         # Retrieve the thread index as the world index
         wid = wp.tid()
@@ -1852,55 +1852,55 @@ def make_collect_solver_info_kernel_sparse(use_acceleration: bool):
     @wp.kernel
     def _collect_solver_convergence_info_sparse(
         # Inputs:
-        problem_nl: wp.array(dtype=int32),
-        problem_nc: wp.array(dtype=int32),
-        problem_cio: wp.array(dtype=int32),
-        problem_lcgo: wp.array(dtype=int32),
-        problem_ccgo: wp.array(dtype=int32),
-        problem_dim: wp.array(dtype=int32),
-        problem_vio: wp.array(dtype=int32),
-        problem_mu: wp.array(dtype=float32),
-        problem_v_f: wp.array(dtype=float32),
-        problem_P: wp.array(dtype=float32),
-        solver_state_s: wp.array(dtype=float32),
-        solver_state_x: wp.array(dtype=float32),
-        solver_state_x_p: wp.array(dtype=float32),
-        solver_state_y: wp.array(dtype=float32),
-        solver_state_y_p: wp.array(dtype=float32),
-        solver_state_z: wp.array(dtype=float32),
-        solver_state_z_p: wp.array(dtype=float32),
-        solver_state_a: wp.array(dtype=float32),
-        solver_penalty: wp.array(dtype=PADMMPenalty),
-        solver_status: wp.array(dtype=PADMMStatus),
+        problem_nl: wp.array[int32],
+        problem_nc: wp.array[int32],
+        problem_cio: wp.array[int32],
+        problem_lcgo: wp.array[int32],
+        problem_ccgo: wp.array[int32],
+        problem_dim: wp.array[int32],
+        problem_vio: wp.array[int32],
+        problem_mu: wp.array[float32],
+        problem_v_f: wp.array[float32],
+        problem_P: wp.array[float32],
+        solver_state_s: wp.array[float32],
+        solver_state_x: wp.array[float32],
+        solver_state_x_p: wp.array[float32],
+        solver_state_y: wp.array[float32],
+        solver_state_y_p: wp.array[float32],
+        solver_state_z: wp.array[float32],
+        solver_state_z_p: wp.array[float32],
+        solver_state_a: wp.array[float32],
+        solver_penalty: wp.array[PADMMPenalty],
+        solver_status: wp.array[PADMMStatus],
         # Outputs:
-        solver_info_lambdas: wp.array(dtype=float32),
-        solver_info_v_plus: wp.array(dtype=float32),
-        solver_info_v_aug: wp.array(dtype=float32),
-        solver_info_s: wp.array(dtype=float32),
-        solver_info_offset: wp.array(dtype=int32),
-        solver_info_num_restarts: wp.array(dtype=int32),
-        solver_info_num_rho_updates: wp.array(dtype=int32),
-        solver_info_a: wp.array(dtype=float32),
-        solver_info_norm_s: wp.array(dtype=float32),
-        solver_info_norm_x: wp.array(dtype=float32),
-        solver_info_norm_y: wp.array(dtype=float32),
-        solver_info_norm_z: wp.array(dtype=float32),
-        solver_info_f_ccp: wp.array(dtype=float32),
-        solver_info_f_ncp: wp.array(dtype=float32),
-        solver_info_r_dx: wp.array(dtype=float32),
-        solver_info_r_dy: wp.array(dtype=float32),
-        solver_info_r_dz: wp.array(dtype=float32),
-        solver_info_r_primal: wp.array(dtype=float32),
-        solver_info_r_dual: wp.array(dtype=float32),
-        solver_info_r_compl: wp.array(dtype=float32),
-        solver_info_r_pd: wp.array(dtype=float32),
-        solver_info_r_dp: wp.array(dtype=float32),
-        solver_info_r_comb: wp.array(dtype=float32),
-        solver_info_r_comb_ratio: wp.array(dtype=float32),
-        solver_info_r_ncp_primal: wp.array(dtype=float32),
-        solver_info_r_ncp_dual: wp.array(dtype=float32),
-        solver_info_r_ncp_compl: wp.array(dtype=float32),
-        solver_info_r_ncp_natmap: wp.array(dtype=float32),
+        solver_info_lambdas: wp.array[float32],
+        solver_info_v_plus: wp.array[float32],
+        solver_info_v_aug: wp.array[float32],
+        solver_info_s: wp.array[float32],
+        solver_info_offset: wp.array[int32],
+        solver_info_num_restarts: wp.array[int32],
+        solver_info_num_rho_updates: wp.array[int32],
+        solver_info_a: wp.array[float32],
+        solver_info_norm_s: wp.array[float32],
+        solver_info_norm_x: wp.array[float32],
+        solver_info_norm_y: wp.array[float32],
+        solver_info_norm_z: wp.array[float32],
+        solver_info_f_ccp: wp.array[float32],
+        solver_info_f_ncp: wp.array[float32],
+        solver_info_r_dx: wp.array[float32],
+        solver_info_r_dy: wp.array[float32],
+        solver_info_r_dz: wp.array[float32],
+        solver_info_r_primal: wp.array[float32],
+        solver_info_r_dual: wp.array[float32],
+        solver_info_r_compl: wp.array[float32],
+        solver_info_r_pd: wp.array[float32],
+        solver_info_r_dp: wp.array[float32],
+        solver_info_r_comb: wp.array[float32],
+        solver_info_r_comb_ratio: wp.array[float32],
+        solver_info_r_ncp_primal: wp.array[float32],
+        solver_info_r_ncp_dual: wp.array[float32],
+        solver_info_r_ncp_compl: wp.array[float32],
+        solver_info_r_ncp_natmap: wp.array[float32],
     ):
         # Retrieve the thread index as the world index
         wid = wp.tid()
@@ -2012,13 +2012,13 @@ def make_collect_solver_info_kernel_sparse(use_acceleration: bool):
 @wp.kernel
 def _apply_dual_preconditioner_to_state(
     # Inputs:
-    problem_dim: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    problem_P: wp.array(dtype=float32),
+    problem_dim: wp.array[int32],
+    problem_vio: wp.array[int32],
+    problem_P: wp.array[float32],
     # Outputs:
-    solver_x: wp.array(dtype=float32),
-    solver_y: wp.array(dtype=float32),
-    solver_z: wp.array(dtype=float32),
+    solver_x: wp.array[float32],
+    solver_y: wp.array[float32],
+    solver_z: wp.array[float32],
 ):
     # Retrieve the thread index
     wid, tid = wp.tid()
@@ -2053,12 +2053,12 @@ def _apply_dual_preconditioner_to_state(
 @wp.kernel
 def _apply_dual_preconditioner_to_solution(
     # Inputs:
-    problem_dim: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    problem_P: wp.array(dtype=float32),
+    problem_dim: wp.array[int32],
+    problem_vio: wp.array[int32],
+    problem_P: wp.array[float32],
     # Outputs:
-    solution_lambdas: wp.array(dtype=float32),
-    solution_v_plus: wp.array(dtype=float32),
+    solution_lambdas: wp.array[float32],
+    solution_v_plus: wp.array[float32],
 ):
     # Retrieve the thread index
     wid, tid = wp.tid()
@@ -2090,14 +2090,14 @@ def _apply_dual_preconditioner_to_solution(
 
 @wp.kernel
 def _compute_final_desaxce_correction(
-    problem_nc: wp.array(dtype=int32),
-    problem_cio: wp.array(dtype=int32),
-    problem_ccgo: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    problem_mu: wp.array(dtype=float32),
-    solver_z: wp.array(dtype=float32),
+    problem_nc: wp.array[int32],
+    problem_cio: wp.array[int32],
+    problem_ccgo: wp.array[int32],
+    problem_vio: wp.array[int32],
+    problem_mu: wp.array[float32],
+    solver_z: wp.array[float32],
     # Outputs:
-    solver_s: wp.array(dtype=float32),
+    solver_s: wp.array[float32],
 ):
     # Retrieve the thread index
     wid, cid = wp.tid()
@@ -2135,14 +2135,14 @@ def _compute_final_desaxce_correction(
 @wp.kernel
 def _compute_solution_vectors(
     # Inputs:
-    problem_dim: wp.array(dtype=int32),
-    problem_vio: wp.array(dtype=int32),
-    solver_s: wp.array(dtype=float32),
-    solver_y: wp.array(dtype=float32),
-    solver_z: wp.array(dtype=float32),
+    problem_dim: wp.array[int32],
+    problem_vio: wp.array[int32],
+    solver_s: wp.array[float32],
+    solver_y: wp.array[float32],
+    solver_z: wp.array[float32],
     # Outputs:
-    solver_v_plus: wp.array(dtype=float32),
-    solver_lambdas: wp.array(dtype=float32),
+    solver_v_plus: wp.array[float32],
+    solver_lambdas: wp.array[float32],
 ):
     # Retrieve the thread index
     wid, tid = wp.tid()

@@ -752,8 +752,8 @@ class ForwardKinematicsSolver:
 
     def _reset_state(
         self,
-        bodies_q: wp.array(dtype=wp.transformf),
-        world_mask: wp.array(dtype=wp.int32),
+        bodies_q: wp.array[wp.transformf],
+        world_mask: wp.array[wp.int32],
     ):
         """
         Internal function resetting the bodies state to the reference state stored in the model.
@@ -781,9 +781,9 @@ class ForwardKinematicsSolver:
 
     def _reset_state_base_q(
         self,
-        bodies_q: wp.array(dtype=wp.transformf),
-        base_q: wp.array(dtype=wp.transformf),
-        world_mask: wp.array(dtype=wp.int32),
+        bodies_q: wp.array[wp.transformf],
+        base_q: wp.array[wp.transformf],
+        world_mask: wp.array[wp.int32],
     ):
         """
         Internal function resetting the bodies state to a rigid transformation of the reference state,
@@ -808,9 +808,9 @@ class ForwardKinematicsSolver:
 
     def _eval_position_control_transformations(
         self,
-        base_q: wp.array(dtype=wp.transformf),
-        actuators_q: wp.array(dtype=wp.float32),
-        pos_control_transforms: wp.array(dtype=wp.transformf),
+        base_q: wp.array[wp.transformf],
+        actuators_q: wp.array[wp.float32],
+        pos_control_transforms: wp.array[wp.transformf],
     ):
         """
         Internal evaluator for position control transformations, from actuated & base coordinates of the main model.
@@ -847,10 +847,10 @@ class ForwardKinematicsSolver:
 
     def _eval_kinematic_constraints(
         self,
-        bodies_q: wp.array(dtype=wp.transformf),
-        pos_control_transforms: wp.array(dtype=wp.transformf),
-        world_mask: wp.array(dtype=wp.int32),
-        constraints: wp.array2d(dtype=wp.float32),
+        bodies_q: wp.array[wp.transformf],
+        pos_control_transforms: wp.array[wp.transformf],
+        world_mask: wp.array[wp.int32],
+        constraints: wp.array2d[wp.float32],
     ):
         """
         Internal evaluator for the kinematic constraints vector, from body poses and position-control transformations
@@ -886,9 +886,7 @@ class ForwardKinematicsSolver:
             device=self.device,
         )
 
-    def _eval_max_constraint(
-        self, constraints: wp.array2d(dtype=wp.float32), max_constraint: wp.array(dtype=wp.float32)
-    ):
+    def _eval_max_constraint(self, constraints: wp.array2d[wp.float32], max_constraint: wp.array[wp.float32]):
         """
         Internal evaluator for the maximal absolute constraint, from the constraints vector, in each world
         """
@@ -903,10 +901,10 @@ class ForwardKinematicsSolver:
 
     def _eval_kinematic_constraints_jacobian(
         self,
-        bodies_q: wp.array(dtype=wp.transformf),
-        pos_control_transforms: wp.array(dtype=wp.transformf),
-        world_mask: wp.array(dtype=wp.int32),
-        constraints_jacobian: wp.array3d(dtype=wp.float32),
+        bodies_q: wp.array[wp.transformf],
+        pos_control_transforms: wp.array[wp.transformf],
+        world_mask: wp.array[wp.int32],
+        constraints_jacobian: wp.array3d[wp.float32],
     ):
         """
         Internal evaluator for the kinematic constraints Jacobian with respect to body poses, from body poses
@@ -947,9 +945,9 @@ class ForwardKinematicsSolver:
 
     def _assemble_sparse_jacobian(
         self,
-        bodies_q: wp.array(dtype=wp.transformf),
-        pos_control_transforms: wp.array(dtype=wp.transformf),
-        world_mask: wp.array(dtype=wp.int32),
+        bodies_q: wp.array[wp.transformf],
+        pos_control_transforms: wp.array[wp.transformf],
+        world_mask: wp.array[wp.int32],
     ):
         """
         Internal evaluator for the sparse kinematic constraints Jacobian with respect to body poses, from body poses
@@ -1000,9 +998,9 @@ class ForwardKinematicsSolver:
 
     def _eval_lhs_gemv(
         self,
-        x: wp.array2d(dtype=wp.float32),
-        y: wp.array2d(dtype=wp.float32),
-        world_mask: wp.array(dtype=wp.int32),
+        x: wp.array2d[wp.float32],
+        y: wp.array2d[wp.float32],
+        world_mask: wp.array[wp.int32],
         alpha: wp.float32,
         beta: wp.float32,
     ):
@@ -1018,7 +1016,7 @@ class ForwardKinematicsSolver:
             device=self.device,
         )
 
-    def _eval_merit_function(self, constraints: wp.array2d(dtype=wp.float32), error: wp.array(dtype=wp.float32)):
+    def _eval_merit_function(self, constraints: wp.array2d[wp.float32], error: wp.array[wp.float32]):
         """
         Internal evaluator for the line search merit function, i.e. the least-squares error 1/2 * ||C||^2,
         from the constraints vector C, in each world
@@ -1034,9 +1032,9 @@ class ForwardKinematicsSolver:
 
     def _eval_merit_function_gradient(
         self,
-        step: wp.array2d(dtype=wp.float32),
-        grad: wp.array2d(dtype=wp.float32),
-        error_grad: wp.array(dtype=wp.float32),
+        step: wp.array2d[wp.float32],
+        grad: wp.array2d[wp.float32],
+        error_grad: wp.array[wp.float32],
     ):
         """
         Internal evaluator for the merit function gradient w.r.t. line search step size, from the step direction
@@ -1051,7 +1049,7 @@ class ForwardKinematicsSolver:
             device=self.device,
         )
 
-    def _run_line_search_iteration(self, bodies_q: wp.array(dtype=wp.transformf)):
+    def _run_line_search_iteration(self, bodies_q: wp.array[wp.transformf]):
         """
         Internal function running one iteration of line search, checking the Armijo sufficient descent condition
         """
@@ -1106,8 +1104,8 @@ class ForwardKinematicsSolver:
 
     def _update_cg_tolerance(
         self,
-        residual_norm: wp.array(dtype=wp.float32),
-        world_mask: wp.array(dtype=wp.int32),
+        residual_norm: wp.array[wp.float32],
+        world_mask: wp.array[wp.int32],
     ):
         """
         Internal function heuristically adapting the CG tolerance based on the current constraint residual
@@ -1121,7 +1119,7 @@ class ForwardKinematicsSolver:
             device=self.device,
         )
 
-    def _run_newton_iteration(self, bodies_q: wp.array(dtype=wp.transformf)):
+    def _run_newton_iteration(self, bodies_q: wp.array[wp.transformf]):
         """
         Internal function running one iteration of Gauss-Newton. Assumes the constraints vector to be already
         up-to-date (because we will already have checked convergence before the first loop iteration)
@@ -1229,12 +1227,12 @@ class ForwardKinematicsSolver:
 
     def _solve_for_body_velocities(
         self,
-        pos_control_transforms: wp.array(dtype=wp.transformf),
-        base_u: wp.array(dtype=vec6f),
-        actuators_u: wp.array(dtype=wp.float32),
-        bodies_q: wp.array(dtype=wp.transformf),
-        bodies_u: wp.array(dtype=vec6f),
-        world_mask: wp.array(dtype=wp.int32),
+        pos_control_transforms: wp.array[wp.transformf],
+        base_u: wp.array[vec6f],
+        actuators_u: wp.array[wp.float32],
+        bodies_q: wp.array[wp.transformf],
+        bodies_u: wp.array[vec6f],
+        world_mask: wp.array[wp.int32],
     ):
         """
         Internal function solving for body velocities, so that constraint velocities are zero,
@@ -1335,7 +1333,7 @@ class ForwardKinematicsSolver:
     ###
 
     def eval_position_control_transformations(
-        self, actuators_q: wp.array(dtype=wp.float32), base_q: wp.array(dtype=wp.transformf) | None = None
+        self, actuators_q: wp.array[wp.float32], base_q: wp.array[wp.transformf] | None = None
     ):
         """
         Evaluates and returns position control transformations (an intermediary quantity needed for the
@@ -1353,7 +1351,7 @@ class ForwardKinematicsSolver:
         return pos_control_transforms
 
     def eval_kinematic_constraints(
-        self, bodies_q: wp.array(dtype=wp.transformf), pos_control_transforms: wp.array(dtype=wp.transformf)
+        self, bodies_q: wp.array[wp.transformf], pos_control_transforms: wp.array[wp.transformf]
     ):
         """
         Evaluates and returns the kinematic constraints vector given the body poses and the position
@@ -1375,7 +1373,7 @@ class ForwardKinematicsSolver:
         return constraints
 
     def eval_kinematic_constraints_jacobian(
-        self, bodies_q: wp.array(dtype=wp.transformf), pos_control_transforms: wp.array(dtype=wp.transformf)
+        self, bodies_q: wp.array[wp.transformf], pos_control_transforms: wp.array[wp.transformf]
     ):
         """
         Evaluates and returns the kinematic constraints Jacobian (w.r.t. body poses) given the body poses
@@ -1392,7 +1390,7 @@ class ForwardKinematicsSolver:
         return constraints_jacobian
 
     def assemble_sparse_jacobian(
-        self, bodies_q: wp.array(dtype=wp.transformf), pos_control_transforms: wp.array(dtype=wp.transformf)
+        self, bodies_q: wp.array[wp.transformf], pos_control_transforms: wp.array[wp.transformf]
     ):
         """
         Assembles the sparse Jacobian (under self.sparse_jacobian) given input body poses and control transforms.
@@ -1406,12 +1404,12 @@ class ForwardKinematicsSolver:
 
     def solve_for_body_velocities(
         self,
-        pos_control_transforms: wp.array(dtype=wp.transformf),
-        actuators_u: wp.array(dtype=wp.float32),
-        bodies_q: wp.array(dtype=wp.transformf),
-        bodies_u: wp.array(dtype=vec6f),
-        base_u: wp.array(dtype=vec6f) | None = None,
-        world_mask: wp.array(dtype=wp.int32) | None = None,
+        pos_control_transforms: wp.array[wp.transformf],
+        actuators_u: wp.array[wp.float32],
+        bodies_q: wp.array[wp.transformf],
+        bodies_u: wp.array[vec6f],
+        base_u: wp.array[vec6f] | None = None,
+        world_mask: wp.array[wp.int32] | None = None,
     ):
         """
         Graph-capturable function solving for body velocities as a post-processing to the FK solve.
@@ -1459,13 +1457,13 @@ class ForwardKinematicsSolver:
 
     def run_fk_solve(
         self,
-        actuators_q: wp.array(dtype=wp.float32),
-        bodies_q: wp.array(dtype=wp.transformf),
-        base_q: wp.array(dtype=wp.transformf) | None = None,
-        actuators_u: wp.array(dtype=wp.float32) | None = None,
-        base_u: wp.array(dtype=vec6f) | None = None,
-        bodies_u: wp.array(dtype=vec6f) | None = None,
-        world_mask: wp.array(dtype=wp.int32) | None = None,
+        actuators_q: wp.array[wp.float32],
+        bodies_q: wp.array[wp.transformf],
+        base_q: wp.array[wp.transformf] | None = None,
+        actuators_u: wp.array[wp.float32] | None = None,
+        base_u: wp.array[vec6f] | None = None,
+        bodies_u: wp.array[vec6f] | None = None,
+        world_mask: wp.array[wp.int32] | None = None,
     ):
         """
         Graph-capturable function solving forward kinematics with Gauss-Newton.
@@ -1572,13 +1570,13 @@ class ForwardKinematicsSolver:
 
     def solve_fk(
         self,
-        actuators_q: wp.array(dtype=wp.float32),
-        bodies_q: wp.array(dtype=wp.transformf),
-        base_q: wp.array(dtype=wp.transformf) | None = None,
-        actuators_u: wp.array(dtype=wp.float32) | None = None,
-        base_u: wp.array(dtype=vec6f) | None = None,
-        bodies_u: wp.array(dtype=vec6f) | None = None,
-        world_mask: wp.array(dtype=wp.int32) | None = None,
+        actuators_q: wp.array[wp.float32],
+        bodies_q: wp.array[wp.transformf],
+        base_q: wp.array[wp.transformf] | None = None,
+        actuators_u: wp.array[wp.float32] | None = None,
+        base_u: wp.array[vec6f] | None = None,
+        bodies_u: wp.array[vec6f] | None = None,
+        world_mask: wp.array[wp.int32] | None = None,
         verbose: bool = False,
         return_status: bool = False,
         use_graph: bool = True,

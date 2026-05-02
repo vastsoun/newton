@@ -433,8 +433,9 @@ class CollisionPipelineUnifiedKamino:
         # Compute the maximum possible number of geom pairs per world and sum
         # them.  The naive global formula N*(N-1)/2 is O(W^2 * S^2) for W
         # worlds with S shapes each; the per-world sum is O(W * S^2).
-        # Global geoms (wid == -1) participate in every regular-world slice
-        # plus a dedicated global-only segment, matching precompute_world_map.
+        # Global geoms (wid == -1) participate in every regular-world slice.
+        # Deviating from `precompute_world_map`, the maximum number of pairs
+        # does not consider a dedicated global-only segment for global geoms.
         if self._model.geoms.wid is not None:
             wid_np = self._model.geoms.wid.numpy()
             unique_wids, counts = np.unique(wid_np, return_counts=True)
@@ -444,7 +445,6 @@ class CollisionPipelineUnifiedKamino:
                 if uwid >= 0:
                     n = count + global_count
                     per_world_pairs += (n * (n - 1)) // 2
-            per_world_pairs += (global_count * (global_count - 1)) // 2
             self._max_shape_pairs: int = int(per_world_pairs)
         else:
             self._max_shape_pairs: int = (self._num_geoms * (self._num_geoms - 1)) // 2

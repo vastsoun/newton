@@ -26,6 +26,10 @@ References:
 
 from .graph import TopologyComponentParser, TopologyGraph
 from .render import TopologyGraphVisualizer
+from .selectors import (
+    TopologyHeaviestBodyBaseSelector,
+    TopologyMinimumDepthSpanningTreeSelector,
+)
 from .trees import TopologyMinimumDepthSpanningTreeGenerator
 from .types import (
     DEFAULT_WORLD_NODE_INDEX,
@@ -63,7 +67,9 @@ __all__ = [
     "TopologyGraph",
     "TopologyGraphVisualizer",
     "TopologyGraphVisualizerBase",
+    "TopologyHeaviestBodyBaseSelector",
     "TopologyMinimumDepthSpanningTreeGenerator",
+    "TopologyMinimumDepthSpanningTreeSelector",
     "TopologySpanningTree",
     "TopologySpanningTreeGeneratorBase",
     "TopologySpanningTreeSelectorBase",

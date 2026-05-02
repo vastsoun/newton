@@ -1,6 +1,122 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
 
+#######################################################################################################
+# TOPOLOGY DISCOVERY PROCESS:
+#   1. Parse each world's lists of RigidBodyDescriptor and JointDescriptor to generate lists of NodeType and EdgeType, and use them to create a TopologyGraph.
+#
+#   2. Each TopologyGraph is parsed into its constituent components, i.e. subgraphs, using the modular component generator back-end.
+#       2a. Each component is classified as an island or an orphan, and as connected or isolated.
+#       2b. For each component, assign a base node/edge if there is a single grounding node/edge, or if multiple grounding edges are present but
+#           only one of them is a 6-DoF FREE joint, take that. If a base node/edge is assigned, remove it from the grounding lists. If multiple
+#           grounding edges are present and more than one of them are 6-DoF FREE joints, raise an error, as this violates the modelling conventions.
+#           If no base node/edge can be assigned, then the component leaves them as `None` to be processed in the next steps.
+#
+#   3. Create a list of joints (i.e. JointDescriptors), as well as a list of EdgeType, to connect each isolated component to the world.
+#      3a. For each isolated orphan, add a 6-DoF FREE joint connecting the orphan node to the world node, and assign it as a base edge.
+#      3b. For each isolated island, use the set base selector back-end to select a base node and edge, to add a 6-DoF FREE joint connecting
+#          the base node to the world node, and assign that as the component's base edge. The base selector accepts the TopologyComponent as
+#          input, as well as the RigidBodyDescriptor and JointDescriptor lists of the world, to inform its selection.
+#
+#   4. For each graph component, generate a list of SpanningTree candidates using the modular spanning tree generator back-end,
+#      taking as inputs the component subgraph, as well as the RigidBodyDescriptor and JointDescriptor lists of the world.
+#       4a. If Base nodes/edges are present, then only generate spanning tree candidates using those as root nodes
+#       4b. If no base node/edges are present but the component has grounding nodes/edges, use the latter as root nodes for spanning tree candidate generation.
+#       4c. Otherwise, try brute-force generation of all possible subtrees.
+#       4d. The SpanningTreeTraversal (e.g. DFS, BFS) argument should be supported.
+#
+#   5. For each component, select a single spanning tree from the list of candidates using the modular spanning tree selection back-end,
+#      taking as inputs the list of spanning tree candidates, as well as the RigidBodyDescriptor and JointDescriptor lists of the world.
+#
+#   6. For each spanning tree, check the parent array against Featherstone's regular numbering rules, and if they are not satisfied, perform
+#      index reassignment of the bodies and joints in the TopologyGraph instance accordingly, using the modular index reassignment mechanism.
+#
+#   7. Generate a TopologyDescriptor from the selected SpanningTree of each component of the TopologyGraph of the world.
+#
+#   8. Add the TopologyDescriptor to the model builder, and assign it to the corresponding bodies and joints in the world.
+#
+#   9. Generate the TopologyModel from the list of TopologyDescriptors.
+#
+#   10. (Optional) Perform index reassignment of the bodies and joints in the graph to optimize for better data locality
+#       and satisfaction of Featherstone's regular numbering rules, by updating the TopologyGraph instance accordingly.
+#
+####################################################################################################
+#
+# IMPLEMENTATIONS:
+#   1. Implement a simple subgraph component base/edge selector back-end that assigns the base node/edge
+#      to the heaviest moving body node as a first example of a TopologyComponent generation back-end.
+#      -----
+#      [DONE] Subgraph component base/edge selector that assigns the base node/edge to the
+#      heaviest moving body node — see :class:`TopologyHeaviestBodyBaseSelector` in
+#      :mod:`newton._src.solvers.kamino._src.topology.selectors`.
+#
+#   ------------------------------------------------------------------------------------------------
+#   2. Implement a minimum depth spanning tree generation back-end as a first example:
+#       2a. Implement a brute-force minimum-depth spanning tree generation function that
+#           generates all possible minimum-depth spanning trees of the component subgraph.
+#       2b. Implement a function that generates all minimum-depth spanning trees starting from a given root node.
+#       2c. Implement a function that computes the degree of each node in the component subgraph
+#       2d. Implement a function that generates all minimum-depth spanning trees of the component subgraph by:
+#           - first checking if a base node/edge is defined for the corresponding component, and use 2b to generate all spanning trees from the base node as root.
+#           - if the component doesn't define a base node/edge, but has grounding nodes/edges, generate all minimum-depth spanning trees with those as root nodes using 2b.
+#           - if no base or grounding nodes are present the generate all spanning trees setting the the node with the highest degree using 2c.
+#           - in case of ties in degree, use the brute-force method of 2a. and generate all possible spanning trees.
+#           - this function should accept arguments for:
+#               - the spanning tree traversal mode (e.g. DFS, BFS)
+#               - override all prioritization rules and just generate all possible spanning trees, if admissible.
+#               - direct specification of the root node/edge for spanning tree generation, if admissible, and set that as the base node/edge in the source component.
+#               - accept a maximum number of spanning trees to generate, and stop the generation process once that number is reached, if admissible.
+#               - whether to prioritize balanced/symmetric trees over unbalanced ones, if admissible.
+#      -----
+#      [DONE] Minimum-depth spanning-tree generator — see
+#      :class:`TopologyMinimumDepthSpanningTreeGenerator` in
+#      :mod:`newton._src.solvers.kamino._src.topology.trees`. Implements:
+#       2a. Brute-force minimum-depth spanning-tree generation (priority-cascade
+#           fallback when ``override_priorities=True`` or on degree ties).
+#       2b. Per-root minimum-depth spanning-tree enumeration.
+#       2c. Per-node degree computation on the body-only subgraph.
+#       2d. Priority cascade over (explicit roots → override → base → grounding →
+#           max-degree → brute-force) with kwargs for traversal mode,
+#           override, explicit roots, max-candidate cap, and balanced-tree
+#           prioritization.
+#
+#
+#   ------------------------------------------------------------------------------------------------
+#   3. Implement a simple heuristic spanning tree selection back-end as a first example:
+#       - For islands, select the spanning tree by:
+#           - ordering based on tree depth, and selecting the one with minimum depth, if there are no ties.
+#           - prioritize balanced/symmetric subtrees over unbalanced ones, if admissible.
+#           - In case of remaining ties, just select and return the first candidate in the list.
+#       - For orphans, select the trivial spanning tree with no edges.
+#      -----
+#      [DONE] Heuristic spanning-tree selector — see
+#      :class:`TopologyMinimumDepthSpanningTreeSelector` in
+#      :mod:`newton._src.solvers.kamino._src.topology.selectors`. Picks the
+#      minimum-depth candidate (with optional balanced-tree tie-breaker) for
+#      islands and the trivial candidate for orphans.
+#
+#   ------------------------------------------------------------------------------------------------
+#   4. Implement a mechanism (class or function) for body/joint index reassignment to optimize
+#      for better data locality and satisfaction of Featherstone's regular numbering rules.
+#       4a. It should take as input a TopologyGraph, performing a copy of the original and operate on that
+#       4b. The components and trees attributes should be re-ordered according to the number of nodes + number of edges
+#       4c. Construct two lists to hold index re-mappings using an appropriate container: dict or list of tuples, etc.
+#       4c. It should first reorder nodes/edges to exactly group them according to their component membership
+#       4d. Then, it should reorder nodes/edges within each component according to their spanning tree membership, i.e. first the tree arcs, then the chords.
+#       4e. Finally, it should reorder nodes/edges within each tree according to the traversal mode of the original tree starting from the base node, if defined, or the node with the highest degree otherwise, and following Featherstone's regular numbering rules, i.e. for each joint edge (i, j), where i is the predecessor body and j is the successor body, it should ensure that min(i, j) < max(i, j) and that the parent of body j is body i.
+#       4f. It should generate and return:
+#       - a new TopologyGraph with re-ordered components and spanning trees, as well as updated node and edge indices according to the new body/joint ordering.
+#       - a list of body node index reassignments, where the entry at index `i` gives the new body index assigned to the body with original index `i`.
+#       - a list of joint edge index reassignments, where the entry at index `j` gives the new joint index assigned to the joint with original index `j`.
+#
+####################################################################################################
+# CHECKS in UTs:
+# - Define tests with a connected island with multiple grounding edges.
+#   - In a first valid case, check that all grounding edges are correctly identified, but no base edge is assigned
+#   - In a second valid case, set two of the grounding edges as a floating base and ensure that an exception is raised
+#
+###
+
 """
 Topology graph and component parser back-end for the kamino solver.
 
@@ -27,6 +143,7 @@ from ..core.joints import JointDescriptor, JointDoFType
 from ..core.types import override
 from ..utils import logger as msg
 from .render import TopologyGraphVisualizer
+from .selectors import TopologyMinimumDepthSpanningTreeSelector
 from .trees import TopologyMinimumDepthSpanningTreeGenerator
 from .types import (
     DEFAULT_WORLD_NODE_INDEX,
@@ -146,25 +263,22 @@ class TopologyGraph:
         # Cache the input graph attributes that define the graph contents and structure
         self._nodes: list[NodeType] = nodes
         """
-        List of body node indices contained in the graph.
-
-        Each node is uniquely identified by its associated index in the range
-        `[0, N-1]`, where `N` is the total number of nodes in the graph.
-
-        `N` excludes the implicit world node with index `-1`, which
-        is present in the graph if any node is connected to it.
+        List of body node indices contained in the graph. Each node is uniquely identified by
+        its associated index in the range `[0, NB-1]`, where `NB` is the total number of body
+        nodes in the graph. `NB` excludes the implicit world node with index `-1`, which is
+        present in the graph if any moving body node is connected to it.
         """
         self._edges: list[EdgeType] | None = edges
         """
-        List of joint indices contained in the graph.
-
-        Each edge is uniquely identified by its associated index in
-        the range `[0, M-1]`, where `M` is the total number of edges.
+        List of joint indices contained in the graph. Each edge is uniquely identified by its
+        associated index in the range `[0, NJ-1]`, where `NJ` is the total number of joint
+        edges. `NJ` excludes the implicit world node with index `-1`, which is present in the
+        graph if any joint edge is connected to it.
         """
         self._world_node: int = world_node
         """
-        The index of the implicit world node in the graph.\n
-        Defaults to `-1`, which is the conventional index for the world body in Newton.
+        The index of the implicit world node in the graph. Defaults to
+        `-1`, which is the conventional index for the world in Newton.
         """
 
         # Cache parsing configurations
@@ -196,11 +310,10 @@ class TopologyGraph:
         # need to provide every module up front.
         if self._component_parser is None:
             self._component_parser = TopologyComponentParser()
-        # TODO: Add a default tree selector module
-        # if self._tree_selector is None:
-        #     self._tree_selector = TopologySpanningTreeSelector()
         if self._tree_generator is None:
             self._tree_generator = TopologyMinimumDepthSpanningTreeGenerator()
+        if self._tree_selector is None:
+            self._tree_selector = TopologyMinimumDepthSpanningTreeSelector()
         if self._graph_visualizer is None:
             self._graph_visualizer = TopologyGraphVisualizer()
 
@@ -210,17 +323,11 @@ class TopologyGraph:
 
         # Declare derived attributes
         self._components: list[TopologyComponent] | None = None
-        """
-        A list of topology graph components, i.e. subgraphs.
-        """
+        """A list of topology graph components, i.e. subgraphs."""
         self._candidates: list[list[TopologySpanningTree]] | None = None
-        """
-        A list of candidate spanning tree subgraphs corresponding to each component of the graph.
-        """
+        """A list of candidate spanning tree subgraphs corresponding to each component of the graph."""
         self._trees: list[TopologySpanningTree] | None = None
-        """
-        A list of selected spanning tree subgraphs corresponding to each component of the graph.
-        """
+        """A list of selected spanning tree subgraphs corresponding to each component of the graph."""
 
         # If `autoparse` is True, automatically parse the graph nodes
         # and edges into components and generate spanning trees
@@ -409,13 +516,25 @@ class TopologyGraph:
             base_node, base_edge = self._base_selector.select_base(component=component, bodies=_bodies, joints=_joints)
             if base_node is None or base_edge is None:
                 raise ValueError(f"Base node/edge selection failed for component: {component}")
-            # TODO: Should this be done in-place in the base selector module instead of here?
             component.base_node = base_node
             component.base_edge = base_edge
             # The component is now connected to the world via the assigned base edge.
             # `is_connected` was set during parsing based on the *original* graph topology,
             # so it must be refreshed for components that were initially isolated.
             component.is_connected = True
+            # If the selector promoted an existing grounding edge to base, drop it from
+            # `ground_edges` and recompute `ground_nodes` from the remaining grounding
+            # edges. Recomputing (rather than blindly removing the body index) keeps
+            # the ``set(ground_nodes) == implied_endpoints_of(ground_edges)`` invariant
+            # in :meth:`TopologyComponent.__post_init__` satisfied even when the same
+            # body has multiple grounding edges (e.g. a Stewart-platform leg). Synthetic
+            # base edges (e.g. from `TopologyHeaviestBodyBaseSelector`) are never in
+            # ``ground_edges`` to begin with, so this branch is a no-op for them.
+            if component.ground_edges and base_edge in component.ground_edges:
+                component.ground_edges = [g for g in component.ground_edges if g != base_edge]
+                if component.ground_nodes is not None:
+                    remaining = {n for _, _, pair in component.ground_edges for n in pair if n != self._world_node}
+                    component.ground_nodes = sorted(remaining)
 
     def generate_spanning_trees(
         self,

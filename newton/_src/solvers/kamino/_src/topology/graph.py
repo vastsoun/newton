@@ -1,54 +1,13 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-FileCopyrightText: Copyright (c) 2026 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
 
-#######################################################################################################
-# TOPOLOGY DISCOVERY PROCESS:
-#   1. Parse each world's lists of RigidBodyDescriptor and JointDescriptor to generate lists of NodeType and EdgeType, and use them to create a TopologyGraph.
-#
-#   2. Each TopologyGraph is parsed into its constituent components, i.e. subgraphs, using the modular component generator back-end.
-#       2a. Each component is classified as an island or an orphan, and as connected or isolated.
-#       2b. For each component, assign a base node/edge if there is a single grounding node/edge, or if multiple grounding edges are present but
-#           only one of them is a 6-DoF FREE joint, take that. If a base node/edge is assigned, remove it from the grounding lists. If multiple
-#           grounding edges are present and more than one of them are 6-DoF FREE joints, raise an error, as this violates the modelling conventions.
-#           If no base node/edge can be assigned, then the component leaves them as `None` to be processed in the next steps.
-#
-#   3. Create a list of joints (i.e. JointDescriptors), as well as a list of EdgeType, to connect each isolated component to the world.
-#      3a. For each isolated orphan, add a 6-DoF FREE joint connecting the orphan node to the world node, and assign it as a base edge.
-#      3b. For each isolated island, use the set base selector back-end to select a base node and edge, to add a 6-DoF FREE joint connecting
-#          the base node to the world node, and assign that as the component's base edge. The base selector accepts the TopologyComponent as
-#          input, as well as the RigidBodyDescriptor and JointDescriptor lists of the world, to inform its selection.
-#
-#   4. For each graph component, generate a list of SpanningTree candidates using the modular spanning tree generator back-end,
-#      taking as inputs the component subgraph, as well as the RigidBodyDescriptor and JointDescriptor lists of the world.
-#       4a. If Base nodes/edges are present, then only generate spanning tree candidates using those as root nodes
-#       4b. If no base node/edges are present but the component has grounding nodes/edges, use the latter as root nodes for spanning tree candidate generation.
-#       4c. Otherwise, try brute-force generation of all possible subtrees.
-#       4d. The SpanningTreeTraversal (e.g. DFS, BFS) argument should be supported.
-#
-#   5. For each component, select a single spanning tree from the list of candidates using the modular spanning tree selection back-end,
-#      taking as inputs the list of spanning tree candidates, as well as the RigidBodyDescriptor and JointDescriptor lists of the world.
-#
-#   6. For each spanning tree, check the parent array against Featherstone's regular numbering rules, and if they are not satisfied, perform
-#      index reassignment of the bodies and joints in the TopologyGraph instance accordingly, using the modular index reassignment mechanism.
-#
-#   7. Generate a TopologyDescriptor from the selected SpanningTree of each component of the TopologyGraph of the world.
-#
-#   8. Add the TopologyDescriptor to the model builder, and assign it to the corresponding bodies and joints in the world.
-#
-#   9. Generate the TopologyModel from the list of TopologyDescriptors.
-#
-#   10. (Optional) Perform index reassignment of the bodies and joints in the graph to optimize for better data locality
-#       and satisfaction of Featherstone's regular numbering rules, by updating the TopologyGraph instance accordingly.
-#
-####################################################################################################
-#
+###
 # IMPLEMENTATIONS:
 #   1. Implement a simple subgraph component base/edge selector back-end that assigns the base node/edge
 #      to the heaviest moving body node as a first example of a TopologyComponent generation back-end.
 #      -----
 #      [DONE] Subgraph component base/edge selector that assigns the base node/edge to the
-#      heaviest moving body node — see :class:`TopologyHeaviestBodyBaseSelector` in
-#      :mod:`newton._src.solvers.kamino._src.topology.selectors`.
+#      heaviest moving body node — see :class:`TopologyHeaviestBodyBaseSelector` in :mod:`.selectors`.
 #
 #   ------------------------------------------------------------------------------------------------
 #   2. Implement a minimum depth spanning tree generation back-end as a first example:
@@ -69,8 +28,7 @@
 #               - whether to prioritize balanced/symmetric trees over unbalanced ones, if admissible.
 #      -----
 #      [DONE] Minimum-depth spanning-tree generator — see
-#      :class:`TopologyMinimumDepthSpanningTreeGenerator` in
-#      :mod:`newton._src.solvers.kamino._src.topology.trees`. Implements:
+#      :class:`TopologyMinimumDepthSpanningTreeGenerator` in :mod:`.trees`. Implements:
 #       2a. Brute-force minimum-depth spanning-tree generation (priority-cascade
 #           fallback when ``override_priorities=True`` or on degree ties).
 #       2b. Per-root minimum-depth spanning-tree enumeration.
@@ -90,8 +48,7 @@
 #       - For orphans, select the trivial spanning tree with no edges.
 #      -----
 #      [DONE] Heuristic spanning-tree selector — see
-#      :class:`TopologyMinimumDepthSpanningTreeSelector` in
-#      :mod:`newton._src.solvers.kamino._src.topology.selectors`. Picks the
+#      :class:`TopologyMinimumDepthSpanningTreeSelector` in :mod:`.selectors`. Picks the
 #      minimum-depth candidate (with optional balanced-tree tie-breaker) for
 #      islands and the trivial candidate for orphans.
 #
@@ -109,29 +66,86 @@
 #       - a list of body node index reassignments, where the entry at index `i` gives the new body index assigned to the body with original index `i`.
 #       - a list of joint edge index reassignments, where the entry at index `j` gives the new joint index assigned to the joint with original index `j`.
 #
-####################################################################################################
-# CHECKS in UTs:
-# - Define tests with a connected island with multiple grounding edges.
-#   - In a first valid case, check that all grounding edges are correctly identified, but no base edge is assigned
-#   - In a second valid case, set two of the grounding edges as a floating base and ensure that an exception is raised
-#
 ###
 
 """
-Topology graph and component parser back-end for the kamino solver.
+Provides a modular pipeline for topology discovery and spanning tree generation.
 
-This module ships the user-facing :class:`TopologyGraph` container — the
-entry point that turns raw lists of body nodes and joint edges into a
-deterministic pipeline of (parsed) components, base/grounding selection,
-spanning-tree candidate generation, and per-component spanning-tree
-selection. It also ships the default :class:`TopologyComponentParser`
-back-end (a union-find based component grouper) used when the caller does
-not provide a custom :class:`TopologyComponentParserBase` instance.
+Ships the user-facing :class:`TopologyGraph` container and the default
+:class:`TopologyComponentParser` (a union-find based component grouper).
+:class:`TopologyGraph` orchestrates the topology discovery pipeline:
+component parsing, base/grounding selection, spanning-tree candidate
+generation, and per-component spanning-tree selection. Also provides
+a default graph component parser in :class:`TopologyComponentParser`.
 
-See :mod:`.types` for the schema definitions (``EdgeType``, ``NodeType``,
-:class:`TopologyComponent`, :class:`TopologySpanningTree`, and the
-abstract module bases) and :mod:`.trees` for shipped spanning-tree
-generator back-ends.
+See :mod:`.types` for schema definitions (:class:`GraphEdge`,
+:class:`GraphNode`, :class:`TopologyComponent`,
+:class:`TopologySpanningTree`, and the abstract module bases) and
+:mod:`.trees` for shipped spanning-tree generator back-ends.
+
+----
+Topology Discovery Process
+
+1. Parse each world's lists of :class:`RigidBodyDescriptor` and
+   :class:`JointDescriptor` to generate lists of :data:`NodeType` and
+   :data:`EdgeType`, and use them to create a :class:`TopologyGraph`.
+
+2. Each :class:`TopologyGraph` parses its nodes and edges to generate its constituent
+   components, i.e. subgraphs, using the configured component parser back-end:
+   2a. Each component is classified as an island or an orphan, and as connected or isolated.
+   2b. For each component, assign a base node/edge if there is a single grounding node/edge,
+       or if multiple grounding edges are present but only one of them is a 6-DoF FREE joint,
+       take that. If a base node/edge is assigned, remove it from the grounding lists. If
+       multiple grounding edges are present and more than one of them are 6-DoF FREE joints,
+       raise an error. If no base node/edge can be assigned, leave them as ``None`` for the
+       next steps.
+
+3. For each isolated component, run the configured base selector back-end:
+   3a. For each isolated orphan, synthesize a 6-DoF FREE joint connecting
+       the orphan node to the world node and assign it as a base edge.
+   3b. For each isolated island, the base selector picks a base node
+       and edge based on the contents of the :class:`RigidBodyDescriptor`
+       and :class:`JointDescriptor` lists of the world, if provided, and
+       synthesize a 6-DoF FREE joint connecting the orphan node to the
+       world node.
+   3c. All synthetic base edges are assigned the joint index ``-2`` to
+       flag and cached within the component object for later reference,
+       and construction by consumers such as the model-builder.
+
+4. For each component, generate a list of :class:`TopologySpanningTree`
+   candidates using the configured spanning tree generator back-end:
+   4a. If a base node/edge is present, use it as the unique root.
+   4b. Otherwise, if the component has grounding nodes/edges, use them as roots.
+   4c. Otherwise, brute-force enumerate all possible roots.
+   4d. The :data:`SpanningTreeTraversal` (e.g. DFS, BFS) argument controls body ordering.
+
+5. For each component, select a single spanning tree from the list of
+   candidates using the modular spanning tree selection back-end,
+   taking as inputs the list of spanning tree candidates, as well as
+   the RigidBodyDescriptor and JointDescriptor lists of the world. The
+   latter are forwarded to the selector for context, if provided, and
+   whose inertial and geometric properties are used to inform the
+   selection process, e.g. by analyzing branch induced sparsity, branch
+   balance, branch depth, and kinematic/dynamic singularities etc.
+
+6. For each spanning tree, check the parent array against Featherstone's
+   regular numbering rules and, if not satisfied, perform index reassignment
+   of the bodies and joints in the TopologyGraph instance accordingly, using
+   the modular index reassignment mechanism.
+
+7. Generate a :class:`TopologyDescriptor` from the selected
+   :class:`TopologySpanningTree` instance of each component.
+
+8. Add the descriptor to the model builder, and assign it
+   to the corresponding bodies and joints in the world.
+
+9. Generate the :class:`TopologyModel` from the descriptors.
+
+10. (Optional) Perform index reassignment of the bodies and joints in
+    the graph to optimize for better data locality and satisfaction of
+    Featherstone's regular numbering rules, by updating the
+    TopologyGraph instance accordingly.
+
 """
 
 from __future__ import annotations
@@ -143,11 +157,16 @@ from ..core.joints import JointDescriptor, JointDoFType
 from ..core.types import override
 from ..utils import logger as msg
 from .render import TopologyGraphVisualizer
-from .selectors import TopologyMinimumDepthSpanningTreeSelector
+from .selectors import (
+    TopologyHeaviestBodyBaseSelector,
+    TopologyMinimumDepthSpanningTreeSelector,
+)
 from .trees import TopologyMinimumDepthSpanningTreeGenerator
 from .types import (
     DEFAULT_WORLD_NODE_INDEX,
     EdgeType,
+    GraphEdge,
+    GraphNode,
     NodeType,
     SpanningTreeTraversal,
     TopologyComponent,
@@ -157,8 +176,8 @@ from .types import (
     TopologySpanningTree,
     TopologySpanningTreeGeneratorBase,
     TopologySpanningTreeSelectorBase,
-    _validate_max_candidates,
-    _validate_traversal_mode,
+    validate_max_candidates,
+    validate_traversal_mode,
 )
 
 ###
@@ -166,6 +185,7 @@ from .types import (
 ###
 
 __all__ = [
+    "TopologyComponentParser",
     "TopologyGraph",
 ]
 
@@ -175,8 +195,12 @@ __all__ = [
 
 
 class TopologyGraph:
-    """
-    A container to represent a topological undirected graph `G`.
+    """Container to represent a topological undirected graph `G`.
+
+    Holds the body nodes and joint edges of a graph plus the modular
+    pipeline (component parser, base selector, tree generator, tree
+    selector, visualizer) used to derive its components and spanning
+    trees.
     """
 
     def __init__(
@@ -199,93 +223,76 @@ class TopologyGraph:
         max_tree_candidates: int = 32,
         autoparse: bool = False,
     ):
-        """
-        Initializes the TopologyGraph object with the given nodes, edges, and
-        optional modules for component parsing and spanning tree generation.
+        """Initialize the graph with nodes, edges, and optional pipeline modules.
 
         Args:
-            nodes:
-                List of body node indices in the graph.
-            edges:
-                Optional list of joint edges in the graph, where each edge is a tuple of the
-                form ``(joint_type, joint_index, (predecessor_body_index, successor_body_index))``.
-            world_node:
-                The index of the implicit world node in the graph. Must be a negative integer
-                that is not contained in ``nodes``. Defaults to :data:`DEFAULT_WORLD_NODE_INDEX`.
-            component_parser:
-                Optional module to parse the graph nodes and edges into a list of components.
-                Defaults to a shipped :class:`TopologyComponentParser` instance when not provided.
-            base_selector:
-                Optional module to select the base node and edge for component subgraphs whose
-                base could not be auto-assigned during parsing. Required only when at least one
-                parsed component lacks an auto-assigned base; see :meth:`select_component_bases`.
-            tree_generator:
-                Optional module to generate spanning tree candidates for each component
-                subgraph. Required when calling :meth:`generate_spanning_trees` or :meth:`parse`.
-            tree_selector:
-                Optional module to select the best spanning tree from a list of candidates.
-                Required when calling :meth:`select_spanning_trees` or :meth:`parse`.
-            graph_visualizer:
-                Optional module to render the topology graph, components, and spanning trees.
-                Defaults to a shipped :class:`TopologyGraphVisualizer` instance when not provided.
-            bodies:
-                Optional list of rigid body descriptors associated with the graph nodes,
-                forwarded to the base selector and tree selector modules to inform their
-                heuristics. Can also be supplied at :meth:`parse` time.
-            joints:
-                Optional list of joint descriptors associated with the graph edges, forwarded
-                to the base selector and tree selector modules to inform their heuristics. Can
-                also be supplied at :meth:`parse` time.
-            tree_traversal_mode:
-                Default traversal mode used by :meth:`generate_spanning_trees`, one of ``"dfs"``
-                or ``"bfs"``. Defaults to ``"dfs"``.
-            max_tree_candidates:
-                Default upper bound on the number of candidate spanning trees generated per
-                component by :meth:`generate_spanning_trees`. Defaults to ``32``.
-            autoparse:
-                If ``True``, run the full :meth:`parse` pipeline (component parsing, base
-                selection, spanning tree generation, and spanning tree selection) immediately
-                after construction. Requires ``tree_generator`` and ``tree_selector`` to be
-                provided. Defaults to ``False``.
+            nodes: List of body node indices.
+            edges: List of joint edges in :data:`EdgeType` form (each entry
+                is a :class:`GraphEdge` or a 3-tuple
+                ``(joint_type, joint_index, (u, v))``); coerced to
+                :class:`GraphEdge` at construction.
+            world_node: Index of the implicit world node (must be negative
+                and not in ``nodes``).
+            component_parser: Module that parses nodes/edges into components;
+                defaults to a shipped :class:`TopologyComponentParser`.
+            base_selector: Module that selects a base for components without
+                an auto-assigned base; required only if any parsed component
+                lacks a base.
+            tree_generator: Module that generates spanning-tree candidates
+                per component.
+            tree_selector: Module that selects one spanning tree per
+                component from the candidate list.
+            graph_visualizer: Module used by the ``render_*`` methods;
+                defaults to a shipped :class:`TopologyGraphVisualizer`.
+            bodies: Optional body descriptors forwarded to the base/tree
+                selectors; can also be passed to :meth:`parse`.
+            joints: Optional joint descriptors forwarded to the base/tree
+                selectors; can also be passed to :meth:`parse`.
+            tree_traversal_mode: Default traversal mode (``"dfs"`` or
+                ``"bfs"``) used by :meth:`generate_spanning_trees`.
+            max_tree_candidates: Default upper bound on candidate spanning
+                trees per component.
+            autoparse: If ``True``, run the full :meth:`parse` pipeline
+                immediately after construction.
 
         Raises:
-            ValueError:
-                If ``nodes`` is ``None``, if any node has an invalid format (non-integer or
-                negative), if any edge has an invalid format, if ``world_node`` is not a
-                negative integer, or if ``world_node`` is contained in ``nodes``. Also if
-                ``tree_traversal_mode`` is not ``"dfs"`` or ``"bfs"``, or if
-                ``max_tree_candidates`` is not a positive integer. If ``autoparse=True``,
-                also raises if any module required by the full pipeline is missing (see
-                :meth:`parse`).
-            TypeError:
-                If ``max_tree_candidates`` is not an :class:`int`.
+            ValueError: If any node has a negative index, ``nodes``
+                contains duplicate body indices, any edge has an invalid
+                format, an edge references a non-world body index that
+                is not present in ``nodes``, two edges share a
+                ``joint_index`` with conflicting ``joint_type`` or
+                body-pair (including polarity-swapped duplicates),
+                ``world_node`` is non-negative or contained in ``nodes``,
+                ``tree_traversal_mode`` is not supported, or
+                ``max_tree_candidates`` is non-positive.
+            TypeError: If a node is not an :class:`int` or
+                :class:`GraphNode`, an edge is not a :class:`GraphEdge`
+                or a 3-tuple, ``world_node`` is not an integer, or
+                ``max_tree_candidates`` is not an :class:`int`.
         """
-        # Cache the input graph attributes that define the graph contents and structure
-        self._nodes: list[NodeType] = nodes
+        self._nodes: list[GraphNode] = [GraphNode.from_input(n) for n in nodes]
         """
-        List of body node indices contained in the graph. Each node is uniquely identified by
-        its associated index in the range `[0, NB-1]`, where `NB` is the total number of body
-        nodes in the graph. `NB` excludes the implicit world node with index `-1`, which is
-        present in the graph if any moving body node is connected to it.
+        List of body nodes contained in the graph. Each node is uniquely identified by its
+        associated index in the range ``[0, NB-1]``, where ``NB`` is the total number of body
+        nodes in the graph. ``NB`` excludes the implicit world node with index ``-1``, which
+        is present in the graph if any moving body node is connected to it.
         """
-        self._edges: list[EdgeType] | None = edges
+        # ``edges=None`` is treated as an empty graph (isolated body nodes only).
+        self._edges: list[GraphEdge] = [GraphEdge.from_input(e) for e in edges] if edges is not None else []
         """
-        List of joint indices contained in the graph. Each edge is uniquely identified by its
-        associated index in the range `[0, NJ-1]`, where `NJ` is the total number of joint
-        edges. `NJ` excludes the implicit world node with index `-1`, which is present in the
-        graph if any joint edge is connected to it.
+        List of joint edges contained in the graph. Each edge is uniquely identified by its
+        associated index in the range ``[0, NJ-1]``, where ``NJ`` is the total number of joint
+        edges. ``NJ`` excludes the implicit world node with index ``-1``, which is present in
+        the graph if any joint edge is connected to it.
         """
         self._world_node: int = world_node
-        """
-        The index of the implicit world node in the graph. Defaults to
-        `-1`, which is the conventional index for the world in Newton.
-        """
+        """Index of the implicit world node (defaults to ``-1``)."""
 
         # Cache parsing configurations
         self._tree_traversal_mode: SpanningTreeTraversal = tree_traversal_mode
-        """The traversal mode used for generating the spanning trees."""
+        """Traversal mode used for spanning-tree generation."""
         self._max_tree_candidates: int = max_tree_candidates
-        """ The maximum number of candidate spanning trees to generate for each component of the graph."""
+        """Maximum number of candidate spanning trees per component."""
 
         # Validate the input graph attributes to ensure they are
         # consistent with the expected formats and conventions
@@ -293,23 +300,21 @@ class TopologyGraph:
 
         # Store input modules for component parsing and spanning tree generation
         self._component_parser: TopologyComponentParserBase | None = component_parser
-        """A module to parse the graph nodes and edges into a list of components."""
+        """Module that parses graph nodes/edges into components."""
         self._base_selector: TopologyComponentBaseSelectorBase | None = base_selector
-        """A module to select the base node for each component subgraph."""
+        """Module that selects the base node/edge for each component."""
         self._tree_generator: TopologySpanningTreeGeneratorBase | None = tree_generator
-        """A module to generate a spanning tree for each component subgraph."""
+        """Module that generates spanning-tree candidates per component."""
         self._tree_selector: TopologySpanningTreeSelectorBase | None = tree_selector
-        """A module to select the best spanning tree from the given list of spanning trees."""
+        """Module that selects the best spanning tree from a candidate list."""
         self._graph_visualizer: TopologyGraphVisualizerBase | None = graph_visualizer
-        """A module to render the topology graph, components and spanning trees for visualization."""
+        """Module that renders the graph, components, and spanning trees."""
 
-        # Set default modules where shipped concrete defaults exist. Modules without a
-        # default (`base_selector`, `tree_generator`, `tree_selector`) are left as `None`
-        # and validated lazily in :meth:`parse` and the per-step methods so that callers
-        # who only invoke a subset of the pipeline (e.g. :meth:`parse_components`) do not
-        # need to provide every module up front.
+        # Set default modules where shipped concrete defaults exist
         if self._component_parser is None:
             self._component_parser = TopologyComponentParser()
+        if self._base_selector is None:
+            self._base_selector = TopologyHeaviestBodyBaseSelector()
         if self._tree_generator is None:
             self._tree_generator = TopologyMinimumDepthSpanningTreeGenerator()
         if self._tree_selector is None:
@@ -323,11 +328,11 @@ class TopologyGraph:
 
         # Declare derived attributes
         self._components: list[TopologyComponent] | None = None
-        """A list of topology graph components, i.e. subgraphs."""
+        """Parsed component subgraphs of the topology graph."""
         self._candidates: list[list[TopologySpanningTree]] | None = None
-        """A list of candidate spanning tree subgraphs corresponding to each component of the graph."""
+        """Candidate spanning trees per component."""
         self._trees: list[TopologySpanningTree] | None = None
-        """A list of selected spanning tree subgraphs corresponding to each component of the graph."""
+        """Selected spanning tree per component."""
 
         # If `autoparse` is True, automatically parse the graph nodes
         # and edges into components and generate spanning trees
@@ -339,37 +344,49 @@ class TopologyGraph:
     ###
 
     @property
-    def nodes(self) -> list[NodeType]:
-        """Returns the list of body node indices contained in the graph."""
+    def nodes(self) -> list[GraphNode]:
+        """Return the list of body nodes in the graph."""
         return self._nodes
 
     @property
-    def edges(self) -> list[EdgeType] | None:
-        """Returns the list of joint edges contained in the graph."""
+    def edges(self) -> list[GraphEdge]:
+        """Return the list of joint edges in the graph (empty if none)."""
         return self._edges
 
     @property
     def world_node(self) -> int:
-        """Returns the index of the implicit world node in the graph."""
+        """Return the index of the implicit world node."""
         return self._world_node
 
     @property
     def components(self) -> list[TopologyComponent]:
-        """Returns the list of components parsed from the graph."""
+        """Return the list of parsed components.
+
+        Raises:
+            ValueError: If components have not been parsed yet.
+        """
         if self._components is None:
             raise ValueError("Graph components have not been parsed yet.")
         return self._components
 
     @property
     def candidates(self) -> list[list[TopologySpanningTree]]:
-        """Returns the list of candidate spanning trees generated for each component of the graph."""
+        """Return the per-component lists of candidate spanning trees.
+
+        Raises:
+            ValueError: If candidates have not been generated yet.
+        """
         if self._candidates is None:
             raise ValueError("Candidate spanning trees have not been generated yet.")
         return self._candidates
 
     @property
     def trees(self) -> list[TopologySpanningTree]:
-        """Returns the list of selected spanning trees for each component of the graph."""
+        """Return the per-component selected spanning trees.
+
+        Raises:
+            ValueError: If spanning trees have not been selected yet.
+        """
         if self._trees is None:
             raise ValueError("Spanning trees have not been selected yet.")
         return self._trees
@@ -384,27 +401,26 @@ class TopologyGraph:
         joints: list[JointDescriptor] | None = None,
         # TODO: Add option to specify the component base node/edge indices and skip the base selector module
     ) -> None:
-        """
-        Parses the graph nodes and edges into a list of components, and generates a spanning tree for each component.
+        """Run the full topology-discovery pipeline end-to-end.
+
+        Calls :meth:`parse_components`, :meth:`select_component_bases`,
+        :meth:`generate_spanning_trees`, and :meth:`select_spanning_trees`
+        in order. The cached ``tree_traversal_mode`` and
+        ``max_tree_candidates`` are forwarded to the generator so that
+        constructor-time configuration is honored.
 
         Args:
-            bodies:
-                Optional list of rigid body descriptors. Forwarded to the base selector
-                and tree selector modules to inform their heuristics; not consumed by
-                the component parser itself. Falls back to the descriptors supplied
-                at construction time when omitted.
-            joints:
-                Optional list of joint descriptors. Forwarded alongside ``bodies`` to
-                the base selector and tree selector modules; not consumed by the
-                component parser itself. Falls back to the descriptors supplied at
+            bodies: Optional body descriptors forwarded to the base/tree
+                selectors; falls back to the descriptors supplied at
+                construction time when omitted.
+            joints: Optional joint descriptors forwarded to the base/tree
+                selectors; falls back to the descriptors supplied at
                 construction time when omitted.
 
         Raises:
-            ValueError:
-                If any module required by the full pipeline (component parser, tree generator,
-                tree selector) is missing, if graph parsing or spanning tree generation fails,
-                or if the graph attributes are invalid. All missing required modules are
-                reported in a single error rather than failing partway through the pipeline.
+            ValueError: If any module required by the full pipeline is
+                missing, parsing or generation fails, or the graph
+                attributes are invalid.
         """
         # Validate up front that every module required by the full pipeline is available,
         # so that the user can fix them in one round instead of failing in step N of M.
@@ -430,38 +446,52 @@ class TopologyGraph:
         _bodies = bodies if bodies is not None else self._bodies
         _joints = joints if joints is not None else self._joints
 
-        # Parse the graph nodes and edges into and run the topology discovery
-        # pipeline to generate spanning trees for each component of the graph.
-        # Forward the cached `tree_traversal_mode` and `max_tree_candidates`
-        # so that constructor-time configuration is honored, rather than
-        # silently falling back to the per-call defaults.
+        # Parse the graph nodes and edges into components, and auto-assign
+        # base nodes/edges where possible based on the discovery logic.
         self.parse_components()
-        self.select_component_bases(bodies=_bodies, joints=_joints)
+
+        # If no base selector module is provided, skip
+        # base selection since this is a optional step.
+        if self._base_selector is not None:
+            self.select_component_bases(bodies=_bodies, joints=_joints)
+
+        # Generate candidate spanning trees for each component, and select one
+        # per component using the configured generator and selector modules.
         self.generate_spanning_trees(
             traversal_mode=self._tree_traversal_mode,
             max_candidates=self._max_tree_candidates,
         )
+
+        #
         self.select_spanning_trees(bodies=_bodies, joints=_joints)
 
     def parse_components(self) -> list[TopologyComponent]:
-        """
-        Parses the graph nodes and edges into a list of components using the provided component parser module.
+        """Parse the graph into a list of components using the configured parser.
 
         Returns:
-            A list of `TopologyComponent` objects representing the components of the graph.
+            The list of parsed :class:`TopologyComponent` instances.
 
         Raises:
-            ValueError:
-                If graph parsing fails, i.e. if the component parser
-                returns `None` or if the graph attributes are invalid.
+            ValueError: If no component parser is configured or the parser
+                returns ``None``.
         """
+        # Ensure that a component parser module is provided,
+        # since this is required for any parsing to proceed.
         if self._component_parser is None:
             raise ValueError("No component parser module provided, cannot parse graph components.")
+
+        # Parse the graph nodes and edges into components using the provided component parser module
         self._components = self._component_parser.parse_components(
             nodes=self._nodes, edges=self._edges, world=self._world_node
         )
+
+        # Ensure that the parser returned a valid list
+        # of components, and cache it for later access
         if self._components is None:
             raise ValueError("Graph component parsing failed.")
+
+        # Return a reference to the cached components
+        # so that users can access them immediately.
         return self._components
 
     def select_component_bases(
@@ -469,25 +499,31 @@ class TopologyGraph:
         bodies: list[RigidBodyDescriptor] | None = None,
         joints: list[JointDescriptor] | None = None,
     ) -> None:
-        """
-        Selects the base node and edge for each component of the graph using the provided base selector module.
+        """Assign a base node/edge to every component that lacks one.
 
-        The component parser may already auto-assign a base node/edge for components with a
-        single grounding edge, or with a single 6-DoF FREE joint among multiple grounding
-        edges. This method only invokes the base selector for components that still lack a
-        base after parsing, so a missing base selector is only an error when at least one
-        component requires one.
+        Components with a single grounding edge (or a single FREE joint
+        among multiple grounding edges) are auto-assigned a base by the
+        parser; this method only invokes the base selector for the
+        remaining components.
 
         Args:
-            bodies: Optional list of body descriptors to aid in base node/edge selection.
-            joints: Optional list of joint descriptors to aid in grounding node/edge selection.
+            bodies: Optional body descriptors forwarded to the selector.
+            joints: Optional joint descriptors forwarded to the selector.
 
         Raises:
-            ValueError:
-                If components have not been parsed yet, if any component still lacks a base
-                node/edge but no base selector module was provided, or if the base selector
-                returns `None` for a component.
+            ValueError: If components have not been parsed, any component
+                still lacks a base but no base selector is configured, or
+                the selector returns ``None``.
         """
+        # If this method is called explicitly by the
+        # user ensure that a base selector is set
+        if self._base_selector is None:
+            raise ValueError(
+                f"No base selector module provided, but {len(components_needing_base)} component(s) "
+                f"still lack a base node/edge after parsing. Provide a `base_selector` module via "
+                f"the `TopologyGraph` constructor."
+            )
+
         # Ensure that the graph components are generated before
         # selecting the base node and edge for each component
         if self._components is None:
@@ -498,14 +534,6 @@ class TopologyGraph:
         if not components_needing_base:
             return
 
-        # Components remain that need a base — a base selector module is now required
-        if self._base_selector is None:
-            raise ValueError(
-                f"No base selector module provided, but {len(components_needing_base)} component(s) "
-                f"still lack a base node/edge after parsing. Provide a `base_selector` module via "
-                f"the `TopologyGraph` constructor."
-            )
-
         # Use the provided body and joint descriptors for parsing if given,
         # otherwise use the cached descriptors from initialization
         _bodies = bodies if bodies is not None else self._bodies
@@ -514,27 +542,17 @@ class TopologyGraph:
         # Run base selection for components that need it
         for component in components_needing_base:
             base_node, base_edge = self._base_selector.select_base(component=component, bodies=_bodies, joints=_joints)
-            if base_node is None or base_edge is None:
-                raise ValueError(f"Base node/edge selection failed for component: {component}")
-            component.base_node = base_node
-            component.base_edge = base_edge
-            # The component is now connected to the world via the assigned base edge.
-            # `is_connected` was set during parsing based on the *original* graph topology,
-            # so it must be refreshed for components that were initially isolated.
-            component.is_connected = True
-            # If the selector promoted an existing grounding edge to base, drop it from
-            # `ground_edges` and recompute `ground_nodes` from the remaining grounding
-            # edges. Recomputing (rather than blindly removing the body index) keeps
-            # the ``set(ground_nodes) == implied_endpoints_of(ground_edges)`` invariant
-            # in :meth:`TopologyComponent.__post_init__` satisfied even when the same
-            # body has multiple grounding edges (e.g. a Stewart-platform leg). Synthetic
-            # base edges (e.g. from `TopologyHeaviestBodyBaseSelector`) are never in
-            # ``ground_edges`` to begin with, so this branch is a no-op for them.
-            if component.ground_edges and base_edge in component.ground_edges:
-                component.ground_edges = [g for g in component.ground_edges if g != base_edge]
-                if component.ground_nodes is not None:
-                    remaining = {n for _, _, pair in component.ground_edges for n in pair if n != self._world_node}
-                    component.ground_nodes = sorted(remaining)
+            # The selector contract returns a non-Optional `(NodeType, EdgeType)` tuple,
+            # but defensively assert here so a misbehaving custom backend produces a
+            # clear error at the integration site rather than a downstream type error.
+            assert base_node is not None and base_edge is not None, (
+                f"Base node/edge selection returned `None` for component: {component}"
+            )
+            # `assign_base` atomically commits the new base, flips `is_connected`
+            # to ``True``, drops the promoted edge from the grounding lists when
+            # applicable, and re-validates the resulting state. See
+            # :meth:`TopologyComponent.assign_base`.
+            component.assign_base(base_node=base_node, base_edge=base_edge)
 
     def generate_spanning_trees(
         self,
@@ -545,39 +563,26 @@ class TopologyGraph:
         override_priorities: bool = False,
         prioritize_balanced: bool = False,
     ) -> list[list[TopologySpanningTree]]:
-        """
-        Generates a spanning tree for each component of the graph using the provided tree generator module.
+        """Generate candidate spanning trees for every component.
 
         Args:
-            traversal_mode:
-                The traversal mode used by the spanning-tree generator. Must be one
-                of ``"dfs"`` or ``"bfs"``.
-            max_candidates:
-                Optional integer specifying the maximum number of spanning
-                tree candidates to generate for each component of the graph.
-                This overrides the maximum number of candidates specified
-                in the object constructor.
-            roots:
-                Optional list of node indices to forward to the tree generator as
-                root candidates. Treated as a hint by backends that support direct
-                root specification.
-            override_priorities:
-                Forwarded to :meth:`TopologySpanningTreeGeneratorBase.generate_spanning_trees`.
-                If ``True``, instructs the backend to ignore base/grounding/degree-based
-                root prioritization and brute-force enumerate over all body nodes.
-            prioritize_balanced:
-                Forwarded to :meth:`TopologySpanningTreeGeneratorBase.generate_spanning_trees`.
-                If ``True``, instructs the backend to prefer balanced/symmetric trees
-                in candidate ordering and truncation.
+            traversal_mode: Per-call traversal override; falls back to the
+                constructor default when ``None``.
+            max_candidates: Per-call cap on candidates per component;
+                falls back to the constructor default when ``None``.
+            roots: Optional explicit root list forwarded to the generator.
+            override_priorities: If ``True``, instructs the backend to
+                ignore base/grounding/degree-based root prioritization.
+            prioritize_balanced: If ``True``, instructs the backend to
+                prefer balanced/symmetric trees in candidate ordering.
 
         Returns:
-            A list of lists of `TopologySpanningTree` objects representing
-            the candidate spanning trees for each component of the graph.
+            A list of per-component candidate lists.
 
         Raises:
-            ValueError:
-                If spanning tree generation fails, i.e. if the tree generator
-                returns `None` or if the graph attributes are invalid.
+            ValueError: If components have not been parsed, no tree
+                generator is configured, or generation fails for any
+                component.
         """
         # Ensure that the graph components are generated before
         # generating spanning trees for each component of the graph
@@ -589,11 +594,11 @@ class TopologyGraph:
             raise ValueError("No tree generator module provided, cannot generate spanning trees.")
 
         # If a maximum number of candidates is provided, use it to limit the number of candidates generated
-        _validate_max_candidates(max_candidates)
+        validate_max_candidates(max_candidates)
         _max_candidates = max_candidates if max_candidates is not None else self._max_tree_candidates
 
         # Validate the traversal mode against the canonical set of supported values
-        _validate_traversal_mode(traversal_mode)
+        validate_traversal_mode(traversal_mode)
         _traversal_mode = traversal_mode if traversal_mode is not None else self._tree_traversal_mode
 
         # Proceed with generating spanning tree candidates for each component of the graph using
@@ -612,8 +617,6 @@ class TopologyGraph:
             if trees is None:
                 raise ValueError(f"Spanning tree generation failed for component: {component}")
             candidates.append(trees)
-        if len(candidates) != len(self._components):
-            raise ValueError("Spanning tree generation failed for some components.")
         self._candidates = candidates
         return self._candidates
 
@@ -622,28 +625,19 @@ class TopologyGraph:
         bodies: list[RigidBodyDescriptor] | None = None,
         joints: list[JointDescriptor] | None = None,
     ) -> list[TopologySpanningTree]:
-        """
-        Selects the best spanning tree for each component of the graph from the
-        generated candidate spanning trees using the provided tree selector module.
+        """Select one spanning tree per component from the generated candidates.
 
         Args:
-            bodies: Optional list of body descriptors to aid in spanning tree selection.
-            joints: Optional list of joint descriptors to aid in spanning tree selection.
+            bodies: Optional body descriptors forwarded to the selector.
+            joints: Optional joint descriptors forwarded to the selector.
 
         Returns:
-            A list of `TopologySpanningTree` objects representing the
-            selected spanning tree for each component of the graph.
+            The list of per-component selected spanning trees.
 
         Raises:
-            ValueError:
-                If candidate spanning trees have not been generated yet, if no tree selector
-                module was provided, or if the tree selector returns `None` for a component.
+            ValueError: If candidates have not been generated, no tree
+                selector is configured, or the selector returns ``None``.
         """
-        # Ensure that the candidate spanning trees are generated before
-        # selecting the best spanning tree for each component of the graph
-        if self._candidates is None:
-            raise ValueError("Candidate spanning trees must be generated before spanning tree selection.")
-
         # A tree selector module is required to populate the per-component selected
         # spanning tree list, since there is no shipped default selection heuristic.
         if self._tree_selector is None:
@@ -651,6 +645,11 @@ class TopologyGraph:
                 "No tree selector module provided, cannot select spanning trees. Provide a "
                 "`tree_selector` module via the `TopologyGraph` constructor."
             )
+
+        # Ensure that the candidate spanning trees are generated before
+        # selecting the best spanning tree for each component of the graph
+        if self._candidates is None:
+            raise ValueError("Candidate spanning trees must be generated before spanning tree selection.")
 
         # Use the provided body and joint descriptors for parsing if given,
         # otherwise use the cached descriptors from initialization
@@ -676,13 +675,16 @@ class TopologyGraph:
         path: str | None = None,
         show: bool = False,
     ) -> None:
-        """
-        Renders the graph and its constituent components using the configured graph visualizer module.
+        """Render the graph and its components using the configured visualizer.
 
         Args:
-            figsize: Optional tuple specifying the figure size for the render.
-            path: Optional string specifying the file path to save the render.
-            show: Boolean indicating whether to display the render immediately.
+            figsize: Optional figure size.
+            path: Optional file path to save the figure.
+            show: When ``True``, display the figure immediately.
+
+        Raises:
+            ValueError: If no visualizer is configured or components have
+                not been parsed yet.
         """
         if self._graph_visualizer is None:
             raise ValueError("No graph visualizer module provided, cannot render graph.")
@@ -690,7 +692,7 @@ class TopologyGraph:
             raise ValueError("Graph components must be generated before rendering.")
         self._graph_visualizer.render_graph(
             nodes=self._nodes,
-            edges=self._edges if self._edges is not None else [],
+            edges=self._edges,
             components=self._components,
             world_node=self._world_node,
             joints=self._joints,
@@ -706,17 +708,17 @@ class TopologyGraph:
         path: str | None = None,
         show: bool = False,
     ) -> None:
-        """
-        Renders the candidate spanning trees for each component of the graph using the configured graph visualizer module.
+        """Render the candidate spanning trees of each component.
 
         Args:
-            skip_orphans:
-                When ``True`` (default), orphan components (single-body subgraphs whose
-                spanning tree is trivial) are skipped. Forwarded to
-                :meth:`TopologyGraphVisualizerBase.render_component_spanning_tree_candidates`.
-            figsize: Optional tuple specifying the figure size for the render.
-            path: Optional string specifying the file path to save the render.
-            show: Boolean indicating whether to display the render immediately.
+            skip_orphans: When ``True``, skip orphan components.
+            figsize: Optional figure size.
+            path: Optional file path to save the figure.
+            show: When ``True``, display the figure immediately.
+
+        Raises:
+            ValueError: If no visualizer is configured, components have
+                not been parsed, or candidates have not been generated.
         """
         if self._graph_visualizer is None:
             raise ValueError("No graph visualizer module provided, cannot render spanning tree candidates.")
@@ -743,17 +745,17 @@ class TopologyGraph:
         path: str | None = None,
         show: bool = False,
     ) -> None:
-        """
-        Renders the selected spanning trees for each component of the graph using the configured graph visualizer module.
+        """Render the selected spanning tree of each component.
 
         Args:
-            skip_orphans:
-                When ``True`` (default), orphan components (single-body subgraphs) are
-                skipped since their spanning trees are trivial. Set to ``False`` to render
-                every component regardless.
-            figsize: Optional tuple specifying the figure size for the render.
-            path: Optional string specifying the file path to save the render.
-            show: Boolean indicating whether to display the render immediately.
+            skip_orphans: When ``True``, skip orphan components.
+            figsize: Optional figure size.
+            path: Optional file path to save the figure.
+            show: When ``True``, display the figure immediately.
+
+        Raises:
+            ValueError: If no visualizer is configured, components have
+                not been parsed, or trees have not been selected.
         """
         if self._graph_visualizer is None:
             raise ValueError("No graph visualizer module provided, cannot render spanning trees.")
@@ -778,96 +780,185 @@ class TopologyGraph:
     ###
 
     @staticmethod
-    def _assert_node_valid(node: NodeType) -> None:
-        """
-        Asserts that the given node is in the correct format.
+    def _assert_node_valid(node: GraphNode) -> None:
+        """Assert that ``node`` is a non-negative-index body node.
+
+        The integer/bool rejection happens earlier in
+        :meth:`GraphNode.from_input`; this assertion only enforces the
+        non-negative-index invariant on the canonical :class:`GraphNode`.
 
         Raises:
-            TypeError: If ``node`` is not an integer.
-            ValueError: If ``node`` is a negative integer (reserved for the world node).
+            TypeError: If ``node`` is not a :class:`GraphNode` instance.
+            ValueError: If ``node.index`` is negative (reserved for the world).
         """
-        if not isinstance(node, int):
-            raise TypeError(f"Graph node `{node}` is not an integer representing a body index.")
-        if node < 0:
+        if not isinstance(node, GraphNode):
+            raise TypeError(f"Graph node `{node!r}` is not a `GraphNode` instance (got {type(node).__name__}).")
+        if node.index < 0:
             raise ValueError(
-                f"Graph node `{node}` is a negative integer, which is reserved for the implicit world node."
+                f"Graph node `{node}` has a negative index, which is reserved for the implicit world node."
             )
 
     @staticmethod
-    def _assert_edge_valid(edge: EdgeType) -> None:
-        """
-        Asserts that the given edge is in the correct format.
+    def _assert_edge_valid(edge: GraphEdge) -> None:
+        """Assert that ``edge`` has been normalized to a :class:`GraphEdge`.
+
+        Constructor-time inputs are coerced to :class:`GraphEdge` via
+        :meth:`GraphEdge.from_input` before this check runs, so a
+        non-:class:`GraphEdge` value here indicates a programming error
+        rather than user input.
 
         Raises:
-            TypeError:
-                If ``edge`` is not a 3-tuple, if its elements are not integers,
-                or if the body-pair entry is not a 2-tuple of integers.
+            TypeError: If ``edge`` is not a :class:`GraphEdge` instance.
         """
-        if not isinstance(edge, tuple) or len(edge) != 3:
-            raise TypeError(f"Graph edge `{edge}` is not in the correct format (type, jid, (pbid, sbid)).")
-        joint_type, joint_index, body_pair = edge
-        if not isinstance(joint_type, int):
-            raise TypeError(f"Graph edge `{edge}` has a non-integer joint type.")
-        if not isinstance(joint_index, int):
-            raise TypeError(f"Graph edge `{edge}` has a non-integer joint index.")
-        if not isinstance(body_pair, tuple) or len(body_pair) != 2:
-            raise TypeError(f"Graph edge `{edge}` has an invalid body pair format.")
-        if not all(isinstance(b, int) for b in body_pair):
-            raise TypeError(f"Graph edge `{edge}` has non-integer body indices.")
+        if not isinstance(edge, GraphEdge):
+            raise TypeError(
+                f"Graph edge `{edge!r}` is not a `GraphEdge` instance "
+                f"(got {type(edge).__name__}); inputs must be `GraphEdge` or a "
+                f"3-tuple `(joint_type, joint_index, (pbid, sbid))` and are "
+                f"normalized at construction."
+            )
 
     @staticmethod
-    def _assert_world_node_valid(world_node: int, nodes: list[NodeType]) -> None:
-        """
-        Asserts that the given world node index is in the correct format.
+    def _assert_world_node_valid(world_node: int, nodes: list[GraphNode]) -> None:
+        """Assert that ``world_node`` is a negative integer not present in ``nodes``.
 
         Raises:
-            TypeError: If ``world_node`` is not an integer.
-            ValueError:
-                If ``world_node`` is a non-negative integer or if it is contained in
-                ``nodes``.
+            TypeError: If ``world_node`` is not an integer (booleans are
+                rejected even though ``bool`` subclasses ``int``).
+            ValueError: If ``world_node`` is non-negative or contained in
+                the body indices of ``nodes``.
         """
-        if not isinstance(world_node, int):
-            raise TypeError(f"World index `{world_node}` is not an integer representing the world node index.")
+        if isinstance(world_node, bool) or not isinstance(world_node, int):
+            raise TypeError(f"World index `{world_node!r}` is not an integer representing the world node index.")
         if world_node >= 0:
             raise ValueError(
-                f"World index `{world_node}` is a non-negative integer, but it should be a negative integer representing the implicit world node."
+                f"World index `{world_node}` is a non-negative integer, but it should be a "
+                f"negative integer representing the implicit world node."
             )
-        if world_node in nodes:
+        if world_node in {int(n) for n in nodes}:
             raise ValueError(f"World index `{world_node}` should not be included in the nodes list.")
 
-    def _validate_inputs(self):
-        """
-        Checks that the input graph attributes are valid and
-        consistent with the expected formats and conventions.
+    @staticmethod
+    def _assert_no_duplicate_node_indices(nodes: list[GraphNode]) -> None:
+        """Assert that ``nodes`` does not contain duplicate body indices.
+
+        Each node represents a distinct body and must therefore appear at
+        most once. Distinct :class:`GraphNode` instances that share an
+        index are still considered duplicates (equality on
+        :class:`GraphNode` only compares ``index``).
 
         Raises:
-            ValueError:
-                If nodes are not provided, if edges are not in the correct format, if the world
-                index is not an integer, or if the world index is included in the nodes list.
+            ValueError: If any body index appears more than once in ``nodes``.
         """
-        # Ensure that nodes are provided, as they are necessary to define the graph contents
-        if self._nodes is None:
-            raise ValueError("Nodes must be provided to initialize the graph.")
+        seen: dict[int, int] = {}
+        for n in nodes:
+            seen[int(n)] = seen.get(int(n), 0) + 1
+        duplicates = sorted(idx for idx, count in seen.items() if count > 1)
+        if duplicates:
+            raise ValueError(f"Graph nodes contain duplicate body indices: {duplicates}.")
 
-        # Edges are optional, as a graph can consist of isolated nodes
-        # only, but if provided, they must be in the correct format
-        if self._edges is None:
-            self._edges = []
+    @staticmethod
+    def _assert_edge_endpoints_in_nodes(
+        edges: list[GraphEdge],
+        nodes: list[GraphNode],
+        world_node: int,
+    ) -> None:
+        """Assert that every edge endpoint is either ``world_node`` or a body index in ``nodes``.
 
-        # Ensure that nodes are in the correct format
+        A non-world endpoint that is not present in ``nodes`` indicates a
+        malformed input graph (e.g. a typo in the joint's body indices)
+        rather than a meaningful structural choice; surfacing the error
+        eagerly is preferable to silently dropping the edge during
+        component parsing.
+
+        Raises:
+            ValueError: If any edge has a non-world endpoint missing from
+                ``nodes``.
+        """
+        body_indices = {int(n) for n in nodes}
+        unknown: list[tuple[int, int, tuple[int, int]]] = []
+        for e in edges:
+            for endpoint in e.nodes:
+                if endpoint == world_node:
+                    continue
+                if endpoint not in body_indices:
+                    unknown.append((e.joint_type, e.joint_index, e.nodes))
+                    break
+        if unknown:
+            raise ValueError(
+                f"Graph edges reference body indices not contained in `nodes`: {unknown}; "
+                f"every non-world edge endpoint must match a body index in `nodes` "
+                f"(world_node={world_node})."
+            )
+
+    @staticmethod
+    def _assert_unique_edge_joint_indices(edges: list[GraphEdge]) -> None:
+        """Assert that ``joint_index`` uniquely identifies an edge.
+
+        Exact-duplicate edges (same ``joint_type``, ``joint_index`` and
+        ``nodes`` tuple) are harmless because the parser collapses them
+        via ``set`` deduplication. Any other case where two edges share
+        a ``joint_index`` — whether they differ in ``joint_type``, in
+        the body-pair, or only in the ``(u, v)`` polarity — violates
+        the "global ``joint_index`` uniquely identifies a joint"
+        invariant assumed by every downstream algorithm (degree
+        counting, arc/chord classification, oriented-chord polarity
+        selection).
+
+        Raises:
+            ValueError: If any ``joint_index`` is shared by two edges
+                whose ``(joint_type, nodes)`` pair differs (polarity
+                swaps included).
+        """
+        groups: dict[int, set[tuple[int, tuple[int, int]]]] = {}
+        for e in edges:
+            groups.setdefault(e.joint_index, set()).add((e.joint_type, e.nodes))
+        conflicts: list[tuple[int, list[tuple[int, tuple[int, int]]]]] = []
+        for jid, group in groups.items():
+            if len(group) > 1:
+                conflicts.append((jid, sorted(group)))
+        if conflicts:
+            details = "; ".join(f"joint_index={jid}: {items!r}" for jid, items in conflicts)
+            raise ValueError(
+                f"Graph edges have conflicting entries that share a `joint_index` but differ in "
+                f"`joint_type` or in the body-pair (including polarity swaps): {details}. "
+                f"Each global `joint_index` must uniquely identify a joint."
+            )
+
+    def _validate_inputs(self) -> None:
+        """Validate the input graph attributes.
+
+        Raises:
+            ValueError: If any node has a negative index, ``nodes``
+                contains duplicate body indices, an edge references a
+                body index not in ``nodes``, two edges share a
+                ``joint_index`` with conflicting fields, the world
+                index is non-negative or contained in ``nodes``, or the
+                spanning-tree configurations are invalid.
+            TypeError: If ``world_node`` is not an integer or
+                ``max_tree_candidates`` is not an integer.
+        """
         for node in self._nodes:
             self._assert_node_valid(node)
 
-        # Ensure edges are in the correct format
+        self._assert_no_duplicate_node_indices(self._nodes)
+
         for edge in self._edges:
             self._assert_edge_valid(edge)
 
-        # Ensure that the world index is in the correct format
         self._assert_world_node_valid(self._world_node, self._nodes)
 
-        # Validate the spanning tree generation configurations
-        _validate_traversal_mode(self._tree_traversal_mode)
-        _validate_max_candidates(self._max_tree_candidates)
+        # Run after the world-node and per-node checks so the lookup set
+        # below reflects the validated body-index domain.
+        self._assert_edge_endpoints_in_nodes(self._edges, self._nodes, self._world_node)
+
+        # Catches ambiguous joint labelling (e.g. a joint specified twice
+        # with swapped `(u, v)` polarity) before it pollutes the
+        # downstream degree counts and arc/chord enumeration.
+        self._assert_unique_edge_joint_indices(self._edges)
+
+        validate_traversal_mode(self._tree_traversal_mode)
+        validate_max_candidates(self._max_tree_candidates)
 
 
 ###
@@ -876,11 +967,11 @@ class TopologyGraph:
 
 
 class TopologyComponentParser(TopologyComponentParserBase):
-    """
-    A default implementation of the :class:`TopologyComponentParserBase` that parses
-    the graph nodes and edges into components using a union-find / disjoint set
-    data structure to efficiently group connected nodes into components, while
-    also classifying them based on their connectivity to the implicit world node.
+    """Default :class:`TopologyComponentParserBase` backend using union-find.
+
+    Groups connected nodes into components via a disjoint-set data
+    structure and classifies each component by its connectivity to the
+    implicit world node.
     """
 
     @override
@@ -890,38 +981,40 @@ class TopologyComponentParser(TopologyComponentParserBase):
         edges: list[EdgeType],
         world: int = DEFAULT_WORLD_NODE_INDEX,
     ) -> list[TopologyComponent]:
-        """
-        Parses the given nodes and edges into a list of components.
+        """Parse ``nodes`` and ``edges`` into a list of components.
 
         Args:
-            nodes:
-                List of body node indices in the graph.
-            edges:
-                List of joint edges in the graph, where each edge is a tuple of the form
-                ``(joint_type, joint_index, (predecessor_body_index, successor_body_index))``.
-            world:
-                The index of the implicit world node in the graph.
+            nodes: List of body node indices.
+            edges: List of joint edges in :data:`EdgeType` form.
+            world: The implicit world node index.
 
         Returns:
-            A list of :class:`TopologyComponent` objects representing the components of the graph.
+            A list of :class:`TopologyComponent` instances.
 
         Note:
-            - The world node is not included in the list of nodes, but it is
-              considered when determining the connectivity of components.
-
-            - Components are classified as `islands` if they contain more than one node, and as
-              `orphans` if they contain exactly one node. Each component is further classified
-              as `connected` if it has at least one edge connecting it to the world node, and
-              as `isolated` otherwise.
+            Components with more than one body are classified as
+            ``islands`` and single-body components as ``orphans``.
+            Components with at least one edge to the world are
+            ``connected``, otherwise ``isolated``.
         """
-        # Deduplicate edges and sort them by joint index so that the order of derived
-        # structures (component edge lists, parent arrays, traversal orders, etc.) is
+        # Deduplicate edges and sort by `(joint_index, joint_type, nodes)` so derived
+        # structures (component edge lists, parent arrays, traversal orders, ...) are
         # deterministic across graphs that share structure but differ in joint labelling.
-        unique_edges: list[EdgeType] = sorted(set(edges), key=lambda e: e[1])
+        unique_edges: list[GraphEdge] = sorted(
+            {GraphEdge.from_input(e) for e in edges},
+            key=lambda e: (e.joint_index, e.joint_type, e.nodes),
+        )
         msg.debug("edges: %s", unique_edges)
 
-        # Keep only the real (non-world) body nodes, deduplicated
-        body_nodes: set[NodeType] = {n for n in nodes if n != world}
+        # Coerce the front-end `NodeType` union into canonical `GraphNode` instances and
+        # build an `index -> GraphNode` mapping so the body-only union-find can keep using
+        # cheap int keys while the component construction below preserves any optional
+        # node metadata (e.g. names) carried by the original `GraphNode` inputs.
+        canonical_nodes: list[GraphNode] = [GraphNode.from_input(n) for n in nodes]
+        node_by_index: dict[int, GraphNode] = {n.index: n for n in canonical_nodes}
+
+        # Keep only the real (non-world) body indices, deduplicated
+        body_nodes: set[int] = {n.index for n in canonical_nodes if n.index != world}
         msg.debug("nodes: %s", sorted(body_nodes))
 
         # Union-Find / Disjoint set
@@ -947,7 +1040,8 @@ class TopologyComponentParser(TopologyComponentParserBase):
                 rank[ra] += 1
 
         # Body-to-body edges merge components; world-incident edges are classified later.
-        for _t, _j, (u, v) in unique_edges:
+        for e in unique_edges:
+            u, v = e.nodes
             if u in body_nodes and v in body_nodes:
                 union(u, v)
 
@@ -973,44 +1067,35 @@ class TopologyComponentParser(TopologyComponentParserBase):
             # Use a set for O(1) membership checks during the per-component edge sweep
             comp_nodes_set = set(comp_nodes)
 
-            # Collect edges for the component and check
-            # for connections to the implicit world node
-            comp_edges: list[EdgeType] = []
-            comp_grounding_edges: list[EdgeType] = []
+            # Collect edges for the component and identify world-incident ones
+            comp_edges: list[GraphEdge] = []
+            comp_grounding_edges: list[GraphEdge] = []
             for e in unique_edges:
-                _t, _j, (u, v) = e
+                u, v = e.nodes
                 is_comp_edge = u in comp_nodes_set and v in comp_nodes_set
                 is_comp_ground_edge = (u in comp_nodes_set and v == world) or (v in comp_nodes_set and u == world)
                 if is_comp_edge or is_comp_ground_edge:
                     comp_edges.append(e)
-                # NOTE: We add all nodes/edges connecting the component to the world
-                # as grounding nodes/edges, without yet distinguishing between base
-                # vs grounding edges, as this will be handled later in the base
-                # selection step after spanning tree generation.
+                # All world-incident edges start as grounding edges; the auto-base
+                # promotion below decides which (if any) becomes the base edge.
                 if is_comp_ground_edge:
                     comp_grounding_edges.append(e)
 
-            # Assign the base node automatically if a single grounding edge is present
-            comp_base_node: NodeType | None = None
-            comp_base_edge: EdgeType | None = None
+            # Auto-promote a single grounding edge to the base
+            comp_base_node: int | None = None
+            comp_base_edge: GraphEdge | None = None
             if len(comp_grounding_edges) == 1:
-                # Assign the unique grounding node as the base node,
-                # and the unique grounding edge as the base edge
                 comp_base_edge = comp_grounding_edges[0]
-                comp_base_node = next(n for n in comp_base_edge[2] if n != world)
-                # Drop the promoted edge from the grounding list — base and grounding
-                # edges are mutually exclusive per the topology conventions
+                comp_base_node = next(n for n in comp_base_edge.nodes if n != world)
                 comp_grounding_edges = []
 
-            # If multiple grounding edges are present, and only one of them is a 6-DoF FREE joint,
-            # then assign the node connected to the FREE joint as the base node, and remove it
-            # from the grounding lists. If more than one of the grounding edges are FREE joints,
-            # then raise an error, as this violates the modelling conventions.
+            # With multiple grounding edges, promote the unique FREE one (if any) to base;
+            # raise on more than one FREE grounding edge as that violates conventions.
             elif len(comp_grounding_edges) > 1:
-                free_grounding_edges = [e for e in comp_grounding_edges if e[0] == JointDoFType.FREE]
+                free_grounding_edges = [e for e in comp_grounding_edges if e.joint_type == JointDoFType.FREE]
                 if len(free_grounding_edges) == 1:
                     comp_base_edge = free_grounding_edges[0]
-                    comp_base_node = next(n for n in comp_base_edge[2] if n != world)
+                    comp_base_node = next(n for n in comp_base_edge.nodes if n != world)
                     comp_grounding_edges.remove(comp_base_edge)
                 elif len(free_grounding_edges) > 1:
                     raise ValueError(
@@ -1018,22 +1103,24 @@ class TopologyComponentParser(TopologyComponentParserBase):
                         f"with more than one 6-DoF FREE joint, which violates modelling conventions."
                     )
 
-            # Recompute the grounding-node set from the *final* grounding-edge list. This is the
-            # source of truth for `ground_nodes` and avoids the duplicate-removal hazard that
-            # arises when a body has multiple grounding edges (e.g. a Stewart platform leg).
-            comp_grounding_nodes = sorted({n for _, _, pair in comp_grounding_edges for n in pair if n != world})
+            # Recompute grounding nodes from the final grounding-edge list to keep the
+            # `set(ground_nodes) == implied_endpoints_of(ground_edges)` invariant.
+            comp_grounding_nodes = sorted({n for e in comp_grounding_edges for n in e.nodes if n != world})
 
-            # Add the new component object in the list of graph components
+            # Lift the int-indexed bookkeeping back through `node_by_index` so every
+            # produced `TopologyComponent` carries the canonical `GraphNode` instances
+            # (with any optional metadata) supplied at the front-end boundary.
             components.append(
                 TopologyComponent(
-                    nodes=comp_nodes,
+                    nodes=[node_by_index[i] for i in comp_nodes],
                     edges=comp_edges,
-                    ground_nodes=comp_grounding_nodes,
+                    ground_nodes=[node_by_index[i] for i in comp_grounding_nodes],
                     ground_edges=comp_grounding_edges,
-                    base_node=comp_base_node,
+                    base_node=node_by_index[comp_base_node] if comp_base_node is not None else None,
                     base_edge=comp_base_edge,
                     is_island=len(comp_nodes) > 1,
                     is_connected=comp_base_edge is not None or len(comp_grounding_edges) > 0,
+                    world_node=world,
                 )
             )
 

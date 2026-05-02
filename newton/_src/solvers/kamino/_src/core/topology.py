@@ -60,8 +60,8 @@ class TopologyDescriptor(Descriptor):
 
     wid: int = -1
     """
-    Index of the world to which the body belongs.\n
-    Defaults to `-1`, indicating that the body has not yet been added to a world.
+    Index of the world to which the topology entity belongs.\n
+    Defaults to `-1`, indicating that the topology entity has not yet been added to a world.
     """
 
     tid: int = -1

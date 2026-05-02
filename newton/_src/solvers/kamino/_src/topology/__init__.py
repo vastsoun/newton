@@ -32,12 +32,12 @@ from .selectors import (
 )
 from .trees import TopologyMinimumDepthSpanningTreeGenerator
 from .types import (
-    DEFAULT_WORLD_NODE_INDEX,
     ComponentConnectivity,
     ComponentType,
     EdgeType,
+    GraphEdge,
+    GraphNode,
     NodeType,
-    OrientedEdge,
     SpanningTreeTraversal,
     TopologyComponent,
     TopologyComponentBaseSelectorBase,
@@ -53,12 +53,12 @@ from .types import (
 ###
 
 __all__ = [
-    "DEFAULT_WORLD_NODE_INDEX",
     "ComponentConnectivity",
     "ComponentType",
     "EdgeType",
+    "GraphEdge",
+    "GraphNode",
     "NodeType",
-    "OrientedEdge",
     "SpanningTreeTraversal",
     "TopologyComponent",
     "TopologyComponentBaseSelectorBase",

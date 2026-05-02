@@ -1,34 +1,26 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-FileCopyrightText: Copyright (c) 2026 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Visualization back-end for the kamino topology subsystem.
+Provides a visualization backend for the topology subsystem.
 
-This module ships the default :class:`TopologyGraphVisualizer` — a
-``matplotlib``-based concrete :class:`TopologyGraphVisualizerBase` that
-renders :class:`TopologyGraph` instances together with their parsed
-components and (optionally) per-component spanning-tree candidates and
-the selected spanning tree.
-
-Layout, palette, and joint-type styling live in this module; downstream
-back-ends are expected to honor the same overall figure conventions
-(world node distinguished, grounding edges highlighted, base edge
-emphasized, chord edges rendered with a distinct line style).
+Ships the default :class:`TopologyGraphVisualizer`, a ``matplotlib``-based and ``networkx``-based
+:class:`TopologyGraphVisualizerBase` that renders :class:`TopologyGraph` instances together with
+their components, spanning-tree candidates, and selected spanning trees.
 """
 
 from __future__ import annotations
 
 import math
 from collections import defaultdict, deque
-from enum import IntEnum
 from typing import ClassVar
 
-from .....sim import JointType
 from ..core.joints import JointDescriptor, JointDoFType
 from ..core.types import override
 from .types import (
     DEFAULT_WORLD_NODE_INDEX,
     EdgeType,
+    GraphEdge,
     NodeType,
     TopologyComponent,
     TopologyGraphVisualizerBase,
@@ -50,16 +42,14 @@ __all__ = [
 
 class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
     """
-    A default implementation of the `TopologyGraphVisualizerBase`
-    that renders a topology graph using networkx and matplotlib.
+    Default :class:`TopologyGraphVisualizerBase`
+    backend using ``networkx`` and ``matplotlib``.
 
-    Edge labels show a short abbreviation of the joint type plus the joint index.
-    Because the integer in :data:`EdgeType` ``[0]`` (the joint type) is ambiguous —
-    Newton's :class:`JointType` and Kamino's :class:`JointDoFType` use overlapping
-    integer values (e.g. ``0`` is ``JointType.PRISMATIC`` but ``JointDoFType.FREE``) —
-    the visualizer must be told which enum the integer values refer to. The default
-    is :class:`JointDoFType` because this module lives in the Kamino subpackage and
-    edges built from :class:`ModelBuilderKamino` use ``joint.dof_type.value``.
+    Edge labels combine a joint-type abbreviation with
+    the joint index. :attr:`GraphEdge.joint_type` is
+    interpreted strictly as a :class:`JointDoFType` value
+    (the kamino DoF-typed enum); validity is enforced at
+    edge construction by :class:`GraphEdge`.
     """
 
     _PALETTE: tuple[str, ...] = (
@@ -76,18 +66,6 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
     )
     """Cyclic palette used to color island components."""
 
-    _JOINT_TYPE_ABBR: ClassVar[dict[int, str]] = {
-        JointType.PRISMATIC: "PRISM",
-        JointType.REVOLUTE: "REVL",
-        JointType.BALL: "BAL",
-        JointType.FIXED: "FIXD",
-        JointType.FREE: "FREE",
-        JointType.DISTANCE: "DIST",
-        JointType.D6: "D6",
-        JointType.CABLE: "CABL",
-    }
-    """Abbreviation table for Newton's :class:`JointType` integer values."""
-
     _JOINT_DOF_TYPE_ABBR: ClassVar[dict[int, str]] = {
         JointDoFType.FREE: "FREE",
         JointDoFType.REVOLUTE: "REVL",
@@ -99,31 +77,15 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         JointDoFType.CARTESIAN: "CART",
         JointDoFType.FIXED: "FIXD",
     }
-    """Abbreviation table for Kamino's :class:`JointDoFType` integer values."""
+    """Abbreviation table for the integer values of :class:`JointDoFType`."""
 
-    def __init__(self, joint_type_enum: type[IntEnum] = JointDoFType):
-        """Initializes the visualizer with the chosen joint-type enum.
+    def __init__(self):
+        """Initialize the visualizer with the default joint-type abbreviation table."""
+        self._abbr_table = self._JOINT_DOF_TYPE_ABBR
 
-        Args:
-            joint_type_enum:
-                The enum used to interpret the integer joint type stored in :data:`EdgeType` ``[0]``.
-                Must be either :class:`JointType` (Newton's joint type enum) or :class:`JointDoFType`
-                (Kamino's joint DoF type enum). Defaults to :class:`JointDoFType` because edges
-                produced by :class:`ModelBuilderKamino` use ``joint.dof_type.value``.
-
-        Raises:
-            ValueError: If ``joint_type_enum`` is neither :class:`JointType` nor :class:`JointDoFType`.
-        """
-        if joint_type_enum is JointType:
-            self._abbr_table = self._JOINT_TYPE_ABBR
-        elif joint_type_enum is JointDoFType:
-            self._abbr_table = self._JOINT_DOF_TYPE_ABBR
-        else:
-            raise ValueError(
-                f"Unsupported `joint_type_enum={joint_type_enum!r}`: must be either "
-                f"`JointType` (Newton) or `JointDoFType` (Kamino)."
-            )
-        self._joint_type_enum = joint_type_enum
+    ###
+    # Operations
+    ###
 
     @override
     def render_graph(
@@ -137,35 +99,29 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         path: str | None = None,
         show: bool = False,
     ) -> None:
-        """
-        Renders the given topology graph using networkx and matplotlib.
+        """Render ``components`` of the topology graph in a single figure.
 
-        The world node is placed at the global origin and components are packed radially
-        around it. Each component receives its own per-component sublayout: a rooted
-        layered layout when a base node is available (so the base anchors closest to the
-        world), or a deterministic Kamada-Kawai layout otherwise. Edges are styled by
-        structural role (base, grounding, internal) and labeled with a joint-type
-        abbreviation and joint index.
+        The world node is placed at the global origin and components are
+        packed radially around it. Each component is laid out with a
+        rooted layered layout when a base node is available (so the base
+        anchors closest to the world), or a deterministic Kamada-Kawai
+        layout otherwise.
 
         Args:
-            nodes: A list of `NodeType` instances representing the nodes in the topology graph.
-            edges: A list of `EdgeType` instances representing the edges in the topology graph.
-            components: A list of `TopologyComponent` instances representing the components in the topology graph.
-            world_node: The index of the world node in the topology graph.
-            joints:
-                Optional list of joint descriptors used to look up joint names for edge labels.
-                When provided, an edge label has the form ``f"{name}_{index}_{type}"``; otherwise
-                it falls back to ``f"{index}_{type}"``. ``joints`` is expected to be indexable
-                by the global joint index stored in :data:`EdgeType` ``[1]``: out-of-range
-                indices and missing/empty names are tolerated and silently fall back to the
-                index-only label.
-            figsize: Optional tuple specifying the figure size for the plot.
-            path: Optional string specifying the file path to save the plot.
-            show: Boolean indicating whether to display the plot.
+            nodes: Body node indices to visualize.
+            edges: Joint edges to visualize, in :data:`EdgeType` form.
+            components: Components of the topology graph.
+            world_node: Index of the implicit world node.
+            joints: Optional joint descriptors used to enrich edge labels
+                with joint names.
+            figsize: Optional figure size.
+            path: Optional file path to save the figure.
+            show: When ``True``, display the figure immediately.
 
         Raises:
             ImportError: If :mod:`networkx` or :mod:`matplotlib` are not installed.
         """
+        # Attempt to import the required modules.
         try:
             import matplotlib.lines as mlines
             import matplotlib.patches as mpatches
@@ -177,70 +133,78 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 "Please install them with `pip install networkx matplotlib`."
             ) from e
 
+        # Set default figure size if not provided.
         if figsize is None:
             figsize = (12, 12)
+
+        # Coerce the edges to GraphEdge instances and the nodes to raw int indices.
+        # NetworkX uses node identity as a hashable key, and `GraphEdge.nodes` is
+        # already a `tuple[int, int]`; mixing `GraphNode` and int identities here
+        # would silently double up the same body in the resulting graph.
+        graph_edges = [GraphEdge.from_input(e) for e in edges]
+        int_nodes: list[int] = [int(n) for n in nodes]
 
         # The world node is only drawn if it appears as an endpoint of any edge,
         # which mirrors the modelling convention that an unreferenced world node
         # should not visually clutter the graph.
-        world_in_graph = any(world_node in pair for _, _, pair in edges)
+        world_in_graph = any(world_node in e.nodes for e in graph_edges)
 
         # Compute per-component local layouts and their bounding-circle radii. Each
-        # entry is `(local_pos, local_radius, is_rooted, base_node)`.
-        comp_layouts: list[tuple[dict[NodeType, tuple[float, float]], float, bool, NodeType | None]] = []
+        # entry is `(local_pos, local_radius, is_rooted, base_node)`. The trailing
+        # `base_node` slot is normalized to `int | None` so the radial packer can
+        # use it as a dict key alongside the int-keyed `local_pos`.
+        comp_layouts: list[tuple[dict[int, tuple[float, float]], float, bool, int | None]] = []
         for comp in components:
             local_pos, local_radius, is_rooted = self._layout_component(comp, world_node)
-            comp_layouts.append((local_pos, local_radius, is_rooted, comp.base_node))
+            base_idx = int(comp.base_node) if comp.base_node is not None else None
+            comp_layouts.append((local_pos, local_radius, is_rooted, base_idx))
 
         # Pack components radially around the world node. Returns a global position
         # dict keyed by node index, including the world node when applicable.
         pos = self._pack_components(comp_layouts, world_node, world_in_graph)
 
-        # Build a single nx.Graph for drawing. We use a plain Graph (not MultiGraph)
-        # because parallel edges between the same body pair are rare in topology
-        # graphs and would only slightly clutter the labels — by contrast, sticking
-        # to Graph keeps the per-edge styling logic simple.
+        # Build a single nx.Graph for drawing. Plain Graph (not MultiGraph) is
+        # sufficient because parallel edges between the same body pair are rare.
         G = nx.Graph()
-        G.add_nodes_from(nodes)
+        G.add_nodes_from(int_nodes)
         if world_in_graph:
             G.add_node(world_node)
-        for _t, _j, (u, v) in edges:
-            G.add_edge(u, v)
+        for e in graph_edges:
+            G.add_edge(*e.nodes)
 
-        # Classify each input edge into one of three role buckets via a per-component
-        # scan. We compare on `(joint_type, joint_index)` rather than the full tuple
-        # so the comparison is cheap and unambiguous regardless of edge ordering.
+        # Classify each edge into one of three role buckets via a per-component
+        # scan. Compare on `(joint_type, joint_index)` for cheap, unambiguous keys.
         base_keys: set[tuple[int, int]] = set()
         ground_keys: set[tuple[int, int]] = set()
         for comp in components:
             if comp.base_edge is not None:
-                base_keys.add((comp.base_edge[0], comp.base_edge[1]))
+                base_keys.add((comp.base_edge.joint_type, comp.base_edge.joint_index))
             if comp.ground_edges is not None:
-                for e in comp.ground_edges:
-                    ground_keys.add((e[0], e[1]))
+                for ge in comp.ground_edges:
+                    ground_keys.add((ge.joint_type, ge.joint_index))
 
-        base_edges_uv: list[tuple[NodeType, NodeType]] = []
-        ground_edges_uv: list[tuple[NodeType, NodeType]] = []
-        internal_edges_uv: list[tuple[NodeType, NodeType]] = []
-        edge_label_map: dict[tuple[NodeType, NodeType], str] = {}
-        for jt, jid, (u, v) in edges:
-            uv = (u, v)
-            key = (jt, jid)
+        base_edges_uv: list[tuple[int, int]] = []
+        ground_edges_uv: list[tuple[int, int]] = []
+        internal_edges_uv: list[tuple[int, int]] = []
+        edge_label_map: dict[tuple[int, int], str] = {}
+        for e in graph_edges:
+            uv = e.nodes
+            key = (e.joint_type, e.joint_index)
             if key in base_keys:
                 base_edges_uv.append(uv)
             elif key in ground_keys:
                 ground_edges_uv.append(uv)
             else:
                 internal_edges_uv.append(uv)
-            edge_label_map[uv] = self._build_edge_label(jt, jid, joints)
+            edge_label_map[uv] = self._build_edge_label(e.joint_type, e.joint_index, joints)
 
         # Build per-node styling. Defaults are overwritten by component- and role-
         # specific styling further below; this ordering matters because the base
         # node should win over the generic island styling.
-        node_color_map: dict[NodeType, str] = {}
-        node_size_map: dict[NodeType, int] = {}
-        node_edge_color_map: dict[NodeType, str] = {}
-        node_linewidth_map: dict[NodeType, float] = {}
+        node_color_map: dict[int, str] = {}
+        node_size_map: dict[int, int] = {}
+        node_edge_color_map: dict[int, str] = {}
+        node_linewidth_map: dict[int, float] = {}
 
         for n in G.nodes:
             node_color_map[n] = "lightgray"
@@ -261,23 +225,24 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 color = self._PALETTE[island_index % len(self._PALETTE)]
                 island_color_map[island_index] = color
                 for n in comp.nodes:
-                    node_color_map[n] = color
-                    node_size_map[n] = 700
+                    nidx = int(n)
+                    node_color_map[nidx] = color
+                    node_size_map[nidx] = 700
                 island_index += 1
             else:
                 # Single-node component: connected vs isolated orphan
-                n = comp.nodes[0]
+                nidx = int(comp.nodes[0])
                 if comp.is_connected:
-                    node_color_map[n] = "grey"
+                    node_color_map[nidx] = "grey"
                 else:
-                    node_color_map[n] = "white"
-                node_size_map[n] = 700
+                    node_color_map[nidx] = "white"
+                node_size_map[nidx] = 700
 
         # Base nodes get a thicker border to mark them as the local root, while
         # keeping their component fill so they remain visually grouped.
         for comp in components:
             if comp.base_node is not None:
-                node_linewidth_map[comp.base_node] = 2.5
+                node_linewidth_map[int(comp.base_node)] = 2.5
 
         # Ensure every node referenced in `pos` has styling — defensive against
         # mismatches between `nodes` and the per-component node lists.
@@ -367,617 +332,6 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             plt.show()
         plt.close(fig)
 
-    @staticmethod
-    def _layout_component(
-        component: TopologyComponent,
-        world_node: int,
-    ) -> tuple[dict[NodeType, tuple[float, float]], float, bool]:
-        """Computes a per-component layout in component-local coordinates.
-
-        Args:
-            component: The component subgraph to lay out.
-            world_node: The index of the implicit world node, used to skip world endpoints.
-
-        Returns:
-            A tuple ``(local_pos, local_radius, is_rooted)`` where:
-
-            - ``local_pos`` maps each node in the component to a local ``(x, y)`` position.
-            - ``local_radius`` is the bounding-circle radius of the layout in local
-              coordinates (with a small floor so single-node components still take a slot).
-            - ``is_rooted`` is True when the layout grows along the local ``+x`` axis from
-              the base node (``base_node`` first, at the local origin), enabling the radial
-              packer to anchor the base toward the world. False when the layout has no
-              preferred orientation.
-        """
-        try:
-            import networkx as nx
-        except ImportError as e:
-            raise ImportError(
-                "networkx is required for rendering the topology graph. Please install it with `pip install networkx`."
-            ) from e
-
-        comp_nodes = list(component.nodes) if component.nodes else []
-        if not comp_nodes:
-            return {}, 0.0, False
-
-        # Orphan: a single-node component lays out trivially at the local origin.
-        if len(comp_nodes) == 1:
-            return {comp_nodes[0]: (0.0, 0.0)}, 0.0, False
-
-        # Build the undirected internal subgraph (skip world endpoints).
-        internal_pairs: list[tuple[NodeType, NodeType]] = []
-        if component.edges:
-            for _t, _j, (u, v) in component.edges:
-                if u == world_node or v == world_node:
-                    continue
-                internal_pairs.append((u, v))
-
-        if component.base_node is not None:
-            local_pos = TopologyGraphVisualizer._rooted_layered_layout(
-                comp_nodes, internal_pairs, root=component.base_node
-            )
-            is_rooted = True
-        else:
-            sub = nx.Graph()
-            sub.add_nodes_from(comp_nodes)
-            sub.add_edges_from(internal_pairs)
-            try:
-                local_pos = nx.kamada_kawai_layout(sub)
-            except Exception:
-                # Kamada-Kawai requires a connected graph and at least 2 nodes — fall
-                # back to a deterministic spring layout if the heuristic fails.
-                local_pos = nx.spring_layout(sub, seed=42)
-            is_rooted = False
-
-        # Bounding-circle radius (with a small floor so degenerate layouts still
-        # take an angular slot during radial packing).
-        max_r = 0.0
-        for x, y in local_pos.values():
-            max_r = max(max_r, (x * x + y * y) ** 0.5)
-        local_radius = max(max_r, 0.5)
-
-        return local_pos, local_radius, is_rooted
-
-    @staticmethod
-    def _rooted_layered_layout(
-        nodes: list[NodeType],
-        pairs: list[tuple[NodeType, NodeType]],
-        root: NodeType,
-    ) -> dict[NodeType, tuple[float, float]]:
-        """Layered BFS layout rooted at ``root``, growing along the local ``+x`` axis.
-
-        The root is placed at the local origin, children at depth ``d`` are placed at
-        ``x = d`` and laterally distributed symmetrically around ``y = 0``. Nodes
-        unreachable from the root (which should not occur for a well-formed component)
-        are appended to the deepest layer to ensure every node receives a position.
-        """
-        adj: dict[NodeType, list[NodeType]] = {n: [] for n in nodes}
-        for u, v in pairs:
-            if u in adj and v in adj:
-                adj[u].append(v)
-                adj[v].append(u)
-        for n, neighbors in adj.items():
-            adj[n] = sorted(set(neighbors))
-
-        # BFS from the root to assign integer depths
-        depth: dict[NodeType, int] = {root: 0}
-        order: list[NodeType] = [root]
-        q = deque([root])
-        while q:
-            u = q.popleft()
-            for v in adj[u]:
-                if v not in depth:
-                    depth[v] = depth[u] + 1
-                    order.append(v)
-                    q.append(v)
-
-        # Append any unreachable nodes at the deepest layer + 1 so every node gets a position
-        max_depth = max(depth.values(), default=0)
-        for n in nodes:
-            if n not in depth:
-                depth[n] = max_depth + 1
-                order.append(n)
-
-        # Group nodes by depth, preserving BFS discovery order within each layer
-        layers: dict[int, list[NodeType]] = defaultdict(list)
-        for n in order:
-            layers[depth[n]].append(n)
-
-        # Lateral spacing chosen so total layer width matches the layer count, which
-        # keeps the layout's aspect ratio roughly square as depth grows.
-        local_pos: dict[NodeType, tuple[float, float]] = {}
-        x_step = 1.0
-        y_step = 1.0
-        for d, members in layers.items():
-            count = len(members)
-            for i, n in enumerate(members):
-                # Center each layer around y = 0
-                y = (i - (count - 1) / 2.0) * y_step
-                local_pos[n] = (d * x_step, y)
-        return local_pos
-
-    @staticmethod
-    def _pack_components(
-        comp_layouts: list[tuple[dict[NodeType, tuple[float, float]], float, bool, NodeType | None]],
-        world_node: int,
-        world_in_graph: bool,
-    ) -> dict[NodeType, tuple[float, float]]:
-        """Packs per-component local layouts radially around the world node.
-
-        Args:
-            comp_layouts: For each component, ``(local_pos, local_radius, is_rooted, base_node)``.
-            world_node: The index of the implicit world node.
-            world_in_graph: Whether the world node should be placed at the origin.
-
-        Returns:
-            A global position dict keyed by node index. The world node, when applicable, is at
-            ``(0, 0)``.
-        """
-        pos: dict[NodeType, tuple[float, float]] = {}
-        if world_in_graph:
-            pos[world_node] = (0.0, 0.0)
-
-        n_components = len(comp_layouts)
-        if n_components == 0:
-            return pos
-
-        # Sort components by descending local radius for stable packing — the largest
-        # components claim their angular slots first, smaller ones fill the gaps.
-        order = sorted(range(n_components), key=lambda i: -comp_layouts[i][1])
-        radii = [comp_layouts[i][1] for i in order]
-
-        # Choose an anchor ring radius `R` large enough that adjacent components do
-        # not overlap. The angular footprint each component requires is approximately
-        # `2 * arcsin(r / R)`. We pick the smallest R such that the sum of these
-        # angular footprints fits inside `2 * pi`. Using a closed-form lower bound
-        # `R >= sum(r) / pi` is conservative but always feasible; we then add a small
-        # margin so labels and node radii do not collide visually.
-        sum_r = sum(radii)
-        # Floor on R so that even tiny graphs (e.g. a few orphans) get a sensible
-        # ring; otherwise everything would collapse onto the world node.
-        min_radius = max(radii) if radii else 1.0
-        R = max(sum_r / math.pi, 2.5 * min_radius, 2.5)
-
-        # Compute angular slot widths and running mid-angles
-        slots: list[float] = []
-        for r in radii:
-            # Clamp the asin argument to [-1, 1] in case of edge cases (shouldn't
-            # actually occur given the choice of R above, but defensive).
-            ratio = min(max(r / R, -1.0), 1.0)
-            slot = 2.0 * math.asin(ratio)
-            # Minimum angular slot to keep small components readable
-            slot = max(slot, 2.0 * math.pi / max(n_components * 2, 1))
-            slots.append(slot)
-
-        # Normalize slot widths so they sum to 2*pi (in case the floor above pushed
-        # the total above 2*pi for many small components).
-        total_slot = sum(slots)
-        if total_slot > 2.0 * math.pi:
-            scale = (2.0 * math.pi) / total_slot
-            slots = [s * scale for s in slots]
-            total_slot = 2.0 * math.pi
-        # Distribute any leftover angular budget evenly as padding between slots
-        padding = (2.0 * math.pi - total_slot) / max(n_components, 1)
-
-        running = 0.0
-        for sort_idx, comp_idx in enumerate(order):
-            slot = slots[sort_idx]
-            theta = running + slot / 2.0
-            running += slot + padding
-
-            local_pos, local_radius, is_rooted, base_node = comp_layouts[comp_idx]
-
-            cos_t = math.cos(theta)
-            sin_t = math.sin(theta)
-
-            if is_rooted and base_node is not None and base_node in local_pos:
-                # Rotate the local frame so local +x points outward at angle theta,
-                # and translate so the base node lands on the ring at radius R.
-                bx, by = local_pos[base_node]
-                # Translation so base goes to (R*cos_t, R*sin_t) after rotation
-                tx = R * cos_t
-                ty = R * sin_t
-                for n, (lx, ly) in local_pos.items():
-                    rx = (lx - bx) * cos_t - (ly - by) * sin_t
-                    ry = (lx - bx) * sin_t + (ly - by) * cos_t
-                    pos[n] = (rx + tx, ry + ty)
-            else:
-                # Unrooted: rotate by theta and translate the layout's geometric
-                # center (mean of local positions) onto the ring.
-                if local_pos:
-                    cx = sum(p[0] for p in local_pos.values()) / len(local_pos)
-                    cy = sum(p[1] for p in local_pos.values()) / len(local_pos)
-                else:
-                    cx = cy = 0.0
-                # Anchor distance pushes the component's center outward by
-                # (R + local_radius) so even unrooted layouts respect the ring.
-                anchor = R + 0.25 * local_radius
-                tx = anchor * cos_t
-                ty = anchor * sin_t
-                for n, (lx, ly) in local_pos.items():
-                    rx = (lx - cx) * cos_t - (ly - cy) * sin_t
-                    ry = (lx - cx) * sin_t + (ly - cy) * cos_t
-                    pos[n] = (rx + tx, ry + ty)
-
-        return pos
-
-    def _build_edge_label(
-        self,
-        joint_type: int,
-        joint_index: int,
-        joints: list[JointDescriptor] | None,
-    ) -> str:
-        """Builds an edge label of the form ``f"{name}_{index}_{type}"`` (or shorter variants).
-
-        The joint name prefix is included only when ``joints`` is provided,
-        ``joints[joint_index]`` exists, and the descriptor's ``name`` is a non-empty string.
-
-        The joint-type suffix is included only when ``joint_type`` is a non-negative integer
-        recognised by the active abbreviation table (selected at construction time via
-        ``joint_type_enum``). The sentinel value ``-1`` is treated as "unspecified" and the
-        suffix is omitted from the label. All other unrecognised joint-type integer values
-        raise :class:`ValueError` so that incorrectly-categorised edges are surfaced loudly rather
-        than silently rendered with an incorrect or generic label.
-
-        Returns one of (in priority order, given the available pieces):
-
-        - ``"{name}_{index}_{type}"``
-        - ``"{index}_{type}"``
-        - ``"{name}_{index}"``
-        - ``"{index}"``
-
-        Raises:
-            ValueError: If ``joint_type`` is neither ``-1`` nor a value of the active
-                joint-type enum (``JointType`` or ``JointDoFType``).
-        """
-        if joint_type == -1:
-            abbr: str | None = None
-        elif joint_type in self._abbr_table:
-            abbr = self._abbr_table[joint_type]
-        else:
-            raise ValueError(
-                f"Unsupported joint type `{joint_type}` for joint at index `{joint_index}`: "
-                f"value is not a member of the active joint-type enum "
-                f"`{self._joint_type_enum.__name__}` and is not the `-1` sentinel for "
-                f"unspecified joint types."
-            )
-
-        name: str | None = None
-        if joints is not None and 0 <= joint_index < len(joints):
-            descriptor = joints[joint_index]
-            candidate = getattr(descriptor, "name", None)
-            if isinstance(candidate, str) and candidate:
-                name = candidate
-
-        prefix = f"{name}_" if name is not None else ""
-        suffix = f"_{abbr}" if abbr is not None else ""
-        return f"{prefix}{joint_index}{suffix}"
-
-    @staticmethod
-    def _pick_metadata_corner(
-        pos: dict[NodeType, tuple[float, float]],
-    ) -> tuple[float, float, str, str]:
-        """Picks the panel corner with the most empty space for a metadata overlay.
-
-        Returns the axes-fraction position and matplotlib alignment strings for
-        the corner whose nearest node — in node-position-normalized
-        coordinates — is the furthest. This minimises the chance that the
-        candidate-panel metadata table overlaps with rendered nodes or edge
-        labels. Top-right is preferred on ties (most natural reading position).
-
-        Args:
-            pos: The shared node-position map for the component, identical
-                across all candidate panels.
-
-        Returns:
-            A tuple ``(x_frac, y_frac, ha, va)`` ready to be passed to
-            :meth:`matplotlib.axes.Axes.text` with ``transform=ax.transAxes``.
-        """
-        if not pos:
-            return (0.98, 0.98, "right", "top")
-
-        xs = [p[0] for p in pos.values()]
-        ys = [p[1] for p in pos.values()]
-        xmin, xmax = min(xs), max(xs)
-        ymin, ymax = min(ys), max(ys)
-        # Floor the ranges so degenerate (collinear) layouts still produce a
-        # well-defined normalized coordinate space.
-        xrange = max(xmax - xmin, 1e-9)
-        yrange = max(ymax - ymin, 1e-9)
-
-        # Normalize all node positions to ``[0, 1] x [0, 1]`` so x and y get
-        # equal weight in the corner-distance metric (matplotlib stretches the
-        # axes to the cell aspect ratio anyway).
-        norm = [((x - xmin) / xrange, (y - ymin) / yrange) for x, y in pos.values()]
-
-        # Corners are evaluated in priority order so ties break in favour of
-        # the most natural reading corner (top-right, then top-left).
-        corners = (
-            (1.0, 1.0, 0.98, 0.98, "right", "top"),
-            (0.0, 1.0, 0.02, 0.98, "left", "top"),
-            (1.0, 0.0, 0.98, 0.02, "right", "bottom"),
-            (0.0, 0.0, 0.02, 0.02, "left", "bottom"),
-        )
-        best_dist = -1.0
-        best = corners[0]
-        for entry in corners:
-            cx, cy = entry[0], entry[1]
-            d = min(math.hypot(cx - nx, cy - ny) for nx, ny in norm)
-            if d > best_dist:
-                best_dist = d
-                best = entry
-        return (best[2], best[3], best[4], best[5])
-
-    @staticmethod
-    def _compute_single_component_pos(
-        component: TopologyComponent,
-        world_node: int,
-    ) -> tuple[dict[NodeType, tuple[float, float]], bool]:
-        """Computes a node-position dict for a single-component figure.
-
-        Reuses :meth:`_layout_component` to obtain the body-node positions in local
-        component coordinates and then anchors the world node next to the layout
-        when the component has any world-incident edge. The returned ``pos`` dict
-        is shared by every panel of a candidate figure so candidate trees can be
-        compared at a glance.
-
-        Args:
-            component: The component subgraph whose nodes need positions.
-            world_node: The index of the implicit world node.
-
-        Returns:
-            A tuple ``(pos, world_in_graph)`` where:
-
-            - ``pos`` maps each node (including the world node when applicable) to a
-              ``(x, y)`` position.
-            - ``world_in_graph`` is ``True`` when the component has at least one edge
-              referencing the world node and the world should therefore be drawn.
-        """
-        local_pos, _local_radius, is_rooted = TopologyGraphVisualizer._layout_component(component, world_node)
-
-        # The world is only drawn when the component actually references it via an
-        # edge endpoint. This mirrors `render_graph`'s `world_in_graph` heuristic.
-        world_in_graph = any(world_node in pair for _t, _j, pair in component.edges or [])
-
-        pos: dict[NodeType, tuple[float, float]] = dict(local_pos)
-        if not world_in_graph:
-            return pos, False
-
-        if is_rooted and component.base_node is not None and component.base_node in local_pos:
-            # Rooted layout grows along local +x from the base node, so place the
-            # world one unit to the left to mirror the radial-packer convention
-            # ("base anchored toward the world") used by `_pack_components`.
-            bx, by = local_pos[component.base_node]
-            pos[world_node] = (bx - 1.0, by)
-        else:
-            # Unrooted: drop the world below the layout's bounding box. The 1.0
-            # offset is in the same scale as `_rooted_layered_layout` (unit step
-            # per BFS layer), so the world stays visually adjacent without
-            # overlapping any body node.
-            xs = [p[0] for p in local_pos.values()] if local_pos else [0.0]
-            ys = [p[1] for p in local_pos.values()] if local_pos else [0.0]
-            cx = (min(xs) + max(xs)) / 2.0
-            min_y = min(ys)
-            pos[world_node] = (cx, min_y - 1.0)
-
-        return pos, True
-
-    def _draw_component_on_axis(
-        self,
-        ax,
-        component: TopologyComponent,
-        pos: dict[NodeType, tuple[float, float]],
-        world_node: int,
-        world_in_graph: bool,
-        joints: list[JointDescriptor] | None,
-        *,
-        mode: str,
-        arc_joint_indices: set[int] | None = None,
-        island_color: str = "tab:blue",
-        show_edge_labels: bool = True,
-        edge_label_font_size: int = 8,
-        node_label_font_size: int = 10,
-        node_size_scale: float = 1.0,
-    ) -> None:
-        """Draws a single component on a matplotlib axis using a shared ``pos`` dict.
-
-        This helper is the single source of truth for the per-component drawing
-        vocabulary used by the candidate-tree renderer. It mirrors the styling
-        choices made by :meth:`render_graph` so that a candidate figure remains
-        visually consistent with a graph figure of the same component.
-
-        Args:
-            ax: The matplotlib axis to draw on.
-            component: The component to render.
-            pos: A node-to-``(x, y)`` map covering every node referenced by ``component``
-                (and the world node when ``world_in_graph`` is ``True``).
-            world_node: Index of the implicit world node.
-            world_in_graph: Whether the world node should be drawn on this axis.
-            joints: Optional list of joint descriptors used to look up joint names
-                for edge labels (forwarded verbatim to :meth:`_build_edge_label`).
-            mode: Either ``"graph"`` (top-panel classification: base / grounding /
-                internal) or ``"candidate"`` (sub-panel classification: base / arc /
-                chord). In ``"candidate"`` mode, ``arc_joint_indices`` selects the
-                set of joints that belong to the spanning tree.
-            arc_joint_indices: Required in ``"candidate"`` mode; the set of global
-                joint indices that are arcs of the candidate spanning tree (i.e.
-                ``set(candidate.arcs) - {-1}``). Ignored in ``"graph"`` mode.
-            island_color: Fill color used for island bodies. Orphans always use the
-                ``grey`` (connected) / ``white`` (isolated) pair from ``render_graph``.
-            show_edge_labels: Whether to draw per-edge text labels.
-            edge_label_font_size: Font size for edge labels.
-            node_label_font_size: Font size for node labels.
-            node_size_scale: Multiplicative factor applied to all node sizes (default,
-                world, island, orphan). Used by the candidate-grid renderer to keep
-                node markers readable as the per-cell physical size grows with the
-                component's complexity.
-
-        Raises:
-            ImportError: If :mod:`networkx` or :mod:`matplotlib` are not installed.
-            ValueError: If ``mode`` is not one of ``"graph"`` or ``"candidate"``.
-        """
-        try:
-            import networkx as nx
-        except ImportError as e:
-            raise ImportError(
-                "networkx is required for rendering the topology graph. Please install it with `pip install networkx`."
-            ) from e
-
-        if mode not in ("graph", "candidate"):
-            raise ValueError(f"Unsupported mode `{mode!r}`: expected one of `'graph'` or `'candidate'`.")
-        if mode == "candidate" and arc_joint_indices is None:
-            raise ValueError("`arc_joint_indices` must be provided when `mode='candidate'`.")
-
-        # Build a plain `nx.Graph` from the component's nodes/edges. We deliberately
-        # mirror `render_graph`'s choice of `Graph` (not `MultiGraph`) so the per-
-        # edge styling logic stays simple — parallel edges between the same body
-        # pair are rare in topology graphs.
-        G = nx.Graph()
-        if component.nodes:
-            G.add_nodes_from(component.nodes)
-        if world_in_graph:
-            G.add_node(world_node)
-        for _t, _j, (u, v) in component.edges or []:
-            G.add_edge(u, v)
-
-        base_key: tuple[int, int] | None = None
-        if component.base_edge is not None:
-            base_key = (component.base_edge[0], component.base_edge[1])
-
-        ground_keys: set[tuple[int, int]] = set()
-        if mode == "graph" and component.ground_edges is not None:
-            for e in component.ground_edges:
-                ground_keys.add((e[0], e[1]))
-
-        # Classify each edge of the component into one of three buckets and
-        # build a single edge-label map keyed by `(u, v)`.
-        base_edges_uv: list[tuple[NodeType, NodeType]] = []
-        secondary_edges_uv: list[tuple[NodeType, NodeType]] = []  # grounding (graph) or arc (candidate)
-        tertiary_edges_uv: list[tuple[NodeType, NodeType]] = []  # internal (graph) or chord (candidate)
-        edge_label_map: dict[tuple[NodeType, NodeType], str] = {}
-        for jt, jid, (u, v) in component.edges or []:
-            uv = (u, v)
-            key = (jt, jid)
-            if base_key is not None and key == base_key:
-                base_edges_uv.append(uv)
-            elif mode == "graph":
-                if key in ground_keys:
-                    secondary_edges_uv.append(uv)
-                else:
-                    tertiary_edges_uv.append(uv)
-            else:
-                # Candidate mode: arc vs chord. The base edge has already been
-                # peeled off above, so a real `arc_joint_indices` membership check
-                # is unambiguous for the remaining edges.
-                if jid in arc_joint_indices:  # type: ignore[operator]
-                    secondary_edges_uv.append(uv)
-                else:
-                    tertiary_edges_uv.append(uv)
-            edge_label_map[uv] = self._build_edge_label(jt, jid, joints)
-
-        # Edges first, behind the nodes. The ordering (tertiary → secondary →
-        # base) puts the most prominent style on top, matching `render_graph`.
-        if tertiary_edges_uv:
-            if mode == "graph":
-                nx.draw_networkx_edges(G, pos, edgelist=tertiary_edges_uv, width=1.5, edge_color="0.55", ax=ax)
-            else:
-                nx.draw_networkx_edges(
-                    G,
-                    pos,
-                    edgelist=tertiary_edges_uv,
-                    width=1.5,
-                    style="dashed",
-                    edge_color="tab:red",
-                    alpha=0.7,
-                    ax=ax,
-                )
-        if secondary_edges_uv:
-            if mode == "graph":
-                nx.draw_networkx_edges(
-                    G, pos, edgelist=secondary_edges_uv, width=1.8, style="dashed", edge_color="0.35", ax=ax
-                )
-            else:
-                nx.draw_networkx_edges(G, pos, edgelist=secondary_edges_uv, width=1.8, edge_color="0.35", ax=ax)
-        if base_edges_uv:
-            nx.draw_networkx_edges(G, pos, edgelist=base_edges_uv, width=2.5, edge_color="black", ax=ax)
-
-        # Per-node styling — mirrors `render_graph`. Defaults are set first and
-        # then overridden by component- and role-specific styling so the base
-        # node always wins over the generic island styling. All sizes are
-        # multiplied by `node_size_scale` so the candidate-grid renderer can
-        # keep markers proportional to per-cell physical size.
-        size_default = max(1, int(round(500 * node_size_scale)))
-        size_world = max(1, int(round(400 * node_size_scale)))
-        size_member = max(1, int(round(300 * node_size_scale)))
-
-        node_color_map: dict[NodeType, str] = {}
-        node_size_map: dict[NodeType, int] = {}
-        node_edge_color_map: dict[NodeType, str] = {}
-        node_linewidth_map: dict[NodeType, float] = {}
-        for n in G.nodes:
-            node_color_map[n] = "lightgray"
-            node_size_map[n] = size_default
-            node_edge_color_map[n] = "black"
-            node_linewidth_map[n] = 1.0
-
-        if world_in_graph:
-            node_color_map[world_node] = "black"
-            node_size_map[world_node] = size_world
-            node_edge_color_map[world_node] = "black"
-            node_linewidth_map[world_node] = 1.5
-
-        if component.is_island:
-            for n in component.nodes or []:
-                node_color_map[n] = island_color
-                node_size_map[n] = size_member
-        elif component.nodes:
-            n = component.nodes[0]
-            if component.is_connected:
-                node_color_map[n] = "grey"
-            else:
-                node_color_map[n] = "white"
-            node_size_map[n] = size_member
-
-        if component.base_node is not None:
-            node_linewidth_map[component.base_node] = 2.5
-
-        ordered_nodes = list(G.nodes)
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            nodelist=ordered_nodes,
-            node_color=[node_color_map[n] for n in ordered_nodes],
-            node_size=[node_size_map[n] for n in ordered_nodes],
-            edgecolors=[node_edge_color_map[n] for n in ordered_nodes],
-            linewidths=[node_linewidth_map[n] for n in ordered_nodes],
-            ax=ax,
-        )
-
-        # Node labels — keep the world label readable on its dark fill.
-        if world_in_graph:
-            nx.draw_networkx_labels(
-                G, pos, labels={world_node: "W"}, font_size=node_label_font_size, font_color="white", ax=ax
-            )
-            other_labels = {n: str(n) for n in G.nodes if n != world_node}
-            nx.draw_networkx_labels(
-                G, pos, labels=other_labels, font_size=node_label_font_size, font_color="black", ax=ax
-            )
-        else:
-            node_labels = {n: str(n) for n in G.nodes}
-            nx.draw_networkx_labels(
-                G, pos, labels=node_labels, font_size=node_label_font_size, font_color="black", ax=ax
-            )
-
-        if show_edge_labels and edge_label_map:
-            nx.draw_networkx_edge_labels(
-                G,
-                pos,
-                edge_labels=edge_label_map,
-                font_size=edge_label_font_size,
-                bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "none", "alpha": 0.85},
-                ax=ax,
-            )
-
     @override
     def render_component_spanning_tree_candidates(
         self,
@@ -990,47 +344,26 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         path: str | None = None,
         show: bool = False,
     ) -> None:
-        """
-        Renders the candidate spanning trees of a component of the topology graph.
+        """Render the candidate spanning trees of a component as a grid of panels.
 
-        The figure is composed of a top "Original Component" panel (rendered with
-        the same ``base / grounding / internal`` edge classification used by
-        :meth:`render_graph`) and a grid of candidate panels below it. All panels
-        share the same node-position map produced by
-        :meth:`_compute_single_component_pos` so candidate trees can be compared
-        directly. In each candidate panel, edges are classified as ``base``
-        (always solid black), ``arc`` (solid grey, in the spanning tree) or
-        ``chord`` (dashed red, loop closure) per the candidate's ``arcs`` list.
-
-        Per-cell physical size is held at a fixed default so the resulting
-        figure (and any saved PDF / PNG) stays a reasonable page size. When the
-        component has more than ten bodies, node markers, edge labels and node
-        labels are shrunk so the layout still fits each cell; font sizes are
-        floored at sensible minimums so labels remain legible.
-
-        Each candidate panel additionally renders a small monospace metadata
-        table at the top-right corner, listing the candidate's ``depth``,
-        ``num_bodies``, ``num_tree_arcs`` and ``num_tree_chords``.
+        The figure has a top "Original Component" panel (using the same
+        base / grounding / internal classification as :meth:`render_graph`)
+        followed by one panel per candidate (base / arc / chord
+        classification). All panels share the same node positions so
+        candidates can be compared directly.
 
         Args:
-            component: The :class:`TopologyComponent` instance whose spanning tree candidates are to be rendered.
-            candidates: A list of :class:`TopologySpanningTree` instances representing the candidate spanning trees.
-                When empty, only the top "Original Component" panel is drawn.
-            world_node: The index of the world node in the topology graph.
-            joints:
-                Optional list of joint descriptors used to look up joint names for edge labels.
-                When provided, an edge label has the form ``f"{name}_{index}_{type}"``; otherwise
-                it falls back to ``f"{index}_{type}"``. Forwarded verbatim to :meth:`_build_edge_label`.
-            skip_orphans:
-                When ``True`` (default), this method returns immediately for orphan components
-                (single-body subgraphs whose spanning tree is trivial), since their candidate
-                figures carry no useful information beyond the original-graph render. Set to
-                ``False`` to also render the trivial candidate of every orphan component.
-            figsize: Optional tuple specifying the figure size for the plot. When ``None``, the
-                figure size is derived from the candidate count alone (per-cell size is
-                independent of component complexity to keep PDF page sizes manageable).
-            path: Optional string specifying the file path to save the plot.
-            show: Boolean indicating whether to display the plot.
+            component: The component whose candidates are rendered.
+            candidates: List of candidate spanning trees; an empty list
+                draws only the top panel.
+            world_node: Index of the implicit world node.
+            joints: Optional joint descriptors for name-based edge labels.
+            skip_orphans: When ``True`` (default), orphan components are
+                skipped entirely.
+            figsize: Optional figure size; defaults are derived from the
+                candidate count.
+            path: Optional file path to save the figure.
+            show: When ``True``, display the figure immediately.
 
         Raises:
             ImportError: If :mod:`networkx` or :mod:`matplotlib` are not installed.
@@ -1225,26 +558,22 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         path: str | None = None,
         show: bool = False,
     ) -> None:
-        """
-        Renders the selected spanning tree for a given component
-        of the topology graph using networkx and matplotlib.
+        """Render a component's selected spanning tree side by side with the original.
+
+        The figure has a top "Original Component" panel and a bottom
+        "Selected Spanning Tree" panel sharing the same node positions.
+        A monospace metadata overlay summarizes the selected tree.
 
         Args:
-            component: The :class:`TopologyComponent` instance whose selected spanning tree is to be rendered.
-            tree: The :class:`TopologySpanningTree` instance representing the selected spanning tree.
-            world_node: The index of the world node in the topology graph.
-            joints:
-                Optional list of joint descriptors used to look up joint names for edge labels.
-                When provided, an edge label has the form ``f"{name}_{index}_{type}"``; otherwise
-                it falls back to ``f"{index}_{type}"``.
-            skip_orphans:
-                When ``True`` (default), this method returns immediately for orphan components
-                (single-body subgraphs whose spanning tree is trivial), since their figures carry
-                no useful information beyond the original-graph render. Set to ``False`` to also
-                render the trivial spanning tree of every orphan component.
-            figsize: Optional tuple specifying the figure size for the plot.
-            path: Optional string specifying the file path to save the plot.
-            show: Boolean indicating whether to display the plot.
+            component: The component the tree belongs to.
+            tree: The selected spanning tree to render.
+            world_node: Index of the implicit world node.
+            joints: Optional joint descriptors for name-based edge labels.
+            skip_orphans: When ``True`` (default), orphan components are
+                skipped entirely.
+            figsize: Optional figure size.
+            path: Optional file path to save the figure.
+            show: When ``True``, display the figure immediately.
 
         Raises:
             ImportError: If :mod:`networkx` or :mod:`matplotlib` are not installed.
@@ -1369,3 +698,586 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         if show:
             plt.show()
         plt.close(fig)
+
+    ###
+    # Internals
+    ###
+
+    @staticmethod
+    def _layout_component(
+        component: TopologyComponent,
+        world_node: int,
+    ) -> tuple[dict[int, tuple[float, float]], float, bool]:
+        """Compute a per-component layout in component-local coordinates.
+
+        Returns ``(local_pos, local_radius, is_rooted)``. ``is_rooted`` is
+        ``True`` when the layout grows along the local ``+x`` axis from
+        the base node, enabling the radial packer to anchor the base
+        toward the world. The position dict is keyed by raw int body
+        index so it stays interoperable with NetworkX edge endpoints.
+
+        Args:
+            component: The component subgraph to lay out.
+            world_node: The implicit world node index (skipped during layout).
+
+        Returns:
+            A ``(local_pos, local_radius, is_rooted)`` tuple.
+        """
+        try:
+            import networkx as nx
+        except ImportError as e:
+            raise ImportError(
+                "networkx is required for rendering the topology graph. Please install it with `pip install networkx`."
+            ) from e
+
+        # Coerce the canonical `GraphNode` storage into raw int indices so the
+        # NetworkX graph and the returned position dict use a single key type.
+        comp_nodes: list[int] = [int(n) for n in component.nodes] if component.nodes else []
+        if not comp_nodes:
+            return {}, 0.0, False
+
+        if len(comp_nodes) == 1:
+            return {comp_nodes[0]: (0.0, 0.0)}, 0.0, False
+
+        # Build the undirected internal subgraph (skip world endpoints).
+        internal_pairs: list[tuple[int, int]] = []
+        if component.edges:
+            for e in component.edges:
+                u, v = e.nodes
+                if u == world_node or v == world_node:
+                    continue
+                internal_pairs.append((u, v))
+
+        if component.base_node is not None:
+            local_pos = TopologyGraphVisualizer._rooted_layered_layout(
+                comp_nodes, internal_pairs, root=int(component.base_node)
+            )
+            is_rooted = True
+        else:
+            sub = nx.Graph()
+            sub.add_nodes_from(comp_nodes)
+            sub.add_edges_from(internal_pairs)
+            try:
+                local_pos = nx.kamada_kawai_layout(sub)
+            except Exception:
+                # Kamada-Kawai requires a connected graph and at least 2 nodes;
+                # fall back to a deterministic spring layout if it fails.
+                local_pos = nx.spring_layout(sub, seed=42)
+            is_rooted = False
+
+        # Bounding-circle radius with a small floor so degenerate layouts still
+        # take an angular slot during radial packing.
+        max_r = 0.0
+        for x, y in local_pos.values():
+            max_r = max(max_r, (x * x + y * y) ** 0.5)
+        local_radius = max(max_r, 0.5)
+
+        return local_pos, local_radius, is_rooted
+
+    @staticmethod
+    def _rooted_layered_layout(
+        nodes: list[int],
+        pairs: list[tuple[int, int]],
+        root: int,
+    ) -> dict[int, tuple[float, float]]:
+        """Compute a layered BFS layout rooted at ``root`` growing along ``+x``.
+
+        The root is placed at the local origin; children at depth ``d``
+        are placed at ``x = d`` and distributed symmetrically around
+        ``y = 0``. Unreachable nodes are appended to the deepest layer
+        to ensure every node receives a position.
+        """
+        adj: dict[int, list[int]] = {n: [] for n in nodes}
+        for u, v in pairs:
+            if u in adj and v in adj:
+                adj[u].append(v)
+                adj[v].append(u)
+        for n, neighbors in adj.items():
+            adj[n] = sorted(set(neighbors))
+
+        # BFS from the root to assign integer depths
+        depth: dict[int, int] = {root: 0}
+        order: list[int] = [root]
+        q = deque([root])
+        while q:
+            u = q.popleft()
+            for v in adj[u]:
+                if v not in depth:
+                    depth[v] = depth[u] + 1
+                    order.append(v)
+                    q.append(v)
+
+        # Append any unreachable nodes at the deepest layer + 1 so every node gets a position
+        max_depth = max(depth.values(), default=0)
+        for n in nodes:
+            if n not in depth:
+                depth[n] = max_depth + 1
+                order.append(n)
+
+        # Group nodes by depth, preserving BFS discovery order within each layer
+        layers: dict[int, list[int]] = defaultdict(list)
+        for n in order:
+            layers[depth[n]].append(n)
+
+        # Lateral spacing chosen so total layer width matches the layer count, which
+        # keeps the layout's aspect ratio roughly square as depth grows.
+        local_pos: dict[int, tuple[float, float]] = {}
+        x_step = 1.0
+        y_step = 1.0
+        for d, members in layers.items():
+            count = len(members)
+            for i, n in enumerate(members):
+                # Center each layer around y = 0
+                y = (i - (count - 1) / 2.0) * y_step
+                local_pos[n] = (d * x_step, y)
+        return local_pos
+
+    @staticmethod
+    def _pack_components(
+        comp_layouts: list[tuple[dict[int, tuple[float, float]], float, bool, int | None]],
+        world_node: int,
+        world_in_graph: bool,
+    ) -> dict[int, tuple[float, float]]:
+        """Pack per-component local layouts radially around the world node.
+
+        Args:
+            comp_layouts: Per-component
+                ``(local_pos, local_radius, is_rooted, base_node)`` tuples.
+            world_node: The implicit world node index.
+            world_in_graph: When ``True``, place the world at the origin.
+
+        Returns:
+            A global ``node -> (x, y)`` position map; the world node, when
+            applicable, is at ``(0, 0)``.
+        """
+        pos: dict[int, tuple[float, float]] = {}
+        if world_in_graph:
+            pos[world_node] = (0.0, 0.0)
+
+        n_components = len(comp_layouts)
+        if n_components == 0:
+            return pos
+
+        # Sort components by descending local radius for stable packing — the largest
+        # components claim their angular slots first, smaller ones fill the gaps.
+        order = sorted(range(n_components), key=lambda i: -comp_layouts[i][1])
+        radii = [comp_layouts[i][1] for i in order]
+
+        # Choose an anchor ring radius `R` large enough that adjacent components do
+        # not overlap. The angular footprint each component requires is approximately
+        # `2 * arcsin(r / R)`. We pick the smallest R such that the sum of these
+        # angular footprints fits inside `2 * pi`. Using a closed-form lower bound
+        # `R >= sum(r) / pi` is conservative but always feasible; we then add a small
+        # margin so labels and node radii do not collide visually.
+        sum_r = sum(radii)
+        # Floor on R so that even tiny graphs (e.g. a few orphans) get a sensible
+        # ring; otherwise everything would collapse onto the world node.
+        min_radius = max(radii) if radii else 1.0
+        R = max(sum_r / math.pi, 2.5 * min_radius, 2.5)
+
+        # Compute angular slot widths and running mid-angles
+        slots: list[float] = []
+        for r in radii:
+            # Clamp the asin argument to [-1, 1] in case of edge cases (shouldn't
+            # actually occur given the choice of R above, but defensive).
+            ratio = min(max(r / R, -1.0), 1.0)
+            slot = 2.0 * math.asin(ratio)
+            # Minimum angular slot to keep small components readable
+            slot = max(slot, 2.0 * math.pi / max(n_components * 2, 1))
+            slots.append(slot)
+
+        # Normalize slot widths so they sum to 2*pi (in case the floor above pushed
+        # the total above 2*pi for many small components).
+        total_slot = sum(slots)
+        if total_slot > 2.0 * math.pi:
+            scale = (2.0 * math.pi) / total_slot
+            slots = [s * scale for s in slots]
+            total_slot = 2.0 * math.pi
+        # Distribute any leftover angular budget evenly as padding between slots
+        padding = (2.0 * math.pi - total_slot) / max(n_components, 1)
+
+        running = 0.0
+        for sort_idx, comp_idx in enumerate(order):
+            slot = slots[sort_idx]
+            theta = running + slot / 2.0
+            running += slot + padding
+
+            local_pos, local_radius, is_rooted, base_node = comp_layouts[comp_idx]
+
+            cos_t = math.cos(theta)
+            sin_t = math.sin(theta)
+
+            if is_rooted and base_node is not None and base_node in local_pos:
+                # Rotate the local frame so local +x points outward at angle theta,
+                # and translate so the base node lands on the ring at radius R.
+                bx, by = local_pos[base_node]
+                # Translation so base goes to (R*cos_t, R*sin_t) after rotation
+                tx = R * cos_t
+                ty = R * sin_t
+                for n, (lx, ly) in local_pos.items():
+                    rx = (lx - bx) * cos_t - (ly - by) * sin_t
+                    ry = (lx - bx) * sin_t + (ly - by) * cos_t
+                    pos[n] = (rx + tx, ry + ty)
+            else:
+                # Unrooted: rotate by theta and translate the layout's geometric
+                # center (mean of local positions) onto the ring.
+                if local_pos:
+                    cx = sum(p[0] for p in local_pos.values()) / len(local_pos)
+                    cy = sum(p[1] for p in local_pos.values()) / len(local_pos)
+                else:
+                    cx = cy = 0.0
+                # Anchor distance pushes the component's center outward by
+                # (R + local_radius) so even unrooted layouts respect the ring.
+                anchor = R + 0.25 * local_radius
+                tx = anchor * cos_t
+                ty = anchor * sin_t
+                for n, (lx, ly) in local_pos.items():
+                    rx = (lx - cx) * cos_t - (ly - cy) * sin_t
+                    ry = (lx - cx) * sin_t + (ly - cy) * cos_t
+                    pos[n] = (rx + tx, ry + ty)
+
+        return pos
+
+    @staticmethod
+    def _compute_single_component_pos(
+        component: TopologyComponent,
+        world_node: int,
+    ) -> tuple[dict[int, tuple[float, float]], bool]:
+        """Compute a node-position dict for a single-component figure.
+
+        Reuses :meth:`_layout_component` to obtain body-node positions in
+        local component coordinates and anchors the world node next to
+        the layout when the component has any world-incident edge.
+
+        Args:
+            component: The component subgraph whose nodes need positions.
+            world_node: The implicit world node index.
+
+        Returns:
+            A ``(pos, world_in_graph)`` pair; ``pos`` includes the world
+            node only when ``world_in_graph`` is ``True``.
+        """
+        local_pos, _local_radius, is_rooted = TopologyGraphVisualizer._layout_component(component, world_node)
+
+        # Draw the world only when the component actually references it
+        # via an edge endpoint, mirroring `render_graph`.
+        world_in_graph = any(world_node in e.nodes for e in component.edges or [])
+
+        pos: dict[int, tuple[float, float]] = dict(local_pos)
+        if not world_in_graph:
+            return pos, False
+
+        base_idx = int(component.base_node) if component.base_node is not None else None
+        if is_rooted and base_idx is not None and base_idx in local_pos:
+            # Place the world one unit to the left of the base so the
+            # rooted local +x axis points outward from the world.
+            bx, by = local_pos[base_idx]
+            pos[world_node] = (bx - 1.0, by)
+        else:
+            # Drop the world below the layout's bounding box; offsets
+            # match `_rooted_layered_layout` so the world stays adjacent
+            # without overlapping any body node.
+            xs = [p[0] for p in local_pos.values()] if local_pos else [0.0]
+            ys = [p[1] for p in local_pos.values()] if local_pos else [0.0]
+            cx = (min(xs) + max(xs)) / 2.0
+            min_y = min(ys)
+            pos[world_node] = (cx, min_y - 1.0)
+
+        return pos, True
+
+    @staticmethod
+    def _pick_metadata_corner(
+        pos: dict[int, tuple[float, float]],
+    ) -> tuple[float, float, str, str]:
+        """Pick the panel corner with the most empty space for a metadata overlay.
+
+        Returns the axes-fraction position and matplotlib alignment strings
+        for the corner whose nearest node (in node-position-normalized
+        coordinates) is the furthest. Top-right is preferred on ties.
+
+        Args:
+            pos: Shared node-position map for the component.
+
+        Returns:
+            A ``(x_frac, y_frac, ha, va)`` tuple ready for
+            :meth:`matplotlib.axes.Axes.text` with ``transform=ax.transAxes``.
+        """
+        if not pos:
+            return (0.98, 0.98, "right", "top")
+
+        xs = [p[0] for p in pos.values()]
+        ys = [p[1] for p in pos.values()]
+        xmin, xmax = min(xs), max(xs)
+        ymin, ymax = min(ys), max(ys)
+        # Floor the ranges so degenerate (collinear) layouts still produce a
+        # well-defined normalized coordinate space.
+        xrange = max(xmax - xmin, 1e-9)
+        yrange = max(ymax - ymin, 1e-9)
+
+        # Normalize all node positions to ``[0, 1] x [0, 1]`` so x and y get
+        # equal weight in the corner-distance metric (matplotlib stretches the
+        # axes to the cell aspect ratio anyway).
+        norm = [((x - xmin) / xrange, (y - ymin) / yrange) for x, y in pos.values()]
+
+        # Corners are evaluated in priority order so ties break in favour of
+        # the most natural reading corner (top-right, then top-left).
+        corners = (
+            (1.0, 1.0, 0.98, 0.98, "right", "top"),
+            (0.0, 1.0, 0.02, 0.98, "left", "top"),
+            (1.0, 0.0, 0.98, 0.02, "right", "bottom"),
+            (0.0, 0.0, 0.02, 0.02, "left", "bottom"),
+        )
+        best_dist = -1.0
+        best = corners[0]
+        for entry in corners:
+            cx, cy = entry[0], entry[1]
+            d = min(math.hypot(cx - nx, cy - ny) for nx, ny in norm)
+            if d > best_dist:
+                best_dist = d
+                best = entry
+        return (best[2], best[3], best[4], best[5])
+
+    def _build_edge_label(
+        self,
+        joint_type: int,
+        joint_index: int,
+        joints: list[JointDescriptor] | None,
+    ) -> str:
+        """Build an edge label of the form ``f"{name}_{index}_{type}"`` (or shorter).
+
+        The joint-name prefix is included when ``joints[joint_index].name`` is
+        a non-empty string. The joint-type suffix is included for any
+        :class:`JointDoFType` value and omitted for the ``-1`` "unspecified"
+        sentinel. ``joint_type`` is assumed pre-validated by :class:`GraphEdge`.
+
+        Args:
+            joint_type: Integer matching a :class:`JointDoFType` value, or
+                ``-1`` for unspecified.
+            joint_index: Global joint index used both as the body of the
+                label and to look up an optional name.
+            joints: Optional joint descriptor list; out-of-range indices and
+                missing names fall back to the index-only label.
+
+        Returns:
+            A non-empty string label.
+        """
+        abbr: str | None = self._abbr_table.get(joint_type) if joint_type != -1 else None
+
+        name: str | None = None
+        if joints is not None and 0 <= joint_index < len(joints):
+            descriptor = joints[joint_index]
+            candidate = getattr(descriptor, "name", None)
+            if isinstance(candidate, str) and candidate:
+                name = candidate
+
+        prefix = f"{name}_" if name is not None else ""
+        suffix = f"_{abbr}" if abbr is not None else ""
+        return f"{prefix}{joint_index}{suffix}"
+
+    def _draw_component_on_axis(
+        self,
+        ax,
+        component: TopologyComponent,
+        pos: dict[int, tuple[float, float]],
+        world_node: int,
+        world_in_graph: bool,
+        joints: list[JointDescriptor] | None,
+        *,
+        mode: str,
+        arc_joint_indices: set[int] | None = None,
+        island_color: str = "tab:blue",
+        show_edge_labels: bool = True,
+        edge_label_font_size: int = 8,
+        node_label_font_size: int = 10,
+        node_size_scale: float = 1.0,
+    ) -> None:
+        """Draw a single component on a matplotlib axis using a shared ``pos`` dict.
+
+        Single source of truth for the per-component drawing vocabulary
+        used by the candidate-tree renderer. Mirrors the styling choices
+        of :meth:`render_graph` so that figures stay visually consistent.
+
+        Args:
+            ax: The matplotlib axis to draw on.
+            component: The component to render.
+            pos: Node-to-``(x, y)`` map covering every drawn node.
+            world_node: Index of the implicit world node.
+            world_in_graph: Draw the world node when ``True``.
+            joints: Optional joint descriptors for name-based edge labels.
+            mode: ``"graph"`` (base / grounding / internal classification)
+                or ``"candidate"`` (base / arc / chord classification).
+            arc_joint_indices: Required in ``"candidate"`` mode; the set
+                of global joint indices that belong to the spanning tree.
+            island_color: Fill color for island bodies.
+            show_edge_labels: When ``True``, draw per-edge text labels.
+            edge_label_font_size: Font size for edge labels.
+            node_label_font_size: Font size for node labels.
+            node_size_scale: Multiplier applied to all node marker sizes.
+
+        Raises:
+            ImportError: If :mod:`networkx` or :mod:`matplotlib` are not installed.
+            ValueError: If ``mode`` is not one of ``"graph"`` or
+                ``"candidate"``, or ``arc_joint_indices`` is missing in
+                ``"candidate"`` mode.
+        """
+        try:
+            import networkx as nx
+        except ImportError as e:
+            raise ImportError(
+                "networkx is required for rendering the topology graph. Please install it with `pip install networkx`."
+            ) from e
+
+        if mode not in ("graph", "candidate"):
+            raise ValueError(f"Unsupported mode `{mode!r}`: expected one of `'graph'` or `'candidate'`.")
+        if mode == "candidate" and arc_joint_indices is None:
+            raise ValueError("`arc_joint_indices` must be provided when `mode='candidate'`.")
+
+        # Plain `nx.Graph` (not MultiGraph) keeps the per-edge styling
+        # logic simple; parallel edges between the same body pair are rare.
+        # Node identities are coerced to int so they line up with the
+        # `tuple[int, int]` endpoints carried by every `GraphEdge`.
+        G = nx.Graph()
+        if component.nodes:
+            G.add_nodes_from(int(n) for n in component.nodes)
+        if world_in_graph:
+            G.add_node(world_node)
+        for e in component.edges or []:
+            G.add_edge(*e.nodes)
+
+        base_key: tuple[int, int] | None = None
+        if component.base_edge is not None:
+            base_key = (component.base_edge.joint_type, component.base_edge.joint_index)
+
+        ground_keys: set[tuple[int, int]] = set()
+        if mode == "graph" and component.ground_edges is not None:
+            for ge in component.ground_edges:
+                ground_keys.add((ge.joint_type, ge.joint_index))
+
+        # Classify each edge into one of three buckets and build a single
+        # edge-label map keyed by `(u, v)`.
+        base_edges_uv: list[tuple[int, int]] = []
+        secondary_edges_uv: list[tuple[int, int]] = []  # grounding (graph) or arc (candidate)
+        tertiary_edges_uv: list[tuple[int, int]] = []  # internal (graph) or chord (candidate)
+        edge_label_map: dict[tuple[int, int], str] = {}
+        for e in component.edges or []:
+            uv = e.nodes
+            key = (e.joint_type, e.joint_index)
+            if base_key is not None and key == base_key:
+                base_edges_uv.append(uv)
+            elif mode == "graph":
+                if key in ground_keys:
+                    secondary_edges_uv.append(uv)
+                else:
+                    tertiary_edges_uv.append(uv)
+            else:
+                # Candidate mode: arc vs chord. The base edge is already
+                # peeled off above, so the membership check is unambiguous.
+                if e.joint_index in arc_joint_indices:  # type: ignore[operator]
+                    secondary_edges_uv.append(uv)
+                else:
+                    tertiary_edges_uv.append(uv)
+            edge_label_map[uv] = self._build_edge_label(e.joint_type, e.joint_index, joints)
+
+        # Edges first, behind the nodes. The ordering (tertiary → secondary →
+        # base) puts the most prominent style on top, matching `render_graph`.
+        if tertiary_edges_uv:
+            if mode == "graph":
+                nx.draw_networkx_edges(G, pos, edgelist=tertiary_edges_uv, width=1.5, edge_color="0.55", ax=ax)
+            else:
+                nx.draw_networkx_edges(
+                    G,
+                    pos,
+                    edgelist=tertiary_edges_uv,
+                    width=1.5,
+                    style="dashed",
+                    edge_color="tab:red",
+                    alpha=0.7,
+                    ax=ax,
+                )
+        if secondary_edges_uv:
+            if mode == "graph":
+                nx.draw_networkx_edges(
+                    G, pos, edgelist=secondary_edges_uv, width=1.8, style="dashed", edge_color="0.35", ax=ax
+                )
+            else:
+                nx.draw_networkx_edges(G, pos, edgelist=secondary_edges_uv, width=1.8, edge_color="0.35", ax=ax)
+        if base_edges_uv:
+            nx.draw_networkx_edges(G, pos, edgelist=base_edges_uv, width=2.5, edge_color="black", ax=ax)
+
+        # Per-node styling — mirrors `render_graph`. Defaults are set first and
+        # then overridden by component- and role-specific styling so the base
+        # node always wins over the generic island styling. All sizes are
+        # multiplied by `node_size_scale` so the candidate-grid renderer can
+        # keep markers proportional to per-cell physical size.
+        size_default = max(1, int(round(500 * node_size_scale)))
+        size_world = max(1, int(round(400 * node_size_scale)))
+        size_member = max(1, int(round(300 * node_size_scale)))
+
+        node_color_map: dict[int, str] = {}
+        node_size_map: dict[int, int] = {}
+        node_edge_color_map: dict[int, str] = {}
+        node_linewidth_map: dict[int, float] = {}
+        for n in G.nodes:
+            node_color_map[n] = "lightgray"
+            node_size_map[n] = size_default
+            node_edge_color_map[n] = "black"
+            node_linewidth_map[n] = 1.0
+
+        if world_in_graph:
+            node_color_map[world_node] = "black"
+            node_size_map[world_node] = size_world
+            node_edge_color_map[world_node] = "black"
+            node_linewidth_map[world_node] = 1.5
+
+        if component.is_island:
+            for n in component.nodes or []:
+                nidx = int(n)
+                node_color_map[nidx] = island_color
+                node_size_map[nidx] = size_member
+        elif component.nodes:
+            nidx = int(component.nodes[0])
+            if component.is_connected:
+                node_color_map[nidx] = "grey"
+            else:
+                node_color_map[nidx] = "white"
+            node_size_map[nidx] = size_member
+
+        if component.base_node is not None:
+            node_linewidth_map[int(component.base_node)] = 2.5
+
+        ordered_nodes = list(G.nodes)
+        nx.draw_networkx_nodes(
+            G,
+            pos,
+            nodelist=ordered_nodes,
+            node_color=[node_color_map[n] for n in ordered_nodes],
+            node_size=[node_size_map[n] for n in ordered_nodes],
+            edgecolors=[node_edge_color_map[n] for n in ordered_nodes],
+            linewidths=[node_linewidth_map[n] for n in ordered_nodes],
+            ax=ax,
+        )
+
+        # Node labels — keep the world label readable on its dark fill.
+        if world_in_graph:
+            nx.draw_networkx_labels(
+                G, pos, labels={world_node: "W"}, font_size=node_label_font_size, font_color="white", ax=ax
+            )
+            other_labels = {n: str(n) for n in G.nodes if n != world_node}
+            nx.draw_networkx_labels(
+                G, pos, labels=other_labels, font_size=node_label_font_size, font_color="black", ax=ax
+            )
+        else:
+            node_labels = {n: str(n) for n in G.nodes}
+            nx.draw_networkx_labels(
+                G, pos, labels=node_labels, font_size=node_label_font_size, font_color="black", ax=ax
+            )
+
+        if show_edge_labels and edge_label_map:
+            nx.draw_networkx_edge_labels(
+                G,
+                pos,
+                edge_labels=edge_label_map,
+                font_size=edge_label_font_size,
+                bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "none", "alpha": 0.85},
+                ax=ax,
+            )

@@ -1,13 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
 
-"""
-Spanning-tree generator backends for the topology subsystem.
+"""Spanning-tree generator backends for the topology subsystem.
 
-This module ships concrete implementations of
-:class:`TopologySpanningTreeGeneratorBase` that the :class:`TopologyGraph`
-pipeline can use to enumerate spanning-tree candidates for each component
-of a topology graph.
+Concrete implementations of :class:`TopologySpanningTreeGeneratorBase`
+that the :class:`TopologyGraph` pipeline can use to enumerate
+spanning-tree candidates for each component of a topology graph.
 
 Conventions
 -----------
@@ -17,23 +15,17 @@ inside each returned :class:`TopologySpanningTree`. Body local position
 numbered ``1..N_B - 1`` in BFS or DFS discovery order from the root. All
 per-body fields (``parents``, ``children``, ``support``, ``subtree``)
 store local body positions; per-joint fields (``predecessors``,
-``successors``) store local body positions for both the arc segment and
-the chord segment of the array, with the implicit world body keeping the
-sentinel value ``-1``.
+``successors``) store local body positions for both the arc and chord
+segments, with the implicit world body keeping the sentinel value ``-1``.
 
 The ``arcs`` list stores **global** joint indices and is parallel to the
 local body positions: ``arcs[i]`` is the global joint index of the joint
 connecting the body at local position ``i`` to its parent body (or, for
 ``i == 0``, to the implicit world node via the component's base edge).
 The ``chords`` list stores the global joint indices of all remaining
-joints in the source component.
-
-This guarantees Featherstone's regular-numbering invariant
-``parents[i] < i`` for all ``i >= 1`` *by construction* (since traversal
-discovers parents before children), so the optional global re-numbering
-step (``TODO IMPLEMENTATIONS #4`` in the kamino ``core.topology`` module)
-is only ever needed to remap local positions back to global
-:class:`TopologyGraph` indices.
+joints in the source component. This guarantees Featherstone's
+regular-numbering invariant ``parents[i] < i`` for all ``i >= 1`` by
+construction (since traversal discovers parents before children).
 """
 
 from __future__ import annotations
@@ -44,15 +36,16 @@ from itertools import product
 from ..core.types import override
 from .types import (
     DEFAULT_WORLD_NODE_INDEX,
-    EdgeType,
+    NO_BASE_JOINT_INDEX,
+    GraphEdge,
     NodeType,
     OrientedEdge,
     SpanningTreeTraversal,
     TopologyComponent,
     TopologySpanningTree,
     TopologySpanningTreeGeneratorBase,
-    _validate_max_candidates,
-    _validate_traversal_mode,
+    validate_max_candidates,
+    validate_traversal_mode,
 )
 
 ###
@@ -70,59 +63,42 @@ __all__ = [
 
 
 class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBase):
-    """A :class:`TopologySpanningTreeGeneratorBase` backend that enumerates
-    minimum-depth spanning-tree candidates for each component subgraph.
+    """Spanning-tree generator that enumerates minimum-depth candidates per component.
 
-    Given a chosen root body, a *minimum-depth* spanning tree is a tree
+    For a chosen root body, a *minimum-depth* spanning tree is a tree
     whose maximum root-to-leaf arc count equals the eccentricity of the
     root in the component's body-only subgraph. The set of such trees is
     enumerated by allowing each non-root body to pick any incoming
     parent edge from a strictly preceding BFS layer.
 
-    The enumeration source for the root body is determined by the
-    following priority cascade (see ``TODO IMPLEMENTATIONS`` item ``2d``
-    in the kamino ``core.topology`` module), which can be overridden per-call:
+    Root-selection priority cascade (overridable per call):
 
-    1. An explicit ``roots`` argument always wins. If a single root is
-       given and the source component had no auto-assigned base, the
-       root and its first connecting grounding edge (if any) are
-       written back to ``component.base_node`` / ``component.base_edge``.
+    1. An explicit ``roots`` argument always wins. With a single root and
+       a component without an auto-assigned base, the root and its first
+       connecting grounding edge (if any) are written back to
+       ``component.base_node`` / ``component.base_edge``.
     2. Otherwise, ``component.base_node`` is used as the unique root.
-    3. Otherwise, ``component.ground_nodes`` is used (one root per
-       grounding node).
-    4. Otherwise, the body with the unique maximum internal degree is
-       used.
-    5. Otherwise (degree tie or ``override_priorities=True``), a
-       brute-force enumeration over every body node is performed.
+    3. Otherwise, ``component.ground_nodes`` is used (one root each).
+    4. Otherwise, the body with the unique maximum internal degree.
+    5. Otherwise (degree tie or ``override_priorities=True``), brute-force
+       over every body node.
 
     Args:
-        directed:
-            When ``True``, treat each input edge's ``(predecessor,
-            successor)`` order as the only admissible polarity. When
-            ``False`` (default), allow either polarity when building the
-            tree.
-        traversal_mode:
-            Default traversal order (``"bfs"`` or ``"dfs"``) used to
-            assign local body positions inside each generated tree.
-            Overridable per call via
-            :meth:`generate_spanning_trees`.
-        max_candidates:
-            Default cap on the number of candidate trees produced per
-            component. Overridable per call via
-            :meth:`generate_spanning_trees`. ``None`` means no cap.
-        override_priorities:
-            Default value of the per-call ``override_priorities``
-            keyword argument. When ``True``, skip the priority cascade
-            and brute-force every body node as a root.
-        prioritize_balanced:
-            Default value of the per-call ``prioritize_balanced``
-            keyword argument. When ``True``, candidate trees are
-            re-ordered (and truncated, if ``max_candidates`` is set) by
-            an imbalance metric that prefers trees whose internal nodes
-            distribute children evenly.
-        prioritize_grounding_when_no_base:
-            When ``True`` (default), use ``component.ground_nodes`` as
-            roots in step ``3`` of the priority cascade above. When
+        directed: When ``True``, treat each input edge's ``(predecessor,
+            successor)`` order as the only admissible polarity; when
+            ``False`` (default), allow either polarity.
+        traversal_mode: Default traversal order (``"bfs"`` or ``"dfs"``)
+            used to assign local body positions inside each generated tree.
+        max_candidates: Default cap on the number of candidate trees
+            produced per component; ``None`` means no cap.
+        override_priorities: Default value of the per-call argument; when
+            ``True``, skip the priority cascade and brute-force over every
+            body node as root.
+        prioritize_balanced: Default value of the per-call argument; when
+            ``True``, candidate trees are re-ordered (and truncated, if
+            ``max_candidates`` is set) by an imbalance metric.
+        prioritize_grounding_when_no_base: When ``True`` (default), use
+            ``component.ground_nodes`` as roots in step ``3``; when
             ``False``, skip directly to the degree-based heuristic.
     """
 
@@ -140,8 +116,8 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         prioritize_balanced: bool = False,
         prioritize_grounding_when_no_base: bool = True,
     ) -> None:
-        _validate_traversal_mode(traversal_mode)
-        _validate_max_candidates(max_candidates)
+        validate_traversal_mode(traversal_mode)
+        validate_max_candidates(max_candidates)
         self._directed: bool = directed
         self._traversal_mode: SpanningTreeTraversal = traversal_mode
         self._max_candidates: int | None = max_candidates
@@ -150,7 +126,7 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         self._prioritize_grounding_when_no_base: bool = prioritize_grounding_when_no_base
 
     ###
-    # Public API
+    # Operations
     ###
 
     @override
@@ -167,43 +143,47 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         """Enumerate minimum-depth spanning trees for ``component``.
 
         Per-call arguments take precedence over the constructor defaults
-        when supplied. See the class-level docstring for the meaning of
-        each argument.
+        when supplied. See the class docstring for the priority cascade.
 
         Args:
-            component: The component subgraph to enumerate spanning trees for.
-            traversal_mode: Per-call override of the constructor default.
-            max_candidates: Per-call override of the constructor default.
-            roots: Optional explicit root list (priority cascade step ``1``).
-            override_priorities: Per-call override of the constructor default.
-            prioritize_balanced: Per-call override of the constructor default.
+            component: The component subgraph to enumerate trees for.
+            traversal_mode: Per-call traversal override.
+            max_candidates: Per-call cap on candidates per component.
+            roots: Optional explicit root list (priority cascade step 1).
+            override_priorities: Per-call override of the constructor
+                default.
+            prioritize_balanced: Per-call override of the constructor
+                default.
 
         Returns:
-            A list of :class:`TopologySpanningTree` candidates, each
-            populated with the schema described in the module docstring.
+            A list of :class:`TopologySpanningTree` candidates.
+
+        Raises:
+            ValueError: If ``component`` is ``None`` or has no body nodes.
+            RuntimeError: If no root candidate could be selected.
         """
-        # Resolve effective settings: per-call takes precedence over constructor defaults.
         traversal: SpanningTreeTraversal = traversal_mode if traversal_mode is not None else self._traversal_mode
-        _validate_traversal_mode(traversal)
+        validate_traversal_mode(traversal)
         cap: int | None = max_candidates if max_candidates is not None else self._max_candidates
-        _validate_max_candidates(cap)
+        validate_max_candidates(cap)
         ovp: bool = self._override_priorities if override_priorities is None else override_priorities
         bal: bool = self._prioritize_balanced if prioritize_balanced is None else prioritize_balanced
 
-        # Validate the component
         if component is None:
             raise ValueError("`component` must not be None.")
-        body_nodes = list(component.nodes) if component.nodes is not None else []
+        # Coerce the canonical `GraphNode` storage into raw int indices for the internal
+        # graph algorithms (BFS, adjacency, root selection); per-node metadata (e.g.
+        # names) is irrelevant for tree enumeration and stays on the source component.
+        body_nodes: list[int] = [int(n) for n in (component.nodes or [])]
         if not body_nodes:
             raise ValueError("`component.nodes` must contain at least one body node.")
 
-        # Orphan special case: a single-body component has exactly one
-        # trivial spanning tree (with the body as root and at most the
-        # base edge as the sole arc). Skip the enumeration machinery.
+        # Orphan special case: a single-body component has exactly one trivial
+        # spanning tree (with the body as root and at most the base edge as
+        # the sole arc).
         if len(body_nodes) == 1:
             return [self._build_orphan_tree(component, body_nodes[0], traversal)]
 
-        # Resolve root candidates per the priority cascade
         root_candidates = self._select_root_candidates(component, roots, ovp)
         if not root_candidates:
             raise RuntimeError(
@@ -211,7 +191,6 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
                 f"(roots={roots!r}, override_priorities={ovp})."
             )
 
-        # Enumerate per-root with a global cap that lets the loop short-circuit
         candidates: list[TopologySpanningTree] = []
         remaining = cap
         for root in root_candidates:
@@ -229,107 +208,91 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
                     break
 
         # Optional balanced-tree ordering. Stable sort preserves the
-        # original enumeration order for trees that tie on imbalance.
+        # original enumeration order on ties.
         if bal and len(candidates) > 1:
-            candidates.sort(key=self._balanced_score)
-
+            candidates.sort(key=lambda t: t.balanced_score())
         return candidates
 
     ###
-    # Helpers - graph utilities (TODO 2c)
+    # Internals - graph utilities
     ###
 
-    @staticmethod
-    def _world_index(component: TopologyComponent) -> int:
-        """Returns the world-node sentinel index used by ``component``'s edges.
-
-        Components carry their world node implicitly via edge endpoints.
-        We treat any negative endpoint as ``world`` for parsing
-        purposes, defaulting to :data:`DEFAULT_WORLD_NODE_INDEX` when
-        no world endpoint appears in the edge list.
-        """
-        if component.edges:
-            for _t, _j, (u, v) in component.edges:
-                if u < 0:
-                    return u
-                if v < 0:
-                    return v
-        return DEFAULT_WORLD_NODE_INDEX
-
-    def _partition_edges(self, component: TopologyComponent, world: int) -> tuple[list[EdgeType], list[EdgeType]]:
+    def _partition_edges(self, component: TopologyComponent, world: int) -> tuple[list[GraphEdge], list[GraphEdge]]:
         """Split ``component.edges`` into ``(internal, world)`` lists.
 
-        Internal edges are body-to-body edges; world edges are those
-        with the world sentinel as one endpoint.
+        Internal edges are body-to-body; world edges have the world
+        sentinel as one endpoint.
         """
-        internal: list[EdgeType] = []
-        world_edges: list[EdgeType] = []
+        internal: list[GraphEdge] = []
+        world_edges: list[GraphEdge] = []
         for e in component.edges or []:
-            _t, _j, (u, v) = e
+            u, v = e.nodes
             if u == world or v == world:
                 world_edges.append(e)
             else:
                 internal.append(e)
         return internal, world_edges
 
-    def _compute_node_degrees(self, component: TopologyComponent) -> dict[NodeType, int]:
+    def _compute_node_degrees(self, component: TopologyComponent) -> dict[int, int]:
         """Compute the internal degree of every body node in ``component``.
 
-        Implements TODO IMPLEMENTATIONS item ``2c``: only body-to-body
-        edges contribute, so grounding/base edges to the world are
-        ignored. Self-loops (``u == v``) contribute ``2`` to the
-        node's degree, matching the standard graph-theoretic
-        definition.
+        Only body-to-body edges contribute, so grounding/base edges to
+        the world are ignored. Self-loops contribute ``2`` to the node's
+        degree, matching the standard graph-theoretic definition.
         """
-        world = self._world_index(component)
-        degrees: dict[NodeType, int] = dict.fromkeys(component.nodes or [], 0)
+        world = component.world_node
+        degrees: dict[int, int] = {int(n): 0 for n in (component.nodes or [])}
         internal_edges, _ = self._partition_edges(component, world)
-        for _t, _j, (u, v) in internal_edges:
+        for e in internal_edges:
+            u, v = e.nodes
             degrees[u] = degrees.get(u, 0) + 1
             degrees[v] = degrees.get(v, 0) + 1
         return degrees
 
     def _build_internal_adjacency(
         self,
-        body_nodes: list[NodeType],
-        internal_edges: list[EdgeType],
+        body_nodes: list[int],
+        internal_edges: list[GraphEdge],
         directed: bool,
-    ) -> dict[NodeType, list[tuple[NodeType, int, int, tuple[NodeType, NodeType]]]]:
+    ) -> dict[int, list[tuple[int, GraphEdge]]]:
         """Build an adjacency mapping for the body-only subgraph.
 
-        Each entry is ``current -> [(next_body, joint_type, joint_index, original_uv), ...]``.
+        Each entry is ``current -> [(next_body, edge), ...]``, where
+        ``edge`` is the source :class:`GraphEdge` (carrying the original
+        ``(predecessor, successor)`` polarity, joint type, and index).
         For undirected components, both polarities are emitted so that
         BFS / parent-discovery can traverse either direction.
         """
-        adj: dict[NodeType, list[tuple[NodeType, int, int, tuple[NodeType, NodeType]]]] = {n: [] for n in body_nodes}
-        for jt, jid, (u, v) in internal_edges:
+        adj: dict[int, list[tuple[int, GraphEdge]]] = {n: [] for n in body_nodes}
+        for e in internal_edges:
+            u, v = e.nodes
             if u in adj:
-                adj[u].append((v, jt, jid, (u, v)))
+                adj[u].append((v, e))
             if not directed and u != v and v in adj:
-                adj[v].append((u, jt, jid, (u, v)))
+                adj[v].append((u, e))
         # Stable adjacency ordering keeps enumeration deterministic across runs
         for neighbors in adj.values():
-            neighbors.sort(key=lambda x: (x[2], x[0]))
+            neighbors.sort(key=lambda x: (x[1].joint_index, x[0]))
         return adj
 
     @staticmethod
     def _bfs_distances(
-        root: NodeType,
-        adj: dict[NodeType, list[tuple[NodeType, int, int, tuple[NodeType, NodeType]]]],
-    ) -> dict[NodeType, int]:
-        """Standard BFS that returns ``body -> distance`` for every reachable body."""
-        dist: dict[NodeType, int] = {root: 0}
-        queue: deque[NodeType] = deque([root])
+        root: int,
+        adj: dict[int, list[tuple[int, GraphEdge]]],
+    ) -> dict[int, int]:
+        """Run BFS from ``root`` and return a ``body -> distance`` map."""
+        dist: dict[int, int] = {root: 0}
+        queue: deque[int] = deque([root])
         while queue:
             u = queue.popleft()
-            for v, _jt, _jid, _orig in adj[u]:
+            for v, _edge in adj[u]:
                 if v not in dist:
                     dist[v] = dist[u] + 1
                     queue.append(v)
         return dist
 
     ###
-    # Helpers - root selection (TODO 2d)
+    # Internals - root selection
     ###
 
     def _select_root_candidates(
@@ -337,56 +300,41 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         component: TopologyComponent,
         roots: list[NodeType] | None,
         override_priorities: bool,
-    ) -> list[NodeType]:
+    ) -> list[int]:
         """Apply the root-selection priority cascade described in the class docstring.
 
-        Implements TODO IMPLEMENTATIONS item ``2d``. May mutate
-        ``component.base_node`` / ``component.base_edge`` when the
-        caller passes a single explicit root and the component had no
-        previously-assigned base (per spec line ``2524``).
+        May mutate ``component.base_node`` / ``component.base_edge`` when
+        the caller passes a single explicit root and the component had
+        no previously-assigned base.
         """
-        body_nodes = list(component.nodes or [])
+        # Coerce the canonical `GraphNode` storage into raw int indices for the cascade
+        # below. The downstream enumeration routines all consume int indices.
+        body_nodes: list[int] = [int(n) for n in (component.nodes or [])]
 
         # 1. Explicit roots argument wins
         if roots is not None:
             if not roots:
                 raise ValueError("`roots` must be a non-empty list when supplied.")
-            unknown = [r for r in roots if r not in body_nodes]
+            roots_idx: list[int] = [int(r) for r in roots]
+            unknown = [r for r in roots_idx if r not in body_nodes]
             if unknown:
                 raise ValueError(
                     f"`roots` contains body indices not in component.nodes: {unknown!r}; valid bodies: {body_nodes!r}."
                 )
-            # Stamp base_node/base_edge in-place when admissible. This is
-            # only done for a single-root request on a component that
-            # has no pre-assigned base, matching the spec's admissibility
-            # condition. When a grounding edge exists for the chosen
-            # root, promote the first such edge; otherwise leave the
-            # base unset so a later base-selector module can decide.
-            if len(roots) == 1 and component.base_edge is None:
-                world = self._world_index(component)
-                root = roots[0]
+            # Stamp base_node/base_edge in-place for a single-root request on a
+            # component that has no pre-assigned base. When a grounding edge
+            # exists for the chosen root, promote the first such edge via
+            # `assign_base` (which clears the promoted edge from the grounding
+            # lists and re-validates the component).
+            if len(roots_idx) == 1 and component.base_edge is None:
+                world = component.world_node
+                root = roots_idx[0]
                 for e in component.ground_edges or []:
-                    _t, _j, (u, v) = e
+                    u, v = e.nodes
                     if (u == world and v == root) or (v == world and u == root):
-                        component.base_node = root
-                        component.base_edge = e
-                        component.is_connected = True
-                        # Drop the promoted edge from the grounding list. Recompute
-                        # `ground_nodes` from the remaining grounding edges rather
-                        # than blindly removing `root`: a body can have several
-                        # grounding edges (e.g. a Stewart-platform leg), and
-                        # `root` must remain a grounding node when any of those
-                        # edges still references it. Otherwise the
-                        # ``set(ground_nodes) == implied_endpoints_of(ground_edges)``
-                        # invariant in :meth:`TopologyComponent.__post_init__`
-                        # is silently violated.
-                        if component.ground_edges is not None:
-                            component.ground_edges = [g for g in component.ground_edges if g != e]
-                            if component.ground_nodes is not None:
-                                remaining = {n for _, _, pair in component.ground_edges for n in pair if n != world}
-                                component.ground_nodes = sorted(remaining)
+                        component.assign_base(base_node=root, base_edge=e)
                         break
-            return list(roots)
+            return roots_idx
 
         # 5'. Override → brute-force
         if override_priorities:
@@ -394,11 +342,11 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
 
         # 2. Use base_node when available
         if component.base_node is not None:
-            return [component.base_node]
+            return [int(component.base_node)]
 
         # 3. Use grounding nodes when available
         if self._prioritize_grounding_when_no_base and component.ground_nodes:
-            return list(component.ground_nodes)
+            return [int(n) for n in component.ground_nodes]
 
         # 4. Use the unique max-degree node
         degrees = self._compute_node_degrees(component)
@@ -413,13 +361,13 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         return list(body_nodes)
 
     ###
-    # Helpers - per-root enumeration (TODO 2b)
+    # Internals - per-root enumeration
     ###
 
     def _enumerate_min_depth_trees_from_root(
         self,
         component: TopologyComponent,
-        root: NodeType,
+        root: int,
         traversal: SpanningTreeTraversal,
         max_count: int | None,
         directed: bool,
@@ -428,16 +376,15 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
 
         Returns an empty list (rather than raising) when the body-only
         subgraph is not fully reachable from ``root`` under the chosen
-        polarity rules — that root simply admits no spanning tree.
-        Implements TODO IMPLEMENTATIONS item ``2b``.
+        polarity rules.
         """
-        body_nodes = list(component.nodes or [])
+        body_nodes: list[int] = [int(n) for n in (component.nodes or [])]
         if root not in body_nodes:
             raise ValueError(f"Root `{root}` is not contained in component nodes `{body_nodes}`.")
         if max_count is not None and max_count <= 0:
             return []
 
-        world = self._world_index(component)
+        world = component.world_node
         internal_edges, world_edges = self._partition_edges(component, world)
         adj = self._build_internal_adjacency(body_nodes, internal_edges, directed)
 
@@ -449,33 +396,34 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
 
         # Bucket bodies by BFS distance so parent enumeration scans only the preceding
         # layer (not all bodies). Order within each bucket matches ``body_nodes``.
-        nodes_at_dist: dict[int, list[NodeType]] = defaultdict(list)
+        nodes_at_dist: dict[int, list[int]] = defaultdict(list)
         for n in body_nodes:
             nodes_at_dist[dist[n]].append(n)
 
-        # Per non-root body: collect every layered parent-edge candidate
+        # Per non-root body, collect every layered parent-edge candidate. Edge
+        # deduplication is maintained by the parser (`set(edges)`); within a
+        # single `adj[p]` traversal, the source `GraphEdge` instances are unique
+        # by construction.
         non_root_nodes = [n for n in body_nodes if n != root]
-        parent_choices: dict[NodeType, list[OrientedEdge]] = {}
+        parent_choices: dict[int, list[OrientedEdge]] = {}
         for x in non_root_nodes:
             dx = dist[x]
             choices: list[OrientedEdge] = []
-            seen: set[tuple[int, NodeType, NodeType]] = set()
             for p in nodes_at_dist.get(dx - 1, []):
-                # Enumerate edges p -> x; the recorded `oriented` pair is (p, x)
-                for nxt, jt, jid, original in adj[p]:
+                # Enumerate edges from layer-(dx-1) parent `p` into `x`. The source
+                # `GraphEdge` carries the original `(predecessor, successor)` ordering
+                # while the oriented variant always pairs `(parent, child) = (p, x)`;
+                # reuse the source edge directly when its polarity already matches.
+                for nxt, edge in adj[p]:
                     if nxt != x:
                         continue
-                    key = (jid, p, x)
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    choices.append(OrientedEdge(joint_type=jt, joint_index=jid, original=original, oriented=(p, x)))
-            if not choices:
-                # The graph claims `x` is reachable yet no layered parent exists.
-                # This indicates an inconsistency in the BFS distances and is treated
-                # as a hard error so callers can surface bad inputs immediately.
-                raise RuntimeError(f"No layered parent edge found for body `{x}` at depth `{dx}` from root `{root}`.")
-            choices.sort(key=lambda c: (c.joint_index, c.oriented[0], c.oriented[1]))
+                    oriented = (
+                        edge
+                        if edge.nodes == (p, x)
+                        else GraphEdge(joint_type=edge.joint_type, joint_index=edge.joint_index, nodes=(p, x))
+                    )
+                    choices.append(OrientedEdge(original=edge, oriented=oriented))
+            choices.sort(key=lambda c: (c.oriented.joint_index, c.oriented.nodes[0], c.oriented.nodes[1]))
             parent_choices[x] = choices
 
         # Resolve the (provisional) base edge for this root: the first
@@ -488,7 +436,7 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
 
         trees: list[TopologySpanningTree] = []
         for choice_tuple in product(*choice_lists):
-            chosen_arcs: dict[NodeType, OrientedEdge] = dict(zip(non_root_nodes, choice_tuple, strict=True))
+            chosen_arcs: dict[int, OrientedEdge] = dict(zip(non_root_nodes, choice_tuple, strict=True))
             tree = self._build_tree(
                 component=component,
                 root=root,
@@ -508,11 +456,11 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
 
     @staticmethod
     def _select_base_edge_for_root(
-        root: NodeType,
+        root: int,
         component: TopologyComponent,
         world: int,
-        world_edges: list[EdgeType],
-    ) -> EdgeType | None:
+        world_edges: list[GraphEdge],
+    ) -> GraphEdge | None:
         """Pick a base edge for ``root`` in deterministic priority order.
 
         Preference: the component's already-assigned base edge if
@@ -524,27 +472,27 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         if component.base_node == root and component.base_edge is not None:
             return component.base_edge
         for e in component.ground_edges or []:
-            _t, _j, (u, v) = e
+            u, v = e.nodes
             if (u == world and v == root) or (v == world and u == root):
                 return e
         for e in world_edges:
-            _t, _j, (u, v) = e
+            u, v = e.nodes
             if (u == world and v == root) or (v == world and u == root):
                 return e
         return None
 
     ###
-    # Helpers - tree construction (TopologySpanningTree population)
+    # Internals - tree construction
     ###
 
     @staticmethod
     def _children_dict(
-        chosen_arcs: dict[NodeType, OrientedEdge],
-    ) -> dict[NodeType, list[NodeType]]:
+        chosen_arcs: dict[int, OrientedEdge],
+    ) -> dict[int, list[int]]:
         """Group each parent's children body indices in stable order."""
-        children: dict[NodeType, list[NodeType]] = defaultdict(list)
+        children: dict[int, list[int]] = defaultdict(list)
         for child, oedge in chosen_arcs.items():
-            parent = oedge.oriented[0]
+            parent = oedge.oriented.nodes[0]
             children[parent].append(child)
         for plist in children.values():
             plist.sort()
@@ -552,14 +500,14 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
 
     @staticmethod
     def _traversal_order(
-        root: NodeType,
-        children_of: dict[NodeType, list[NodeType]],
+        root: int,
+        children_of: dict[int, list[int]],
         mode: SpanningTreeTraversal,
-    ) -> list[NodeType]:
+    ) -> list[int]:
         """Linearize the chosen tree in BFS or DFS preorder from ``root``."""
         if mode == "bfs":
-            order: list[NodeType] = [root]
-            queue: deque[NodeType] = deque([root])
+            order: list[int] = [root]
+            queue: deque[int] = deque([root])
             while queue:
                 u = queue.popleft()
                 for c in children_of.get(u, []):
@@ -567,9 +515,9 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
                     queue.append(c)
             return order
 
-        stack: list[NodeType] = [root]
-        visited: set[NodeType] = {root}
-        order_dfs: list[NodeType] = []
+        stack: list[int] = [root]
+        visited: set[int] = {root}
+        order_dfs: list[int] = []
         while stack:
             u = stack.pop()
             order_dfs.append(u)
@@ -582,11 +530,11 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
     def _build_tree(
         self,
         component: TopologyComponent,
-        root: NodeType,
-        base_edge: EdgeType | None,
-        chosen_arcs: dict[NodeType, OrientedEdge],
-        world_edges: list[EdgeType],
-        internal_edges: list[EdgeType],
+        root: int,
+        base_edge: GraphEdge | None,
+        chosen_arcs: dict[int, OrientedEdge],
+        world_edges: list[GraphEdge],
+        internal_edges: list[GraphEdge],
         depth: int,
         traversal: SpanningTreeTraversal,
         directed: bool,
@@ -599,10 +547,9 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         edge (if any) becomes ``arcs[0]`` so the per-body and per-arc
         portions of the parallel arrays stay aligned.
         """
-        # Linearize bodies in traversal order (root first); build local index map
         children_of = self._children_dict(chosen_arcs)
         body_order = self._traversal_order(root, children_of, traversal)
-        local_of: dict[NodeType, int] = {b: i for i, b in enumerate(body_order)}
+        local_of: dict[int, int] = {b: i for i, b in enumerate(body_order)}
         num_bodies = len(body_order)
 
         # Tree arcs: arcs[i] is the global joint index of the joint
@@ -610,23 +557,21 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         # the world via the base edge for i == 0).
         arcs: list[int] = [0] * num_bodies
         parents: list[int] = [0] * num_bodies
-        # arcs[0]: the base edge connects the root to the world
         if base_edge is not None:
-            arcs[0] = base_edge[1]
+            arcs[0] = base_edge.joint_index
         else:
-            # Sentinel: -1 indicates "no base joint" (isolated island).
-            # This is consistent with Featherstone's "world has no joint"
-            # and matches the orphan handling in `_build_orphan_tree`.
-            arcs[0] = -1
-        parents[0] = -1
+            # Isolated island has no base joint; mark slot 0 with the
+            # joint-index sentinel.
+            arcs[0] = NO_BASE_JOINT_INDEX
+        parents[0] = DEFAULT_WORLD_NODE_INDEX
         for i in range(1, num_bodies):
             child = body_order[i]
             oedge = chosen_arcs[child]
-            arcs[i] = oedge.joint_index
-            parent_body = oedge.oriented[0]
+            arcs[i] = oedge.oriented.joint_index
+            parent_body = oedge.oriented.nodes[0]
             parents[i] = local_of[parent_body]
 
-        # Children: per-body local-position lists, parallel to body_order
+        # Per-body local-position lists, parallel to body_order
         children: list[list[int]] = [[] for _ in range(num_bodies)]
         for i in range(1, num_bodies):
             children[parents[i]].append(i)
@@ -634,65 +579,64 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         # Subtree (v): post-order accumulation. Each body's subtree
         # contains itself plus its descendants, expressed as local positions.
         subtree: list[list[int]] = [[i] for i in range(num_bodies)]
-        # Process in reverse traversal order so children are processed before parents.
         for i in reversed(range(1, num_bodies)):
             subtree[parents[i]].extend(subtree[i])
-        # Stable per-list sorting keeps the field deterministic and easy to compare in tests.
         for s in subtree:
             s.sort()
 
         # Support (κ): per-body list of arc local positions on the path
         # from that body to the root, excluding the implicit world arc.
-        # Equivalently, support[i] = support[parents[i]] + [i] for i > 0.
         support: list[list[int]] = [[] for _ in range(num_bodies)]
         for i in range(1, num_bodies):
             support[i] = support[parents[i]] + [i]
 
         # Chord joints: every joint in `component.edges` not used as an arc
-        used_arc_joint_indices: set[int] = {arcs[i] for i in range(num_bodies) if arcs[i] >= 0}
-        chord_edges: list[EdgeType] = []
+        used_arc_joint_indices: set[int] = {arcs[i] for i in range(num_bodies) if arcs[i] != NO_BASE_JOINT_INDEX}
+        chord_edges: list[GraphEdge] = []
         for e in component.edges or []:
-            jid = e[1]
-            if jid not in used_arc_joint_indices:
+            if e.joint_index not in used_arc_joint_indices:
                 chord_edges.append(e)
-        chord_joint_indices: list[int] = [e[1] for e in chord_edges]
+        chord_joint_indices: list[int] = [e.joint_index for e in chord_edges]
         num_tree_chords = len(chord_joint_indices)
 
         # Per-joint predecessors / successors arrays. The first
         # `num_bodies` entries align with arcs (in body-order) so that
-        # arc i has predecessor `parents[i]` (or -1 for the root) and
-        # successor `i`. The remaining entries align with chords.
+        # arc i has predecessor `parents[i]` (the world for the root)
+        # and successor `i`. The remaining entries align with chords.
+        # Local-frame sentinel for "world / no body" is
+        # :data:`DEFAULT_WORLD_NODE_INDEX`.
         num_joints = num_bodies + num_tree_chords
-        predecessors: list[int] = [-1] * num_joints
-        successors: list[int] = [-1] * num_joints
-        # Arc segment
+        predecessors: list[int] = [DEFAULT_WORLD_NODE_INDEX] * num_joints
+        successors: list[int] = [DEFAULT_WORLD_NODE_INDEX] * num_joints
         for i in range(num_bodies):
-            if arcs[i] >= 0:
+            if arcs[i] != NO_BASE_JOINT_INDEX:
                 predecessors[i] = parents[i]
                 successors[i] = i
             else:
-                # Sentinel arc (no base edge): predecessor and successor unset (-1)
-                # but we still record the body's own local position as the successor
-                # so the parent-child relationship of the tree is recoverable.
+                # Sentinel arc (no base edge): predecessor stays at the
+                # world sentinel; successor records the body's own local
+                # position so the parent-child relationship is recoverable.
                 successors[i] = i
-        # Chord segment: chord polarity is taken directly from the
-        # source edge for `directed` mode, otherwise oriented from the
-        # lower BFS layer to the higher one to match the arc convention.
-        # World endpoints map to the local index `-1`.
-        for k, (_jt, _jid, (u, v)) in enumerate(chord_edges):
+        # Chord segment: chord polarity is taken directly from the source
+        # edge in `directed` mode, otherwise oriented from the lower BFS
+        # layer to the higher one. World endpoints map to the world
+        # sentinel in the local frame.
+        for k, e in enumerate(chord_edges):
             j_idx = num_bodies + k
+            u, v = e.nodes
             if directed:
                 pu, pv = u, v
             else:
                 pu, pv = self._oriented_chord_endpoints(u, v, local_of, world)
-            predecessors[j_idx] = local_of.get(pu, -1) if pu != world else -1
-            successors[j_idx] = local_of.get(pv, -1) if pv != world else -1
+            predecessors[j_idx] = (
+                local_of.get(pu, DEFAULT_WORLD_NODE_INDEX) if pu != world else DEFAULT_WORLD_NODE_INDEX
+            )
+            successors[j_idx] = local_of.get(pv, DEFAULT_WORLD_NODE_INDEX) if pv != world else DEFAULT_WORLD_NODE_INDEX
 
-        # `num_tree_arcs` counts only **real** arcs (joint indices ≥ 0),
-        # matching the orphan convention in `_build_orphan_tree`. For an
-        # isolated island ``arcs[0] == -1`` is a sentinel for "no base
-        # joint" and must not be counted.
-        num_tree_arcs = sum(1 for a in arcs if a >= 0)
+        # `num_tree_arcs` counts only real arcs (i.e. those whose joint
+        # index is not the :data:`NO_BASE_JOINT_INDEX` sentinel),
+        # matching the orphan convention in `_build_orphan_tree`.
+        num_tree_arcs = sum(1 for a in arcs if a != NO_BASE_JOINT_INDEX)
 
         return TopologySpanningTree(
             traversal=traversal,
@@ -716,11 +660,11 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
 
     @staticmethod
     def _oriented_chord_endpoints(
-        u: NodeType,
-        v: NodeType,
-        local_of: dict[NodeType, int],
+        u: int,
+        v: int,
+        local_of: dict[int, int],
         world: int,
-    ) -> tuple[NodeType, NodeType]:
+    ) -> tuple[int, int]:
         """Choose chord polarity favouring lower-local-position to higher.
 
         World endpoints are kept as-is so the caller can route them to
@@ -737,16 +681,16 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
     def _build_orphan_tree(
         self,
         component: TopologyComponent,
-        body: NodeType,
+        body: int,
         traversal: SpanningTreeTraversal,
     ) -> TopologySpanningTree:
         """Construct the trivial single-body spanning tree.
 
-        Used for orphan (single-node) components. When the component
-        carries a base edge it becomes ``arcs[0]``; otherwise ``arcs``
-        is empty. Any other world edges in the component become chords.
+        When the component carries a base edge it becomes ``arcs[0]``;
+        otherwise ``arcs`` is empty. Any other world edges in the
+        component become chords.
         """
-        world = self._world_index(component)
+        world = component.world_node
         _internal, world_edges = self._partition_edges(component, world)
 
         if component.base_edge is not None:
@@ -757,35 +701,37 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
             base_edge = None
 
         if base_edge is not None:
-            arcs = [base_edge[1]]
-            parents = [-1]
+            arcs = [base_edge.joint_index]
+            parents = [DEFAULT_WORLD_NODE_INDEX]
             num_bodies = 1
-            used = {base_edge[1]}
-            chord_edges = [e for e in (component.edges or []) if e[1] not in used]
-            chord_joint_indices = [e[1] for e in chord_edges]
+            used = {base_edge.joint_index}
+            chord_edges = [e for e in (component.edges or []) if e.joint_index not in used]
+            chord_joint_indices = [e.joint_index for e in chord_edges]
             num_tree_chords = len(chord_joint_indices)
             num_joints = num_bodies + num_tree_chords
-            predecessors = [-1] * num_joints
-            successors = [-1] * num_joints
+            predecessors = [DEFAULT_WORLD_NODE_INDEX] * num_joints
+            successors = [DEFAULT_WORLD_NODE_INDEX] * num_joints
             successors[0] = 0
-            for k, (_jt, _jid, (u, v)) in enumerate(chord_edges):
+            for k, e in enumerate(chord_edges):
                 j_idx = num_bodies + k
-                pu = -1 if u == world else (0 if u == body else -1)
-                pv = -1 if v == world else (0 if v == body else -1)
+                u, v = e.nodes
+                pu = DEFAULT_WORLD_NODE_INDEX if u == world else (0 if u == body else DEFAULT_WORLD_NODE_INDEX)
+                pv = DEFAULT_WORLD_NODE_INDEX if v == world else (0 if v == body else DEFAULT_WORLD_NODE_INDEX)
                 predecessors[j_idx] = pu
                 successors[j_idx] = pv
         else:
             arcs = []
-            parents = [-1]
+            parents = [DEFAULT_WORLD_NODE_INDEX]
             num_bodies = 1
-            chord_joint_indices = [e[1] for e in (component.edges or [])]
+            chord_joint_indices = [e.joint_index for e in (component.edges or [])]
             num_tree_chords = len(chord_joint_indices)
             num_joints = num_tree_chords
-            predecessors = [-1] * num_joints
-            successors = [-1] * num_joints
-            for k, (_jt, _jid, (u, v)) in enumerate(component.edges or []):
-                pu = -1 if u == world else (0 if u == body else -1)
-                pv = -1 if v == world else (0 if v == body else -1)
+            predecessors = [DEFAULT_WORLD_NODE_INDEX] * num_joints
+            successors = [DEFAULT_WORLD_NODE_INDEX] * num_joints
+            for k, e in enumerate(component.edges or []):
+                u, v = e.nodes
+                pu = DEFAULT_WORLD_NODE_INDEX if u == world else (0 if u == body else DEFAULT_WORLD_NODE_INDEX)
+                pv = DEFAULT_WORLD_NODE_INDEX if v == world else (0 if v == body else DEFAULT_WORLD_NODE_INDEX)
                 predecessors[k] = pu
                 successors[k] = pv
 
@@ -808,24 +754,3 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
             children=[[]],
             subtree=[[0]],
         )
-
-    ###
-    # Helpers - candidate scoring
-    ###
-
-    @staticmethod
-    def _balanced_score(tree: TopologySpanningTree) -> int:
-        """Sum of squared per-parent child counts.
-
-        Smaller scores correspond to more balanced trees. For a fixed
-        depth the minimum is achieved when every internal node has the
-        same number of children, and the maximum is reached for a
-        single-spine tree where one parent owns ``N_B - 1`` children.
-
-        ``tree.children`` is always populated by the generator's tree
-        builders; an unset value here indicates a malformed candidate
-        and is surfaced loudly rather than silently scored as ``0``.
-        """
-        if tree.children is None:
-            raise ValueError("Cannot score a TopologySpanningTree with `children=None`; the tree is malformed.")
-        return sum(len(cs) * len(cs) for cs in tree.children)

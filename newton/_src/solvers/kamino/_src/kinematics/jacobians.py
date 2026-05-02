@@ -74,7 +74,7 @@ def make_store_joint_jacobian_dense_func(axes: Any):
         idx: int,
         axis: int,
         JT: mat66f,
-        J_data: wp.array(dtype=float32),
+        J_data: wp.array[float32],
     ):
         for i in range(6):
             J_data[idx + i] = JT[i, axis]
@@ -88,7 +88,7 @@ def make_store_joint_jacobian_dense_func(axes: Any):
         bid_F: int,
         JT_B_j: mat66f,
         JT_F_j: mat66f,
-        J_data: wp.array(dtype=float32),
+        J_data: wp.array[float32],
     ):
         """
         Stores the Jacobian blocks of a joint into the provided flat data array at the specified offset.
@@ -101,7 +101,7 @@ def make_store_joint_jacobian_dense_func(axes: Any):
             bid_F (int): The body index of the follower body of the joint w.r.t the model.
             JT_B_j (mat66f): The 6x6 Jacobian transpose block of the joint's base body.
             JT_F_j (mat66f): The 6x6 Jacobian transpose block of the joint's follower body.
-            J_data (wp.array(dtype=float32)): The flat data array holding the Jacobian matrix blocks.
+            J_data (wp.array[float32]): The flat data array holding the Jacobian matrix blocks.
         """
         # Set the number of rows in the output Jacobian block
         # NOTE: This is evaluated statically at compile time
@@ -137,7 +137,7 @@ def make_store_joint_jacobian_sparse_func(axes: Any):
         JT_B_j: mat66f,
         JT_F_j: mat66f,
         J_nzb_offset: int,
-        J_nzb_values: wp.array(dtype=vec6f),
+        J_nzb_values: wp.array[vec6f],
     ):
         """
         Function extracting rows corresponding to joint axes from the 6x6 joint jacobians,
@@ -147,7 +147,7 @@ def make_store_joint_jacobian_sparse_func(axes: Any):
             JT_B_j (mat66f): The 6x6 Jacobian transpose block of the joint's base body.
             JT_F_j (mat66f): The 6x6 Jacobian transpose block of the joint's follower body.
             J_nzb_offset (int): The index of the first nzb corresponding to this joint.
-            J_nzb_values (wp.array(dtype=vec6f)): Array storing the non-zero blocks of the Jacobians.
+            J_nzb_values (wp.array[vec6f]): Array storing the non-zero blocks of the Jacobians.
         """
         # Set the number of rows in the output Jacobian block
         # NOTE: This is evaluated statically at compile time
@@ -178,7 +178,7 @@ def store_joint_cts_jacobian_dense(
     bid_F: int,
     JT_B: mat66f,
     JT_F: mat66f,
-    J_data: wp.array(dtype=float32),
+    J_data: wp.array[float32],
 ):
     """
     Stores the constraints Jacobian block of a joint into the provided flat data array at the given offset.
@@ -235,7 +235,7 @@ def store_joint_dofs_jacobian_dense(
     bid_F: int,
     JT_B: mat66f,
     JT_F: mat66f,
-    J_data: wp.array(dtype=float32),
+    J_data: wp.array[float32],
 ):
     """
     Stores the DoFs Jacobian block of a joint into the provided flat data array at the given offset.
@@ -289,7 +289,7 @@ def store_joint_cts_jacobian_sparse(
     JT_B_j: mat66f,
     JT_F_j: mat66f,
     J_nzb_offset: int,
-    J_nzb_values: wp.array(dtype=vec6f),
+    J_nzb_values: wp.array[vec6f],
 ):
     """
     Stores the constraints Jacobian block of a joint into the provided flat data array at the given offset.
@@ -343,7 +343,7 @@ def store_joint_dofs_jacobian_sparse(
     JT_B_j: mat66f,
     JT_F_j: mat66f,
     J_nzb_offset: int,
-    J_nzb_values: wp.array(dtype=vec6f),
+    J_nzb_values: wp.array[vec6f],
 ):
     """
     Stores the DoFs Jacobian block of a joint into the provided flat data array at the given offset.
@@ -433,28 +433,28 @@ def compute_intermediate_body_frame_universal_joint(
 @wp.kernel
 def _build_joint_jacobians_dense(
     # Inputs
-    model_info_bodies_offset: wp.array(dtype=int32),
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    model_info_joint_dynamic_cts_offset: wp.array(dtype=int32),
-    model_info_joint_kinematic_cts_offset: wp.array(dtype=int32),
-    model_info_joint_dynamic_cts_group_offset: wp.array(dtype=int32),
-    model_info_joint_kinematic_cts_group_offset: wp.array(dtype=int32),
-    model_joints_wid: wp.array(dtype=int32),
-    model_joints_dof_type: wp.array(dtype=int32),
-    model_joints_dofs_offset: wp.array(dtype=int32),
-    model_joints_num_dynamic_cts: wp.array(dtype=int32),
-    model_joints_dynamic_cts_offset: wp.array(dtype=int32),
-    model_joints_kinematic_cts_offset: wp.array(dtype=int32),
-    model_joints_bid_B: wp.array(dtype=int32),
-    model_joints_bid_F: wp.array(dtype=int32),
-    model_joints_X_j: wp.array(dtype=mat33f),
-    state_joints_p: wp.array(dtype=transformf),
-    state_bodies_q: wp.array(dtype=transformf),
-    jac_cts_offsets: wp.array(dtype=int32),
-    jac_dofs_offsets: wp.array(dtype=int32),
+    model_info_bodies_offset: wp.array[int32],
+    model_info_joint_dofs_offset: wp.array[int32],
+    model_info_joint_dynamic_cts_offset: wp.array[int32],
+    model_info_joint_kinematic_cts_offset: wp.array[int32],
+    model_info_joint_dynamic_cts_group_offset: wp.array[int32],
+    model_info_joint_kinematic_cts_group_offset: wp.array[int32],
+    model_joints_wid: wp.array[int32],
+    model_joints_dof_type: wp.array[int32],
+    model_joints_dofs_offset: wp.array[int32],
+    model_joints_num_dynamic_cts: wp.array[int32],
+    model_joints_dynamic_cts_offset: wp.array[int32],
+    model_joints_kinematic_cts_offset: wp.array[int32],
+    model_joints_bid_B: wp.array[int32],
+    model_joints_bid_F: wp.array[int32],
+    model_joints_X_j: wp.array[mat33f],
+    state_joints_p: wp.array[transformf],
+    state_bodies_q: wp.array[transformf],
+    jac_cts_offsets: wp.array[int32],
+    jac_dofs_offsets: wp.array[int32],
     # Outputs
-    jac_cts_data: wp.array(dtype=float32),
-    jac_dofs_data: wp.array(dtype=float32),
+    jac_cts_data: wp.array[float32],
+    jac_dofs_data: wp.array[float32],
 ):
     """
     A kernel to compute the Jacobians (constraints and actuated DoFs) for the joints in a model.
@@ -538,11 +538,11 @@ def _build_joint_jacobians_dense(
 @wp.kernel
 def _configure_jacobians_sparse(
     # Input:
-    model_num_joint_cts: wp.array(dtype=int32),
-    num_limits: wp.array(dtype=int32),
-    num_contacts: wp.array(dtype=int32),
+    model_num_joint_cts: wp.array[int32],
+    num_limits: wp.array[int32],
+    num_contacts: wp.array[int32],
     # Output:
-    jac_cts_rows: wp.array(dtype=int32),
+    jac_cts_rows: wp.array[int32],
 ):
     world_id = wp.tid()
 
@@ -552,20 +552,20 @@ def _configure_jacobians_sparse(
 @wp.kernel
 def _build_joint_jacobians_sparse(
     # Inputs
-    model_joints_dof_type: wp.array(dtype=int32),
-    model_joints_num_dofs: wp.array(dtype=int32),
-    model_joints_num_dynamic_cts: wp.array(dtype=int32),
-    model_joints_bid_B: wp.array(dtype=int32),
-    model_joints_bid_F: wp.array(dtype=int32),
-    model_joints_X_j: wp.array(dtype=mat33f),
-    model_joints_dynamic_cts_offset: wp.array(dtype=int32),
-    state_joints_p: wp.array(dtype=transformf),
-    state_bodies_q: wp.array(dtype=transformf),
-    jacobian_cts_nzb_offsets: wp.array(dtype=int32),
-    jacobian_dofs_nzb_offsets: wp.array(dtype=int32),
+    model_joints_dof_type: wp.array[int32],
+    model_joints_num_dofs: wp.array[int32],
+    model_joints_num_dynamic_cts: wp.array[int32],
+    model_joints_bid_B: wp.array[int32],
+    model_joints_bid_F: wp.array[int32],
+    model_joints_X_j: wp.array[mat33f],
+    model_joints_dynamic_cts_offset: wp.array[int32],
+    state_joints_p: wp.array[transformf],
+    state_bodies_q: wp.array[transformf],
+    jacobian_cts_nzb_offsets: wp.array[int32],
+    jacobian_dofs_nzb_offsets: wp.array[int32],
     # Outputs
-    jacobian_cts_nzb_values: wp.array(dtype=vec6f),
-    jacobian_dofs_nzb_values: wp.array(dtype=vec6f),
+    jacobian_cts_nzb_values: wp.array[vec6f],
+    jacobian_dofs_nzb_values: wp.array[vec6f],
 ):
     """
     A kernel to compute the Jacobians (constraints and actuated DoFs) for the joints in a model.
@@ -648,21 +648,21 @@ def _build_joint_jacobians_sparse(
 @wp.kernel
 def _build_limit_jacobians_dense(
     # Inputs:
-    model_info_bodies_offset: wp.array(dtype=int32),
-    model_info_joint_dofs_offset: wp.array(dtype=int32),
-    data_info_limit_cts_group_offset: wp.array(dtype=int32),
-    limits_model_num: wp.array(dtype=int32),
+    model_info_bodies_offset: wp.array[int32],
+    model_info_joint_dofs_offset: wp.array[int32],
+    data_info_limit_cts_group_offset: wp.array[int32],
+    limits_model_num: wp.array[int32],
     limits_model_max: int32,
-    limits_wid: wp.array(dtype=int32),
-    limits_lid: wp.array(dtype=int32),
-    limits_bids: wp.array(dtype=vec2i),
-    limits_dof: wp.array(dtype=int32),
-    limits_side: wp.array(dtype=float32),
-    jacobian_dofs_offsets: wp.array(dtype=int32),
-    jacobian_dofs_data: wp.array(dtype=float32),
-    jacobian_cts_offsets: wp.array(dtype=int32),
+    limits_wid: wp.array[int32],
+    limits_lid: wp.array[int32],
+    limits_bids: wp.array[vec2i],
+    limits_dof: wp.array[int32],
+    limits_side: wp.array[float32],
+    jacobian_dofs_offsets: wp.array[int32],
+    jacobian_dofs_data: wp.array[float32],
+    jacobian_cts_offsets: wp.array[int32],
     # Outputs:
-    jacobian_cts_data: wp.array(dtype=float32),
+    jacobian_cts_data: wp.array[float32],
 ):
     """
     A kernel to compute the Jacobians (constraints and actuated DoFs) for the joints in a model.
@@ -721,26 +721,26 @@ def _build_limit_jacobians_dense(
 @wp.kernel
 def _build_limit_jacobians_sparse(
     # Inputs:
-    model_info_bodies_offset: wp.array(dtype=int32),
-    model_joints_dofs_offset: wp.array(dtype=int32),
-    model_joints_num_dofs: wp.array(dtype=int32),
-    state_info_limit_cts_group_offset: wp.array(dtype=int32),
-    limits_model_num: wp.array(dtype=int32),
+    model_info_bodies_offset: wp.array[int32],
+    model_joints_dofs_offset: wp.array[int32],
+    model_joints_num_dofs: wp.array[int32],
+    state_info_limit_cts_group_offset: wp.array[int32],
+    limits_model_num: wp.array[int32],
     limits_model_max: int32,
-    limits_wid: wp.array(dtype=int32),
-    limits_jid: wp.array(dtype=int32),
-    limits_lid: wp.array(dtype=int32),
-    limits_bids: wp.array(dtype=vec2i),
-    limits_dof: wp.array(dtype=int32),
-    limits_side: wp.array(dtype=float32),
-    jacobian_dofs_joint_nzb_offsets: wp.array(dtype=int32),
-    jacobian_dofs_nzb_values: wp.array(dtype=vec6f),
-    jacobian_cts_nzb_start: wp.array(dtype=int32),
+    limits_wid: wp.array[int32],
+    limits_jid: wp.array[int32],
+    limits_lid: wp.array[int32],
+    limits_bids: wp.array[vec2i],
+    limits_dof: wp.array[int32],
+    limits_side: wp.array[float32],
+    jacobian_dofs_joint_nzb_offsets: wp.array[int32],
+    jacobian_dofs_nzb_values: wp.array[vec6f],
+    jacobian_cts_nzb_start: wp.array[int32],
     # Outputs:
-    jacobian_cts_num_nzb: wp.array(dtype=int32),
-    jacobian_cts_nzb_coords: wp.array2d(dtype=int32),
-    jacobian_cts_nzb_values: wp.array(dtype=vec6f),
-    jacobian_cts_limit_nzb_offsets: wp.array(dtype=int32),
+    jacobian_cts_num_nzb: wp.array[int32],
+    jacobian_cts_nzb_coords: wp.array2d[int32],
+    jacobian_cts_nzb_values: wp.array[vec6f],
+    jacobian_cts_limit_nzb_offsets: wp.array[int32],
 ):
     """
     A kernel to compute the Jacobians (constraints and actuated DoFs) for the joints in a model.
@@ -795,20 +795,20 @@ def _build_limit_jacobians_sparse(
 @wp.kernel
 def _build_contact_jacobians_dense(
     # Inputs:
-    model_info_bodies_offset: wp.array(dtype=int32),
-    data_info_contact_cts_group_offset: wp.array(dtype=int32),
-    state_bodies_q: wp.array(dtype=transformf),
-    contacts_model_num: wp.array(dtype=int32),
+    model_info_bodies_offset: wp.array[int32],
+    data_info_contact_cts_group_offset: wp.array[int32],
+    state_bodies_q: wp.array[transformf],
+    contacts_model_num: wp.array[int32],
     contacts_model_max: int32,
-    contacts_wid: wp.array(dtype=int32),
-    contacts_cid: wp.array(dtype=int32),
-    contacts_bid_AB: wp.array(dtype=vec2i),
-    contacts_position_A: wp.array(dtype=vec3f),
-    contacts_position_B: wp.array(dtype=vec3f),
-    contacts_frame: wp.array(dtype=quatf),
-    jacobian_cts_offsets: wp.array(dtype=int32),
+    contacts_wid: wp.array[int32],
+    contacts_cid: wp.array[int32],
+    contacts_bid_AB: wp.array[vec2i],
+    contacts_position_A: wp.array[vec3f],
+    contacts_position_B: wp.array[vec3f],
+    contacts_frame: wp.array[quatf],
+    jacobian_cts_offsets: wp.array[int32],
     # Outputs:
-    jacobian_cts_data: wp.array(dtype=float32),
+    jacobian_cts_data: wp.array[float32],
 ):
     """
     A kernel to compute the Jacobians (constraints and actuated DoFs) for the joints in a model.
@@ -876,23 +876,23 @@ def _build_contact_jacobians_dense(
 @wp.kernel
 def _build_contact_jacobians_sparse(
     # Inputs:
-    model_info_bodies_offset: wp.array(dtype=int32),
-    state_info_contact_cts_group_offset: wp.array(dtype=int32),
-    state_bodies_q: wp.array(dtype=transformf),
-    contacts_model_num: wp.array(dtype=int32),
+    model_info_bodies_offset: wp.array[int32],
+    state_info_contact_cts_group_offset: wp.array[int32],
+    state_bodies_q: wp.array[transformf],
+    contacts_model_num: wp.array[int32],
     contacts_model_max: int32,
-    contacts_wid: wp.array(dtype=int32),
-    contacts_cid: wp.array(dtype=int32),
-    contacts_bid_AB: wp.array(dtype=vec2i),
-    contacts_position_A: wp.array(dtype=vec3f),
-    contacts_position_B: wp.array(dtype=vec3f),
-    contacts_frame: wp.array(dtype=quatf),
-    jacobian_cts_nzb_start: wp.array(dtype=int32),
+    contacts_wid: wp.array[int32],
+    contacts_cid: wp.array[int32],
+    contacts_bid_AB: wp.array[vec2i],
+    contacts_position_A: wp.array[vec3f],
+    contacts_position_B: wp.array[vec3f],
+    contacts_frame: wp.array[quatf],
+    jacobian_cts_nzb_start: wp.array[int32],
     # Outputs:
-    jacobian_cts_num_nzb: wp.array(dtype=int32),
-    jacobian_cts_nzb_coords: wp.array2d(dtype=int32),
-    jacobian_cts_nzb_values: wp.array(dtype=vec6f),
-    jacobian_cts_contact_nzb_offsets: wp.array(dtype=int32),
+    jacobian_cts_num_nzb: wp.array[int32],
+    jacobian_cts_nzb_coords: wp.array2d[int32],
+    jacobian_cts_nzb_values: wp.array[vec6f],
+    jacobian_cts_contact_nzb_offsets: wp.array[int32],
 ):
     """
     A kernel to compute the Jacobians (constraints and actuated DoFs) for the joints in a model.
@@ -963,8 +963,8 @@ def store_col_major_jacobian_block(
     row_id: int32,
     col_id: int32,
     block: mat66f,
-    nzb_coords: wp.array2d(dtype=int32),
-    nzb_values: wp.array(dtype=wp.types.matrix(shape=(6, 1), dtype=float32)),
+    nzb_coords: wp.array2d[int32],
+    nzb_values: wp.array[wp.types.matrix(shape=(6, 1), dtype=float32)],
 ):
     for i in range(6):
         nzb_id_i = nzb_id + i
@@ -977,15 +977,15 @@ def store_col_major_jacobian_block(
 @wp.kernel
 def _update_col_major_joint_jacobians(
     # Inputs
-    model_joints_num_dynamic_cts: wp.array(dtype=int32),
-    model_joints_num_kinematic_cts: wp.array(dtype=int32),
-    model_joints_bid_B: wp.array(dtype=int32),
-    jac_cts_row_major_joint_nzb_offsets: wp.array(dtype=int32),
-    jac_cts_row_major_nzb_coords: wp.array2d(dtype=int32),
-    jac_cts_row_major_nzb_values: wp.array(dtype=vec6f),
-    jac_cts_col_major_joint_nzb_offsets: wp.array(dtype=int32),
+    model_joints_num_dynamic_cts: wp.array[int32],
+    model_joints_num_kinematic_cts: wp.array[int32],
+    model_joints_bid_B: wp.array[int32],
+    jac_cts_row_major_joint_nzb_offsets: wp.array[int32],
+    jac_cts_row_major_nzb_coords: wp.array2d[int32],
+    jac_cts_row_major_nzb_values: wp.array[vec6f],
+    jac_cts_col_major_joint_nzb_offsets: wp.array[int32],
     # Outputs
-    jac_cts_col_major_nzb_values: wp.array(dtype=wp.types.matrix(shape=(6, 1), dtype=float32)),
+    jac_cts_col_major_nzb_values: wp.array[wp.types.matrix(shape=(6, 1), dtype=float32)],
 ):
     """
     A kernel to compute the Jacobians (constraints and actuated DoFs) for the joints in a model.
@@ -1054,18 +1054,18 @@ def _update_col_major_joint_jacobians(
 @wp.kernel
 def _update_col_major_limit_jacobians(
     # Inputs
-    limits_model_num: wp.array(dtype=int32),
+    limits_model_num: wp.array[int32],
     limits_model_max: int32,
-    limits_wid: wp.array(dtype=int32),
-    limits_bids: wp.array(dtype=vec2i),
-    jac_cts_row_major_limit_nzb_offsets: wp.array(dtype=int32),
-    jac_cts_row_major_nzb_coords: wp.array2d(dtype=int32),
-    jac_cts_row_major_nzb_values: wp.array(dtype=vec6f),
-    jac_cts_col_major_nzb_start: wp.array(dtype=int32),
+    limits_wid: wp.array[int32],
+    limits_bids: wp.array[vec2i],
+    jac_cts_row_major_limit_nzb_offsets: wp.array[int32],
+    jac_cts_row_major_nzb_coords: wp.array2d[int32],
+    jac_cts_row_major_nzb_values: wp.array[vec6f],
+    jac_cts_col_major_nzb_start: wp.array[int32],
     # Outputs
-    jac_cts_col_major_num_nzb: wp.array(dtype=int32),
-    jac_cts_col_major_nzb_coords: wp.array2d(dtype=int32),
-    jac_cts_col_major_nzb_values: wp.array(dtype=wp.types.matrix(shape=(6, 1), dtype=float32)),
+    jac_cts_col_major_num_nzb: wp.array[int32],
+    jac_cts_col_major_nzb_coords: wp.array2d[int32],
+    jac_cts_col_major_nzb_values: wp.array[wp.types.matrix(shape=(6, 1), dtype=float32)],
 ):
     """
     A kernel to assemble the limit constraint Jacobian in a model.
@@ -1136,18 +1136,18 @@ def _update_col_major_limit_jacobians(
 @wp.kernel
 def _update_col_major_contact_jacobians(
     # Inputs:
-    contacts_model_num: wp.array(dtype=int32),
+    contacts_model_num: wp.array[int32],
     contacts_model_max: int32,
-    contacts_wid: wp.array(dtype=int32),
-    contacts_bid_AB: wp.array(dtype=vec2i),
-    jac_cts_row_major_contact_nzb_offsets: wp.array(dtype=int32),
-    jac_cts_row_major_nzb_coords: wp.array2d(dtype=int32),
-    jac_cts_row_major_nzb_values: wp.array(dtype=vec6f),
-    jac_cts_col_major_nzb_start: wp.array(dtype=int32),
+    contacts_wid: wp.array[int32],
+    contacts_bid_AB: wp.array[vec2i],
+    jac_cts_row_major_contact_nzb_offsets: wp.array[int32],
+    jac_cts_row_major_nzb_coords: wp.array2d[int32],
+    jac_cts_row_major_nzb_values: wp.array[vec6f],
+    jac_cts_col_major_nzb_start: wp.array[int32],
     # Outputs
-    jac_cts_col_major_num_nzb: wp.array(dtype=int32),
-    jac_cts_col_major_nzb_coords: wp.array2d(dtype=int32),
-    jac_cts_col_major_nzb_values: wp.array(dtype=wp.types.matrix(shape=(6, 1), dtype=float32)),
+    jac_cts_col_major_num_nzb: wp.array[int32],
+    jac_cts_col_major_nzb_coords: wp.array2d[int32],
+    jac_cts_col_major_nzb_values: wp.array[wp.types.matrix(shape=(6, 1), dtype=float32)],
 ):
     """
     A kernel to assemble the contact constraint Jacobian in a model.

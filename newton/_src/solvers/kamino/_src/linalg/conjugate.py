@@ -188,14 +188,14 @@ def lt_mask(a: Any, b: Any):
 
 @wp.kernel
 def check_termination(
-    maxiter: wp.array(dtype=int),
+    maxiter: wp.array[int],
     loop_granularity: int,
-    r_norm_sq: wp.array(dtype=Any),
-    atol_sq: wp.array(dtype=Any),
-    world_active: wp.array(dtype=wp.int32),
-    cur_iter: wp.array(dtype=int),
-    world_condition: wp.array(dtype=wp.int32),
-    batch_condition: wp.array(dtype=wp.int32),
+    r_norm_sq: wp.array[Any],
+    atol_sq: wp.array[Any],
+    world_active: wp.array[wp.int32],
+    cur_iter: wp.array[int],
+    world_condition: wp.array[wp.int32],
+    batch_condition: wp.array[wp.int32],
 ):
     wid = wp.tid()
 
@@ -217,16 +217,16 @@ def check_termination(
 
 @wp.kernel
 def _cg_kernel_1(
-    tol: wp.array(dtype=Any),
-    resid: wp.array(dtype=Any),
-    rz_old: wp.array(dtype=Any),
-    p_Ap: wp.array(dtype=Any),
-    p: wp.array(dtype=Any),
-    Ap: wp.array(dtype=Any),
-    x: wp.array(dtype=Any),
-    r: wp.array(dtype=Any),
-    vio: wp.array(dtype=wp.int32),
-    dim: wp.array(dtype=wp.int32),
+    tol: wp.array[Any],
+    resid: wp.array[Any],
+    rz_old: wp.array[Any],
+    p_Ap: wp.array[Any],
+    p: wp.array[Any],
+    Ap: wp.array[Any],
+    x: wp.array[Any],
+    r: wp.array[Any],
+    vio: wp.array[wp.int32],
+    dim: wp.array[wp.int32],
 ):
     e, i = wp.tid()
     if i >= dim[e]:
@@ -241,14 +241,14 @@ def _cg_kernel_1(
 
 @wp.kernel
 def _cg_kernel_2(
-    tol: wp.array(dtype=Any),
-    resid_new: wp.array(dtype=Any),
-    rz_old: wp.array(dtype=Any),
-    rz_new: wp.array(dtype=Any),
-    z: wp.array(dtype=Any),
-    p: wp.array(dtype=Any),
-    vio: wp.array(dtype=wp.int32),
-    dim: wp.array(dtype=wp.int32),
+    tol: wp.array[Any],
+    resid_new: wp.array[Any],
+    rz_old: wp.array[Any],
+    rz_new: wp.array[Any],
+    z: wp.array[Any],
+    p: wp.array[Any],
+    vio: wp.array[wp.int32],
+    dim: wp.array[wp.int32],
 ):
     #    p = r + (rz_new / rz_old) * p;
     e, i = wp.tid()
@@ -264,18 +264,18 @@ def _cg_kernel_2(
 
 @wp.kernel
 def _cr_kernel_1(
-    tol: wp.array(dtype=Any),
-    resid: wp.array(dtype=Any),
-    zAz_old: wp.array(dtype=Any),
-    y_Ap: wp.array(dtype=Any),
-    p: wp.array(dtype=Any),
-    Ap: wp.array(dtype=Any),
-    y: wp.array(dtype=Any),
-    x: wp.array(dtype=Any),
-    r: wp.array(dtype=Any),
-    z: wp.array(dtype=Any),
-    vio: wp.array(dtype=wp.int32),
-    dim: wp.array(dtype=wp.int32),
+    tol: wp.array[Any],
+    resid: wp.array[Any],
+    zAz_old: wp.array[Any],
+    y_Ap: wp.array[Any],
+    p: wp.array[Any],
+    Ap: wp.array[Any],
+    y: wp.array[Any],
+    x: wp.array[Any],
+    r: wp.array[Any],
+    z: wp.array[Any],
+    vio: wp.array[wp.int32],
+    dim: wp.array[wp.int32],
 ):
     e, i = wp.tid()
     if i >= dim[e]:
@@ -291,16 +291,16 @@ def _cr_kernel_1(
 
 @wp.kernel
 def _cr_kernel_2(
-    tol: wp.array(dtype=Any),
-    resid: wp.array(dtype=Any),
-    zAz_old: wp.array(dtype=Any),
-    zAz_new: wp.array(dtype=Any),
-    z: wp.array(dtype=Any),
-    Az: wp.array(dtype=Any),
-    p: wp.array(dtype=Any),
-    Ap: wp.array(dtype=Any),
-    vio: wp.array(dtype=wp.int32),
-    dim: wp.array(dtype=wp.int32),
+    tol: wp.array[Any],
+    resid: wp.array[Any],
+    zAz_old: wp.array[Any],
+    zAz_new: wp.array[Any],
+    z: wp.array[Any],
+    Az: wp.array[Any],
+    p: wp.array[Any],
+    Ap: wp.array[Any],
+    vio: wp.array[wp.int32],
+    dim: wp.array[wp.int32],
 ):
     #    p = r + (rz_new / rz_old) * p;
     e, i = wp.tid()
@@ -317,10 +317,10 @@ def _cr_kernel_2(
 def _run_capturable_loop(
     do_iteration: Callable,
     r_norm_sq: wp.array,
-    world_active: wp.array(dtype=wp.int32),
-    cur_iter: wp.array(dtype=wp.int32),
-    conditions: wp.array(dtype=wp.int32),
-    maxiter: wp.array(dtype=int),
+    world_active: wp.array[wp.int32],
+    cur_iter: wp.array[wp.int32],
+    conditions: wp.array[wp.int32],
+    maxiter: wp.array[int],
     atol_sq: wp.array,
     callback: Callable | None,
     use_cuda_graph: bool,
@@ -402,12 +402,12 @@ def make_dot_kernel(tile_size: int, maxdim: int):
 
     @wp.kernel(enable_backward=False)
     def dot(
-        a: wp.array2d(dtype=Any),
-        b: wp.array2d(dtype=Any),
-        vio: wp.array(dtype=wp.int32),
-        world_size: wp.array(dtype=wp.int32),
-        world_active: wp.array(dtype=wp.int32),
-        result: wp.array2d(dtype=Any),
+        a: wp.array2d[Any],
+        b: wp.array2d[Any],
+        vio: wp.array[wp.int32],
+        world_size: wp.array[wp.int32],
+        world_active: wp.array[wp.int32],
+        result: wp.array2d[Any],
     ):
         """Compute the dot products between flat arrays using tiles and pairwise summation."""
         col, world, tid = wp.tid()
@@ -443,12 +443,12 @@ def make_dot_kernel(tile_size: int, maxdim: int):
 
 @wp.kernel
 def dot_sequential(
-    a: wp.array2d(dtype=Any),
-    b: wp.array2d(dtype=Any),
-    vio: wp.array(dtype=wp.int32),
-    world_size: wp.array(dtype=wp.int32),
-    world_active: wp.array(dtype=wp.int32),
-    partial_sum: wp.array3d(dtype=Any),
+    a: wp.array2d[Any],
+    b: wp.array2d[Any],
+    vio: wp.array[wp.int32],
+    world_size: wp.array[wp.int32],
+    world_active: wp.array[wp.int32],
+    partial_sum: wp.array3d[Any],
 ):
     col, world = wp.tid()
 
@@ -478,7 +478,7 @@ def dot_sequential(
 
 @wp.kernel
 def _initialize_tolerance_kernel(
-    rtol: wp.array(dtype=Any), atol: wp.array(dtype=Any), b_norm_sq: wp.array(dtype=Any), atol_sq: wp.array(dtype=Any)
+    rtol: wp.array[Any], atol: wp.array[Any], b_norm_sq: wp.array[Any], atol_sq: wp.array[Any]
 ):
     world = wp.tid()
     a, r = atol[world], rtol[world]
@@ -487,12 +487,12 @@ def _initialize_tolerance_kernel(
 
 @wp.kernel
 def make_jacobi_preconditioner(
-    A: wp.array(dtype=Any),
-    world_dims: wp.array(dtype=wp.int32),
-    world_maxdims: wp.array(dtype=wp.int32),
-    mio: wp.array(dtype=wp.int32),
-    vio: wp.array(dtype=wp.int32),
-    diag: wp.array(dtype=Any),
+    A: wp.array[Any],
+    world_dims: wp.array[wp.int32],
+    world_maxdims: wp.array[wp.int32],
+    mio: wp.array[wp.int32],
+    vio: wp.array[wp.int32],
+    diag: wp.array[Any],
 ):
     world, row = wp.tid()
     if row >= world_maxdims[world]:
@@ -533,10 +533,10 @@ class ConjugateSolver:
     def __init__(
         self,
         A: BatchedLinearOperator,
-        active_dims: wp.array(dtype=Any) | None = None,
-        world_active: wp.array(dtype=wp.int32) | None = None,
-        atol: float | wp.array(dtype=Any) | None = None,
-        rtol: float | wp.array(dtype=Any) | None = None,
+        active_dims: wp.array[Any] | None = None,
+        world_active: wp.array[wp.int32] | None = None,
+        atol: float | wp.array[Any] | None = None,
+        rtol: float | wp.array[Any] | None = None,
         maxiter: wp.array = None,
         Mi: BatchedLinearOperator | None = None,
         callback: Callable | None = None,
@@ -677,8 +677,8 @@ class CGSolver(ConjugateSolver):
         self,
         b: wp.array,
         x: wp.array,
-        active_dims: wp.array(dtype=Any) | None = None,
-        world_active: wp.array(dtype=wp.int32) | None = None,
+        active_dims: wp.array[Any] | None = None,
+        world_active: wp.array[wp.int32] | None = None,
     ):
         if b.shape[0] != self.total_vec_size:
             raise ValueError(f"b has size {b.shape[0]} but solver expects total_vec_size={self.total_vec_size}")
@@ -795,8 +795,8 @@ class CRSolver(ConjugateSolver):
         self,
         b: wp.array,
         x: wp.array,
-        active_dims: wp.array(dtype=Any) | None = None,
-        world_active: wp.array(dtype=wp.int32) | None = None,
+        active_dims: wp.array[Any] | None = None,
+        world_active: wp.array[wp.int32] | None = None,
     ):
         if b.shape[0] != self.total_vec_size:
             raise ValueError(f"b has size {b.shape[0]} but solver expects total_vec_size={self.total_vec_size}")

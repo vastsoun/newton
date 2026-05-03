@@ -2798,6 +2798,261 @@ class TestTopologyGraph(unittest.TestCase):
             G.parse()
 
 
+class TestTopologyEdgePolarityReversal(unittest.TestCase):
+    """End-to-end coverage for spanning-tree edge-polarity-reversal bookkeeping.
+
+    The spanning-tree generator may flip the polarity of a graph edge (i.e.
+    swap its ``(predecessor, successor)`` pair) to satisfy Featherstone's
+    regular-numbering invariant ``parents[i] < i`` along a BFS arc. The
+    selected tree itself only stores the *joint index* of each arc on
+    :attr:`TopologySpanningTree.arcs`, so callers cannot recover the
+    flipped polarity from ``arcs`` alone. To make this information
+    consumable downstream, every :class:`TopologySpanningTree` carries a
+    parallel boolean flag list :attr:`TopologySpanningTree.reversed_arcs`
+    — ``True`` for arcs whose source-edge polarity disagrees with the
+    BFS-based parent→child direction baked into the tree.
+
+    The aggregated, graph-level view lives on
+    :attr:`TopologyGraph.reversed_joint_edges` (sorted ORIGINAL joint
+    indices), which is computed at :meth:`TopologyGraph.select_spanning_trees`
+    time so it stays valid even after in-place index reassignment.
+    """
+
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = False
+        self.savefig = False
+        self.plotfig = False
+        if self.verbose:
+            print("\n")
+            msg.set_log_level(msg.LogLevel.INFO)
+        else:
+            msg.reset_log_level()
+
+    def tearDown(self):
+        self.default_device = None
+        msg.reset_log_level()
+
+    @staticmethod
+    def _arc_polarities(tree: topology.TopologySpanningTree) -> list[tuple[int, int]]:
+        """Recover the ``(predecessor, successor)`` source polarity of every arc.
+
+        Looks each ``arc.joint_index`` up in the tree's source component to
+        recover the original :attr:`GraphEdge.nodes` pair (the BFS-flipped
+        polarity stored on the tree only carries the joint index, not the
+        source pair).
+        """
+        if tree.arcs is None or tree.component is None or tree.component.edges is None:
+            return []
+        by_idx = {e.joint_index: e.nodes for e in tree.component.edges}
+        return [by_idx[a] for a in tree.arcs if a in by_idx]
+
+    ###
+    # `TopologyMinimumDepthSpanningTreeGenerator` reversed-arc bookkeeping
+    ###
+
+    def test_01_reversed_arc_chain_marks_per_arc_polarity_in_candidates_and_selected_tree(self):
+        """A chain whose BFS direction opposes every internal edge's polarity is
+        flagged on each arc (excluding the natural-polarity base) and surfaces
+        the same flags on candidates and the selected tree.
+        """
+        # Bodies 0..2 with a grounding FREE base on body 0 and two body-to-body
+        # edges polarized as ``(child→parent)`` w.r.t. BFS from the base.
+        nodes = [0, 1, 2]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (1, 0)),  # BFS expects (0, 1)
+            (JointDoFType.REVOLUTE.value, 2, (2, 1)),  # BFS expects (1, 2)
+        ]
+        G = _build_graph(nodes, edges)
+        comp = G.components[0]
+
+        gen = topology.TopologyMinimumDepthSpanningTreeGenerator()
+        candidates = gen.generate_spanning_trees(component=comp, traversal_mode="bfs")
+        self.assertEqual(len(candidates), 1)
+
+        tree = candidates[0]
+        self.assertEqual(tree.arcs, [0, 1, 2])
+        self.assertEqual(tree.parents, [-1, 0, 1])
+        # Source polarity is preserved on the tree's component edges:
+        self.assertEqual(self._arc_polarities(tree), [(-1, 0), (1, 0), (2, 1)])
+        # ``reversed_arcs`` records the per-arc polarity flips:
+        # arc 0 (base) is naturally polarized world→root; arcs 1 and 2 are
+        # reversed against BFS.
+        self.assertEqual(tree.reversed_arcs, [False, True, True])
+
+    def test_02_natural_arc_chain_has_all_false_reversed_arcs(self):
+        """A chain whose every internal edge is already polarized parent→child
+        records ``False`` on every arc.
+        """
+        nodes = [0, 1, 2]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (0, 1)),
+            (JointDoFType.REVOLUTE.value, 2, (1, 2)),
+        ]
+        G = _build_graph(nodes, edges)
+        comp = G.components[0]
+
+        gen = topology.TopologyMinimumDepthSpanningTreeGenerator()
+        candidates = gen.generate_spanning_trees(component=comp, traversal_mode="bfs")
+        self.assertEqual(len(candidates), 1)
+        tree = candidates[0]
+        self.assertEqual(tree.arcs, [0, 1, 2])
+        self.assertEqual(tree.reversed_arcs, [False, False, False])
+
+    def test_03_mixed_polarity_chain_marks_only_reversed_arcs(self):
+        """Only the arcs whose source polarity opposes BFS are flagged."""
+        nodes = [0, 1, 2]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (0, 1)),  # natural
+            (JointDoFType.REVOLUTE.value, 2, (2, 1)),  # reversed
+        ]
+        G = _build_graph(nodes, edges)
+        comp = G.components[0]
+
+        gen = topology.TopologyMinimumDepthSpanningTreeGenerator()
+        candidates = gen.generate_spanning_trees(component=comp, traversal_mode="bfs")
+        self.assertEqual(len(candidates), 1)
+        tree = candidates[0]
+        self.assertEqual(tree.arcs, [0, 1, 2])
+        self.assertEqual(tree.reversed_arcs, [False, False, True])
+
+    def test_04_reversed_base_edge_is_flagged_on_arc_zero(self):
+        """A base edge polarized ``(root → world)`` instead of ``(world → root)``
+        is flagged on slot ``0`` of ``reversed_arcs``.
+        """
+        nodes = [0]
+        edges = [
+            # The grounding edge is reversed: source has ``nodes=(0, -1)`` while
+            # the spanning-tree convention uses ``world → root`` for slot 0.
+            (JointDoFType.FREE.value, 0, (0, -1)),
+        ]
+        G = _build_graph(nodes, edges)
+        comp = G.components[0]
+
+        gen = topology.TopologyMinimumDepthSpanningTreeGenerator()
+        candidates = gen.generate_spanning_trees(component=comp)
+        self.assertEqual(len(candidates), 1)
+        tree = candidates[0]
+        self.assertEqual(tree.arcs, [0])
+        self.assertEqual(tree.reversed_arcs, [True])
+
+    def test_05_orphan_tree_with_no_base_has_empty_reversed_arcs(self):
+        """A grounding-free orphan body has empty ``arcs`` and matching empty
+        ``reversed_arcs`` (the trivial single-body tree).
+        """
+        nodes = [0]
+        edges: list[tuple[int, int, tuple[int, int]]] = []
+        G = _build_graph(nodes, edges)
+        comp = G.components[0]
+
+        gen = topology.TopologyMinimumDepthSpanningTreeGenerator()
+        candidates = gen.generate_spanning_trees(component=comp)
+        self.assertEqual(len(candidates), 1)
+        tree = candidates[0]
+        self.assertEqual(tree.arcs, [])
+        self.assertEqual(tree.reversed_arcs, [])
+
+    def test_06_remapped_propagates_reversed_arcs(self):
+        """``TopologySpanningTree.remapped`` propagates ``reversed_arcs``
+        unchanged (the bool flags are positional, not index-keyed).
+        """
+        nodes = [0, 1, 2]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (1, 0)),
+            (JointDoFType.REVOLUTE.value, 2, (2, 1)),
+        ]
+        G = _build_graph(nodes, edges)
+        comp = G.components[0]
+
+        gen = topology.TopologyMinimumDepthSpanningTreeGenerator()
+        tree = gen.generate_spanning_trees(component=comp)[0]
+        self.assertEqual(tree.reversed_arcs, [False, True, True])
+
+        # Permute joint 1 ↔ joint 2 to confirm the bool flags travel with arc
+        # positions, not with joint identities.
+        joint_remap = [0, 2, 1]
+        body_remap = [0, 1, 2]
+        remapped = tree.remapped(body_node_remap=body_remap, joint_edge_remap=joint_remap)
+        self.assertEqual(remapped.arcs, [0, 2, 1])
+        self.assertEqual(remapped.reversed_arcs, [False, True, True])
+
+    def test_07_with_offsets_preserves_reversed_arcs(self):
+        """``TopologySpanningTree.with_offsets`` propagates ``reversed_arcs`` unchanged."""
+        nodes = [0, 1]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (1, 0)),
+        ]
+        G = _build_graph(nodes, edges)
+        comp = G.components[0]
+        tree = topology.TopologyMinimumDepthSpanningTreeGenerator().generate_spanning_trees(component=comp)[0]
+        self.assertEqual(tree.reversed_arcs, [False, True])
+
+        shifted = tree.with_offsets(body_node_offset=10, joint_edge_offset=100)
+        self.assertEqual(shifted.arcs, [100, 101])
+        self.assertEqual(shifted.reversed_arcs, [False, True])
+
+    ###
+    # `TopologyGraph.reversed_joint_edges` aggregation
+    ###
+
+    def test_11_topology_graph_exposes_reversed_joint_edges_for_reversed_chain(self):
+        """The graph-level :attr:`TopologyGraph.reversed_joint_edges` aggregates
+        ORIGINAL joint indices flagged on any selected tree (after the full
+        autoparse pipeline, including in-place index reassignment).
+        """
+        nodes = [0, 1, 2]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (1, 0)),
+            (JointDoFType.REVOLUTE.value, 2, (2, 1)),
+        ]
+        G = topology.TopologyGraph(nodes, edges, autoparse=True, reassign_indices_inplace=True)
+        # ORIGINAL joint indices, sorted ascending. Even though the trees were
+        # remapped in place, the cached aggregate stays in original indexing.
+        self.assertEqual(G.reversed_joint_edges, [1, 2])
+
+    def test_12_topology_graph_reports_no_reversed_edges_for_natural_chain(self):
+        """A naturally-polarized chain reports an empty ``reversed_joint_edges``."""
+        nodes = [0, 1, 2]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (0, 1)),
+            (JointDoFType.REVOLUTE.value, 2, (1, 2)),
+        ]
+        G = topology.TopologyGraph(nodes, edges, autoparse=True, reassign_indices_inplace=True)
+        self.assertEqual(G.reversed_joint_edges, [])
+
+    def test_13_topology_graph_reversed_joint_edges_unavailable_before_selection(self):
+        """Reading ``reversed_joint_edges`` before tree selection raises ``ValueError``."""
+        nodes = [0, 1]
+        edges = [(JointDoFType.FREE.value, 0, (-1, 0))]
+        G = topology.TopologyGraph(nodes, edges, autoparse=False)
+        with self.assertRaisesRegex(ValueError, "Spanning trees"):
+            _ = G.reversed_joint_edges
+
+    def test_14_topology_graph_reversed_joint_edges_invariant_to_inplace_remap(self):
+        """The aggregate is computed before index reassignment, so it stays in
+        ORIGINAL indexing regardless of the ``reassign_indices_inplace`` flag.
+        """
+        nodes = [0, 1, 2]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (1, 0)),
+            (JointDoFType.REVOLUTE.value, 2, (2, 1)),
+        ]
+        G_inplace = topology.TopologyGraph(nodes, edges, autoparse=True, reassign_indices_inplace=True)
+        G_off = topology.TopologyGraph(nodes, edges, autoparse=True, reassign_indices_inplace=False)
+        self.assertEqual(G_inplace.reversed_joint_edges, G_off.reversed_joint_edges)
+        self.assertEqual(G_inplace.reversed_joint_edges, [1, 2])
+
+
 class TestTopologyInteropUtils(unittest.TestCase):
     """End-to-end coverage for :mod:`kamino._src.topology.utils` interop helpers.
 
@@ -2857,6 +3112,37 @@ class TestTopologyInteropUtils(unittest.TestCase):
             if i > 0:
                 builder.add_joint_revolute(parent=prev_body, child=body, axis=newton.Axis.Z, label=f"joint_{i}")
             prev_body = body
+        builder.end_world()
+        return builder
+
+    @staticmethod
+    def _make_grounded_chain_with_reversed_joints(num_links: int = 3) -> ModelBuilder:
+        """Return a builder whose body-to-body joints are polarized child→parent.
+
+        Body ``0`` is FREE-grounded; joint ``i`` (``i ≥ 1``) is added as
+        ``add_joint_revolute(parent=body[i], child=body[i-1])``, i.e. its
+        source ``GraphEdge`` polarity disagrees with the BFS-driven
+        ``parent → child`` direction baked into the spanning tree
+        (``body[i-1] → body[i]``). Used by the polarity-swap unit test for
+        :func:`apply_discovered_topology_to_builder`.
+        """
+        builder = ModelBuilder()
+        builder.begin_world()
+        bodies = [builder.add_link(label=f"link_{i}", mass=1.0) for i in range(num_links)]
+        builder.add_joint_free(child=bodies[0], label="joint_0")
+        for i in range(1, num_links):
+            # Use distinct anchor transforms so the test can verify the
+            # ``X_p ↔ X_c`` swap by comparing positional components.
+            parent_xform = wp.transform((float(i), 0.0, 0.0), wp.quat_identity())
+            child_xform = wp.transform((0.0, float(i), 0.0), wp.quat_identity())
+            builder.add_joint_revolute(
+                parent=bodies[i],
+                child=bodies[i - 1],
+                axis=newton.Axis.Z,
+                label=f"joint_{i}",
+                parent_xform=parent_xform,
+                child_xform=child_xform,
+            )
         builder.end_world()
         return builder
 
@@ -3017,6 +3303,82 @@ class TestTopologyInteropUtils(unittest.TestCase):
         model: Model = new_builder.finalize()
         self.assertEqual(model.articulation_count, new_builder.articulation_count)
 
+    def test_16_apply_topology_swaps_parent_child_for_reversed_joints(self):
+        """Reversed-polarity joints surface in the rebuilt builder with their
+        ``joint_parent`` / ``joint_child`` and ``joint_X_p`` / ``joint_X_c``
+        swapped, so the result satisfies Featherstone's regular-numbering
+        invariant ``parents[i] < i``.
+        """
+        builder = self._make_grounded_chain_with_reversed_joints(num_links=3)
+
+        # Confirm the source builder really does have child→parent polarity on
+        # every internal joint; without that this test would be a no-op.
+        self.assertEqual(int(builder.joint_parent[0]), -1)  # FREE base, world → body 0
+        self.assertEqual(int(builder.joint_child[0]), 0)
+        self.assertEqual(int(builder.joint_parent[1]), 1)  # reversed: body 1 → body 0
+        self.assertEqual(int(builder.joint_child[1]), 0)
+        self.assertEqual(int(builder.joint_parent[2]), 2)  # reversed: body 2 → body 1
+        self.assertEqual(int(builder.joint_child[2]), 1)
+        # Snapshot the source anchor transforms so we can assert the post-swap
+        # values are the OLD ``X_c`` / ``X_p`` of the same joint.
+        old_X_p_1 = wp.transform(*builder.joint_X_p[1])
+        old_X_c_1 = wp.transform(*builder.joint_X_c[1])
+        old_X_p_2 = wp.transform(*builder.joint_X_p[2])
+        old_X_c_2 = wp.transform(*builder.joint_X_c[2])
+
+        graph = discover_topology_for_builder(builder)
+        # The discovered topology must surface ORIGINAL joint indices ``1`` and
+        # ``2`` as polarity-reversed (the FREE base is naturally polarized).
+        self.assertEqual(graph.reversed_joint_edges, [1, 2])
+
+        new_builder = apply_discovered_topology_to_builder(builder, graph=graph)
+
+        # Identity remap: body order already matches BFS, so every original
+        # joint slot keeps its index in the new builder.
+        self.assertEqual(graph.body_node_remap, [0, 1, 2])
+        self.assertEqual(graph.joint_edge_remap, [0, 1, 2])
+
+        # Joints 1 and 2 must have their parent/child arrays swapped so the
+        # rebuilt builder carries the natural ``0 → 1 → 2`` chain.
+        self.assertEqual(int(new_builder.joint_parent[0]), -1)
+        self.assertEqual(int(new_builder.joint_child[0]), 0)
+        self.assertEqual(int(new_builder.joint_parent[1]), 0)
+        self.assertEqual(int(new_builder.joint_child[1]), 1)
+        self.assertEqual(int(new_builder.joint_parent[2]), 1)
+        self.assertEqual(int(new_builder.joint_child[2]), 2)
+        # Anchor transforms must mirror the same swap.
+        self.assertEqual(tuple(new_builder.joint_X_p[1]), tuple(old_X_c_1))
+        self.assertEqual(tuple(new_builder.joint_X_c[1]), tuple(old_X_p_1))
+        self.assertEqual(tuple(new_builder.joint_X_p[2]), tuple(old_X_c_2))
+        self.assertEqual(tuple(new_builder.joint_X_c[2]), tuple(old_X_p_2))
+        # ``joint_parents`` / ``joint_children`` dicts must reflect the swap.
+        self.assertEqual(set(new_builder.joint_parents.get(1, [])), {0})
+        self.assertEqual(set(new_builder.joint_parents.get(2, [])), {1})
+        self.assertEqual(set(new_builder.joint_children.get(0, [])), {1})
+        self.assertEqual(set(new_builder.joint_children.get(1, [])), {2})
+        # Featherstone's regular-numbering invariant must hold over the arcs.
+        for j in range(1, new_builder.joint_count):
+            self.assertLess(int(new_builder.joint_parent[j]), int(new_builder.joint_child[j]))
+
+        # Finalization must succeed now that the topology is a clean tree.
+        model: Model = new_builder.finalize()
+        self.assertEqual(model.articulation_count, 1)
+        self.assertEqual(model.joint_count, new_builder.joint_count)
+
+    def test_17_apply_topology_preserves_natural_polarity_joints(self):
+        """A naturally-polarized chain has empty ``reversed_joint_edges`` and is
+        passed through ``apply_discovered_topology_to_builder`` without any
+        parent/child swap.
+        """
+        builder = self._make_grounded_chain(num_links=3)
+        graph = discover_topology_for_builder(builder)
+        self.assertEqual(graph.reversed_joint_edges, [])
+
+        new_builder = apply_discovered_topology_to_builder(builder, graph=graph)
+        for j in range(builder.joint_count):
+            self.assertEqual(int(new_builder.joint_parent[j]), int(builder.joint_parent[j]))
+            self.assertEqual(int(new_builder.joint_child[j]), int(builder.joint_child[j]))
+
     ###
     # USD round-trip
     ###
@@ -3120,6 +3482,156 @@ class TestTopologyInteropUtils(unittest.TestCase):
             1,
             f"Expected at least one joint prim with `physics:excludeFromArticulation=True` in `{out_path}`.",
         )
+
+    def test_22b_export_usd_swaps_body0_body1_for_reversed_polarity_joints(self):
+        """Author a minimal USD with a reversed-polarity revolute joint and verify
+        :func:`export_usd_with_discovered_topology` swaps ``body0`` / ``body1``
+        and the matching ``localPos0`` / ``localPos1`` / ``localRot0`` /
+        ``localRot1`` attributes on the output stage.
+
+        The asset has two rigid bodies (``BodyA`` heavier than ``BodyB`` so the
+        heaviest-body base selector picks ``BodyA`` as the spanning-tree root)
+        connected by a single revolute joint authored with reversed polarity
+        (``physics:body0 = BodyB``, ``physics:body1 = BodyA``). Topology
+        discovery flags the joint as reversed, and the export must rewrite
+        the joint prim's ``body0`` / ``body1`` and matching anchor attrs to
+        match the BFS-driven ``A → B`` direction.
+        """
+        try:
+            from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
+        except ImportError:
+            self.skipTest("pxr (usd-core) is not installed")
+
+        out_dir = test_context.output_path / "test_topology" / "interop_utils"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        src_path = out_dir / "minimal_reversed_polarity.usda"
+        out_path = out_dir / "minimal_reversed_polarity_with_topology.usda"
+        if src_path.exists():
+            src_path.unlink()
+        if out_path.exists():
+            out_path.unlink()
+
+        # Author the source asset programmatically.
+        src_stage = Usd.Stage.CreateNew(str(src_path))
+        world_prim = UsdGeom.Xform.Define(src_stage, "/World").GetPrim()
+        src_stage.SetDefaultPrim(world_prim)
+
+        body_a = UsdGeom.Cube.Define(src_stage, "/World/BodyA").GetPrim()
+        UsdPhysics.RigidBodyAPI.Apply(body_a)
+        UsdPhysics.MassAPI.Apply(body_a).CreateMassAttr().Set(2.0)
+
+        body_b = UsdGeom.Cube.Define(src_stage, "/World/BodyB").GetPrim()
+        UsdPhysics.RigidBodyAPI.Apply(body_b)
+        UsdPhysics.MassAPI.Apply(body_b).CreateMassAttr().Set(1.0)
+
+        # Reversed-polarity revolute joint.
+        joint_ba_path = "/World/JointBA"
+        joint = UsdPhysics.RevoluteJoint.Define(src_stage, joint_ba_path)
+        joint.CreateBody0Rel().SetTargets([Sdf.Path("/World/BodyB")])
+        joint.CreateBody1Rel().SetTargets([Sdf.Path("/World/BodyA")])
+        src_local_pos_0 = Gf.Vec3f(1.0, 0.0, 0.0)
+        src_local_pos_1 = Gf.Vec3f(0.0, 1.0, 0.0)
+        src_local_rot_0 = Gf.Quatf(1.0, Gf.Vec3f(0.0, 0.0, 0.0))
+        src_local_rot_1 = Gf.Quatf(0.7071, Gf.Vec3f(0.0, 0.0, 0.7071))
+        joint.CreateLocalPos0Attr().Set(src_local_pos_0)
+        joint.CreateLocalPos1Attr().Set(src_local_pos_1)
+        joint.CreateLocalRot0Attr().Set(src_local_rot_0)
+        joint.CreateLocalRot1Attr().Set(src_local_rot_1)
+        joint.CreateAxisAttr().Set(UsdPhysics.Tokens.z)
+
+        src_stage.GetRootLayer().Save()
+
+        # Run the export. ``joint_ordering=None`` is required because Newton's
+        # ``parse_usd`` rejects reversed-polarity joints when topologically
+        # sorting them; we need the source order preserved so the discovered
+        # topology can flag the joint as reversed.
+        result = export_usd_with_discovered_topology(
+            src_path,
+            out_path,
+            add_usd_kwargs={"joint_ordering": None},
+        )
+        self.assertEqual(result, out_path)
+        self.assertTrue(out_path.exists())
+
+        # Verify the body0 / body1 relationships are swapped on the output joint.
+        out_stage = Usd.Stage.Open(str(out_path))
+        self.assertIsNotNone(out_stage)
+        out_joint_prim = out_stage.GetPrimAtPath(Sdf.Path(joint_ba_path))
+        self.assertTrue(out_joint_prim.IsValid())
+
+        out_body0 = [str(t) for t in out_joint_prim.GetRelationship("physics:body0").GetTargets()]
+        out_body1 = [str(t) for t in out_joint_prim.GetRelationship("physics:body1").GetTargets()]
+        self.assertEqual(out_body0, ["/World/BodyA"], "body0 must point to BodyA after the swap.")
+        self.assertEqual(out_body1, ["/World/BodyB"], "body1 must point to BodyB after the swap.")
+
+        # Local anchor attributes must mirror the same swap.
+        self.assertEqual(out_joint_prim.GetAttribute("physics:localPos0").Get(), src_local_pos_1)
+        self.assertEqual(out_joint_prim.GetAttribute("physics:localPos1").Get(), src_local_pos_0)
+        self.assertEqual(out_joint_prim.GetAttribute("physics:localRot0").Get(), src_local_rot_1)
+        self.assertEqual(out_joint_prim.GetAttribute("physics:localRot1").Get(), src_local_rot_0)
+
+        # The joint axis token must be left untouched (anchor frames coincide).
+        self.assertEqual(out_joint_prim.GetAttribute("physics:axis").Get(), UsdPhysics.Tokens.z)
+
+        # Articulation root must land on BodyA (the heaviest body in the
+        # synthesized FREE-grounded tree).
+        body_a_out = out_stage.GetPrimAtPath(Sdf.Path("/World/BodyA"))
+        self.assertTrue(body_a_out.HasAPI(UsdPhysics.ArticulationRootAPI))
+
+    def test_22c_export_usd_preserves_polarity_for_naturally_polarized_assets(self):
+        """A naturally-polarized USD asset round-trips through the export with
+        every joint's ``body0`` / ``body1`` relationships unchanged.
+
+        Acts as a negative control for ``test_22b``: when
+        :attr:`TopologyGraph.reversed_joint_edges` is empty the export must
+        not touch any joint's polarity even though the polarity-swap step
+        runs unconditionally.
+        """
+        try:
+            from pxr import Sdf, Usd, UsdGeom, UsdPhysics
+        except ImportError:
+            self.skipTest("pxr (usd-core) is not installed")
+
+        out_dir = test_context.output_path / "test_topology" / "interop_utils"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        src_path = out_dir / "minimal_natural_polarity.usda"
+        out_path = out_dir / "minimal_natural_polarity_with_topology.usda"
+        if src_path.exists():
+            src_path.unlink()
+        if out_path.exists():
+            out_path.unlink()
+
+        src_stage = Usd.Stage.CreateNew(str(src_path))
+        world_prim = UsdGeom.Xform.Define(src_stage, "/World").GetPrim()
+        src_stage.SetDefaultPrim(world_prim)
+
+        body_a = UsdGeom.Cube.Define(src_stage, "/World/BodyA").GetPrim()
+        UsdPhysics.RigidBodyAPI.Apply(body_a)
+        UsdPhysics.MassAPI.Apply(body_a).CreateMassAttr().Set(2.0)
+        body_b = UsdGeom.Cube.Define(src_stage, "/World/BodyB").GetPrim()
+        UsdPhysics.RigidBodyAPI.Apply(body_b)
+        UsdPhysics.MassAPI.Apply(body_b).CreateMassAttr().Set(1.0)
+
+        joint = UsdPhysics.RevoluteJoint.Define(src_stage, "/World/JointAB")
+        # Natural polarity: body0 = parent (the heavier BodyA), body1 = child.
+        joint.CreateBody0Rel().SetTargets([Sdf.Path("/World/BodyA")])
+        joint.CreateBody1Rel().SetTargets([Sdf.Path("/World/BodyB")])
+        joint.CreateAxisAttr().Set(UsdPhysics.Tokens.z)
+        src_stage.GetRootLayer().Save()
+
+        export_usd_with_discovered_topology(
+            src_path,
+            out_path,
+            add_usd_kwargs={"joint_ordering": None},
+        )
+
+        out_stage = Usd.Stage.Open(str(out_path))
+        out_joint_prim = out_stage.GetPrimAtPath(Sdf.Path("/World/JointAB"))
+        self.assertTrue(out_joint_prim.IsValid())
+        out_body0 = [str(t) for t in out_joint_prim.GetRelationship("physics:body0").GetTargets()]
+        out_body1 = [str(t) for t in out_joint_prim.GetRelationship("physics:body1").GetTargets()]
+        self.assertEqual(out_body0, ["/World/BodyA"])
+        self.assertEqual(out_body1, ["/World/BodyB"])
 
     def test_23_export_usd_writes_chord_excludes_for_dr_legs(self):
         """Round-trip the DR Legs USD asset and verify chord-joint authoring.

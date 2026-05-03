@@ -1,76 +1,74 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
 
-############################################################################################
-#
-# TopologyGraph use-cases:
-#
-#   Note:
-#       - Point (1) is the common workflow starting point.
-#       - Points (2) and (3) define branching workflows for different downstream use cases.
-#
-#   1. A USD model comes as an arbitrary "soup" of bodies and joints with no explicit
-#      meta-data such as articulation info ("PhysicsArticulationRootAPI" on body prims,
-#      or "excludeFromArticulation" on joint prims), or even explicit FREE joints (i.e.
-#      "PhysicsJoint" w/ or w/o "PhysicsLimitAPI:<DOF>"). In these cases we want to
-#      discover the underlying topology of the model at run-time. To do this we can:
-#       1a. Use ``newton.ModelBuilder.add_usd(source=asset_file, joint_ordering=None, ...)``
-#           to first load the USD asset into a builder without invoking topology checks.
-#       1b. Use :func:`extract_graph_inputs_from_builder`, :func:`bodies_from_builder`,
-#           and :func:`joints_from_builder` to derive the inputs for a
-#           :class:`~kamino.topology.TopologyGraph`. The graph parses the body-joint
-#           connectivity and discovers the underlying topology of the asset, decomposing
-#           the graph into a set of spanning trees ordered by size, a list of body/joint
-#           index remappings (to satisfy Featherstone's regular numbering rules), and a
-#           list of synthesized FREE base joints needed to connect any isolated component
-#           in the graph.
-#
-#   2. Re-export USD asset with discovered topology baked-in:
-#       2a. :func:`apply_discovered_topology_to_builder` deep-copies the source
-#           ``newton.ModelBuilder``, appends the synthesized FREE base joints, permutes
-#           every body/joint-indexed array according to the topology remap, and rebuilds
-#           the articulation bookkeeping (``articulation_*``) so each spanning tree
-#           surfaces as one ``newton.ModelBuilder`` articulation.
-#       2b. :func:`export_usd_with_discovered_topology` writes a copy of the source USD
-#           with the discovered topology baked-in:
-#             - Root bodies have the ``PhysicsArticulationRootAPI`` applied schema
-#               added to their prim defs.
-#             - Chord joints have the ``uniform bool physics:excludeFromArticulation = 1``
-#               attribute added.
-#             - Synthesized base joints are NOT written to the USD asset in this PR
-#               (the in-builder representation in 2a already covers that case for
-#               downstream solvers).
-#
-#   3. Use front-end Newton API: take the builder returned by 2a and feed it into
-#      ``newton.Model`` as usual.
-#
-#   4. Use Kamino ``USDImporter`` to load the modified USD asset (from 2b) into a
-#      ``ModelBuilderKamino``. Returning here is gated by the still-unimplemented
-#      ``ModelBuilderKamino.add_topology_descriptor``, ``TopologyModel.from_descriptors``,
-#      and ``TopologyModel.from_newton`` factories — once those land, the dropped
-#      Kamino-flavored helpers (``make_topology_model_for_existing_*_kamino``) can
-#      return.
-#
-############################################################################################
-
 """TopologyGraph interop helpers for ``newton.ModelBuilder`` and OpenUSD assets.
 
-See the top-of-module comment block for the workflow documentation. The public
-helpers are:
+The public helpers in this module are:
 
-- :func:`extract_graph_inputs_from_builder`,
-  :func:`bodies_from_builder`,
+- :func:`extract_graph_inputs_from_builder`, :func:`bodies_from_builder`, and
   :func:`joints_from_builder`: cheap extractors that derive the inputs of a
   :class:`~kamino.topology.TopologyGraph` from a Newton :class:`ModelBuilder`.
+
 - :func:`discover_topology_for_builder`: convenience wrapper that returns an
   autoparsed :class:`~kamino.topology.TopologyGraph` for a single-world builder.
+
 - :func:`apply_discovered_topology_to_builder`: returns a *new* Newton
   :class:`ModelBuilder` with the discovered topology baked-in (synthesized
   base joints, regular-numbering body/joint reordering, articulation
   bookkeeping populated).
+
 - :func:`export_usd_with_discovered_topology`: writes a copy of a source USD
   asset with ``PhysicsArticulationRootAPI`` and ``physics:excludeFromArticulation``
   authored according to the discovered topology.
+
+----
+TopologyGraph use-cases:
+
+    Notes:
+        - Point (1) is the common workflow starting point.
+        - Points (2) and (3) define branching workflows for different downstream use cases.
+
+    1. A USD model comes as an arbitrary "soup" of bodies and joints with no explicit
+        meta-data such as articulation info ("PhysicsArticulationRootAPI" on body prims,
+        or "excludeFromArticulation" on joint prims), or even explicit FREE joints (i.e.
+        "PhysicsJoint" w/ or w/o "PhysicsLimitAPI:<DOF>"). In these cases we want to
+        discover the underlying topology of the model at run-time. To do this we can:
+        1a. Use ``newton.ModelBuilder.add_usd(source=asset_file, joint_ordering=None, ...)``
+            to first load the USD asset into a builder without invoking topology checks.
+        1b. Use :func:`extract_graph_inputs_from_builder`, :func:`bodies_from_builder`,
+            and :func:`joints_from_builder` to derive the inputs for a
+            :class:`~kamino.topology.TopologyGraph`. The graph parses the body-joint
+            connectivity and discovers the underlying topology of the asset, decomposing
+            the graph into a set of spanning trees ordered by size, a list of body/joint
+            index remappings (to satisfy Featherstone's regular numbering rules), and a
+            list of synthesized FREE base joints needed to connect any isolated component
+            in the graph.
+
+    2. Re-export USD asset with discovered topology baked-in:
+        2a. :func:`apply_discovered_topology_to_builder` deep-copies the source
+            ``newton.ModelBuilder``, appends the synthesized FREE base joints, permutes
+            every body/joint-indexed array according to the topology remap, and rebuilds
+            the articulation bookkeeping (``articulation_*``) so each spanning tree
+            surfaces as one ``newton.ModelBuilder`` articulation.
+        2b. :func:`export_usd_with_discovered_topology` writes a copy of the source USD
+            with the discovered topology baked-in:
+                - Root bodies have the ``PhysicsArticulationRootAPI`` applied schema
+                added to their prim defs.
+                - Chord joints have the ``uniform bool physics:excludeFromArticulation = 1``
+                attribute added.
+                - Synthesized base joints are NOT written to the USD asset in this PR
+                (the in-builder representation in 2a already covers that case for
+                downstream solvers).
+
+    3. Use front-end Newton API: take the builder returned by 2a and feed it into
+        ``newton.Model`` as usual.
+
+    4. Use Kamino ``USDImporter`` to load the modified USD asset (from 2b) into a
+        ``ModelBuilderKamino``. Returning here is gated by the still-unimplemented
+        ``ModelBuilderKamino.add_topology_descriptor``, ``TopologyModel.from_descriptors``,
+        and ``TopologyModel.from_newton`` factories — once those land, the dropped
+        Kamino-flavored helpers (``make_topology_model_for_existing_*_kamino``) can
+        return.
 """
 
 from __future__ import annotations
@@ -290,10 +288,17 @@ def apply_discovered_topology_to_builder(
     from :attr:`TopologyGraph.new_base_edges`, then permute every body- and
     joint-indexed array of the deep-copied builder according to
     :attr:`TopologyGraph.body_node_remap` / :attr:`TopologyGraph.joint_edge_remap`.
-    Finally, reset and rebuild the articulation bookkeeping
-    (:attr:`ModelBuilder.articulation_start`, :attr:`ModelBuilder.articulation_label`,
-    :attr:`ModelBuilder.articulation_world`, :attr:`ModelBuilder.joint_articulation`)
-    so each spanning tree surfaces as one Newton articulation.
+    For every joint flagged on :attr:`TopologyGraph.reversed_joint_edges`, the
+    rebuilt parent/child indices and the parent/child anchor transforms
+    (``joint_X_p`` / ``joint_X_c``) are also swapped so the surface joint row
+    matches the BFS-driven parent → child direction baked into the selected
+    spanning tree (otherwise Featherstone's ``parents[i] < i`` invariant
+    would fail at the first arc whose source edge was already polarized
+    ``child → parent``). Finally, reset and rebuild the articulation
+    bookkeeping (:attr:`ModelBuilder.articulation_start`,
+    :attr:`ModelBuilder.articulation_label`, :attr:`ModelBuilder.articulation_world`,
+    :attr:`ModelBuilder.joint_articulation`) so each spanning tree surfaces
+    as one Newton articulation.
 
     The contiguous-arc invariant required by
     :meth:`ModelBuilder.add_articulation` is guaranteed by
@@ -301,6 +306,14 @@ def apply_discovered_topology_to_builder(
     as ``[tree_0_arcs, tree_0_chords, tree_1_arcs, tree_1_chords, ...]``. Chord
     joints are intentionally left with ``joint_articulation == -1`` so loop
     closures don't trip the multi-parent validation.
+
+    Note:
+        The reversed-joint swap reorients ``joint_parent`` / ``joint_child``
+        and ``joint_X_p`` / ``joint_X_c`` only. Per-axis directions
+        (``joint_axis``) are left unchanged; for USD-derived assets the
+        parent/child anchor frames coincide at rest so the existing axis
+        vectors remain valid in the new parent anchor frame. Callers with
+        non-coincident anchor frames must rotate the axes themselves.
 
     Args:
         builder: The source Newton :class:`ModelBuilder` (single world).
@@ -470,13 +483,46 @@ def apply_discovered_topology_to_builder(
         setattr(new, attr, [old_list[new_to_old_joint[i]] for i in range(nj)])
 
     # 7. Remap body indices in joint_parent/joint_child (preserving the -1
-    # sentinel for world-attached joints) and rebuild
-    # joint_parents/joint_children dicts from the permuted parent/child arrays.
+    # sentinel for world-attached joints).
     for j in range(nj):
         if new.joint_parent[j] >= 0:
             new.joint_parent[j] = body_remap[new.joint_parent[j]]
         if new.joint_child[j] >= 0:
             new.joint_child[j] = body_remap[new.joint_child[j]]
+
+    # 7b. Swap parent ↔ child (and the matching anchor transforms) for joints
+    # whose source-edge polarity opposed the BFS-driven parent → child
+    # direction baked into the spanning tree (see :attr:`TopologyGraph
+    # .reversed_joint_edges`). Without this swap the rebuilt builder would
+    # carry joint rows that violate Featherstone's regular-numbering
+    # convention even though the discovered topology is correct.
+    #
+    # Limitation: per-axis directions (``joint_axis``) are NOT renegotiated
+    # across the swap — they still live in what is now the new child anchor
+    # frame. For USD-derived assets the parent/child anchor frames coincide
+    # at rest, so the same vector value remains valid; for assets with
+    # non-coincident anchor frames callers must rotate the axis themselves
+    # using ``joint_X_p``/``joint_X_c``. Per-DOF state arrays (``joint_q``,
+    # ``joint_qd``, ``joint_act``, etc.) similarly retain their stored
+    # values and may need a sign flip if the caller relies on a signed
+    # convention for q.
+    for old_j in graph.reversed_joint_edges:
+        if old_j < 0 or old_j >= len(joint_remap):
+            continue
+        new_j = joint_remap[old_j]
+        if new_j < 0 or new_j >= nj:
+            continue
+        new.joint_parent[new_j], new.joint_child[new_j] = (
+            new.joint_child[new_j],
+            new.joint_parent[new_j],
+        )
+        new.joint_X_p[new_j], new.joint_X_c[new_j] = (
+            new.joint_X_c[new_j],
+            new.joint_X_p[new_j],
+        )
+
+    # 7c. Rebuild ``joint_parents`` / ``joint_children`` dicts from the
+    # post-swap parent/child arrays so they stay consistent.
     new.joint_parents = {}
     new.joint_children = {}
     for j in range(nj):
@@ -611,11 +657,28 @@ def export_usd_with_discovered_topology(
     - ``uniform bool physics:excludeFromArticulation = 1`` on each chord joint
       prim so downstream USD consumers (incl. :class:`USDImporter`) treat
       these joints as loop closures rather than tree arcs.
+    - For every joint listed on :attr:`TopologyGraph.reversed_joint_edges`,
+      the ``physics:body0`` / ``physics:body1`` relationship targets are
+      swapped along with the matching ``physics:localPos0`` /
+      ``physics:localPos1`` and ``physics:localRot0`` / ``physics:localRot1``
+      anchor attributes, so the authored joint row respects the BFS-driven
+      ``parent → child`` direction baked into the spanning tree.
 
     Synthesized FREE base joints are NOT authored into the USD asset by this
     helper; that responsibility lives with
     :func:`apply_discovered_topology_to_builder` (the in-builder
     representation that downstream solvers consume).
+
+    Note:
+        The reversed-joint swap reorients the ``body0`` / ``body1``
+        relationships and their matching local-anchor attributes
+        (``localPos0`` / ``localPos1``, ``localRot0`` / ``localRot1``).
+        Joint-local axis tokens (``physics:axis`` on Revolute /
+        Prismatic, the per-DOF schemas on D6, etc.) are left untouched:
+        for anchor frames that coincide at rest the same axis token
+        remains valid in the new ``body0`` anchor frame, but assets
+        with non-coincident anchor frames may need additional axis
+        rotation which callers must perform themselves.
 
     Args:
         source: Path to the source USD asset (``.usd`` / ``.usda`` / ``.usdc``).
@@ -762,7 +825,31 @@ def export_usd_with_discovered_topology(
             )
             attr.Set(True)
 
-    # 7. Save and return.
+    # 7. Swap ``body0`` / ``body1`` relationship targets (and the matching
+    # ``localPos`` / ``localRot`` anchor attributes) for every joint flagged
+    # on :attr:`TopologyGraph.reversed_joint_edges`. This mirrors the
+    # parent/child swap performed by
+    # :func:`apply_discovered_topology_to_builder`, ensuring downstream
+    # consumers that re-import the output USD see the BFS-driven parent →
+    # child direction baked into the spanning tree.
+    for old_j in graph.reversed_joint_edges:
+        if old_j < 0:
+            continue
+        joint_path = joint_to_path.get(int(old_j))
+        if joint_path is None:
+            msg.warning("Skipping polarity swap for reversed joint %s: no USD prim.", old_j)
+            continue
+        joint_prim = output_stage.GetPrimAtPath(Sdf.Path(joint_path))
+        if not joint_prim or not joint_prim.IsValid():
+            msg.warning(
+                "Skipping polarity swap for reversed joint %s: prim at `%s` is invalid.",
+                old_j,
+                joint_path,
+            )
+            continue
+        _swap_usd_joint_polarity(joint_prim)
+
+    # 8. Save and return.
     output_stage.GetRootLayer().Save()
     return output_path
 
@@ -872,3 +959,57 @@ def _load_pxr_modules() -> tuple[Any, Any, Any]:
     except ImportError as e:
         raise ImportError("Failed to import pxr. Please install USD (e.g. via `pip install usd-core`).") from e
     return Sdf, Usd, UsdPhysics
+
+
+def _swap_usd_joint_polarity(joint_prim: Any) -> None:
+    """Swap ``body0`` ↔ ``body1`` and the matching local-anchor attributes on a USD joint prim.
+
+    Operates on raw attribute / relationship names so the helper works
+    uniformly across every concrete :class:`UsdPhysics.Joint` subclass
+    (Revolute, Prismatic, Spherical, Fixed, Distance, D6, …) — the
+    swapped attributes (``physics:body0`` / ``physics:body1`` and the
+    matching ``physics:localPos0`` / ``physics:localPos1`` /
+    ``physics:localRot0`` / ``physics:localRot1``) are defined on the
+    base :class:`UsdPhysics.Joint` schema. Joint-local axis tokens
+    (``physics:axis``, D6 limit / drive APIs, etc.) are intentionally
+    left untouched; see :func:`export_usd_with_discovered_topology` for
+    the rationale.
+
+    Missing or unauthored anchor attributes are tolerated: only the
+    sides that report :meth:`Usd.Attribute.IsValid` are read and written.
+    Missing ``physics:body0`` / ``physics:body1`` relationships cause
+    the function to no-op rather than raise so callers can apply the
+    swap defensively across mixed asset libraries.
+
+    Args:
+        joint_prim: A :class:`Usd.Prim` referring to a USD physics joint
+            whose ``body0`` / ``body1`` polarity should be swapped.
+    """
+    body0_rel = joint_prim.GetRelationship("physics:body0")
+    body1_rel = joint_prim.GetRelationship("physics:body1")
+    if not body0_rel or not body1_rel:
+        return
+
+    body0_targets = list(body0_rel.GetTargets())
+    body1_targets = list(body1_rel.GetTargets())
+    body0_rel.SetTargets(body1_targets)
+    body1_rel.SetTargets(body0_targets)
+
+    local_pos_0 = joint_prim.GetAttribute("physics:localPos0")
+    local_pos_1 = joint_prim.GetAttribute("physics:localPos1")
+    local_rot_0 = joint_prim.GetAttribute("physics:localRot0")
+    local_rot_1 = joint_prim.GetAttribute("physics:localRot1")
+
+    p0 = local_pos_0.Get() if (local_pos_0 and local_pos_0.IsValid()) else None
+    p1 = local_pos_1.Get() if (local_pos_1 and local_pos_1.IsValid()) else None
+    r0 = local_rot_0.Get() if (local_rot_0 and local_rot_0.IsValid()) else None
+    r1 = local_rot_1.Get() if (local_rot_1 and local_rot_1.IsValid()) else None
+
+    if p0 is not None and local_pos_1 and local_pos_1.IsValid():
+        local_pos_1.Set(p0)
+    if p1 is not None and local_pos_0 and local_pos_0.IsValid():
+        local_pos_0.Set(p1)
+    if r0 is not None and local_rot_1 and local_rot_1.IsValid():
+        local_rot_1.Set(r0)
+    if r1 is not None and local_rot_0 and local_rot_0.IsValid():
+        local_rot_0.Set(r1)

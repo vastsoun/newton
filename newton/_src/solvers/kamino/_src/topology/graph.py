@@ -384,6 +384,8 @@ class TopologyGraph:
         """Selected spanning tree per component."""
         self._trees_remapped: list[TopologySpanningTree] | None = None
         """Per-component spanning trees with indices rewritten through the reassignment remap."""
+        self._reversed_joint_edges: list[int] | None = None
+        """Cached union of ORIGINAL joint indices flagged as reversed across selected trees."""
         self._new_base_edges: list[GraphEdge] | None = None
         """New edges that should be added to connect isolated components."""
         self._body_node_remap: list[int] | None = None
@@ -517,6 +519,34 @@ class TopologyGraph:
                 tree.remapped(self._body_node_remap, self._joint_edge_remap) for tree in self._trees
             ]
         return self._trees_remapped
+
+    @property
+    def reversed_joint_edges(self) -> list[int]:
+        """Sorted ORIGINAL joint indices flagged as reversed across selected trees.
+
+        Aggregates :attr:`TopologySpanningTree.reversed_arcs` over every
+        selected tree and reports the union of ORIGINAL (pre-remap) joint
+        indices whose source-edge polarity had to be flipped to satisfy the
+        BFS-driven parent → child convention. Downstream consumers (e.g.
+        ``apply_discovered_topology_to_builder``) use this list to swap
+        their own per-joint parent/child storage so the rebuilt structure
+        remains Featherstone-compliant.
+
+        The cache is populated by :meth:`select_spanning_trees` BEFORE
+        :meth:`compute_index_reassignment` runs, so the returned indices
+        stay in the original numbering even when ``reassign_indices_inplace``
+        rewrites :attr:`trees` in place.
+
+        Returns:
+            A new list of ORIGINAL joint indices, sorted ascending. Empty
+            when every selected tree's polarity matches the source edges.
+
+        Raises:
+            ValueError: If spanning trees have not been selected yet.
+        """
+        if self._trees is None:
+            raise ValueError("Spanning trees have not been selected yet.")
+        return list(self._reversed_joint_edges) if self._reversed_joint_edges is not None else []
 
     ###
     # Operations
@@ -943,6 +973,20 @@ class TopologyGraph:
             if tree is None:
                 raise ValueError("Spanning tree selection failed for component.")
             self._trees.append(tree)
+
+        # Snapshot the union of polarity-reversed arc joint indices BEFORE
+        # any subsequent :meth:`compute_index_reassignment` rewrites the
+        # selected trees in place; this keeps :attr:`reversed_joint_edges`
+        # stable in the original numbering regardless of the remap mode.
+        reversed_set: set[int] = set()
+        for tree in self._trees:
+            arcs = tree.arcs or []
+            flags = tree.reversed_arcs or []
+            for arc, rev in zip(arcs, flags, strict=False):
+                if rev and arc >= 0:
+                    reversed_set.add(int(arc))
+        self._reversed_joint_edges = sorted(reversed_set)
+
         return self._trees
 
     def compute_index_reassignment(self, reassign_inplace: bool = False) -> tuple[list[int] | None, list[int] | None]:

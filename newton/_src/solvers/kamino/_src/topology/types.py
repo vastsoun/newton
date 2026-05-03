@@ -604,6 +604,19 @@ class TopologySpanningTree:
     chords: list[int] | None = None
     """List of joint indices not included in the spanning tree, shape ``(num_tree_chords,)``."""
 
+    reversed_arcs: list[bool] | None = None
+    """Per-arc polarity-flip flags, parallel to :attr:`arcs`.
+
+    ``reversed_arcs[i]`` is ``True`` if the arc at local position ``i`` had
+    to flip its source :attr:`GraphEdge.nodes` polarity to satisfy the
+    spanning tree's BFS-driven parent→child direction; otherwise it is
+    ``False``. The base arc at position ``0`` follows the
+    ``world → root`` convention, so it is flagged ``True`` only when the
+    source edge is polarized ``(root, world)`` instead of ``(world, root)``.
+    Sentinel arcs (``arcs[0] == NO_BASE_JOINT_INDEX``) are conventionally
+    flagged ``False`` since no source polarity is being flipped.
+    """
+
     ###
     # Parameterization
     ###
@@ -722,6 +735,7 @@ class TopologySpanningTree:
             root=_remap_body(self.root),
             arcs=new_arcs,
             chords=new_chords,
+            reversed_arcs=list(self.reversed_arcs) if self.reversed_arcs is not None else None,
             predecessors=list(self.predecessors) if self.predecessors is not None else None,
             successors=list(self.successors) if self.successors is not None else None,
             parents=list(self.parents) if self.parents is not None else None,
@@ -761,6 +775,7 @@ class TopologySpanningTree:
             root=_shift_body(self.root),
             arcs=new_arcs,
             chords=new_chords,
+            reversed_arcs=list(self.reversed_arcs) if self.reversed_arcs is not None else None,
             predecessors=list(self.predecessors) if self.predecessors is not None else None,
             successors=list(self.successors) if self.successors is not None else None,
             parents=list(self.parents) if self.parents is not None else None,

@@ -26,6 +26,19 @@ The ``chords`` list stores the global joint indices of all remaining
 joints in the source component. This guarantees Featherstone's
 regular-numbering invariant ``parents[i] < i`` for all ``i >= 1`` by
 construction (since traversal discovers parents before children).
+
+Because the source :class:`GraphEdge` polarity may oppose the BFS-driven
+parent → child direction, every selected arc records its polarity-flip
+state on the parallel :attr:`TopologySpanningTree.reversed_arcs` flag
+list. ``reversed_arcs[i] is True`` indicates that the source edge for
+``arcs[i]`` had its ``(predecessor, successor)`` pair swapped to satisfy
+``parents[i] < i``; downstream consumers (e.g.
+``apply_discovered_topology_to_builder``) use this flag to swap their
+own per-joint parent/child storage so the rebuilt structure remains
+Featherstone-compliant. Slot ``0`` is flagged ``True`` only for base
+edges whose source polarity is ``(root, world)`` instead of
+``(world, root)``; the ``NO_BASE_JOINT_INDEX`` sentinel is conventionally
+flagged ``False``.
 """
 
 from __future__ import annotations
@@ -554,20 +567,29 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
 
         # Tree arcs: arcs[i] is the global joint index of the joint
         # connecting body at local position i to its parent (or to
-        # the world via the base edge for i == 0).
+        # the world via the base edge for i == 0). The parallel
+        # ``reversed_arcs`` flag records whether the source-edge polarity
+        # had to be flipped to realize the BFS-driven parent → child
+        # direction at that slot.
         arcs: list[int] = [0] * num_bodies
         parents: list[int] = [0] * num_bodies
+        reversed_arcs: list[bool] = [False] * num_bodies
         if base_edge is not None:
             arcs[0] = base_edge.joint_index
+            # The base arc convention is ``world → root``; flag any source
+            # edge whose first node is not the world sentinel as reversed.
+            reversed_arcs[0] = base_edge.nodes[0] != world
         else:
-            # Isolated island has no base joint; mark
-            # slot 0 with the joint-index sentinel.
+            # Isolated island has no base joint; mark slot 0 with the
+            # joint-index sentinel and leave ``reversed_arcs[0]`` at False
+            # since there is no source polarity to flip.
             arcs[0] = NO_BASE_JOINT_INDEX
         parents[0] = DEFAULT_WORLD_NODE_INDEX
         for i in range(1, num_bodies):
             child = body_order[i]
             oedge = chosen_arcs[child]
             arcs[i] = oedge.oriented.joint_index
+            reversed_arcs[i] = oedge.original.nodes != oedge.oriented.nodes
             parent_body = oedge.oriented.nodes[0]
             parents[i] = local_of[parent_body]
 
@@ -650,6 +672,7 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
             root=root,
             arcs=arcs,
             chords=chord_joint_indices,
+            reversed_arcs=reversed_arcs,
             predecessors=predecessors,
             successors=successors,
             parents=parents,
@@ -702,6 +725,9 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
 
         if base_edge is not None:
             arcs = [base_edge.joint_index]
+            # Slot 0 follows the ``world → root`` polarity convention; flag
+            # source edges polarized ``(root, world)`` as reversed.
+            reversed_arcs = [base_edge.nodes[0] != world]
             parents = [DEFAULT_WORLD_NODE_INDEX]
             num_bodies = 1
             used = {base_edge.joint_index}
@@ -721,6 +747,7 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
                 successors[j_idx] = pv
         else:
             arcs = []
+            reversed_arcs = []
             parents = [DEFAULT_WORLD_NODE_INDEX]
             num_bodies = 1
             chord_joint_indices = [e.joint_index for e in (component.edges or [])]
@@ -747,6 +774,7 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
             root=body,
             arcs=arcs,
             chords=chord_joint_indices,
+            reversed_arcs=reversed_arcs,
             predecessors=predecessors,
             successors=successors,
             parents=parents,

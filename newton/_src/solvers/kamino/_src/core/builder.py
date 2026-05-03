@@ -1000,6 +1000,7 @@ class ModelBuilderKamino:
         joints_label = []
         joints_wid = []
         joints_jid = []
+        joints_tid = []
         joints_dofid = []
         joints_actid = []
         joints_q_j_0 = []
@@ -1130,6 +1131,7 @@ class ModelBuilderKamino:
                 joints_label.append(joint.name)
                 joints_wid.append(joint.wid)
                 joints_jid.append(joint.jid)
+                joints_tid.append(joint.tid)
                 joints_dofid.append(joint.dof_type.value)
                 joints_actid.append(joint.act_type.value)
                 joints_B_r_Bj.append(joint.B_r_Bj)
@@ -1374,6 +1376,7 @@ class ModelBuilderKamino:
                 num_joints=model_size.sum_of_num_joints,
                 label=joints_label,
                 wid=wp.array(joints_wid, dtype=int32),
+                tid=wp.array(joints_tid, dtype=int32),
                 jid=wp.array(joints_jid, dtype=int32),
                 dof_type=wp.array(joints_dofid, dtype=int32),
                 act_type=wp.array(joints_actid, dtype=int32),
@@ -1449,6 +1452,28 @@ class ModelBuilderKamino:
                 dynamic_friction=wp.array(mpairs_dynamic_fric[0], dtype=float32),
             )
 
+            # # TODO: Create the topology models
+            # model_topology = TopologyModel(
+            #     # TODO: num_worlds=model_size.num_worlds,
+            #     # TODO: num_topologies=...,
+            #     # TODO: max_joints_per_topology=...,
+            #     # TODO: max_arc_joints_per_topology=...,
+            #     # TODO: max_chord_joints_per_topology=...,
+            #     # TODO: max_coords_per_topology=...,
+            #     # TODO: max_arc_coords_per_topology=...,
+            #     # TODO: max_chord_coords_per_topology=...,
+            #     # TODO: max_dofs_per_topology=...,
+            #     # TODO: max_arc_dofs_per_topology=...,
+            #     # TODO: max_chord_dofs_per_topology=...,
+            #     # TODO: label=...,
+            #     # TODO: wid=...,
+            #     # TODO: tid=...,
+            #     # TODO: world_start=...,
+            #     # TODO: tree_joints_start=...,
+            #     # TODO: arc_joints_start=...,
+            #     # TODO: chord_joints_start=...,
+            # )
+
         # Construct and return the complete model container
         return ModelKamino(
             _device=device,
@@ -1462,6 +1487,7 @@ class ModelBuilderKamino:
             geoms=model_geoms,
             materials=model_materials,
             material_pairs=model_material_pairs,
+            # TODO: topology=model_topology,
         )
 
     ###

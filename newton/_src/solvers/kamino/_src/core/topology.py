@@ -24,6 +24,7 @@ import warp as wp
 
 from .....sim import Model
 from ..topology import TopologySpanningTree
+from .size import SizeKamino
 from .types import Descriptor, override
 
 ###
@@ -109,17 +110,26 @@ class TopologyModel:
     num_topologies: int = 0
     """Total number of topology entities in the model (host-side)."""
 
+    max_joints_per_topology: int = 0
+    """Maximum number of joints in any topology entity (host-side)."""
+
     max_arc_joints_per_topology: int = 0
     """Maximum number of arc joints in any topology entity (host-side)."""
 
     max_chord_joints_per_topology: int = 0
     """Maximum number of chord joints in any topology entity (host-side)."""
 
+    max_coords_per_topology: int = 0
+    """Maximum number of generalized coordinates in any arc of any topology entity (host-side)."""
+
     max_arc_coords_per_topology: int = 0
     """Maximum number of generalized coordinates in any arc of any topology entity (host-side)."""
 
     max_chord_coords_per_topology: int = 0
     """Maximum number of generalized coordinates in any chord of any topology entity (host-side)."""
+
+    max_dofs_per_topology: int = 0
+    """Maximum number of generalized degrees of freedom in any topology entity (host-side)."""
 
     max_arc_dofs_per_topology: int = 0
     """Maximum number of generalized degrees of freedom in any arc of any topology entity (host-side)."""
@@ -131,6 +141,7 @@ class TopologyModel:
     """
     A list containing the label of each topology entity.\n
     Length of ``num_topologies`` and type :class:`str`.
+    NOTE: This attribute aliases :attr:`ModelBuilder.articulation_label`.
     """
 
     ###
@@ -141,6 +152,7 @@ class TopologyModel:
     """
     World index of each topology entity.\n
     Shape of ``(num_topologies,)`` and type :class:`int32`.
+    NOTE: This attribute aliases :attr:`ModelBuilder.articulation_world`.
     """
 
     tid: wp.array[wp.int32] | None = None
@@ -171,11 +183,25 @@ class TopologyModel:
     The total number of global topology entities can be computed as::
 
         num_global_topology_entities = world_start[-1] - world_start[-2] + world_start[0]
+
+    NOTE: This attribute aliases :attr:`ModelBuilder.articulation_world_start`.
     """
 
     ###
     # Parameterization
     ###
+
+    tree_joints_start: wp.array[wp.int32] | None = None
+    """
+    Start index of the first joint per topology entity.\n
+    Shape of ``(num_topologies + 1,)`` and type :class:`int32`.
+
+    The number of joints in a given topology entity ``t`` can be computed as::
+
+        num_joints_in_topology = tree_joints_start[t + 1] - tree_joints_start[t]
+
+    NOTE: This attribute aliases :attr:`ModelBuilder.articulation_start`.
+    """
 
     arc_joints_start: wp.array[wp.int32] | None = None
     """
@@ -219,13 +245,13 @@ class TopologyModel:
         raise NotImplementedError("TopologyModel.from_descriptors is not implemented yet.")
 
     @staticmethod
-    def from_newton(model: Model) -> TopologyModel:
+    def from_newton(model: Model, size: SizeKamino) -> TopologyModel:
         """
         Generates a :class:`TopologyModel` by parsing the body, joint and articulation arrays of a :class:`Model`.
 
         Args:
             model: A :class:`Model` instance containing the body, joint, and articulation arrays.
-
+            size: A :class:`SizeKamino` instance containing the size information for the model.
         Returns:
             A :class:`TopologyModel` instance containing the data from the provided model.
 

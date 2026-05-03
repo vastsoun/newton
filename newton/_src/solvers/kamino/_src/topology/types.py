@@ -161,8 +161,8 @@ __all__ = [
     "ComponentType",
     "EdgeType",
     "GraphEdge",
+    "GraphLabels",
     "GraphNode",
-    "NameLabelMode",
     "NodeType",
     "SpanningTreeTraversal",
     "TopologyComponent",
@@ -198,13 +198,12 @@ ComponentConnectivity = Literal["connected", "isolated"]
 SpanningTreeTraversal = Literal["dfs", "bfs"]
 """Spanning-tree traversal mode: ``"dfs"`` (depth-first) or ``"bfs"`` (breadth-first)."""
 
-NameLabelMode = Literal["inline", "tables"]
-"""Name-label rendering mode requested via :attr:`TopologyGraphVisualizerBase` render methods.
-
-``"inline"`` annotates each named node and edge with a small text label drawn next to
-the on-graph marker; ``"tables"`` adds ``index | name`` reference tables for joints
-and bodies below the graph axis. The two modes can be combined by passing a set
-containing both literals.
+GraphLabels = Literal["inline", "tables"]
+"""Graph node/edge labels rendering modes (optional).
+Supports:
+- ``"inline"`` annotates each named node and edge with a small text label drawn next to the on-graph marker
+- ``"tables"`` adds ``index | name`` reference tables for body nodes and joint edges below the graph axis
+- The two modes can be combined by passing a set containing both literals
 """
 
 
@@ -915,9 +914,9 @@ class TopologyGraphVisualizerBase:
         world_node: int = DEFAULT_WORLD_NODE_INDEX,
         bodies: list[RigidBodyDescriptor] | None = None,
         joints: list[JointDescriptor] | None = None,
-        name_labels: Iterable[NameLabelMode] | None = None,
-        full_name_paths: bool = False,
+        graph_labels: Iterable[GraphLabels] | None = None,
         edge_label_offset_pts: float | None = None,
+        force_path_labels: bool = False,
         figsize: tuple[int, int] | None = None,
         path: str | None = None,
         show: bool = False,
@@ -930,16 +929,16 @@ class TopologyGraphVisualizerBase:
             components: Components of the topology graph.
             world_node: Index of the implicit world node.
             bodies: Optional body descriptors used to source human-readable
-                names for nodes when ``name_labels`` is requested.
+                names for nodes when ``graph_labels`` is requested.
             joints: Optional joint descriptors for name-based edge labels
-                (also used as the name source when ``name_labels`` is requested).
-            name_labels: Optional :data:`NameLabelMode` set selecting which
+                (also used as the name source when ``graph_labels`` is requested).
+            graph_labels: Optional :data:`GraphLabels` set selecting which
                 name-label variants to render. ``"inline"`` adds tiny on-graph
                 annotations beside named nodes/edges; ``"tables"`` adds
                 ``index | name`` reference tables below the graph. Both can
                 be combined. Modes silently no-op when the corresponding
                 descriptor list is missing or has no named entries.
-            full_name_paths: When ``True``, preserve the full scoped names
+            force_path_labels: When ``True``, preserve the full scoped names
                 in inline annotations and tables (mid-truncating only when
                 still too long). Defaults to ``False`` so USD-style
                 ``/scope/path/leaf`` names are clipped to ``…/leaf`` when
@@ -968,9 +967,9 @@ class TopologyGraphVisualizerBase:
         world_node: int = DEFAULT_WORLD_NODE_INDEX,
         bodies: list[RigidBodyDescriptor] | None = None,
         joints: list[JointDescriptor] | None = None,
-        name_labels: Iterable[NameLabelMode] | None = None,
-        full_name_paths: bool = False,
+        graph_labels: Iterable[GraphLabels] | None = None,
         edge_label_offset_pts: float | None = None,
+        force_path_labels: bool = False,
         skip_orphans: bool = True,
         figsize: tuple[int, int] | None = None,
         path: str | None = None,
@@ -983,12 +982,12 @@ class TopologyGraphVisualizerBase:
             candidates: List of candidate spanning trees.
             world_node: Index of the implicit world node.
             bodies: Optional body descriptors used to source human-readable
-                names for nodes when ``name_labels`` is requested.
+                names for nodes when ``graph_labels`` is requested.
             joints: Optional joint descriptors for name-based edge labels
-                (also used as the name source when ``name_labels`` is requested).
-            name_labels: Optional :data:`NameLabelMode` set selecting which
+                (also used as the name source when ``graph_labels`` is requested).
+            graph_labels: Optional :data:`GraphLabels` set selecting which
                 name-label variants to render. See :meth:`render_graph`.
-            full_name_paths: When ``True``, preserve full scoped names in
+            force_path_labels: When ``True``, preserve full scoped names in
                 inline annotations and tables. See :meth:`render_graph`.
             edge_label_offset_pts: Perpendicular edge-to-label distance
                 in display points. See :meth:`render_graph`.
@@ -1007,9 +1006,9 @@ class TopologyGraphVisualizerBase:
         world_node: int = DEFAULT_WORLD_NODE_INDEX,
         bodies: list[RigidBodyDescriptor] | None = None,
         joints: list[JointDescriptor] | None = None,
-        name_labels: Iterable[NameLabelMode] | None = None,
-        full_name_paths: bool = False,
+        graph_labels: Iterable[GraphLabels] | None = None,
         edge_label_offset_pts: float | None = None,
+        force_path_labels: bool = False,
         skip_orphans: bool = True,
         figsize: tuple[int, int] | None = None,
         path: str | None = None,
@@ -1022,12 +1021,12 @@ class TopologyGraphVisualizerBase:
             tree: The selected spanning tree to render.
             world_node: Index of the implicit world node.
             bodies: Optional body descriptors used to source human-readable
-                names for nodes when ``name_labels`` is requested.
+                names for nodes when ``graph_labels`` is requested.
             joints: Optional joint descriptors for name-based edge labels
-                (also used as the name source when ``name_labels`` is requested).
-            name_labels: Optional :data:`NameLabelMode` set selecting which
+                (also used as the name source when ``graph_labels`` is requested).
+            graph_labels: Optional :data:`GraphLabels` set selecting which
                 name-label variants to render. See :meth:`render_graph`.
-            full_name_paths: When ``True``, preserve full scoped names in
+            force_path_labels: When ``True``, preserve full scoped names in
                 inline annotations and tables. See :meth:`render_graph`.
             edge_label_offset_pts: Perpendicular edge-to-label distance
                 in display points. See :meth:`render_graph`.

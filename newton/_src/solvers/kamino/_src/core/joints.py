@@ -1238,6 +1238,12 @@ class JointDescriptor(Descriptor):
     Defaults to `-1`, indicating that the joint has not yet been added to a world.
     """
 
+    tid: int = -1
+    """
+    Index of the topology entity each joint belongs to.\n
+    Defaults to `-1`, indicating that the joint has not been added to a topology entity.
+    """
+
     jid: int = -1
     """
     Index of the joint w.r.t. its world.\n
@@ -1683,6 +1689,13 @@ class JointsModel:
     """
     Index each the world in which each joint is defined.\n
     Shape of ``(num_joints,)`` and type :class:`int`.
+    """
+
+    tid: wp.array | None = None
+    """
+    Index of the topology entity each joint belongs to.\n
+    Shape of ``(num_joints,)`` and type :class:`int`.
+    If the joint does not belong to any topology, then the value is `-1`.\n
     """
 
     jid: wp.array | None = None

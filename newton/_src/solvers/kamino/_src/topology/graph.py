@@ -194,8 +194,8 @@ from .types import (
     UNASSIGNED_JOINT_TYPE,
     EdgeType,
     GraphEdge,
+    GraphLabels,
     GraphNode,
-    NameLabelMode,
     NodeType,
     SpanningTreeTraversal,
     TopologyComponent,
@@ -616,6 +616,9 @@ class TopologyGraph:
 
     def render(
         self,
+        graph_labels: Iterable[GraphLabels] | None = None,
+        edge_label_offset_pts: float | None = None,
+        force_path_labels: bool = False,
         figsize: tuple[int, int] | None = None,
         path: str | None = None,
         show: bool = False,
@@ -623,6 +626,28 @@ class TopologyGraph:
         """Render the topology graph, its components, and spanning trees.
 
         Args:
+            graph_labels: Optional :data:`GraphLabels` set selecting
+                which name-label variants to render. ``"inline"`` adds
+                tiny on-graph annotations beside named nodes/edges;
+                ``"tables"`` adds ``index | name`` reference tables
+                below the graph. Both can be combined. Modes silently
+                no-op when the corresponding descriptor list is missing
+                or has no named entries.
+            force_path_labels: When ``True``, preserve the full scoped
+                name (e.g. ``/world/anymal/LF_HIP``) in inline
+                annotations and tables. Defaults to ``False`` so
+                USD-style ``/scope/path/leaf`` names are clipped to
+                ``…/leaf`` when they exceed the per-label budget,
+                keeping dense graphs readable.
+            edge_label_offset_pts: Perpendicular distance, in display
+                points (1 pt = 1/72 inch — matplotlib's standard
+                typographic unit), between each edge and its primary
+                ``index_TYPE`` label as well as the matching inline
+                joint-name label on the opposite side. ``None``
+                (default) uses the visualizer's built-in default.
+                Increase to push labels further from their edges;
+                decrease to bring them closer (set to ``0.0`` to
+                recover NetworkX-style on-edge placement).
             figsize: Optional figure size.
             path: Optional file path to save the figure.
             show: When ``True``, display the figure immediately.
@@ -650,9 +675,32 @@ class TopologyGraph:
         trees_path = self._inject_path_index_suffix(path, "trees")
 
         # Render the graph, its components, and spanning trees.
-        self.render_graph(figsize=figsize, path=graph_path, show=show)
-        self.render_spanning_tree_candidates(skip_orphans=True, figsize=figsize, path=candidates_path, show=show)
-        self.render_spanning_trees(skip_orphans=True, figsize=figsize, path=trees_path, show=show)
+        self.render_graph(
+            graph_labels=graph_labels,
+            edge_label_offset_pts=edge_label_offset_pts,
+            force_path_labels=force_path_labels,
+            figsize=figsize,
+            path=graph_path,
+            show=show,
+        )
+        self.render_spanning_tree_candidates(
+            graph_labels=graph_labels,
+            edge_label_offset_pts=edge_label_offset_pts,
+            force_path_labels=force_path_labels,
+            skip_orphans=True,
+            figsize=figsize,
+            path=candidates_path,
+            show=show,
+        )
+        self.render_spanning_trees(
+            graph_labels=graph_labels,
+            edge_label_offset_pts=edge_label_offset_pts,
+            force_path_labels=force_path_labels,
+            skip_orphans=True,
+            figsize=figsize,
+            path=trees_path,
+            show=show,
+        )
 
     ###
     # Step-by-Step Pipeline Operations
@@ -932,12 +980,12 @@ class TopologyGraph:
 
     def render_graph(
         self,
+        graph_labels: Iterable[GraphLabels] | None = None,
+        edge_label_offset_pts: float | None = None,
+        force_path_labels: bool = False,
         figsize: tuple[int, int] | None = None,
         path: str | None = None,
         show: bool = False,
-        name_labels: Iterable[NameLabelMode] | None = None,
-        full_name_paths: bool = False,
-        edge_label_offset_pts: float | None = None,
     ) -> None:
         """Render the graph and its components using the configured visualizer.
 
@@ -948,17 +996,14 @@ class TopologyGraph:
         present.
 
         Args:
-            figsize: Optional figure size.
-            path: Optional file path to save the figure.
-            show: When ``True``, display the figure immediately.
-            name_labels: Optional :data:`NameLabelMode` set selecting
+            graph_labels: Optional :data:`GraphLabels` set selecting
                 which name-label variants to render. ``"inline"`` adds
                 tiny on-graph annotations beside named nodes/edges;
                 ``"tables"`` adds ``index | name`` reference tables
                 below the graph. Both can be combined. Modes silently
                 no-op when the corresponding descriptor list is missing
                 or has no named entries.
-            full_name_paths: When ``True``, preserve the full scoped
+            force_path_labels: When ``True``, preserve the full scoped
                 name (e.g. ``/world/anymal/LF_HIP``) in inline
                 annotations and tables. Defaults to ``False`` so
                 USD-style ``/scope/path/leaf`` names are clipped to
@@ -973,6 +1018,9 @@ class TopologyGraph:
                 Increase to push labels further from their edges;
                 decrease to bring them closer (set to ``0.0`` to
                 recover NetworkX-style on-edge placement).
+            figsize: Optional figure size.
+            path: Optional file path to save the figure.
+            show: When ``True``, display the figure immediately.
 
         Raises:
             ValueError: If no visualizer is configured or components have
@@ -989,9 +1037,9 @@ class TopologyGraph:
             world_node=self._world_node,
             bodies=self._bodies,
             joints=self._joints,
-            name_labels=name_labels,
-            full_name_paths=full_name_paths,
+            graph_labels=graph_labels,
             edge_label_offset_pts=edge_label_offset_pts,
+            force_path_labels=force_path_labels,
             figsize=figsize,
             path=path,
             show=show,
@@ -999,13 +1047,13 @@ class TopologyGraph:
 
     def render_spanning_tree_candidates(
         self,
+        graph_labels: Iterable[GraphLabels] | None = None,
+        edge_label_offset_pts: float | None = None,
+        force_path_labels: bool = False,
         skip_orphans: bool = True,
         figsize: tuple[int, int] | None = None,
         path: str | os.PathLike[str] | None = None,
         show: bool = False,
-        name_labels: Iterable[NameLabelMode] | None = None,
-        full_name_paths: bool = False,
-        edge_label_offset_pts: float | None = None,
     ) -> None:
         """Render the candidate spanning trees of each component.
 
@@ -1020,9 +1068,9 @@ class TopologyGraph:
                 not produce a file, leaving gaps in the numbering that
                 correspond to component positions in :attr:`components`.
             show: When ``True``, display the figure immediately.
-            name_labels: Optional :data:`NameLabelMode` set selecting
+            graph_labels: Optional :data:`GraphLabels` set selecting
                 which name-label variants to render. See :meth:`render_graph`.
-            full_name_paths: When ``True``, preserve full scoped names in
+            force_path_labels: When ``True``, preserve full scoped names in
                 inline annotations and tables. See :meth:`render_graph`.
             edge_label_offset_pts: Perpendicular edge-to-label distance
                 in display points. See :meth:`render_graph`.
@@ -1044,9 +1092,9 @@ class TopologyGraph:
                 world_node=self._world_node,
                 bodies=self._bodies,
                 joints=self._joints,
-                name_labels=name_labels,
-                full_name_paths=full_name_paths,
+                graph_labels=graph_labels,
                 edge_label_offset_pts=edge_label_offset_pts,
+                force_path_labels=force_path_labels,
                 skip_orphans=skip_orphans,
                 figsize=figsize,
                 path=self._inject_path_index_suffix(path, i),
@@ -1055,13 +1103,13 @@ class TopologyGraph:
 
     def render_spanning_trees(
         self,
+        graph_labels: Iterable[GraphLabels] | None = None,
+        edge_label_offset_pts: float | None = None,
+        force_path_labels: bool = False,
         skip_orphans: bool = True,
         figsize: tuple[int, int] | None = None,
         path: str | os.PathLike[str] | None = None,
         show: bool = False,
-        name_labels: Iterable[NameLabelMode] | None = None,
-        full_name_paths: bool = False,
-        edge_label_offset_pts: float | None = None,
     ) -> None:
         """Render the selected spanning tree of each component.
 
@@ -1076,9 +1124,9 @@ class TopologyGraph:
                 not produce a file, leaving gaps in the numbering that
                 correspond to component positions in :attr:`components`.
             show: When ``True``, display the figure immediately.
-            name_labels: Optional :data:`NameLabelMode` set selecting
+            graph_labels: Optional :data:`GraphLabels` set selecting
                 which name-label variants to render. See :meth:`render_graph`.
-            full_name_paths: When ``True``, preserve full scoped names in
+            force_path_labels: When ``True``, preserve full scoped names in
                 inline annotations and tables. See :meth:`render_graph`.
             edge_label_offset_pts: Perpendicular edge-to-label distance
                 in display points. See :meth:`render_graph`.
@@ -1100,9 +1148,9 @@ class TopologyGraph:
                 world_node=self._world_node,
                 bodies=self._bodies,
                 joints=self._joints,
-                name_labels=name_labels,
-                full_name_paths=full_name_paths,
+                graph_labels=graph_labels,
                 edge_label_offset_pts=edge_label_offset_pts,
+                force_path_labels=force_path_labels,
                 skip_orphans=skip_orphans,
                 figsize=figsize,
                 path=self._inject_path_index_suffix(path, i),

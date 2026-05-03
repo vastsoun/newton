@@ -33,6 +33,15 @@ from newton._src.solvers.kamino._src import topology
 from newton._src.solvers.kamino._src.core.bodies import RigidBodyDescriptor
 from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino._src.core.joints import JointDescriptor, JointDoFType
+from newton._src.solvers.kamino._src.topology.utils import (
+    NEWTON_TO_KAMINO_JOINT_TYPE,
+    apply_discovered_topology_to_builder,
+    bodies_from_builder,
+    discover_topology_for_builder,
+    export_usd_with_discovered_topology,
+    extract_graph_inputs_from_builder,
+    joints_from_builder,
+)
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -131,78 +140,6 @@ def _make_tree(
         num_tree_chords=0,
         children=children,
     )
-
-
-# Newton's :class:`JointType` and Kamino's :class:`JointDoFType` use
-# different integer values, so map between them when feeding a Newton
-# ``ModelBuilder`` (or its derived ``Model``) into a ``TopologyGraph``.
-# Only the FREE→FREE mapping matters for grounding-edge auto-promotion;
-# every other type is collapsed onto REVOLUTE since the topology pipeline
-# only differentiates FREE vs non-FREE.
-_NEWTON_TO_KAMINO_JOINT_TYPE = {
-    int(newton.JointType.PRISMATIC): int(JointDoFType.PRISMATIC),
-    int(newton.JointType.REVOLUTE): int(JointDoFType.REVOLUTE),
-    int(newton.JointType.BALL): int(JointDoFType.SPHERICAL),
-    int(newton.JointType.FIXED): int(JointDoFType.FIXED),
-    int(newton.JointType.FREE): int(JointDoFType.FREE),
-    int(newton.JointType.D6): int(JointDoFType.REVOLUTE),
-    int(newton.JointType.DISTANCE): int(JointDoFType.REVOLUTE),
-}
-
-
-def _topology_inputs_from_newton_builder(builder: ModelBuilder) -> tuple[list[int], list[topology.EdgeType]]:
-    """Extract ``(nodes, edges)`` from a Newton :class:`ModelBuilder`.
-
-    All bodies and joints in the builder are fed into a single ``TopologyGraph``;
-    the parser then discovers connected components automatically — no manual
-    per-articulation splitting required.
-    """
-    nodes: list[int] = list(range(builder.body_count))
-    edges: list[topology.EdgeType] = []
-    for j in range(builder.joint_count):
-        joint_type = _NEWTON_TO_KAMINO_JOINT_TYPE.get(int(builder.joint_type[j]), int(JointDoFType.REVOLUTE))
-        edges.append((joint_type, j, (int(builder.joint_parent[j]), int(builder.joint_child[j]))))
-    return nodes, edges
-
-
-def _bodies_from_newton_builder(builder: ModelBuilder) -> list[RigidBodyDescriptor]:
-    """Synthesize :class:`RigidBodyDescriptor` instances from a Newton :class:`ModelBuilder`.
-
-    The ``m_i`` field is populated from the builder's mass array, and ``name``
-    is sourced from :attr:`ModelBuilder.body_label` so the topology renderer
-    can surface meaningful per-body labels. The rest are left at their
-    dataclass defaults — this is enough for
-    :class:`TopologyHeaviestBodyBaseSelector`, which only reads body mass.
-    """
-    return [
-        RigidBodyDescriptor(
-            name=builder.body_label[i] if i < len(builder.body_label) else f"body_{i}",
-            m_i=float(builder.body_mass[i]),
-            bid=i,
-        )
-        for i in range(builder.body_count)
-    ]
-
-
-def _joints_from_newton_builder(builder: ModelBuilder) -> list[JointDescriptor]:
-    """Synthesize :class:`JointDescriptor` instances from a Newton :class:`ModelBuilder`.
-
-    Only the ``name`` and ``dof_type`` fields are populated — names are
-    sourced from :attr:`ModelBuilder.joint_label` so the topology renderer
-    can surface meaningful per-joint labels, and ``dof_type`` is mapped from
-    the Newton joint-type enum via :data:`_NEWTON_TO_KAMINO_JOINT_TYPE`.
-    Other fields are left at their dataclass defaults; this is enough for
-    consumers that only inspect :attr:`JointDescriptor.name`.
-    """
-    return [
-        JointDescriptor(
-            name=builder.joint_label[j] if j < len(builder.joint_label) else f"joint_{j}",
-            dof_type=JointDoFType(
-                _NEWTON_TO_KAMINO_JOINT_TYPE.get(int(builder.joint_type[j]), int(JointDoFType.REVOLUTE))
-            ),
-        )
-        for j in range(builder.joint_count)
-    ]
 
 
 def _topology_inputs_from_kamino_builder(
@@ -2533,13 +2470,13 @@ class TestTopologyGraph(unittest.TestCase):
                         figsize=(10, 10),
                         path=self.output_path / f"test_21_testmech_world_{w}_graph.pdf",
                         show=self.plotfig,
-                        name_labels=["tables"],
+                        graph_labels=["tables"],
                     )
                     G.render_spanning_trees(
                         figsize=(10, 10),
                         path=self.output_path / f"test_21_testmech_world_{w}_trees.pdf",
                         show=self.plotfig,
-                        name_labels=["tables"],
+                        graph_labels=["tables"],
                     )
 
     def test_22_discover_topology_of_anymal_d(self):
@@ -2571,9 +2508,9 @@ class TestTopologyGraph(unittest.TestCase):
         # Two instances of the same articulated robot → two articulations.
         self.assertEqual(builder.articulation_count, 2)
 
-        nodes, edges = _topology_inputs_from_newton_builder(builder)
-        bodies = _bodies_from_newton_builder(builder)
-        joints = _joints_from_newton_builder(builder)
+        nodes, edges = extract_graph_inputs_from_builder(builder)
+        bodies = bodies_from_builder(builder)
+        joints = joints_from_builder(builder)
         base_selector = topology.TopologyHeaviestBodyBaseSelector()
         G = topology.TopologyGraph(
             nodes,
@@ -2592,13 +2529,13 @@ class TestTopologyGraph(unittest.TestCase):
                 figsize=(12, 12),
                 path=self.output_path / "test_22_anymal_d_graph.pdf",
                 show=self.plotfig,
-                name_labels={"inline", "tables"},
+                graph_labels={"inline", "tables"},
             )
             G.render_spanning_trees(
                 figsize=(12, 12),
                 path=self.output_path / "test_22_anymal_d_trees.pdf",
                 show=self.plotfig,
-                name_labels={"inline", "tables"},
+                graph_labels={"inline", "tables"},
             )
 
         # As a sanity check, also verify that we can finalize a model and that
@@ -2640,9 +2577,9 @@ class TestTopologyGraph(unittest.TestCase):
         )
         builder.end_world()
 
-        nodes, edges = _topology_inputs_from_newton_builder(builder)
-        bodies = _bodies_from_newton_builder(builder)
-        joints = _joints_from_newton_builder(builder)
+        nodes, edges = extract_graph_inputs_from_builder(builder)
+        bodies = bodies_from_builder(builder)
+        joints = joints_from_builder(builder)
         nj_orig = len(edges)
 
         base_selector = topology.TopologyHeaviestBodyBaseSelector()
@@ -2656,6 +2593,17 @@ class TestTopologyGraph(unittest.TestCase):
         )
         # Two robot instances → two components, each needing a synthetic FREE base edge.
         _assert_grounded_topology_invariants(self, G, expected_num_components=2, expected_num_synthetic_edges=2)
+
+        # DEBUGGING OUTPUT
+        for nbe in G.new_base_edges:
+            msg.warning("new_base_edge: %s\n", nbe)
+
+        msg.warning("body_node_remap: %s", G.body_node_remap)
+        msg.warning("joint_edge_remap: %s\n", G.joint_edge_remap)
+
+        msg.warning("trees[0]: %s\n", G.trees[0])
+        msg.warning("trees_remapped[0]: %s\n", G.trees_remapped[0])
+
         # Synthetic edges must be tagged with consecutive ``NJ + k`` indices so the
         # downstream model builder can inject them at unambiguous positions.
         synthetic_indices = sorted(e.joint_index for e in G.new_base_edges)
@@ -2668,14 +2616,17 @@ class TestTopologyGraph(unittest.TestCase):
                 figsize=(12, 12),
                 path=self.output_path / "test_23_dr_legs_graph.pdf",
                 show=self.plotfig,
-                name_labels={"tables"},
+                graph_labels={"tables"},
             )
             G.render_spanning_trees(
                 figsize=(12, 12),
                 path=self.output_path / "test_23_dr_legs_trees.pdf",
                 show=self.plotfig,
-                name_labels={"tables"},
+                graph_labels={"tables"},
             )
+
+        # Check re-assignment final output:
+        # TODO: the builder.joint_parent array should be equal to the
 
     ###
     # End-to-end pipeline with the shipped selector backends
@@ -2845,6 +2796,395 @@ class TestTopologyGraph(unittest.TestCase):
         G._tree_generator = None
         with self.assertRaisesRegex(ValueError, "tree_generator"):
             G.parse()
+
+
+class TestTopologyInteropUtils(unittest.TestCase):
+    """End-to-end coverage for :mod:`kamino._src.topology.utils` interop helpers.
+
+    Test layout:
+    - ``test_0*_extract_*`` — extraction helpers from a Newton ``ModelBuilder``.
+    - ``test_1*_apply_*`` — :func:`apply_discovered_topology_to_builder` on
+      synthetic builders (already-grounded chain, ungrounded chain).
+    - ``test_2*_export_usd_*`` — :func:`export_usd_with_discovered_topology`
+      round-trip on a real USD asset.
+    """
+
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = True
+        self.savefig = False
+        self.plotfig = False
+        self.output_path = test_context.output_path / "test_topology" / "interop_utils"
+        if self.savefig:
+            self.output_path.mkdir(parents=True, exist_ok=True)
+        if self.verbose:
+            print("\n")
+            msg.set_log_level(msg.LogLevel.INFO)
+        else:
+            msg.reset_log_level()
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
+    @staticmethod
+    def _make_grounded_chain(num_links: int = 4) -> ModelBuilder:
+        """Return a Newton :class:`ModelBuilder` with a FREE-grounded revolute chain."""
+        builder = ModelBuilder()
+        builder.begin_world()
+        prev_body = -1
+        for i in range(num_links):
+            body = builder.add_link(label=f"link_{i}", mass=1.0)
+            if i == 0:
+                builder.add_joint_free(child=body, label=f"joint_{i}")
+            else:
+                builder.add_joint_revolute(parent=prev_body, child=body, axis=newton.Axis.Z, label=f"joint_{i}")
+            prev_body = body
+        builder.end_world()
+        return builder
+
+    @staticmethod
+    def _make_ungrounded_chain(num_links: int = 3) -> ModelBuilder:
+        """Return a builder with a non-grounded revolute chain (no FREE base)."""
+        builder = ModelBuilder()
+        builder.begin_world()
+        prev_body = -1
+        for i in range(num_links):
+            body = builder.add_link(label=f"link_{i}", mass=1.0)
+            if i > 0:
+                builder.add_joint_revolute(parent=prev_body, child=body, axis=newton.Axis.Z, label=f"joint_{i}")
+            prev_body = body
+        builder.end_world()
+        return builder
+
+    ###
+    # Extraction helpers
+    ###
+
+    def test_01_extract_graph_inputs_round_trips_labels_and_types(self):
+        """``extract_graph_inputs_from_builder`` mirrors per-joint labels, parent/child,
+        and Newton→Kamino joint type translation.
+        """
+        builder = self._make_grounded_chain(num_links=3)
+        nodes, edges = extract_graph_inputs_from_builder(builder)
+
+        self.assertEqual(nodes, list(range(builder.body_count)))
+        self.assertEqual(len(edges), builder.joint_count)
+        for j, (joint_type, joint_index, (parent, child)) in enumerate(edges):
+            self.assertEqual(joint_index, j)
+            self.assertEqual(parent, int(builder.joint_parent[j]))
+            self.assertEqual(child, int(builder.joint_child[j]))
+            self.assertEqual(joint_type, NEWTON_TO_KAMINO_JOINT_TYPE[int(builder.joint_type[j])])
+        # FREE base (joint 0) and revolute spine (joints 1, 2).
+        self.assertEqual(edges[0][0], int(JointDoFType.FREE))
+        for j in range(1, 3):
+            self.assertEqual(edges[j][0], int(JointDoFType.REVOLUTE))
+
+    def test_02_bodies_and_joints_from_builder_propagate_metadata(self):
+        """``bodies_from_builder`` and ``joints_from_builder`` pull labels and mass."""
+        builder = self._make_grounded_chain(num_links=3)
+        bodies = bodies_from_builder(builder)
+        joints = joints_from_builder(builder)
+
+        self.assertEqual(len(bodies), builder.body_count)
+        self.assertEqual(len(joints), builder.joint_count)
+        for i, body in enumerate(bodies):
+            self.assertIsInstance(body, RigidBodyDescriptor)
+            self.assertEqual(body.name, builder.body_label[i])
+            self.assertEqual(body.bid, i)
+            self.assertAlmostEqual(body.m_i, float(builder.body_mass[i]))
+        for j, joint in enumerate(joints):
+            self.assertIsInstance(joint, JointDescriptor)
+            self.assertEqual(joint.name, builder.joint_label[j])
+            self.assertEqual(int(joint.dof_type), NEWTON_TO_KAMINO_JOINT_TYPE[int(builder.joint_type[j])])
+
+    def test_03_discover_topology_rejects_multi_world_builder(self):
+        """``discover_topology_for_builder`` enforces the single-world precondition."""
+        builder = ModelBuilder()
+        builder.begin_world()
+        builder.add_link(label="w0_link", mass=1.0)
+        builder.end_world()
+        builder.begin_world()
+        builder.add_link(label="w1_link", mass=1.0)
+        builder.end_world()
+        with self.assertRaisesRegex(ValueError, "single-world"):
+            discover_topology_for_builder(builder)
+
+    ###
+    # Builder round-trip
+    ###
+
+    def test_11_apply_topology_grounded_chain_no_synthetic_edges(self):
+        """A FREE-grounded revolute chain rebuilds into a single articulation
+        spanning every joint with no synthetic base edges.
+        """
+        builder = self._make_grounded_chain(num_links=4)
+        new_builder = apply_discovered_topology_to_builder(builder)
+
+        self.assertEqual(new_builder.body_count, builder.body_count)
+        self.assertEqual(new_builder.joint_count, builder.joint_count)
+        self.assertEqual(new_builder.articulation_count, 1)
+        self.assertEqual(new_builder.articulation_start, [0])
+        self.assertEqual(list(new_builder.joint_articulation), [0] * new_builder.joint_count)
+        self.assertEqual(new_builder.joint_parent[0], -1)
+        # The sums over per-coord/per-dof arrays are conserved by a permutation.
+        self.assertEqual(new_builder.joint_coord_count, builder.joint_coord_count)
+        self.assertEqual(new_builder.joint_dof_count, builder.joint_dof_count)
+        self.assertEqual(new_builder.joint_constraint_count, builder.joint_constraint_count)
+        # The new builder must finalize cleanly into a Newton model.
+        model: Model = new_builder.finalize()
+        self.assertEqual(model.articulation_count, 1)
+        self.assertEqual(model.body_count, new_builder.body_count)
+        self.assertEqual(model.joint_count, new_builder.joint_count)
+
+    def test_12_apply_topology_synthesizes_free_base_for_ungrounded_chain(self):
+        """An ungrounded chain gains exactly one synthetic FREE base joint at
+        the start of the rebuilt articulation.
+        """
+        builder = self._make_ungrounded_chain(num_links=3)
+        new_builder = apply_discovered_topology_to_builder(builder)
+
+        # +1 joint over the original (the synthetic FREE base).
+        self.assertEqual(new_builder.body_count, builder.body_count)
+        self.assertEqual(new_builder.joint_count, builder.joint_count + 1)
+        self.assertEqual(new_builder.articulation_count, 1)
+        self.assertEqual(new_builder.articulation_start, [0])
+        # The synthetic FREE joint occupies the first slot of the articulation.
+        self.assertEqual(int(new_builder.joint_type[0]), int(newton.JointType.FREE))
+        self.assertEqual(new_builder.joint_parent[0], -1)
+        self.assertTrue(new_builder.joint_label[0].startswith("synthetic_base_"))
+        # Every remapped joint sits inside the same articulation.
+        self.assertEqual(list(new_builder.joint_articulation), [0] * new_builder.joint_count)
+        # Per-DOF totals: 6 (FREE base) + 1 + 1 (revolute spine) = 8 dofs,
+        # 7 (FREE) + 1 + 1 = 9 coords.
+        self.assertEqual(new_builder.joint_coord_count, 9)
+        self.assertEqual(new_builder.joint_dof_count, 8)
+        # Finalization must succeed.
+        model: Model = new_builder.finalize()
+        self.assertEqual(model.articulation_count, 1)
+
+    def test_13_apply_topology_does_not_mutate_source_builder(self):
+        """``apply_discovered_topology_to_builder`` deep-copies its input."""
+        builder = self._make_ungrounded_chain(num_links=3)
+        original_joint_count = builder.joint_count
+        original_body_count = builder.body_count
+        original_articulation_count = builder.articulation_count
+        _ = apply_discovered_topology_to_builder(builder)
+        self.assertEqual(builder.joint_count, original_joint_count)
+        self.assertEqual(builder.body_count, original_body_count)
+        self.assertEqual(builder.articulation_count, original_articulation_count)
+
+    def test_14_apply_topology_propagates_label_prefix(self):
+        """The ``label`` kwarg prefixes both articulation labels and synthetic joint labels."""
+        builder = self._make_ungrounded_chain(num_links=2)
+        new_builder = apply_discovered_topology_to_builder(builder, label="robot")
+        self.assertEqual(new_builder.articulation_label, ["robot_articulation_0"])
+        self.assertTrue(new_builder.joint_label[0].startswith("robot_synthetic_base_"))
+
+    def test_15_apply_topology_anymal_d_round_trips_via_builder(self):
+        """End-to-end: load ANYmal D from USD, apply topology, finalize cleanly.
+
+        The pre-baked asset already has FREE bases, so this exercises the
+        regular-numbering permutation rather than the synthetic-FREE injection.
+        """
+        try:
+            asset_path = newton.utils.download_asset("anybotics_anymal_d")
+        except Exception as exc:  # pragma: no cover — network/asset issues
+            self.skipTest(f"ANYmal D asset unavailable: {exc!r}")
+        asset_file = str(asset_path / "usd" / "anymal_d.usda")
+
+        builder = ModelBuilder()
+        builder.begin_world()
+        builder.add_usd(
+            source=asset_file,
+            collapse_fixed_joints=True,
+            enable_self_collisions=False,
+            force_show_colliders=True,
+        )
+        builder.end_world()
+
+        graph = discover_topology_for_builder(builder)
+        new_builder = apply_discovered_topology_to_builder(builder, graph=graph)
+
+        # A single ANYmal D instance → exactly one articulation in the rebuilt builder.
+        self.assertEqual(new_builder.articulation_count, len(graph.trees))
+        self.assertEqual(new_builder.body_count, builder.body_count)
+        self.assertEqual(new_builder.joint_count, builder.joint_count + len(graph.new_base_edges or []))
+
+        model: Model = new_builder.finalize()
+        self.assertEqual(model.articulation_count, new_builder.articulation_count)
+
+    ###
+    # USD round-trip
+    ###
+
+    def test_21_export_usd_writes_articulation_root_api(self):
+        """Round-trip a USD asset and verify the discovered topology is authored.
+
+        Uses the ANYmal D asset (FREE-grounded so no synthetic edges are needed)
+        and asserts that:
+
+        - The output stage opens cleanly with ``pxr``.
+        - At least one prim in the output stage carries the
+          :class:`UsdPhysics.ArticulationRootAPI` applied schema.
+        """
+        try:
+            from pxr import Usd, UsdPhysics
+        except ImportError:
+            self.skipTest("pxr (usd-core) is not installed")
+
+        try:
+            asset_path = newton.utils.download_asset("anybotics_anymal_d")
+        except Exception as exc:  # pragma: no cover — network/asset issues
+            self.skipTest(f"ANYmal D asset unavailable: {exc!r}")
+        asset_file = str(asset_path / "usd" / "anymal_d.usda")
+
+        out_dir = test_context.output_path / "test_topology" / "interop_utils"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / "anymal_d_with_topology.usda"
+        if out_path.exists():
+            out_path.unlink()
+
+        result = export_usd_with_discovered_topology(
+            asset_file,
+            out_path,
+            add_usd_kwargs={"collapse_fixed_joints": True},
+        )
+        self.assertEqual(result, out_path)
+        self.assertTrue(out_path.exists())
+
+        stage = Usd.Stage.Open(str(out_path))
+        self.assertIsNotNone(stage)
+        roots_with_api = [prim for prim in stage.Traverse() if prim.HasAPI(UsdPhysics.ArticulationRootAPI)]
+        self.assertGreaterEqual(
+            len(roots_with_api),
+            1,
+            f"Expected at least one prim with `UsdPhysics.ArticulationRootAPI` in `{out_path}`.",
+        )
+
+    def test_22_export_usd_writes_chord_excludes_for_dr_testmech(self):
+        """Round-trip the DR TestMechanism USD asset and verify topology authoring.
+
+        DR TestMechanism is a well-grounded mechanism *with loop closures*:
+        unlike ANYmal D it does have chord joints, but unlike DR Legs it does
+        not need a synthesized FREE base (its grounding is already in the
+        source asset). The test asserts:
+
+        - The output stage opens cleanly with ``pxr``.
+        - At least one prim in the output stage carries the
+          :class:`UsdPhysics.ArticulationRootAPI` applied schema.
+        - At least one joint prim in the output stage carries
+          ``physics:excludeFromArticulation = True``.
+        """
+        try:
+            from pxr import Usd, UsdPhysics
+        except ImportError:
+            self.skipTest("pxr (usd-core) is not installed")
+
+        try:
+            asset_path = newton.utils.download_asset("disneyresearch")
+        except Exception as exc:  # pragma: no cover — network/asset issues
+            self.skipTest(f"DR TestMechanism asset unavailable: {exc!r}")
+        asset_file = str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda")
+
+        out_dir = test_context.output_path / "test_topology" / "interop_utils"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / "dr_testmech_with_topology.usda"
+        if out_path.exists():
+            out_path.unlink()
+
+        result = export_usd_with_discovered_topology(asset_file, out_path)
+        self.assertEqual(result, out_path)
+        self.assertTrue(out_path.exists())
+
+        stage = Usd.Stage.Open(str(out_path))
+        self.assertIsNotNone(stage)
+
+        roots_with_api = [prim for prim in stage.Traverse() if prim.HasAPI(UsdPhysics.ArticulationRootAPI)]
+        self.assertGreaterEqual(
+            len(roots_with_api),
+            1,
+            f"Expected at least one prim with `UsdPhysics.ArticulationRootAPI` in `{out_path}`.",
+        )
+
+        excluded_chord_prims = []
+        for prim in stage.Traverse():
+            attr = prim.GetAttribute("physics:excludeFromArticulation")
+            if attr and attr.IsValid() and attr.Get() is True:
+                excluded_chord_prims.append(prim.GetPath())
+        self.assertGreaterEqual(
+            len(excluded_chord_prims),
+            1,
+            f"Expected at least one joint prim with `physics:excludeFromArticulation=True` in `{out_path}`.",
+        )
+
+    def test_23_export_usd_writes_chord_excludes_for_dr_legs(self):
+        """Round-trip the DR Legs USD asset and verify chord-joint authoring.
+
+        Unlike ANYmal D (a pure tree), the DR Legs asset ships as a
+        articulated mechanism *with loop closures*. This exercises the chord-
+        joint side of :func:`export_usd_with_discovered_topology`:
+
+        - The output stage opens cleanly with ``pxr``.
+        - At least one prim in the output stage carries the
+          :class:`UsdPhysics.ArticulationRootAPI` applied schema (the
+          synthesized FREE base lands on the heaviest body's prim).
+        - At least one joint prim in the output stage carries
+          ``physics:excludeFromArticulation = True``, which is the unique
+          USD-level signal authored for chord (loop-closing) joints.
+        """
+        try:
+            from pxr import Usd, UsdPhysics
+        except ImportError:
+            self.skipTest("pxr (usd-core) is not installed")
+
+        try:
+            asset_path = newton.utils.download_asset("disneyresearch")
+        except Exception as exc:  # pragma: no cover — network/asset issues
+            self.skipTest(f"DR Legs asset unavailable: {exc!r}")
+        asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_meshes_and_boxes.usda")
+
+        out_dir = test_context.output_path / "test_topology" / "interop_utils"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / "dr_legs_with_topology.usda"
+        if out_path.exists():
+            out_path.unlink()
+
+        result = export_usd_with_discovered_topology(
+            asset_file,
+            out_path,
+            add_usd_kwargs={
+                "joint_ordering": None,
+                "force_show_colliders": True,
+                "force_position_velocity_actuation": True,
+            },
+        )
+        self.assertEqual(result, out_path)
+        self.assertTrue(out_path.exists())
+
+        stage = Usd.Stage.Open(str(out_path))
+        self.assertIsNotNone(stage)
+
+        roots_with_api = [prim for prim in stage.Traverse() if prim.HasAPI(UsdPhysics.ArticulationRootAPI)]
+        self.assertGreaterEqual(
+            len(roots_with_api),
+            1,
+            f"Expected at least one prim with `UsdPhysics.ArticulationRootAPI` in `{out_path}`.",
+        )
+
+        excluded_chord_prims = []
+        for prim in stage.Traverse():
+            attr = prim.GetAttribute("physics:excludeFromArticulation")
+            if attr and attr.IsValid() and attr.Get() is True:
+                excluded_chord_prims.append(prim.GetPath())
+        self.assertGreaterEqual(
+            len(excluded_chord_prims),
+            1,
+            f"Expected at least one joint prim with `physics:excludeFromArticulation=True` in `{out_path}`.",
+        )
 
 
 ###

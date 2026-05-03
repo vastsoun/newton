@@ -23,8 +23,8 @@ from .types import (
     DEFAULT_WORLD_NODE_INDEX,
     EdgeType,
     GraphEdge,
+    GraphLabels,
     GraphNode,
-    NameLabelMode,
     NodeType,
     TopologyComponent,
     TopologyGraphVisualizerBase,
@@ -100,8 +100,8 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         world_node: int = DEFAULT_WORLD_NODE_INDEX,
         bodies: list[RigidBodyDescriptor] | None = None,
         joints: list[JointDescriptor] | None = None,
-        name_labels: Iterable[NameLabelMode] | None = None,
-        full_name_paths: bool = False,
+        graph_labels: Iterable[GraphLabels] | None = None,
+        force_path_labels: bool = False,
         edge_label_offset_pts: float | None = None,
         figsize: tuple[int, int] | None = None,
         path: str | None = None,
@@ -121,14 +121,14 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             components: Components of the topology graph.
             world_node: Index of the implicit world node.
             bodies: Optional body descriptors used to source human-readable
-                names when ``name_labels`` is requested.
+                names when ``graph_labels`` is requested.
             joints: Optional joint descriptors used to enrich edge labels
                 with joint names (also used as the edge-name source when
-                ``name_labels`` is requested).
-            name_labels: Optional :data:`NameLabelMode` set selecting which
+                ``graph_labels`` is requested).
+            graph_labels: Optional :data:`GraphLabels` set selecting which
                 name-label variants to render. See
                 :meth:`TopologyGraphVisualizerBase.render_graph`.
-            full_name_paths: When ``True``, preserve full scoped names in
+            force_path_labels: When ``True``, preserve full scoped names in
                 inline annotations and tables. See
                 :meth:`TopologyGraphVisualizerBase.render_graph`.
             edge_label_offset_pts: Perpendicular edge-to-label distance
@@ -153,9 +153,9 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 "Please install them with `pip install networkx matplotlib`."
             ) from e
 
-        # Normalize `name_labels` to two booleans so the rest of the body can
+        # Normalize `graph_labels` to two booleans so the rest of the body can
         # branch on simple flags. Unknown literals are silently ignored.
-        modes = set(name_labels) if name_labels is not None else set()
+        modes = set(graph_labels) if graph_labels is not None else set()
         show_inline_names = "inline" in modes
         show_tables_mode = "tables" in modes
 
@@ -376,7 +376,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 joint_name_map=joint_name_map,
                 world_node=world_node,
                 edge_offset_pts=edge_label_offset_pts,
-                full_paths=full_name_paths,
+                full_paths=force_path_labels,
             )
 
         # Legend
@@ -405,7 +405,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 ax_tables_bodies,
                 joint_name_map=joint_name_map,
                 node_name_map=node_name_map,
-                full_paths=full_name_paths,
+                full_paths=force_path_labels,
             )
 
         fig.tight_layout()
@@ -424,8 +424,8 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         world_node: int = DEFAULT_WORLD_NODE_INDEX,
         bodies: list[RigidBodyDescriptor] | None = None,
         joints: list[JointDescriptor] | None = None,
-        name_labels: Iterable[NameLabelMode] | None = None,
-        full_name_paths: bool = False,
+        graph_labels: Iterable[GraphLabels] | None = None,
+        force_path_labels: bool = False,
         edge_label_offset_pts: float | None = None,
         skip_orphans: bool = True,
         figsize: tuple[int, int] | None = None,
@@ -446,14 +446,14 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 draws only the top panel.
             world_node: Index of the implicit world node.
             bodies: Optional body descriptors used to source human-readable
-                names when ``name_labels`` is requested.
+                names when ``graph_labels`` is requested.
             joints: Optional joint descriptors for name-based edge labels
-                (also used as the edge-name source when ``name_labels`` is
+                (also used as the edge-name source when ``graph_labels`` is
                 requested).
-            name_labels: Optional :data:`NameLabelMode` set selecting which
+            graph_labels: Optional :data:`GraphLabels` set selecting which
                 name-label variants to render. See
                 :meth:`TopologyGraphVisualizerBase.render_graph`.
-            full_name_paths: When ``True``, preserve full scoped names in
+            force_path_labels: When ``True``, preserve full scoped names in
                 inline annotations and tables. See
                 :meth:`TopologyGraphVisualizerBase.render_graph`.
             edge_label_offset_pts: Perpendicular edge-to-label distance
@@ -483,11 +483,11 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 "Please install them with `pip install networkx matplotlib`."
             ) from e
 
-        # Normalize `name_labels` and pre-build name maps so both per-panel
+        # Normalize `graph_labels` and pre-build name maps so both per-panel
         # inline annotations and the figure-wide tables row share a single
         # source of truth. Tables are scoped to the component being rendered
         # (its own nodes/edges) so they double as a per-figure legend.
-        modes = set(name_labels) if name_labels is not None else set()
+        modes = set(graph_labels) if graph_labels is not None else set()
         show_inline_names = "inline" in modes
         show_tables_mode = "tables" in modes
         joint_name_map = self._build_joint_name_map(joints)
@@ -590,7 +590,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             show_inline_names=show_inline_names,
             node_name_map=node_name_map,
             joint_name_map=joint_name_map,
-            full_name_paths=full_name_paths,
+            force_path_labels=force_path_labels,
             edge_label_offset_pts=edge_label_offset_pts,
         )
         top_title = "Original Component"
@@ -621,7 +621,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 show_inline_names=show_inline_names,
                 node_name_map=node_name_map,
                 joint_name_map=joint_name_map,
-                full_name_paths=full_name_paths,
+                force_path_labels=force_path_labels,
                 edge_label_offset_pts=edge_label_offset_pts,
             )
             # The metadata "table" is a monospace multiline text overlay
@@ -674,7 +674,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 ax_tables_bodies,
                 joint_name_map=joint_name_map,
                 node_name_map=node_name_map,
-                full_paths=full_name_paths,
+                full_paths=force_path_labels,
             )
 
         # Figure-level legend — covers both the top-panel and candidate-panel
@@ -713,8 +713,8 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         world_node: int = DEFAULT_WORLD_NODE_INDEX,
         bodies: list[RigidBodyDescriptor] | None = None,
         joints: list[JointDescriptor] | None = None,
-        name_labels: Iterable[NameLabelMode] | None = None,
-        full_name_paths: bool = False,
+        graph_labels: Iterable[GraphLabels] | None = None,
+        force_path_labels: bool = False,
         edge_label_offset_pts: float | None = None,
         skip_orphans: bool = True,
         figsize: tuple[int, int] | None = None,
@@ -732,14 +732,14 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             tree: The selected spanning tree to render.
             world_node: Index of the implicit world node.
             bodies: Optional body descriptors used to source human-readable
-                names when ``name_labels`` is requested.
+                names when ``graph_labels`` is requested.
             joints: Optional joint descriptors for name-based edge labels
-                (also used as the edge-name source when ``name_labels`` is
+                (also used as the edge-name source when ``graph_labels`` is
                 requested).
-            name_labels: Optional :data:`NameLabelMode` set selecting which
+            graph_labels: Optional :data:`GraphLabels` set selecting which
                 name-label variants to render. See
                 :meth:`TopologyGraphVisualizerBase.render_graph`.
-            full_name_paths: When ``True``, preserve full scoped names in
+            force_path_labels: When ``True``, preserve full scoped names in
                 inline annotations and tables. See
                 :meth:`TopologyGraphVisualizerBase.render_graph`.
             edge_label_offset_pts: Perpendicular edge-to-label distance
@@ -766,10 +766,10 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 "Please install them with `pip install networkx matplotlib`."
             ) from e
 
-        # Normalize `name_labels` and pre-build name maps; restrict them to
+        # Normalize `graph_labels` and pre-build name maps; restrict them to
         # entries that belong to this component so the tables stay focused on
         # the rendered subgraph.
-        modes = set(name_labels) if name_labels is not None else set()
+        modes = set(graph_labels) if graph_labels is not None else set()
         show_inline_names = "inline" in modes
         show_tables_mode = "tables" in modes
         joint_name_map = self._build_joint_name_map(joints)
@@ -829,7 +829,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             show_inline_names=show_inline_names,
             node_name_map=node_name_map,
             joint_name_map=joint_name_map,
-            full_name_paths=full_name_paths,
+            force_path_labels=force_path_labels,
             edge_label_offset_pts=edge_label_offset_pts,
         )
         ax_top.set_title("Original Component", fontsize=title_fs_top)
@@ -853,7 +853,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             show_inline_names=show_inline_names,
             node_name_map=node_name_map,
             joint_name_map=joint_name_map,
-            full_name_paths=full_name_paths,
+            force_path_labels=force_path_labels,
             edge_label_offset_pts=edge_label_offset_pts,
         )
 
@@ -896,7 +896,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 ax_tables_bodies,
                 joint_name_map=joint_name_map,
                 node_name_map=node_name_map,
-                full_paths=full_name_paths,
+                full_paths=force_path_labels,
             )
 
         legend_handles: list = [
@@ -1323,7 +1323,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         show_inline_names: bool = False,
         node_name_map: dict[int, str] | None = None,
         joint_name_map: dict[int, str] | None = None,
-        full_name_paths: bool = False,
+        force_path_labels: bool = False,
         edge_label_offset_pts: float | None = None,
     ) -> None:
         """Draw a single component on a matplotlib axis using a shared ``pos`` dict.
@@ -1358,7 +1358,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             joint_name_map: ``{joint_index: name}`` map (e.g. from
                 :meth:`_build_joint_name_map`); used when
                 ``show_inline_names`` is ``True``.
-            full_name_paths: When ``True``, preserve full scoped names
+            force_path_labels: When ``True``, preserve full scoped names
                 in inline annotations instead of clipping to ``…/leaf``
                 via :meth:`_format_name`.
             edge_label_offset_pts: Perpendicular distance, in display
@@ -1544,7 +1544,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 joint_name_map=joint_name_map or {},
                 world_node=world_node,
                 edge_offset_pts=edge_label_offset_pts,
-                full_paths=full_name_paths,
+                full_paths=force_path_labels,
             )
 
     @staticmethod

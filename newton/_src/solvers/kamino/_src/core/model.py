@@ -781,6 +781,9 @@ class ModelKamino:
             model_materials = materials_manager.make_materials_model()
             model_material_pairs = materials_manager.make_material_pairs_model()
 
+            # Topology
+            # TODO: model_topology = TopologyModel.from_newton(model, model_size)
+
         ###
         # Post-processing
         ###
@@ -816,4 +819,5 @@ class ModelKamino:
             geoms=model_geoms,
             materials=model_materials,
             material_pairs=model_material_pairs,
+            # TODO: topology=model_topology,
         )

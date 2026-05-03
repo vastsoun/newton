@@ -33,6 +33,7 @@ from .materials import MaterialManager, MaterialPairsModel, MaterialsModel
 from .size import SizeKamino
 from .state import StateKamino
 from .time import TimeData, TimeModel
+from .topology import TopologyModel
 from .types import float32, int32, mat33f, transformf, vec6f
 
 ###
@@ -477,6 +478,9 @@ class ModelKamino:
     The material pairs model container holding all material pairs in the model.\n
     The material-pairs data is currently defined globally to be shared by all worlds.
     """
+
+    topology: TopologyModel | None = None
+    """The topology model container holding the time-invariant data defining topology entities of the model."""
 
     ###
     # Properties

@@ -560,8 +560,8 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         if base_edge is not None:
             arcs[0] = base_edge.joint_index
         else:
-            # Isolated island has no base joint; mark slot 0 with the
-            # joint-index sentinel.
+            # Isolated island has no base joint; mark
+            # slot 0 with the joint-index sentinel.
             arcs[0] = NO_BASE_JOINT_INDEX
         parents[0] = DEFAULT_WORLD_NODE_INDEX
         for i in range(1, num_bodies):

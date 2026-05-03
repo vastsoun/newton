@@ -16,12 +16,14 @@ and :class:`TopologySpanningTreeSelectorBase` used by the
 
 from __future__ import annotations
 
+from collections import defaultdict, deque
+
 from ..core.bodies import RigidBodyDescriptor
 from ..core.joints import JointDescriptor, JointDoFType
 from ..core.types import override
 from .types import (
     DEFAULT_WORLD_NODE_INDEX,
-    UNASSIGNED_JOINT_TYPE,
+    NO_BASE_JOINT_INDEX,
     GraphEdge,
     GraphNode,
     TopologyComponent,
@@ -41,7 +43,7 @@ __all__ = [
 
 
 ###
-# Backends
+# Base Node/Edge Selectors
 ###
 
 
@@ -66,15 +68,21 @@ class TopologyHeaviestBodyBaseSelector(TopologyComponentBaseSelectorBase):
     committing the returned base via
     :meth:`TopologyComponent.assign_base`.
 
+    Synthesized base edges carry the ``NO_BASE_JOINT_INDEX`` sentinel
+    on their ``joint_index`` to flag them for the orchestrator. The
+    orchestrator (:class:`TopologyGraph`) detects that sentinel and
+    re-issues the edge with a fresh provisional joint index of the form
+    ``NJ + k`` (where ``NJ`` is the number of user-supplied edges and
+    ``k`` counts the synthetic edges committed so far) before committing
+    it to the component, so multiple isolated components can each be
+    given a unique synthetic base edge.
+
     Args:
         world_node: The world-node sentinel used when synthesizing a
             FREE base edge; must be a negative integer.
         prefer_free_when_available: When ``True`` (default), prefer a
             6-DoF FREE joint over other grounding-edge types incident
             to the chosen body.
-        synthetic_base_joint_index: The joint index assigned to a synthesized
-            6-DoF FREE base edge; defaults to ``UNASSIGNED_JOINT_TYPE`` to
-            flag it for creation by downstream consumers.
     """
 
     ###
@@ -85,7 +93,6 @@ class TopologyHeaviestBodyBaseSelector(TopologyComponentBaseSelectorBase):
         self,
         *,
         world_node: int = DEFAULT_WORLD_NODE_INDEX,
-        synthetic_base_joint_index: int = UNASSIGNED_JOINT_TYPE,
         prefer_free_when_available: bool = True,
     ) -> None:
         if not isinstance(world_node, int):
@@ -94,13 +101,8 @@ class TopologyHeaviestBodyBaseSelector(TopologyComponentBaseSelectorBase):
             raise ValueError(
                 f"`world_node` must be a negative integer (sentinel for the implicit world); got {world_node}."
             )
-        if not isinstance(synthetic_base_joint_index, int):
-            raise TypeError(
-                f"`synthetic_base_joint_index` must be an integer; got {type(synthetic_base_joint_index).__name__}."
-            )
         self._world_node: int = world_node
         self._prefer_free_when_available: bool = prefer_free_when_available
-        self._synthetic_base_joint_index: int = synthetic_base_joint_index
 
     ###
     # Public API
@@ -179,10 +181,15 @@ class TopologyHeaviestBodyBaseSelector(TopologyComponentBaseSelectorBase):
         # If no grounding edge is incident to the heaviest body, synthesize a 6-DoF FREE base edge to the world.
         synthetic_edge = GraphEdge(
             joint_type=int(JointDoFType.FREE),
-            joint_index=self._synthetic_base_joint_index,
+            joint_index=int(NO_BASE_JOINT_INDEX),
             nodes=(self._world_node, base_idx),
         )
         return base_node, synthetic_edge
+
+
+###
+# Spanning-Tree Selectors
+###
 
 
 class TopologyMinimumDepthSpanningTreeSelector(TopologySpanningTreeSelectorBase):
@@ -192,18 +199,34 @@ class TopologyMinimumDepthSpanningTreeSelector(TopologySpanningTreeSelectorBase)
 
     - For orphan components (single-body candidates with
       ``num_bodies <= 1``), return the first candidate as-is.
-    - For island components, pick the candidate that minimizes
-      :attr:`TopologySpanningTree.depth`. On a depth tie, minimize the
-      imbalance score
+    - For island components, pick the candidate that minimizes the
+      *eccentricity of the component's assigned base body within the
+      tree* (i.e. the longest path from the base body to any other body
+      when the tree is treated as undirected). When the tree is rooted
+      at the base body this collapses to :attr:`TopologySpanningTree.depth`;
+      for trees rooted elsewhere it can be strictly larger. The legacy
+      ``min(t.depth)`` ordering is used as a fallback when the source
+      component is missing or has no assigned ``base_node``. On an
+      eccentricity tie, minimize the imbalance score
       ``sum(len(c) * len(c) for c in tree.children)`` when
       ``prioritize_balanced=True`` (lower is more balanced); otherwise
-      keep depth-only ordering. Remaining ties are broken by the input
-      list order (stable ``min`` semantics).
+      keep eccentricity-only ordering. Remaining ties are broken by the
+      input list order (stable ``min`` semantics).
+
+    Selecting on the eccentricity from the base — rather than from each
+    candidate's own root — matters whenever the spanning-tree generator
+    has been allowed to enumerate candidates rooted at multiple bodies
+    (e.g. ``override_priorities=True`` or a degree-tied root cascade).
+    All such candidates share the same minimum ``t.depth`` from their
+    own root by construction, so the legacy depth-only ordering would
+    silently pick whichever candidate happened to come first in the
+    input list — typically a tree where the assigned base sits near a
+    leaf instead of near the geometric center.
 
     Args:
         prioritize_balanced: When ``True`` (default), use imbalance
             score as a secondary ordering key; when ``False``, only
-            depth is considered.
+            the eccentricity-from-base is considered.
     """
 
     ###
@@ -224,7 +247,7 @@ class TopologyMinimumDepthSpanningTreeSelector(TopologySpanningTreeSelectorBase)
         bodies: list[RigidBodyDescriptor] | None = None,
         joints: list[JointDescriptor] | None = None,
     ) -> TopologySpanningTree:
-        """Select the minimum-depth (and optionally most balanced) candidate.
+        """Select the minimum-eccentricity-from-base (and optionally most balanced) candidate.
 
         Args:
             candidates: Non-empty list of candidate spanning trees.
@@ -249,7 +272,88 @@ class TopologyMinimumDepthSpanningTreeSelector(TopologySpanningTreeSelectorBase)
         if candidates[0].num_bodies <= 1:
             return candidates[0]
 
-        # Islands: pick the minimum depth, breaking ties by balance if requested.
+        # Islands: pick the minimum eccentricity from the component's
+        # assigned base node, breaking ties by balance if requested. The
+        # eccentricity helper falls back to `t.depth` when no base is
+        # available, so candidates assembled outside the standard
+        # pipeline still get the legacy depth-only ordering.
         if self._prioritize_balanced:
-            return min(candidates, key=lambda t: (t.depth, t.balanced_score()))
-        return min(candidates, key=lambda t: t.depth)
+            return min(candidates, key=lambda t: (self._eccentricity_from_base(t), t.balanced_score()))
+        return min(candidates, key=self._eccentricity_from_base)
+
+    ###
+    # Internals
+    ###
+
+    @staticmethod
+    def _eccentricity_from_base(tree: TopologySpanningTree) -> int:
+        """Return the eccentricity of the tree's source-component base body.
+
+        Treats the tree as undirected and returns the longest path (in
+        arc count) from the component's :attr:`TopologyComponent.base_node`
+        to any other body in the tree. When the tree is rooted at the
+        base body this is identical to :attr:`TopologySpanningTree.depth`;
+        for trees rooted elsewhere — which is the case whenever the
+        generator brute-forces over multiple roots — it can be strictly
+        larger and is the structurally meaningful "depth from the
+        articulation root" we want the selector to minimize.
+
+        Falls back to :attr:`TopologySpanningTree.depth` when the tree
+        has no source component, no assigned base body, no arcs/parents
+        bookkeeping, or the base body cannot be located in the tree
+        (e.g. malformed candidates).
+        """
+        # Trivial trees and missing-bookkeeping cases all reduce to the
+        # stored depth, which is `0` for orphans by construction.
+        if tree.num_bodies <= 1 or tree.arcs is None or tree.parents is None:
+            return tree.depth
+        component = tree.component
+        if component is None or component.base_node is None or tree.root is None:
+            return tree.depth
+        base_idx = int(component.base_node)
+        if int(tree.root) == base_idx:
+            return tree.depth
+
+        # Reconstruct the local-position → global-body mapping by walking
+        # the arcs in regular-numbering order. `arcs[i]` connects local
+        # `parents[i]` to local `i`; the source `GraphEdge` carries the
+        # canonical global endpoints, and the one that isn't the parent's
+        # global index is local `i`'s global index.
+        edge_endpoints: dict[int, tuple[int, int]] = {
+            e.joint_index: e.nodes for e in (component.edges or []) if e.joint_index >= 0
+        }
+        nb = tree.num_bodies
+        local_to_global: list[int] = [int(tree.root)] + [-1] * (nb - 1)
+        for i in range(1, nb):
+            joint_idx = tree.arcs[i]
+            endpoints = edge_endpoints.get(joint_idx)
+            if endpoints is None:
+                # Missing source edge → can't reconstruct mapping; fall
+                # back to the stored depth rather than risk a misleading
+                # eccentricity computed against a partial mapping.
+                return tree.depth
+            parent_global = local_to_global[tree.parents[i]]
+            u, v = endpoints
+            local_to_global[i] = v if u == parent_global else u
+
+        try:
+            base_local = local_to_global.index(base_idx)
+        except ValueError:
+            return tree.depth
+
+        # BFS over the undirected parent/child adjacency to find the
+        # farthest body from the base.
+        adj: dict[int, list[int]] = defaultdict(list)
+        for i in range(1, nb):
+            p = tree.parents[i]
+            adj[p].append(i)
+            adj[i].append(p)
+        dist: dict[int, int] = {base_local: 0}
+        queue: deque[int] = deque([base_local])
+        while queue:
+            u = queue.popleft()
+            for v in adj[u]:
+                if v not in dist:
+                    dist[v] = dist[u] + 1
+                    queue.append(v)
+        return max(dist.values())

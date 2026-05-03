@@ -233,9 +233,3 @@ class TopologyModel:
             NotImplementedError: This factory has not been implemented yet.
         """
         raise NotImplementedError("TopologyModel.from_newton is not implemented yet.")
-
-    ###
-    # Operations
-    ###
-
-    # TODO: IMPLEMENT

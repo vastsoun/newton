@@ -32,7 +32,7 @@ from newton._src.sim import Model, ModelBuilder
 from newton._src.solvers.kamino._src import topology
 from newton._src.solvers.kamino._src.core.bodies import RigidBodyDescriptor
 from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino._src.core.joints import JointDoFType
+from newton._src.solvers.kamino._src.core.joints import JointDescriptor, JointDoFType
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -42,9 +42,12 @@ from newton._src.solvers.kamino.tests import setup_tests, test_context
 ###
 
 
-def _make_test_graph() -> tuple[list[int], list[tuple[int, int, tuple[int, int]]]]:
+def _make_test_graph(unsorted_nodes: bool = False) -> tuple[list[int], list[tuple[int, int, tuple[int, int]]]]:
     # Define a test graph with various node types:
-    nodes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    if unsorted_nodes:
+        nodes = [5, 4, 10, 14, 7, 2, 3, 0, 6, 8, 9, 11, 12, 15, 13, 1]
+    else:
+        nodes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     edges = [
         (-1, 0, (-1, 0)),
         (-1, 1, (0, 1)),
@@ -128,6 +131,156 @@ def _make_tree(
         num_tree_chords=0,
         children=children,
     )
+
+
+# Newton's :class:`JointType` and Kamino's :class:`JointDoFType` use
+# different integer values, so map between them when feeding a Newton
+# ``ModelBuilder`` (or its derived ``Model``) into a ``TopologyGraph``.
+# Only the FREE→FREE mapping matters for grounding-edge auto-promotion;
+# every other type is collapsed onto REVOLUTE since the topology pipeline
+# only differentiates FREE vs non-FREE.
+_NEWTON_TO_KAMINO_JOINT_TYPE = {
+    int(newton.JointType.PRISMATIC): int(JointDoFType.PRISMATIC),
+    int(newton.JointType.REVOLUTE): int(JointDoFType.REVOLUTE),
+    int(newton.JointType.BALL): int(JointDoFType.SPHERICAL),
+    int(newton.JointType.FIXED): int(JointDoFType.FIXED),
+    int(newton.JointType.FREE): int(JointDoFType.FREE),
+    int(newton.JointType.D6): int(JointDoFType.REVOLUTE),
+    int(newton.JointType.DISTANCE): int(JointDoFType.REVOLUTE),
+}
+
+
+def _topology_inputs_from_newton_builder(builder: ModelBuilder) -> tuple[list[int], list[topology.EdgeType]]:
+    """Extract ``(nodes, edges)`` from a Newton :class:`ModelBuilder`.
+
+    All bodies and joints in the builder are fed into a single ``TopologyGraph``;
+    the parser then discovers connected components automatically — no manual
+    per-articulation splitting required.
+    """
+    nodes: list[int] = list(range(builder.body_count))
+    edges: list[topology.EdgeType] = []
+    for j in range(builder.joint_count):
+        joint_type = _NEWTON_TO_KAMINO_JOINT_TYPE.get(int(builder.joint_type[j]), int(JointDoFType.REVOLUTE))
+        edges.append((joint_type, j, (int(builder.joint_parent[j]), int(builder.joint_child[j]))))
+    return nodes, edges
+
+
+def _bodies_from_newton_builder(builder: ModelBuilder) -> list[RigidBodyDescriptor]:
+    """Synthesize :class:`RigidBodyDescriptor` instances from a Newton :class:`ModelBuilder`.
+
+    The ``m_i`` field is populated from the builder's mass array, and ``name``
+    is sourced from :attr:`ModelBuilder.body_label` so the topology renderer
+    can surface meaningful per-body labels. The rest are left at their
+    dataclass defaults — this is enough for
+    :class:`TopologyHeaviestBodyBaseSelector`, which only reads body mass.
+    """
+    return [
+        RigidBodyDescriptor(
+            name=builder.body_label[i] if i < len(builder.body_label) else f"body_{i}",
+            m_i=float(builder.body_mass[i]),
+            bid=i,
+        )
+        for i in range(builder.body_count)
+    ]
+
+
+def _joints_from_newton_builder(builder: ModelBuilder) -> list[JointDescriptor]:
+    """Synthesize :class:`JointDescriptor` instances from a Newton :class:`ModelBuilder`.
+
+    Only the ``name`` and ``dof_type`` fields are populated — names are
+    sourced from :attr:`ModelBuilder.joint_label` so the topology renderer
+    can surface meaningful per-joint labels, and ``dof_type`` is mapped from
+    the Newton joint-type enum via :data:`_NEWTON_TO_KAMINO_JOINT_TYPE`.
+    Other fields are left at their dataclass defaults; this is enough for
+    consumers that only inspect :attr:`JointDescriptor.name`.
+    """
+    return [
+        JointDescriptor(
+            name=builder.joint_label[j] if j < len(builder.joint_label) else f"joint_{j}",
+            dof_type=JointDoFType(
+                _NEWTON_TO_KAMINO_JOINT_TYPE.get(int(builder.joint_type[j]), int(JointDoFType.REVOLUTE))
+            ),
+        )
+        for j in range(builder.joint_count)
+    ]
+
+
+def _topology_inputs_from_kamino_builder(
+    builder: ModelBuilderKamino,
+) -> list[tuple[list[int], list[topology.EdgeType]]]:
+    """Extract per-world ``(nodes, edges)`` pairs from a :class:`ModelBuilderKamino`.
+
+    Returns one ``(nodes, edges)`` pair per world. Body and joint indices in the
+    edges are the global indices in the merged builder, so the resulting
+    ``TopologyGraph`` will discover one component per articulation within each
+    world automatically.
+    """
+    per_world_nodes: list[list[int]] = [[] for _ in range(builder.num_worlds)]
+    for i, body in enumerate(builder.all_bodies):
+        per_world_nodes[body.wid].append(i)
+
+    world_body_offsets = [0]
+    for w in range(builder.num_worlds):
+        world_body_offsets.append(world_body_offsets[-1] + len(builder.bodies[w]))
+
+    per_world_edges: list[list[topology.EdgeType]] = [[] for _ in range(builder.num_worlds)]
+    for j, joint in enumerate(builder.all_joints):
+        bid_p = joint.bid_B + world_body_offsets[joint.wid] if joint.bid_B >= 0 else -1
+        bid_s = joint.bid_F + world_body_offsets[joint.wid] if joint.bid_F >= 0 else -1
+        per_world_edges[joint.wid].append((joint.dof_type.value, j, (bid_p, bid_s)))
+
+    return list(zip(per_world_nodes, per_world_edges, strict=True))
+
+
+def _assert_grounded_topology_invariants(
+    testcase: unittest.TestCase,
+    graph: topology.TopologyGraph,
+    *,
+    expected_num_components: int | None = None,
+    expected_num_synthetic_edges: int = 0,
+) -> None:
+    """Assert the structural invariants we expect from a discovered topology graph.
+
+    Used as a single shared check by the USD-asset tests so they only need to
+    declare the expected component count (one per robot instance) and the
+    expected number of synthetic base edges (zero for already-grounded assets,
+    one per ungrounded component otherwise) and let this helper enforce:
+    connectedness, the synthetic-edge accounting, contiguous remap coverage
+    over the body indices each tree references, and Featherstone numbering on
+    every selected tree.
+    """
+    testcase.assertIsNotNone(graph.components)
+    if expected_num_components is not None:
+        testcase.assertEqual(len(graph.components), expected_num_components)
+    testcase.assertIsNotNone(graph.trees)
+    testcase.assertEqual(len(graph.trees), len(graph.components))
+    # Every component must end up connected — either directly via a base/
+    # grounding edge or indirectly via a synthetic edge minted by the selector.
+    for comp in graph.components:
+        testcase.assertTrue(comp.is_connected, f"Component is not connected: {comp}")
+    # Synthetic base edges must match the expected count.
+    actual_synthetic = len(graph.new_base_edges) if graph.new_base_edges else 0
+    testcase.assertEqual(
+        actual_synthetic,
+        expected_num_synthetic_edges,
+        f"Expected {expected_num_synthetic_edges} synthetic base edges, got {actual_synthetic}: {graph.new_base_edges}",
+    )
+    # Every selected tree must obey Featherstone numbering.
+    for tree in graph.trees:
+        _assert_featherstone_invariants(testcase, tree)
+    # Body remap is dense over the body indices each tree references; the
+    # remapped slice over those bodies must be a permutation of [0, N).
+    body_remap = graph.body_node_remap
+    if body_remap:
+        referenced_bodies: set[int] = set()
+        for tree in graph.trees:
+            if tree.component is not None and tree.component.nodes is not None:
+                referenced_bodies.update(int(n) for n in tree.component.nodes)
+        for tree in graph.trees:
+            if tree.root is not None:
+                testcase.assertGreaterEqual(body_remap[int(tree.root)], 0)
+        remapped_referenced = sorted(body_remap[b] for b in referenced_bodies)
+        testcase.assertEqual(remapped_referenced, list(range(len(referenced_bodies))))
 
 
 ###
@@ -575,6 +728,208 @@ class TestTopologySpanningTree(unittest.TestCase):
 
 
 ###
+# TopologySpanningTree.with_offsets / .remapped
+###
+
+
+def _build_chain_tree(num_bodies: int = 3, base_joint_idx: int = 0) -> topology.TopologySpanningTree:
+    """Run the live pipeline to produce a single-component chain tree.
+
+    The resulting :class:`TopologySpanningTree` has every parallel-array
+    field populated by the real generator, so the helper is a convenient
+    fixture for the offset / remap / reassignment tests below.
+    """
+    nodes = list(range(num_bodies))
+    edges = [(JointDoFType.FREE.value, base_joint_idx, (-1, 0))]
+    for i in range(1, num_bodies):
+        edges.append((JointDoFType.REVOLUTE.value, base_joint_idx + i, (i - 1, i)))
+    G = topology.TopologyGraph(nodes, edges, autoparse=True, reassign_indices_inplace=False)
+    return G.trees[0]
+
+
+def _build_isolated_orphan_tree() -> topology.TopologySpanningTree:
+    """Build the trivial tree for an orphan with no edges (sentinel ``arcs[0]``).
+
+    The resulting tree intentionally has ``arcs == []`` and ``num_tree_arcs == 0``
+    so the offset / remap helpers can be exercised against the sentinel-edge case.
+    """
+    nodes = [0]
+    G = topology.TopologyGraph(nodes, edges=[], autoparse=False)
+    G.parse_components()
+    G.generate_spanning_trees()
+    G.select_spanning_trees()
+    return G.trees[0]
+
+
+def _build_isolated_island_tree_with_sentinel_arc() -> topology.TopologySpanningTree:
+    """Build a tree from an isolated island whose ``arcs[0]`` carries the sentinel.
+
+    Built without invoking the base selector so the spanning-tree generator
+    falls back to the ``NO_BASE_JOINT_INDEX`` sentinel for slot 0 — exactly
+    the case the offset / remap helpers must pass through unchanged.
+    """
+    nodes = [3, 4]
+    edges = [(JointDoFType.REVOLUTE.value, 0, (3, 4))]
+    G = topology.TopologyGraph(nodes, edges, autoparse=False)
+    G.parse_components()
+    G.generate_spanning_trees(override_priorities=True)
+    G.select_spanning_trees()
+    return G.trees[0]
+
+
+class TestTopologySpanningTreeOffsets(unittest.TestCase):
+    """Tests for :meth:`TopologySpanningTree.with_offsets`."""
+
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+
+    def test_zero_offsets_returns_an_independent_copy(self):
+        """``with_offsets(0, 0)`` preserves indices but returns a fresh instance."""
+        tree = _build_chain_tree()
+        shifted = tree.with_offsets(0, 0)
+        self.assertIsNot(shifted, tree)
+        self.assertEqual(shifted.root, tree.root)
+        self.assertEqual(shifted.arcs, tree.arcs)
+        self.assertEqual(shifted.chords, tree.chords)
+
+    def test_offsets_shift_root_arcs_and_chords(self):
+        """Body and joint offsets translate the global-index fields."""
+        tree = _build_chain_tree(num_bodies=3, base_joint_idx=0)
+        shifted = tree.with_offsets(body_node_offset=10, joint_edge_offset=20)
+        self.assertEqual(shifted.root, tree.root + 10)
+        self.assertEqual(shifted.arcs, [a + 20 for a in tree.arcs])
+        # Empty chord list survives the shift unchanged.
+        self.assertEqual(shifted.chords, [])
+
+    def test_offsets_preserve_local_position_fields(self):
+        """Local-position fields are local to the tree and must be left alone."""
+        tree = _build_chain_tree()
+        shifted = tree.with_offsets(7, 11)
+        self.assertEqual(shifted.parents, tree.parents)
+        self.assertEqual(shifted.predecessors, tree.predecessors)
+        self.assertEqual(shifted.successors, tree.successors)
+        self.assertEqual(shifted.children, tree.children)
+        self.assertEqual(shifted.subtree, tree.subtree)
+        self.assertEqual(shifted.support, tree.support)
+
+    def test_offsets_drop_component_reference(self):
+        """The returned tree drops the source ``component`` reference."""
+        tree = _build_chain_tree()
+        self.assertIsNotNone(tree.component)
+        shifted = tree.with_offsets(1, 1)
+        self.assertIsNone(shifted.component)
+
+    def test_offsets_pass_sentinel_arcs_through(self):
+        """Sentinel arcs (``NO_BASE_JOINT_INDEX``) must not be shifted."""
+        tree = _build_isolated_island_tree_with_sentinel_arc()
+        # Sanity: the fixture must actually surface a sentinel arc to make
+        # this test meaningful.
+        self.assertEqual(tree.arcs[0], topology.types.NO_BASE_JOINT_INDEX)
+        shifted = tree.with_offsets(50, 50)
+        self.assertEqual(shifted.arcs[0], topology.types.NO_BASE_JOINT_INDEX)
+        # Real arcs (after the sentinel slot) must still be shifted.
+        for i in range(1, len(tree.arcs)):
+            self.assertEqual(shifted.arcs[i], tree.arcs[i] + 50)
+
+    def test_offsets_round_trip_is_identity(self):
+        """Shifting by ``(a, b)`` and then ``(-a, -b)`` returns the original indices."""
+        tree = _build_chain_tree()
+        shifted = tree.with_offsets(13, 17).with_offsets(-13, -17)
+        self.assertEqual(shifted.root, tree.root)
+        self.assertEqual(shifted.arcs, tree.arcs)
+        self.assertEqual(shifted.chords, tree.chords)
+
+    def test_offsets_handle_orphan_with_empty_arcs(self):
+        """Orphans whose ``arcs`` list is empty must return an empty arcs list."""
+        tree = _build_isolated_orphan_tree()
+        shifted = tree.with_offsets(5, 5)
+        self.assertEqual(shifted.arcs, [])
+        self.assertEqual(shifted.root, tree.root + 5)
+
+
+class TestTopologySpanningTreeRemapped(unittest.TestCase):
+    """Tests for :meth:`TopologySpanningTree.remapped`."""
+
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+
+    def test_none_remap_keeps_indices(self):
+        """``None`` remap arguments are no-ops."""
+        tree = _build_chain_tree()
+        out = tree.remapped(None, None)
+        self.assertEqual(out.root, tree.root)
+        self.assertEqual(out.arcs, tree.arcs)
+        self.assertEqual(out.chords, tree.chords)
+
+    def test_identity_remap_keeps_indices(self):
+        """An identity-list remap returns the same global indices."""
+        tree = _build_chain_tree(num_bodies=3, base_joint_idx=0)
+        body_remap = list(range(tree.num_bodies))
+        joint_remap = list(range(tree.num_joints))
+        out = tree.remapped(body_remap, joint_remap)
+        self.assertEqual(out.root, tree.root)
+        self.assertEqual(out.arcs, tree.arcs)
+        self.assertEqual(out.chords, tree.chords)
+
+    def test_permutation_remap_translates_root_arcs_and_chords(self):
+        """A non-identity remap permutes ``root``, ``arcs``, ``chords`` accordingly."""
+        tree = _build_chain_tree(num_bodies=3, base_joint_idx=0)
+        # Reverse body/joint orders so the test catches "off-by-one" mistakes.
+        body_remap = [tree.num_bodies - 1 - i for i in range(tree.num_bodies)]
+        joint_remap = [tree.num_joints - 1 - i for i in range(tree.num_joints)]
+        out = tree.remapped(body_remap, joint_remap)
+        self.assertEqual(out.root, body_remap[tree.root])
+        self.assertEqual(out.arcs, [joint_remap[a] for a in tree.arcs])
+        self.assertEqual(out.chords, [joint_remap[c] for c in tree.chords])
+
+    def test_remap_preserves_local_position_fields(self):
+        """Local-position fields are local to the tree and must be left alone."""
+        tree = _build_chain_tree()
+        body_remap = list(range(tree.num_bodies))
+        joint_remap = list(range(tree.num_joints))
+        out = tree.remapped(body_remap, joint_remap)
+        self.assertEqual(out.parents, tree.parents)
+        self.assertEqual(out.predecessors, tree.predecessors)
+        self.assertEqual(out.successors, tree.successors)
+        self.assertEqual(out.children, tree.children)
+        self.assertEqual(out.subtree, tree.subtree)
+        self.assertEqual(out.support, tree.support)
+
+    def test_remap_drops_component_reference(self):
+        """The returned tree drops the source ``component`` reference."""
+        tree = _build_chain_tree()
+        self.assertIsNotNone(tree.component)
+        out = tree.remapped(None, None)
+        self.assertIsNone(out.component)
+
+    def test_remap_passes_sentinel_arcs_through(self):
+        """Sentinel arc entries must be passed through both remaps unchanged."""
+        tree = _build_isolated_island_tree_with_sentinel_arc()
+        self.assertEqual(tree.arcs[0], topology.types.NO_BASE_JOINT_INDEX)
+        # Provide a remap that would otherwise raise on the sentinel value.
+        body_remap = list(range(10))
+        joint_remap = list(range(10))
+        out = tree.remapped(body_remap, joint_remap)
+        self.assertEqual(out.arcs[0], topology.types.NO_BASE_JOINT_INDEX)
+
+    def test_remap_raises_on_out_of_range_body(self):
+        """A body index referenced by ``root`` outside the remap raises ``IndexError``."""
+        tree = _build_chain_tree(num_bodies=3, base_joint_idx=0)
+        # Empty body remap + a non-negative root → out-of-range lookup.
+        with self.assertRaises(IndexError):
+            tree.remapped([], list(range(tree.num_joints)))
+
+    def test_remap_raises_on_out_of_range_joint(self):
+        """A joint index referenced by ``arcs`` outside the remap raises ``IndexError``."""
+        tree = _build_chain_tree(num_bodies=3, base_joint_idx=0)
+        # Empty joint remap + non-empty arcs → out-of-range lookup.
+        with self.assertRaises(IndexError):
+            tree.remapped(list(range(tree.num_bodies)), [])
+
+
+###
 # Heaviest-body base selector
 ###
 
@@ -807,23 +1162,6 @@ class TestTopologyHeaviestBodyBaseSelector(unittest.TestCase):
         self.assertEqual(int(base_node), 1)
         self.assertEqual(base_edge.nodes, (-7, 1))
 
-    def test_synthetic_edge_uses_configured_joint_index(self):
-        """A custom ``synthetic_base_joint_index`` is honored when synthesizing the FREE base edge."""
-        comp = topology.TopologyComponent(
-            nodes=[0],
-            edges=[],
-            ground_nodes=[],
-            ground_edges=[],
-            is_island=False,
-            is_connected=False,
-        )
-        bodies = self._bodies([1.0])
-
-        sel = topology.TopologyHeaviestBodyBaseSelector(synthetic_base_joint_index=42)
-        _, base_edge = sel.select_base(component=comp, bodies=bodies)
-
-        self.assertEqual(base_edge.joint_index, 42)
-
     ###
     # Failure modes
     ###
@@ -887,11 +1225,6 @@ class TestTopologyHeaviestBodyBaseSelector(unittest.TestCase):
         """Non-integer ``world_node`` raises ``TypeError`` at construction."""
         with self.assertRaisesRegex(TypeError, "integer"):
             topology.TopologyHeaviestBodyBaseSelector(world_node="-1")
-
-    def test_constructor_rejects_non_int_synthetic_joint_index(self):
-        """Non-integer ``synthetic_base_joint_index`` raises ``TypeError`` at construction."""
-        with self.assertRaisesRegex(TypeError, "integer"):
-            topology.TopologyHeaviestBodyBaseSelector(synthetic_base_joint_index="x")
 
 
 ###
@@ -1387,6 +1720,60 @@ class TestTopologySpanningTreeSelector(unittest.TestCase):
         self.assertIs(chosen, orphan)
 
     ###
+    # Effective-depth-from-base selection
+    ###
+
+    def test_picks_min_eccentricity_from_base_when_candidates_tie_on_depth(self):
+        """On a ``t.depth`` tie, the selector picks the candidate whose tree
+        is shallowest when re-rooted at the component's assigned base node.
+
+        Regression for an over-eager ``min(candidates, key=t.depth)`` that
+        ignored the component's assigned base. On a 5-cycle component
+        ``[5, 6, 7, 10, 11]`` with ``base_node=7`` and ``override_priorities=True``,
+        the generator emits one minimum-depth candidate per body root — all
+        with ``t.depth == 2`` even though their tree structure (a 5-vertex
+        path with a chord) places body 7 at very different positions.
+        Only the candidate rooted at body 7 places the base at the geometric
+        center of that path; every other candidate places it at an off-center
+        position whose eccentricity from body 7 is 3 or 4. Without this fix
+        the selector would pick the first depth=2 candidate (root=5), giving
+        a tree whose articulation chain from base=7 has length 4.
+        """
+        nodes = [5, 6, 7, 10, 11]
+        edges = [
+            (JointDoFType.REVOLUTE.value, 8, (5, 6)),
+            (JointDoFType.REVOLUTE.value, 9, (6, 7)),
+            (JointDoFType.REVOLUTE.value, 10, (7, 10)),
+            (JointDoFType.REVOLUTE.value, 11, (10, 11)),
+            (JointDoFType.REVOLUTE.value, 12, (11, 5)),
+            (JointDoFType.FREE.value, 13, (-1, 7)),
+        ]
+        G = topology.TopologyGraph(nodes, edges, autoparse=False)
+        components = G.parse_components()
+        self.assertEqual(len(components), 1)
+        component = components[0]
+        self.assertEqual(int(component.base_node), 7)
+
+        generator = topology.TopologyMinimumDepthSpanningTreeGenerator()
+        candidates = generator.generate_spanning_trees(component, override_priorities=True)
+        self.assertEqual(len(candidates), 5)
+        self.assertTrue(all(c.depth == 2 for c in candidates))
+
+        sel = topology.TopologyMinimumDepthSpanningTreeSelector()
+        chosen = sel.select_spanning_tree(candidates=candidates)
+        self.assertEqual(chosen.root, 7)
+
+    def test_falls_back_to_stored_depth_when_no_base_assigned(self):
+        """Without an assigned ``base_node`` on the source component, the
+        selector preserves its legacy ``min(t.depth)`` behaviour."""
+        # Synthetic candidates without a `component` link bypass the new
+        # base-aware path entirely and exercise the depth-only fallback.
+        candidates = [_make_tree(depth=4), _make_tree(depth=2), _make_tree(depth=3)]
+        sel = topology.TopologyMinimumDepthSpanningTreeSelector(prioritize_balanced=False)
+        chosen = sel.select_spanning_tree(candidates=candidates)
+        self.assertIs(chosen, candidates[1])
+
+    ###
     # Failure modes
     ###
 
@@ -1432,6 +1819,250 @@ class TestTopologySpanningTreeSelector(unittest.TestCase):
 
 
 ###
+# TopologyIndexReassignment
+###
+
+
+class TestTopologyIndexReassignment(unittest.TestCase):
+    """Tests for :class:`TopologyIndexReassignment.reassign_indices`.
+
+    The reassignment back-end takes a list of selected spanning trees and
+    rewrites the global body / joint index space so that:
+
+    - Bodies and joints belonging to the same tree are grouped contiguously.
+    - Larger trees come first (descending size).
+    - Within each tree, bodies follow traversal order (root at the smallest
+      new index) and joints follow Featherstone's regular numbering
+      (arcs first in body order, then chords sorted by predecessor).
+    """
+
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = True  # Set to True for detailed output
+        self.savefig = True  # Set to True for saving plotting output
+        self.plotfig = False  # Set to True for render plotting output
+        self.output_path = test_context.output_path / "test_topology" / "index_reassignment"
+
+        # Create output directory if saving figures
+        if self.savefig:
+            self.output_path.mkdir(parents=True, exist_ok=True)
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.INFO)
+        else:
+            msg.reset_log_level()
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
+    def _run(self, *, nodes, edges, bases=None, inplace=False, **graph_kwargs):
+        """Build a graph, run the pipeline, and return ``(graph, body_remap, joint_remap)``."""
+        G = topology.TopologyGraph(nodes, edges, autoparse=False, reassign_indices_inplace=inplace, **graph_kwargs)
+        G.parse_components()
+        G.select_component_bases(bases=bases)
+        G.generate_spanning_trees()
+        G.select_spanning_trees()
+        body_remap, joint_remap = G.compute_index_reassignment(reassign_inplace=inplace)
+        return G, body_remap, joint_remap
+
+    def test_already_regular_chain_yields_identity_remaps(self):
+        """A chain in regular numbering must produce identity remaps."""
+        nodes = [0, 1, 2]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (0, 1)),
+            (JointDoFType.REVOLUTE.value, 2, (1, 2)),
+        ]
+        _G, body_remap, joint_remap = self._run(nodes=nodes, edges=edges)
+        self.assertEqual(body_remap, [0, 1, 2])
+        self.assertEqual(joint_remap, [0, 1, 2])
+
+    def test_reverse_numbered_chain_is_remapped_forward(self):
+        """A chain whose body indices are reversed gets remapped to forward order.
+
+        Edges: 0-1, 1-2. Base on body 2 (FREE grounding) → root is body 2 → after
+        reassignment, body 2 → 0, body 1 → 1, body 0 → 2.
+        """
+        nodes = [0, 1, 2]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 2)),
+            (JointDoFType.REVOLUTE.value, 1, (1, 2)),
+            (JointDoFType.REVOLUTE.value, 2, (0, 1)),
+        ]
+        G, body_remap, joint_remap = self._run(nodes=nodes, edges=edges)
+        msg.info("body_remap: %s", body_remap)
+        msg.info("joint_remap: %s", joint_remap)
+        msg.info("tree_remapped: %s", G.trees_remapped[0])
+        G.render_graph(
+            path=self.output_path / "test_reverse_numbered_chain_is_remapped_forward_graph.pdf", show=self.plotfig
+        )
+        G.render_spanning_trees(
+            path=self.output_path / "test_reverse_numbered_chain_is_remapped_forward_trees.pdf", show=self.plotfig
+        )
+        G._graph_visualizer.render_component_spanning_tree(
+            G.components[0],
+            G.trees_remapped[0],
+            path=self.output_path / "test_reverse_numbered_chain_is_remapped_forward_tree_remapped.pdf",
+            show=self.plotfig,
+        )
+
+        # Body 2 was the root → new index 0; body 1 → 1; body 0 → 2.
+        self.assertEqual(body_remap[2], 0)
+        self.assertEqual(body_remap[1], 1)
+        self.assertEqual(body_remap[0], 2)
+        # Joint 0 (base on body 2) → new index 0; remaining arcs follow body order.
+        self.assertEqual(joint_remap[0], 0)
+        # All trees satisfy Featherstone invariants after the reassignment.
+        for tree in G.trees:
+            _assert_featherstone_invariants(self, tree)
+
+    def test_two_components_are_grouped_with_larger_first(self):
+        """The larger component must occupy the lowest indices."""
+        nodes = [0, 1, 2, 3, 4]
+        edges = [
+            # Larger chain 0-1-2 with auto-base on 0.
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (0, 1)),
+            (JointDoFType.REVOLUTE.value, 2, (1, 2)),
+            # Smaller pair 3-4 with auto-base on 3.
+            (JointDoFType.FREE.value, 3, (-1, 3)),
+            (JointDoFType.REVOLUTE.value, 4, (3, 4)),
+        ]
+        _G, body_remap, joint_remap = self._run(nodes=nodes, edges=edges)
+        # Larger component (nodes [0,1,2]) gets new indices [0,1,2].
+        self.assertEqual({body_remap[i] for i in (0, 1, 2)}, {0, 1, 2})
+        # Smaller component (nodes [3,4]) gets new indices [3,4].
+        self.assertEqual({body_remap[i] for i in (3, 4)}, {3, 4})
+        # Joint 0 (base of larger component) becomes new joint 0.
+        self.assertEqual(joint_remap[0], 0)
+        # Joint 3 (base of smaller component) lands AFTER all of the larger
+        # component's joints (3 arcs, 0 chords).
+        self.assertEqual(joint_remap[3], 3)
+
+    def test_chord_is_placed_after_arcs_within_a_tree(self):
+        """A 4-bar mechanism's chord lands after the arcs of its component."""
+        nodes = [0, 1, 2, 3]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (0, 1)),
+            (JointDoFType.REVOLUTE.value, 2, (1, 2)),
+            (JointDoFType.REVOLUTE.value, 3, (2, 3)),
+            # Closing chord:
+            (JointDoFType.REVOLUTE.value, 4, (3, 0)),
+        ]
+        G, body_remap, joint_remap = self._run(nodes=nodes, edges=edges)
+        # Single component → all arcs at [0, num_bodies), chord at num_bodies.
+        self.assertEqual(len(G.trees), 1)
+        tree = G.trees[0]
+        nb = tree.num_bodies
+        new_arc_positions = {joint_remap[a] for a in tree.arcs if a >= 0}
+        new_chord_positions = {joint_remap[c] for c in tree.chords}
+        self.assertEqual(new_arc_positions, set(range(nb)))
+        # Single chord goes at slot ``nb``.
+        self.assertEqual(new_chord_positions, {nb})
+        # And ``body_remap`` is a permutation over [0, nb) (no body left out).
+        self.assertEqual({body_remap[i] for i in range(nb)}, set(range(nb)))
+
+    def test_inplace_mode_mutates_trees(self):
+        """``inplace=True`` propagates the remap into the live spanning trees."""
+        nodes = [0, 1, 2]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 2)),
+            (JointDoFType.REVOLUTE.value, 1, (1, 2)),
+            (JointDoFType.REVOLUTE.value, 2, (0, 1)),
+        ]
+        G, body_remap, joint_remap = self._run(nodes=nodes, edges=edges, inplace=True)
+        tree = G.trees[0]
+        # The root must now be the post-remap value (body 2's new index).
+        self.assertEqual(tree.root, body_remap[2])
+        # And ``arcs`` must carry the post-remap joint indices.
+        self.assertEqual(tree.arcs[0], joint_remap[0])
+        # The component reference is dropped because the original component still
+        # describes the un-remapped graph.
+        self.assertIsNone(tree.component)
+        # ``trees_remapped`` returns the live list under inplace mode.
+        self.assertIs(G.trees_remapped, G.trees)
+
+    def test_non_inplace_mode_leaves_trees_alone(self):
+        """``inplace=False`` keeps the trees unmodified and offers a remapped copy."""
+        nodes = [0, 1, 2]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 2)),
+            (JointDoFType.REVOLUTE.value, 1, (1, 2)),
+            (JointDoFType.REVOLUTE.value, 2, (0, 1)),
+        ]
+        G, body_remap, joint_remap = self._run(nodes=nodes, edges=edges, inplace=False)
+        tree = G.trees[0]
+        # The original (un-remapped) root is preserved.
+        self.assertEqual(tree.root, 2)
+        # ``trees_remapped`` materializes per-tree copies with the remap applied.
+        remapped = G.trees_remapped
+        self.assertIsNot(remapped, G.trees)
+        self.assertEqual(remapped[0].root, body_remap[2])
+        self.assertEqual(remapped[0].arcs[0], joint_remap[0])
+
+    def test_synthetic_base_edges_get_nj_plus_k_indices_then_remap(self):
+        """Isolated components receive synthetic base edges with ``NJ + k`` joint indices.
+
+        The ``NJ + k`` indices then flow into the reassignment and end up at
+        the front of their respective per-tree joint segments.
+        """
+        nodes = [0, 1, 2, 3]
+        edges = [
+            # Connected chain 0-1-2 with FREE base.
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (0, 1)),
+            (JointDoFType.REVOLUTE.value, 2, (1, 2)),
+            # Isolated orphan 3 (no grounding) → synthetic base.
+        ]
+        # Orphan 3 needs an explicit base hint since the orphan-fallback path
+        # never invokes the heaviest-body selector (which needs `bodies=`).
+        G, _body_remap, joint_remap = self._run(nodes=nodes, edges=edges, bases=[3])
+        # One synthetic base edge was minted.
+        self.assertIsNotNone(G.new_base_edges)
+        self.assertEqual(len(G.new_base_edges), 1)
+        synthetic = G.new_base_edges[0]
+        # NJ_orig was 3 → synthetic edge has joint_index = 3 + 0 = 3.
+        self.assertEqual(synthetic.joint_index, 3)
+        self.assertEqual(synthetic.joint_type, JointDoFType.FREE.value)
+        # After reassignment, the synthetic edge ends up at the joint slot
+        # immediately following the larger (chain) component (slots 0..2).
+        self.assertEqual(joint_remap[synthetic.joint_index], 3)
+
+    def test_multiple_synthetic_base_edges_get_consecutive_indices(self):
+        """Each synthetic base edge gets a unique ``NJ + k`` index."""
+        nodes = [0, 1, 2, 3, 4]
+        edges = [
+            (JointDoFType.REVOLUTE.value, 0, (0, 1)),  # isolated island [0, 1]
+            (JointDoFType.REVOLUTE.value, 1, (2, 3)),  # isolated island [2, 3]
+            # body 4 is an isolated orphan
+        ]
+        G, _body_remap, _joint_remap = self._run(nodes=nodes, edges=edges, bases=[1, 3, 4])
+        # Three components needed a synthetic base edge.
+        self.assertIsNotNone(G.new_base_edges)
+        self.assertEqual(len(G.new_base_edges), 3)
+        # NJ_orig was 2 → synthetic edges get joint_index 2, 3, 4 (in commit order).
+        self.assertEqual(sorted(e.joint_index for e in G.new_base_edges), [2, 3, 4])
+        # All three edges are FREE joints to the world.
+        for e in G.new_base_edges:
+            self.assertEqual(e.joint_type, JointDoFType.FREE.value)
+            self.assertIn(-1, e.nodes)
+
+    def test_empty_tree_list_returns_none_remaps(self):
+        """An empty ``trees`` list short-circuits to ``(None, None)``."""
+        reassigner = topology.graph.TopologyIndexReassignment()
+        body_remap, joint_remap = reassigner.reassign_indices(trees=[], inplace=False)
+        self.assertIsNone(body_remap)
+        self.assertIsNone(joint_remap)
+
+
+###
 # TopologyGraph
 ###
 
@@ -1453,8 +2084,8 @@ class TestTopologyGraph(unittest.TestCase):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
-        self.verbose = test_context.verbose  # Set to True for detailed output
-        self.savefig = False  # Set to True for saving plotting output
+        self.verbose = True  # Set to True for detailed output
+        self.savefig = True  # Set to True for saving plotting output
         self.plotfig = False  # Set to True for render plotting output
         self.output_path = test_context.output_path / "test_topology" / "graph"
 
@@ -1824,49 +2455,47 @@ class TestTopologyGraph(unittest.TestCase):
         to ensure it correctly identifies components: islands, and orphans.
         """
         # Define a test graph with various node types:
-        nodes, edges = _make_test_graph()
+        nodes, edges = _make_test_graph(unsorted_nodes=False)
 
-        # Create two topology graphs with the same input, one to manually run
-        # the pipeline step by step, and one to run the pipeline automatically.
-        graph_0 = topology.TopologyGraph(nodes, edges)
-        graph_1 = topology.TopologyGraph(nodes, edges)
+        # Create a topology graph to manually run the pipeline step by step.
+        graph_0 = topology.TopologyGraph(nodes, edges, base_selector=None)
 
         # Run the full pipeline manually to control the order of operations.
-        C_0 = graph_0.parse_components()
-        T_0 = graph_0.generate_spanning_trees(override_priorities=True)
-        S_0 = graph_0.select_spanning_trees()
+        graph_0.parse_components()
+        graph_0.select_component_bases(bases=[7, 12, 13, 14, 15])
+        graph_0.generate_spanning_trees(override_priorities=True, prioritize_balanced=False)
+        graph_0.select_spanning_trees()
+        # TODO: graph_0.compute_index_reassignment(reassign_inplace=True)
 
-        # # Optional debug output
-        # print("\n")
-        # msg.info("G.components:\n%s", C)
-        # msg.info("G.spanning_tree_candidates:\n%s", T)
-        # msg.info("G.spanning_trees:\n%s", S)
+        # For each component, print the current base node/edge assignment:
+        for i, comp in enumerate(graph_0.components):
+            msg.info("Component %d: base_node=%s, base_edge=%s", i, comp.base_node, comp.base_edge)
 
-        # # Optional rendering output
-        # if self.plotfig or self.savefig:
-        #     G.render_graph(
-        #         figsize=(10, 10), path=self.output_path / "test_10_graph_component_parsing.pdf", show=self.plotfig
-        #     )
-        #     G.render_spanning_tree_candidates(
-        #         figsize=(10, 10),
-        #         path=self.output_path / "test_10_graph_component_parsing_candidates.pdf",
-        #         show=self.plotfig,
-        #     )
-        #     G.render_spanning_trees(
-        #         figsize=(10, 10), path=self.output_path / "test_10_graph_component_parsing_trees.pdf", show=self.plotfig
-        #     )
+        # Optional rendering output
+        if self.plotfig or self.savefig:
+            graph_0.render_graph(
+                figsize=(10, 10), path=self.output_path / "test_20_graph_component_parsing.pdf", show=self.plotfig
+            )
+            graph_0.render_spanning_tree_candidates(
+                figsize=(10, 10),
+                path=self.output_path / "test_20_graph_component_parsing_candidates.pdf",
+                show=self.plotfig,
+            )
+            graph_0.render_spanning_trees(
+                figsize=(10, 10), path=self.output_path / "test_20_graph_component_parsing_trees.pdf", show=self.plotfig
+            )
 
     def test_21_discover_topology_of_testmechanism(self):
-        """End-to-end sketch exercising the kamino USD import → ``ModelBuilderKamino`` →
-        :class:`TopologyGraph` flow without making strict topological assertions; it
-        currently serves as a smoke test that the pipeline runs to completion. See the
-        adjacent ``test_1*_graph_component_parsing*`` cases for assertion-based checks.
+        """End-to-end topology discovery on the Disney Research TestMechanism USD asset.
+
+        Two instances of the asset are loaded into a ``ModelBuilderKamino`` and a
+        :class:`TopologyGraph` is constructed for each world. Each per-world graph
+        must yield a single (well-grounded) component, never need a synthetic base
+        edge, and produce a Featherstone-numbered spanning tree.
         """
-        # Define the path to the USD file for the DR testmechanism model
         asset_path = newton.utils.download_asset("disneyresearch")
         asset_file = str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda")
 
-        # Import the same fourbar using Kamino's USDImporter and ModelBuilderKamino
         usd_importer = USDImporter()
         asset_builder: ModelBuilderKamino = usd_importer.import_from(
             source=asset_file,
@@ -1877,102 +2506,50 @@ class TestTopologyGraph(unittest.TestCase):
             use_prim_path_names=True,
         )
 
-        # Create a main builder to add the asset builder multiple times
+        # Stack two copies of the asset into a single multi-world builder so the
+        # test exercises both the per-world parsing path and component-level
+        # invariants simultaneously.
         num_worlds = 2
         builder: ModelBuilderKamino = ModelBuilderKamino()
         for _i in range(num_worlds):
             builder.add_builder(asset_builder)
 
-        # --------------------------------------------------------
-        # Parse from ModelBuilderKamino
+        per_world_inputs = _topology_inputs_from_kamino_builder(builder)
+        self.assertEqual(len(per_world_inputs), num_worlds)
 
-        def _parse_nodes_from_builder_kamino_bodies(builder: ModelBuilderKamino) -> list[topology.NodeType]:
-            """Group rigid-body indices into a per-world list of topology graph nodes."""
-            per_world_graph_nodes = [[] for _ in range(builder.num_worlds)]
-            for i, body in enumerate(builder.all_bodies):
-                per_world_graph_nodes[body.wid].append(i)
-            return per_world_graph_nodes
-
-        def _parse_edges_from_builder_kamino_joints(builder: ModelBuilderKamino) -> list[topology.EdgeType]:
-            """Group joint descriptors into a per-world list of topology graph edges
-            with global body indices for the predecessor/successor endpoints."""
-            per_world_graph_edges = [[] for _ in range(builder.num_worlds)]
-            world_bio = [0]
-            for w in range(builder.num_worlds):
-                world_bio.append(world_bio[-1] + len(builder.bodies[w]))
-            for j, joint in enumerate(builder.all_joints):
-                bid_P = joint.bid_B + world_bio[joint.wid] if joint.bid_B >= 0 else -1
-                bid_S = joint.bid_F + world_bio[joint.wid] if joint.bid_F >= 0 else -1
-                per_world_graph_edges[joint.wid].append((joint.dof_type.value, j, (bid_P, bid_S)))
-            return per_world_graph_edges
-
-        def _parse_nodes_and_edges_from_builder_kamino(
-            builder: ModelBuilderKamino,
-        ) -> tuple[list[topology.NodeType], list[topology.EdgeType]]:
-            """Convenience wrapper returning ``(per_world_nodes, per_world_edges)``."""
-            per_world_graph_nodes = _parse_nodes_from_builder_kamino_bodies(builder)
-            per_world_graph_edges = _parse_edges_from_builder_kamino_joints(builder)
-            return per_world_graph_nodes, per_world_graph_edges
-
-        # --------------------------------------------------------
-        # Parse from newton.ModelBuilder
-        # TODO
-
-        # --------------------------------------------------------
-        # Parse from ModelKamino
-        # TODO
-
-        # --------------------------------------------------------
-        # Parse from newton.Model
-        # TODO
-
-        # --------------------------------------------------------
-
-        # TODO
-        per_world_graph_nodes, per_world_graph_edges = _parse_nodes_and_edges_from_builder_kamino(builder)
-        msg.info("Graph Nodes:\n%s", per_world_graph_nodes)
-        msg.info("Graph Edges:\n%s", per_world_graph_edges)
-
-        # Generate the topology graph for each world
-        for w in range(builder.num_worlds):
-            # Create the topology graph for the current world
-            graph_w = topology.TopologyGraph(
-                per_world_graph_nodes[w],
-                per_world_graph_edges[w],
-            )
-
-            # Parse components before accessing the `.components` property — the full
-            # pipeline (tree generator/selector backends) is not yet wired up here.
-            graph_w.parse_components()
-            graph_w.generate_spanning_trees()
-            graph_w.select_spanning_trees()
-
-            # For each component, generate a list of candidate spanning trees
-            for c in graph_w.components:
-                msg.info("Component:\n%s", c)
-
-                # Optional rendering output
-            if self.plotfig or self.savefig:
-                graph_w.render_graph(
-                    figsize=(10, 10),
-                    path=self.output_path / f"test_20_discover_topology_of_testmechanism_{w}.pdf",
-                    show=self.plotfig,
+        for w, (nodes, edges) in enumerate(per_world_inputs):
+            with self.subTest(world=w):
+                base_selector = topology.TopologyHeaviestBodyBaseSelector()
+                G = topology.TopologyGraph(
+                    nodes,
+                    edges,
+                    base_selector=base_selector,
+                    autoparse=True,
                 )
-                graph_w.render_spanning_tree_candidates(
-                    figsize=(10, 10),
-                    path=self.output_path / f"test_20_discover_topology_of_testmechanism_{w}_candidates.pdf",
-                    show=self.plotfig,
-                )
-                graph_w.render_spanning_trees(
-                    figsize=(10, 10),
-                    path=self.output_path / f"test_20_discover_topology_of_testmechanism_{w}_trees.pdf",
-                    show=self.plotfig,
-                )
+                _assert_grounded_topology_invariants(self, G, expected_num_components=1)
+
+                if self.plotfig or self.savefig:
+                    G.render_graph(
+                        figsize=(10, 10),
+                        path=self.output_path / f"test_21_testmech_world_{w}_graph.pdf",
+                        show=self.plotfig,
+                        name_labels=["tables"],
+                    )
+                    G.render_spanning_trees(
+                        figsize=(10, 10),
+                        path=self.output_path / f"test_21_testmech_world_{w}_trees.pdf",
+                        show=self.plotfig,
+                        name_labels=["tables"],
+                    )
 
     def test_22_discover_topology_of_anymal_d(self):
-        """
-        Test the conversion operations between :class:`newton.Model` and ``kamino.ModelKamino``
-        on the Anymal D model loaded from USD.
+        """End-to-end topology discovery on the ANYbotics ANYmal D USD asset.
+
+        Two instances of the asset are loaded into a single Newton :class:`ModelBuilder`
+        world and a :class:`TopologyGraph` is built directly from the builder's
+        joint connectivity arrays. The two robot instances must surface as two
+        components with no synthetic base edges (each robot ships with a 6-DoF
+        FREE base joint).
         """
 
         def _load_anymal_d_from_usd(builder: ModelBuilder):
@@ -1985,32 +2562,120 @@ class TestTopologyGraph(unittest.TestCase):
                 force_show_colliders=True,
             )
 
-        # Create a model builder and load multiple instances of the Anymal D model
-        # from USD to test the topology graph generation on a more complex system
-        # with multiple components and articulation structures.
-        builder_0: ModelBuilder = ModelBuilder()
-        builder_0.begin_world()
-        _load_anymal_d_from_usd(builder_0)
-        _load_anymal_d_from_usd(builder_0)
-        builder_0.end_world()
+        builder: ModelBuilder = ModelBuilder()
+        builder.begin_world()
+        _load_anymal_d_from_usd(builder)
+        _load_anymal_d_from_usd(builder)
+        builder.end_world()
 
-        # Generate a model from the builder
-        model_0: Model = builder_0.finalize()
+        # Two instances of the same articulated robot → two articulations.
+        self.assertEqual(builder.articulation_count, 2)
 
-        # Print out the topology-related attributes of the model for debugging.
-        # Use `info` rather than `warning` — these are diagnostic dumps, not problems.
-        msg.info("model_0.joint_type:         %s", model_0.joint_type)
-        msg.info("model_0.joint_parent:       %s", model_0.joint_parent)
-        msg.info("model_0.joint_child:        %s", model_0.joint_child)
-        msg.info("model_0.joint_ancestor:     %s", model_0.joint_ancestor)
-        msg.info("model_0.joint_articulation: %s", model_0.joint_articulation)
-        msg.info("model_0.articulation_count: %s", model_0.articulation_count)
-        msg.info("model_0.articulation_label: %s", model_0.articulation_label)
-        msg.info("model_0.articulation_start: %s", model_0.articulation_start)
-        msg.info("model_0.articulation_world: %s", model_0.articulation_world)
-        msg.info("model_0.articulation_world_start: %s", model_0.articulation_world_start)
-        msg.info("model_0.max_joints_per_articulation: %s", model_0.max_joints_per_articulation)
-        msg.info("model_0.max_dofs_per_articulation: %s", model_0.max_dofs_per_articulation)
+        nodes, edges = _topology_inputs_from_newton_builder(builder)
+        bodies = _bodies_from_newton_builder(builder)
+        joints = _joints_from_newton_builder(builder)
+        base_selector = topology.TopologyHeaviestBodyBaseSelector()
+        G = topology.TopologyGraph(
+            nodes,
+            edges,
+            base_selector=base_selector,
+            bodies=bodies,
+            joints=joints,
+            autoparse=True,
+        )
+        # ANYmal D ships with a 6-DoF FREE base joint per instance, so no
+        # synthetic base edges should be needed.
+        _assert_grounded_topology_invariants(self, G, expected_num_components=2, expected_num_synthetic_edges=0)
+
+        if self.plotfig or self.savefig:
+            G.render_graph(
+                figsize=(12, 12),
+                path=self.output_path / "test_22_anymal_d_graph.pdf",
+                show=self.plotfig,
+                name_labels={"inline", "tables"},
+            )
+            G.render_spanning_trees(
+                figsize=(12, 12),
+                path=self.output_path / "test_22_anymal_d_trees.pdf",
+                show=self.plotfig,
+                name_labels={"inline", "tables"},
+            )
+
+        # As a sanity check, also verify that we can finalize a model and that
+        # its joint-articulation grouping agrees with the discovered components
+        # (each ANYmal D instance's 13 joints fall into one component / one
+        # articulation).
+        model: Model = builder.finalize()
+        self.assertEqual(model.articulation_count, 2)
+        msg.info("Discovered %d components matching %d articulations", len(G.components), model.articulation_count)
+
+    def test_23_discover_topology_of_dr_legs(self):
+        """End-to-end topology discovery on the Disney Research DR Legs USD asset.
+
+        Loads two instances of the asset into a Newton :class:`ModelBuilder`
+        and builds a :class:`TopologyGraph` from the joint connectivity. The
+        DR Legs asset ships *without* a 6-DoF FREE base joint per instance —
+        each leg is purely an articulated tree-with-loops with no world
+        anchor — so the heaviest-body selector must mint one synthetic base
+        edge per instance to make the components connected. The reassignment
+        back-end then has to remap those ``NJ + k`` synthetic indices into
+        the new joint space.
+        """
+        asset_path = newton.utils.download_asset("disneyresearch")
+        asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_meshes_and_boxes.usda")
+
+        builder: ModelBuilder = ModelBuilder()
+        builder.begin_world()
+        builder.add_usd(
+            source=asset_file,
+            joint_ordering=None,
+            force_show_colliders=True,
+            force_position_velocity_actuation=True,
+        )
+        builder.add_usd(
+            source=asset_file,
+            joint_ordering=None,
+            force_show_colliders=True,
+            force_position_velocity_actuation=True,
+        )
+        builder.end_world()
+
+        nodes, edges = _topology_inputs_from_newton_builder(builder)
+        bodies = _bodies_from_newton_builder(builder)
+        joints = _joints_from_newton_builder(builder)
+        nj_orig = len(edges)
+
+        base_selector = topology.TopologyHeaviestBodyBaseSelector()
+        G = topology.TopologyGraph(
+            nodes,
+            edges,
+            base_selector=base_selector,
+            bodies=bodies,
+            joints=joints,
+            autoparse=True,
+        )
+        # Two robot instances → two components, each needing a synthetic FREE base edge.
+        _assert_grounded_topology_invariants(self, G, expected_num_components=2, expected_num_synthetic_edges=2)
+        # Synthetic edges must be tagged with consecutive ``NJ + k`` indices so the
+        # downstream model builder can inject them at unambiguous positions.
+        synthetic_indices = sorted(e.joint_index for e in G.new_base_edges)
+        self.assertEqual(synthetic_indices, [nj_orig, nj_orig + 1])
+        for e in G.new_base_edges:
+            self.assertEqual(e.joint_type, JointDoFType.FREE.value)
+
+        if self.plotfig or self.savefig:
+            G.render_graph(
+                figsize=(12, 12),
+                path=self.output_path / "test_23_dr_legs_graph.pdf",
+                show=self.plotfig,
+                name_labels={"tables"},
+            )
+            G.render_spanning_trees(
+                figsize=(12, 12),
+                path=self.output_path / "test_23_dr_legs_trees.pdf",
+                show=self.plotfig,
+                name_labels={"tables"},
+            )
 
     ###
     # End-to-end pipeline with the shipped selector backends
@@ -2023,7 +2688,8 @@ class TestTopologyGraph(unittest.TestCase):
         promoted base) plus one isolated island (no grounding edges -> base selector
         synthesizes a FREE edge on the heaviest body) and checks that ``G.trees`` is
         populated, the connected component keeps the auto-assigned FREE base, and the
-        isolated component receives a synthesized FREE base on its heaviest body.
+        isolated component receives a synthesized FREE base on its heaviest body —
+        with the synthetic edge committed at the next ``NJ + 0`` joint index.
         """
         nodes = [0, 1, 2, 3, 4]
         edges = [
@@ -2034,6 +2700,7 @@ class TestTopologyGraph(unittest.TestCase):
             # Isolated island 3-4 (no grounding); the base selector decides the base.
             (JointDoFType.REVOLUTE.value, 3, (3, 4)),
         ]
+        nj_orig = len(edges)
         bodies = [
             RigidBodyDescriptor(name="body_0", m_i=2.0, bid=0),
             RigidBodyDescriptor(name="body_1", m_i=1.0, bid=1),
@@ -2066,16 +2733,26 @@ class TestTopologyGraph(unittest.TestCase):
         self.assertEqual(chain.base_edge.joint_index, 0)
         self.assertEqual(chain.ground_edges, [])
 
-        # Isolated island: heaviest body 4 is selected; synthetic FREE edge to world.
+        # Isolated island: heaviest body 4 is selected; synthetic FREE edge to world
+        # gets a fresh ``NJ + 0`` joint index so downstream consumers can still
+        # remap it through ``G.joint_edge_remap`` after reassignment.
         self.assertEqual(int(island.base_node), 4)
         self.assertIsNotNone(island.base_edge)
         self.assertEqual(island.base_edge.joint_type, JointDoFType.FREE.value)
-        self.assertEqual(island.base_edge.joint_index, -1)  # synthetic sentinel index
-        self.assertEqual(island.base_edge.nodes, (-1, 4))
+        self.assertEqual(island.base_edge.joint_index, nj_orig)
+        # Heaviest selector orients the synthetic edge as ``(world, base_idx)``.
+        self.assertIn(-1, island.base_edge.nodes)
+        self.assertIn(4, island.base_edge.nodes)
         self.assertTrue(island.is_connected)
 
-        # Selected trees match the components' base nodes.
+        # The synthetic edge is also tracked in ``G.new_base_edges`` for downstream injection.
+        self.assertIsNotNone(G.new_base_edges)
+        self.assertEqual(len(G.new_base_edges), 1)
+        self.assertEqual(G.new_base_edges[0].joint_index, nj_orig)
+
+        # Selected trees match the components' base nodes and satisfy Featherstone numbering.
         for tree in G.trees:
+            _assert_featherstone_invariants(self, tree)
             if tree.component is chain:
                 self.assertEqual(tree.root, 0)
             elif tree.component is island:

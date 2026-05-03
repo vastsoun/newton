@@ -162,6 +162,7 @@ __all__ = [
     "EdgeType",
     "GraphEdge",
     "GraphNode",
+    "NameLabelMode",
     "NodeType",
     "SpanningTreeTraversal",
     "TopologyComponent",
@@ -186,7 +187,7 @@ UNASSIGNED_JOINT_TYPE: int = -1
 """Joint-type sentinel marking the absence of a real joint type."""
 
 NO_BASE_JOINT_INDEX: int = -1
-"""Joint-index sentinel marking the absence of a real base joint at arc predecessor position ``0``."""
+"""Joint-index sentinel marking the absence of a real base joint."""
 
 ComponentType = Literal["island", "orphan"]
 """Component subgraph type: ``"island"`` (multi-body) or ``"orphan"`` (single-body)."""
@@ -196,6 +197,15 @@ ComponentConnectivity = Literal["connected", "isolated"]
 
 SpanningTreeTraversal = Literal["dfs", "bfs"]
 """Spanning-tree traversal mode: ``"dfs"`` (depth-first) or ``"bfs"`` (breadth-first)."""
+
+NameLabelMode = Literal["inline", "tables"]
+"""Name-label rendering mode requested via :attr:`TopologyGraphVisualizerBase` render methods.
+
+``"inline"`` annotates each named node and edge with a small text label drawn next to
+the on-graph marker; ``"tables"`` adds ``index | name`` reference tables for joints
+and bodies below the graph axis. The two modes can be combined by passing a set
+containing both literals.
+"""
 
 
 ###
@@ -507,6 +517,10 @@ class TopologyComponent:
                     (gn for gn in self.ground_nodes if int(gn) in remaining_indices),
                     key=int,
                 )
+        if self.edges is None:
+            self.edges = []
+        if base_edge.joint_index == NO_BASE_JOINT_INDEX or base_edge not in self.edges:
+            self.edges.append(base_edge)
         # Re-validate the component after mutation
         # to ensure the new state is consistent.
         self.__post_init__()
@@ -632,8 +646,8 @@ class TopologySpanningTree:
     subtree: list[list[int]] | None = None
     """Per-body subtree body local positions, shape ``(num_bodies,)``.
 
-    Featherstone's subtree set ``v`` (``nu``): the set of bodies in the
-    subtree rooted at body ``i``, satisfying ``µ(i) ⊆ v(i)`` and
+    Featherstone's subtree set ``v`` (``nu``): the set of bodies in
+    the subtree rooted at body ``i``, satisfying ``µ(i) ⊆ v(i)`` and
     ``j ∈ κ(i) ⇒ i ∈ v(j)``.
     """
 
@@ -657,6 +671,104 @@ class TopologySpanningTree:
         if self.children is None:
             raise ValueError("Cannot score a `TopologySpanningTree` with `children=None`; the tree is malformed.")
         return sum(len(cs) * len(cs) for cs in self.children)
+
+    def remapped(self, body_node_remap: list[int] | None, joint_edge_remap: list[int] | None) -> TopologySpanningTree:
+        """Return a copy of the spanning tree with body/joint indices remapped according to the given lists.
+
+        Args:
+            body_node_remap:
+                A list mapping old body-node indices to new ones, where the index in
+                the list is the old index and the value at that index is the new index.
+                If ``None``, body-node indices are unchanged.
+            joint_edge_remap:
+                A list mapping old joint-edge indices to new ones, where the index in
+                the list is the old index and the value at that index is the new index.
+                If ``None``, joint-edge indices are unchanged.
+
+        Returns:
+            A new :class:`TopologySpanningTree` instance with remapped indices.
+
+        Raises:
+            IndexError: If a non-sentinel global index referenced by ``root``,
+                ``arcs``, or ``chords`` falls outside the corresponding remap.
+        """
+
+        def _remap_body(idx: int | None) -> int | None:
+            if idx is None or body_node_remap is None or idx < 0:
+                return idx
+            if idx >= len(body_node_remap):
+                raise IndexError(f"Body index {idx} out of range for body_node_remap of length {len(body_node_remap)}.")
+            return body_node_remap[idx]
+
+        def _remap_joint(idx: int) -> int:
+            if joint_edge_remap is None or idx < 0:
+                return idx
+            if idx >= len(joint_edge_remap):
+                raise IndexError(
+                    f"Joint index {idx} out of range for joint_edge_remap of length {len(joint_edge_remap)}."
+                )
+            return joint_edge_remap[idx]
+
+        new_arcs = [_remap_joint(a) for a in self.arcs] if self.arcs is not None else None
+        new_chords = [_remap_joint(c) for c in self.chords] if self.chords is not None else None
+        return TopologySpanningTree(
+            traversal=self.traversal,
+            depth=self.depth,
+            directed=self.directed,
+            num_bodies=self.num_bodies,
+            num_joints=self.num_joints,
+            num_tree_arcs=self.num_tree_arcs,
+            num_tree_chords=self.num_tree_chords,
+            component=None,
+            root=_remap_body(self.root),
+            arcs=new_arcs,
+            chords=new_chords,
+            predecessors=list(self.predecessors) if self.predecessors is not None else None,
+            successors=list(self.successors) if self.successors is not None else None,
+            parents=list(self.parents) if self.parents is not None else None,
+            support=[lst[:] for lst in self.support] if self.support is not None else None,
+            children=[lst[:] for lst in self.children] if self.children is not None else None,
+            subtree=[lst[:] for lst in self.subtree] if self.subtree is not None else None,
+        )
+
+    def with_offsets(self, body_node_offset: int = 0, joint_edge_offset: int = 0) -> TopologySpanningTree:
+        """Return a copy of the spanning tree with body/joint indices offset by the given amounts.
+
+        Args:
+            body_node_offset: An integer offset to add to all body-node indices. Defaults to ``0`` (no change).
+            joint_edge_offset: An integer offset to add to all joint-edge indices. Defaults to ``0`` (no change).
+
+        Returns:
+            A new :class:`TopologySpanningTree` instance with offset indices.
+        """
+
+        def _shift_body(idx: int | None) -> int | None:
+            return idx if idx is None or idx < 0 else idx + body_node_offset
+
+        def _shift_joint(idx: int) -> int:
+            return idx if idx < 0 else idx + joint_edge_offset
+
+        new_arcs = [_shift_joint(a) for a in self.arcs] if self.arcs is not None else None
+        new_chords = [_shift_joint(c) for c in self.chords] if self.chords is not None else None
+        return TopologySpanningTree(
+            traversal=self.traversal,
+            depth=self.depth,
+            directed=self.directed,
+            num_bodies=self.num_bodies,
+            num_joints=self.num_joints,
+            num_tree_arcs=self.num_tree_arcs,
+            num_tree_chords=self.num_tree_chords,
+            component=None,
+            root=_shift_body(self.root),
+            arcs=new_arcs,
+            chords=new_chords,
+            predecessors=list(self.predecessors) if self.predecessors is not None else None,
+            successors=list(self.successors) if self.successors is not None else None,
+            parents=list(self.parents) if self.parents is not None else None,
+            support=[lst[:] for lst in self.support] if self.support is not None else None,
+            children=[lst[:] for lst in self.children] if self.children is not None else None,
+            subtree=[lst[:] for lst in self.subtree] if self.subtree is not None else None,
+        )
 
 
 ###
@@ -766,6 +878,31 @@ class TopologySpanningTreeSelectorBase:
         raise NotImplementedError("Subclasses must implement this method.")
 
 
+class TopologyIndexReassignmentBase:
+    """Interface for modules that reassign indices in a topology graph."""
+
+    @abstractmethod
+    def reassign_indices(
+        self,
+        trees: list[TopologySpanningTree],
+        inplace: bool = False,
+    ) -> tuple[list[int] | None, list[int] | None]:
+        """Re-assign body-node/joint-edge indices given the set of spanning trees present in the graph.
+
+        Args:
+            trees: The list of spanning trees used to derive optimized node/edge indices.
+            inplace: If ``True``, also modifies the trees in-place with the new indices.
+
+        Returns:
+            A tuple of two lists: the first is a body-node index remapping list,
+            and the second is a joint-edge index remapping list. Each list maps
+            old to new indices, that span all nodes/edges present over all trees.
+            If a remap list is ``None``, it indicates that no re-assignment
+            should be performed for that category (body nodes or joint edges).
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+
 class TopologyGraphVisualizerBase:
     """Interface for modules that render a topology graph, its components, and spanning trees."""
 
@@ -776,7 +913,11 @@ class TopologyGraphVisualizerBase:
         edges: list[EdgeType],
         components: list[TopologyComponent],
         world_node: int = DEFAULT_WORLD_NODE_INDEX,
+        bodies: list[RigidBodyDescriptor] | None = None,
         joints: list[JointDescriptor] | None = None,
+        name_labels: Iterable[NameLabelMode] | None = None,
+        full_name_paths: bool = False,
+        edge_label_offset_pts: float | None = None,
         figsize: tuple[int, int] | None = None,
         path: str | None = None,
         show: bool = False,
@@ -788,7 +929,31 @@ class TopologyGraphVisualizerBase:
             edges: Joint edges to visualize.
             components: Components of the topology graph.
             world_node: Index of the implicit world node.
-            joints: Optional joint descriptors for name-based edge labels.
+            bodies: Optional body descriptors used to source human-readable
+                names for nodes when ``name_labels`` is requested.
+            joints: Optional joint descriptors for name-based edge labels
+                (also used as the name source when ``name_labels`` is requested).
+            name_labels: Optional :data:`NameLabelMode` set selecting which
+                name-label variants to render. ``"inline"`` adds tiny on-graph
+                annotations beside named nodes/edges; ``"tables"`` adds
+                ``index | name`` reference tables below the graph. Both can
+                be combined. Modes silently no-op when the corresponding
+                descriptor list is missing or has no named entries.
+            full_name_paths: When ``True``, preserve the full scoped names
+                in inline annotations and tables (mid-truncating only when
+                still too long). Defaults to ``False`` so USD-style
+                ``/scope/path/leaf`` names are clipped to ``…/leaf`` when
+                they exceed the per-label budget, keeping dense graphs
+                readable.
+            edge_label_offset_pts: Perpendicular distance, in display
+                points (1 pt = 1/72 inch — matplotlib's standard
+                typographic unit), between each edge and its primary
+                ``index_TYPE`` label as well as the matching inline
+                joint-name label on the opposite side. ``None``
+                (default) uses the visualizer's built-in default
+                (~8 pt). Increase to push labels further away from
+                their edges; decrease to bring them closer (set to
+                ``0.0`` to recover NetworkX-style on-edge placement).
             figsize: Optional figure size.
             path: Optional file path to save the figure.
             show: When ``True``, display the figure immediately.
@@ -801,7 +966,11 @@ class TopologyGraphVisualizerBase:
         component: TopologyComponent,
         candidates: list[TopologySpanningTree],
         world_node: int = DEFAULT_WORLD_NODE_INDEX,
+        bodies: list[RigidBodyDescriptor] | None = None,
         joints: list[JointDescriptor] | None = None,
+        name_labels: Iterable[NameLabelMode] | None = None,
+        full_name_paths: bool = False,
+        edge_label_offset_pts: float | None = None,
         skip_orphans: bool = True,
         figsize: tuple[int, int] | None = None,
         path: str | None = None,
@@ -813,7 +982,16 @@ class TopologyGraphVisualizerBase:
             component: The component the candidates belong to.
             candidates: List of candidate spanning trees.
             world_node: Index of the implicit world node.
-            joints: Optional joint descriptors for name-based edge labels.
+            bodies: Optional body descriptors used to source human-readable
+                names for nodes when ``name_labels`` is requested.
+            joints: Optional joint descriptors for name-based edge labels
+                (also used as the name source when ``name_labels`` is requested).
+            name_labels: Optional :data:`NameLabelMode` set selecting which
+                name-label variants to render. See :meth:`render_graph`.
+            full_name_paths: When ``True``, preserve full scoped names in
+                inline annotations and tables. See :meth:`render_graph`.
+            edge_label_offset_pts: Perpendicular edge-to-label distance
+                in display points. See :meth:`render_graph`.
             skip_orphans: When ``True``, skip orphan components.
             figsize: Optional figure size.
             path: Optional file path to save the figure.
@@ -827,7 +1005,11 @@ class TopologyGraphVisualizerBase:
         component: TopologyComponent,
         tree: TopologySpanningTree,
         world_node: int = DEFAULT_WORLD_NODE_INDEX,
+        bodies: list[RigidBodyDescriptor] | None = None,
         joints: list[JointDescriptor] | None = None,
+        name_labels: Iterable[NameLabelMode] | None = None,
+        full_name_paths: bool = False,
+        edge_label_offset_pts: float | None = None,
         skip_orphans: bool = True,
         figsize: tuple[int, int] | None = None,
         path: str | None = None,
@@ -839,7 +1021,16 @@ class TopologyGraphVisualizerBase:
             component: The component the tree belongs to.
             tree: The selected spanning tree to render.
             world_node: Index of the implicit world node.
-            joints: Optional joint descriptors for name-based edge labels.
+            bodies: Optional body descriptors used to source human-readable
+                names for nodes when ``name_labels`` is requested.
+            joints: Optional joint descriptors for name-based edge labels
+                (also used as the name source when ``name_labels`` is requested).
+            name_labels: Optional :data:`NameLabelMode` set selecting which
+                name-label variants to render. See :meth:`render_graph`.
+            full_name_paths: When ``True``, preserve full scoped names in
+                inline annotations and tables. See :meth:`render_graph`.
+            edge_label_offset_pts: Perpendicular edge-to-label distance
+                in display points. See :meth:`render_graph`.
             skip_orphans: When ``True``, skip orphan components.
             figsize: Optional figure size.
             path: Optional file path to save the figure.

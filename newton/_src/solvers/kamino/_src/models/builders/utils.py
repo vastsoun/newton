@@ -18,7 +18,6 @@ from collections.abc import Callable
 
 import warp as wp
 
-from ....examples import print_progress_bar
 from ...core.builder import ModelBuilderKamino
 from ...core.shapes import BoxShape, PlaneShape
 from ...core.types import transformf, vec3f, vec6f
@@ -210,6 +209,8 @@ def make_homogeneous_builder(num_worlds: int, build_fn: Callable, show_progress=
     start_time = time.time()
     for i in range(num_worlds):
         if show_progress:
+            from ....examples import print_progress_bar  # noqa: PLC0415
+
             print_progress_bar(i + 1, num_worlds, start_time, prefix="Adding builders", suffix="")
         builder.add_builder(single)
     return builder

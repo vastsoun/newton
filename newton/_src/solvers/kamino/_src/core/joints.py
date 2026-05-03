@@ -1033,16 +1033,10 @@ class JointDoFType(IntEnum):
             R_axis_j = wp.matrix_from_cols(dof_axes[0], dof_axes[1], dof_axes[2])
         elif dof_type == JointDoFType.CARTESIAN:
             R_axis_j = wp.matrix_from_cols(dof_axes[0], dof_axes[1], dof_axes[2])
-
-        elif dof_type == JointDoFType.FIXED:
-            assert wp.norm_l2(dof_axes[0] - dof_axes[3]) < 1e-6, "Linear and rotational axes for fixed joint must match"
-            assert wp.norm_l2(dof_axes[1] - dof_axes[4]) < 1e-6, "Linear and rotational axes for fixed joint must match"
-            assert wp.norm_l2(dof_axes[2] - dof_axes[5]) < 1e-6, "Linear and rotational axes for fixed joint must match"
-            R_axis_j = wp.matrix_from_cols(dof_axes[0], dof_axes[1], dof_axes[2])
         elif dof_type == JointDoFType.FREE:
-            assert wp.norm_l2(dof_axes[0] - dof_axes[3]) < 1e-6, "Linear and rotational axes for fixed joint must match"
-            assert wp.norm_l2(dof_axes[1] - dof_axes[4]) < 1e-6, "Linear and rotational axes for fixed joint must match"
-            assert wp.norm_l2(dof_axes[2] - dof_axes[5]) < 1e-6, "Linear and rotational axes for fixed joint must match"
+            assert wp.norm_l2(dof_axes[0] - dof_axes[3]) < 1e-6, "Linear and rotational axes for free joint must match"
+            assert wp.norm_l2(dof_axes[1] - dof_axes[4]) < 1e-6, "Linear and rotational axes for free joint must match"
+            assert wp.norm_l2(dof_axes[2] - dof_axes[5]) < 1e-6, "Linear and rotational axes for free joint must match"
             R_axis_j = wp.matrix_from_cols(dof_axes[0], dof_axes[1], dof_axes[2])
 
         # Return the computed joint axes rotation matrix

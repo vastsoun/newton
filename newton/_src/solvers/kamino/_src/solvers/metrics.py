@@ -714,13 +714,15 @@ def _compute_joint_kinematics_residual_dense(
             for i in range(6):
                 j_v_j[j] += jacobian_cts_data[mio_j + i] * u_i_B[i]
 
-    # Compute the per-joint kinematics residual
-    r_kinematics_j = wp.max(wp.abs(j_v_j))
+    # Compute the per-joint kinematics residual and local argmax
+    j_v_j_abs = wp.abs(j_v_j)
+    kin_argmax_local = wp.argmax(j_v_j_abs)
+    r_kinematics_j = j_v_j_abs[kin_argmax_local]
 
     # Update the per-world maximum residual and argmax index
     previous_max = wp.atomic_max(metric_r_kinematics, wid, r_kinematics_j)
     if r_kinematics_j >= previous_max:
-        argmax_key = int64(build_pair_key2(uint32(jid), uint32(cts_offset_j - kgo)))
+        argmax_key = int64(build_pair_key2(uint32(jid), uint32(cts_offset_j - kgo) + kin_argmax_local))
         wp.atomic_exch(metric_r_kinematics_argmax, wid, argmax_key)
 
 
@@ -772,13 +774,15 @@ def _compute_joint_kinematics_residual_sparse(
             jac_block = jac_nzb_values[jac_j_nzb_start + num_kin_cts_j + j]
             j_v_j[j] += wp.dot(jac_block, u_i_B)
 
-    # Compute the per-joint kinematics residual
-    r_kinematics_j = wp.max(wp.abs(j_v_j))
+    # Compute the per-joint kinematics residual and local argmax
+    j_v_j_abs = wp.abs(j_v_j)
+    kin_argmax_local = wp.argmax(j_v_j_abs)
+    r_kinematics_j = j_v_j_abs[kin_argmax_local]
 
     # Update the per-world maximum residual and argmax index
     previous_max = wp.atomic_max(metric_r_kinematics, wid, r_kinematics_j)
     if r_kinematics_j >= previous_max:
-        argmax_key = int64(build_pair_key2(uint32(jid), uint32(kin_cts_offset_j)))
+        argmax_key = int64(build_pair_key2(uint32(jid), uint32(kin_cts_offset_j) + kin_argmax_local))
         wp.atomic_exch(metric_r_kinematics_argmax, wid, argmax_key)
 
 
@@ -802,16 +806,22 @@ def _compute_cts_joints_residual(
     num_cts_j = model_joint_num_kinematic_cts[jid]
     cio_j = model_joint_kinematic_cts_offset[jid]
 
-    # Compute the per-joint constraint residual (infinity-norm)
+    # Compute the per-joint constraint residual (infinity-norm) and local argmax row
     r_cts_joints_j = float32(0.0)
-    for j in range(num_cts_j):
-        r_cts_joints_j = wp.max(r_cts_joints_j, wp.abs(data_joints_r_j[cio_j + j]))
+    argmax_j = int32(0)
+    if num_cts_j > 0:
+        r_cts_joints_j = wp.abs(data_joints_r_j[cio_j])
+        for j in range(1, num_cts_j):
+            v = wp.abs(data_joints_r_j[cio_j + j])
+            if v > r_cts_joints_j:
+                r_cts_joints_j = v
+                argmax_j = int32(j)
 
     # Update the per-world maximum residual and argmax index
     previous_max = wp.atomic_max(metric_r_cts_joints, wid, r_cts_joints_j)
     if r_cts_joints_j >= previous_max:
         cio_j_loc = cio_j - model_info_joint_kinematic_cts_offset[wid]
-        argmax_key = int64(build_pair_key2(uint32(jid), uint32(cio_j_loc)))
+        argmax_key = int64(build_pair_key2(uint32(jid), uint32(cio_j_loc + argmax_j)))
         wp.atomic_exch(metric_r_cts_joints_argmax, wid, argmax_key)
 
 

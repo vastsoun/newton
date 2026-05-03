@@ -79,14 +79,15 @@ def entity_local_transform_conversion_kernel(
 
         # If the parent body was previously corrected, first update this
         # joint's parent-side transform to the new parent frame.
-        parent_corr = body_corr[parent_id]
         joint_X_p_j = joint_X_p[joint_id]
-        if parent_id >= 0 and not parent_corr[3] == 1.0:
-            p_pos = wp.transform_get_translation(joint_X_p_j)
-            wp.transform_set_translation(joint_X_p_j, wp.quat_rotate_inv(parent_corr, p_pos))
-            p_quat = wp.transform_get_rotation(joint_X_p_j)
-            wp.transform_set_rotation(joint_X_p_j, wp.quat_inverse(parent_corr) * p_quat)
-            joint_X_p[joint_id] = joint_X_p_j
+        if parent_id >= 0:
+            parent_corr = body_corr[parent_id]
+            if not parent_corr[3] == 1.0:
+                p_pos = wp.transform_get_translation(joint_X_p_j)
+                wp.transform_set_translation(joint_X_p_j, wp.quat_rotate_inv(parent_corr, p_pos))
+                p_quat = wp.transform_get_rotation(joint_X_p_j)
+                wp.transform_set_rotation(joint_X_p_j, wp.quat_inverse(parent_corr) * p_quat)
+                joint_X_p[joint_id] = joint_X_p_j
 
         # Now compute the correction for this joint's child body
         joint_X_c_j = joint_X_c[joint_id]
@@ -144,6 +145,9 @@ def shape_transform_conversion_kernel(
     shape_id = wp.tid()
 
     body_id = model_shape_body[shape_id]
+    if body_id < 0:
+        return
+
     q_corr_inv = wp.quat_inverse(body_corr[body_id])
 
     st = shape_transform[shape_id]
@@ -727,7 +731,7 @@ def convert_entity_local_transforms(model: Model) -> dict[str, wp.array]:
     # to all downstream joints that reference the corrected body as parent.
     # body_corr: dict[int, np.ndarray] = {}  # body_index -> cumulative q_corr
     body_corr = wp.full(
-        shape=(model.joint_count,), value=wp.quat_identity(dtype=float32), dtype=quatf, device=model.device
+        shape=(model.body_count,), value=wp.quat_identity(dtype=float32), dtype=quatf, device=model.device
     )
 
     # Convert bodies, sequentially per world
@@ -1541,9 +1545,10 @@ def convert_geometries(
     model_size.max_of_num_material_pairs = materials_manager.num_material_pairs
 
     # Convert shapes to the Kamino data structure
-    geom_gid = wp.zeros((model.shape_count,), dtype=int32)
-    geom_material = wp.from_numpy(geom_material_np, dtype=int32)
-    model_num_collidable_geoms = wp.zeros((1,), dtype=int32)
+    with wp.ScopedDevice(model.device):
+        geom_gid = wp.zeros((model.shape_count,), dtype=int32)
+        geom_material = wp.from_numpy(geom_material_np, dtype=int32)
+        model_num_collidable_geoms = wp.zeros((1,), dtype=int32)
 
     wp.launch(
         kernel=geometry_conversion_kernel,

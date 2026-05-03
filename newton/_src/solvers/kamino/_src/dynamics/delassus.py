@@ -98,6 +98,53 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
+# Helpers
+###
+
+
+@wp.func
+def upper_triangular_indices_from_index(index: int, mat_size: int):
+    """
+    Maps a single index to a pair of indices of the upper triangular part of a
+    quadratic matrix.
+
+    Args:
+        index: Single index.
+        mat_size: Size of the matrix (number of rows or columns).
+
+    Returns:
+        Pair of matrix indices for the upper triangular part of the matrix, or
+        `-1, -1` if the input index is outside the valid range.
+    """
+    # Map input index to upper-triangular index (i, j):
+    #   Row i starts at flat position f(i) = i * mat_size - i * (i - 1) / 2
+    #   and contains (mat_size - i) elements.
+    # Total elements = mat_size * (mat_size + 1) / 2.
+
+    # Return invalid indices if index is outside of valid range.
+    if index < 0 or index >= mat_size * (mat_size + 1) // 2:
+        return -1, -1
+
+    # Recover row i: largest i such that f(i) <= index (integer binary search; avoids float32 sqrt)
+    lo = int32(0)
+    hi = mat_size - int32(1)
+    i = int32(0)
+    while lo <= hi:
+        mid = lo + (hi - lo) // 2
+        fi = mid * mat_size - mid * (mid - 1) // 2
+        if fi <= index:
+            i = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+
+    # Recover column j: offset within row i, shifted by i (upper triangle starts at diagonal)
+    j = index - i * mat_size + i * (i + 1) // 2
+
+    return i, j
+
+
+###
 # Kernels
 ###
 
@@ -130,17 +177,8 @@ def _build_delassus_elementwise_dense(
         return
 
     # The Delassus matrix is symmetric, so we only compute the upper triangle (i <= j).
-    # Map tid to upper-triangular index (i, j):
-    #   Row i starts at flat position f(i) = i*ncts - i*(i-1)/2
-    #   and contains (ncts - i) elements. Total elements = ncts*(ncts+1)/2.
-    n_upper = ncts * (ncts + 1) // 2
-    if tid >= n_upper:
-        return
-
-    # Recover row i: largest i such that f(i) <= tid
-    i = int(float32(2 * ncts + 1) - wp.sqrt(float32((2 * ncts + 1) * (2 * ncts + 1) - 8 * tid))) // 2
-    # Recover column j: offset within row i, shifted by i (upper triangle starts at diagonal)
-    j = tid - i * ncts + i * (i + 1) // 2
+    # Recover matrix indices from tid.
+    i, j = upper_triangular_indices_from_index(tid, ncts)
     if i < 0 or i >= ncts or j < i or j >= ncts:
         return
 

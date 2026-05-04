@@ -557,6 +557,8 @@ class ConjugateSolver:
                 f"Preconditioner total_vec_size ({Mi.total_vec_size}) must match "
                 f"operator total_vec_size ({A.total_vec_size})."
             )
+        if loop_granularity <= 0:
+            raise ValueError("`loop_granularity` must be strictly positive value (i.e. must be >= 1).")
 
         self.scalar_type = A.dtype
         self.n_worlds = A.n_worlds

@@ -258,7 +258,7 @@ class TestSolverMetrics(unittest.TestCase):
         metrics = SolutionMetrics()
 
         # Finalize the solver with a model
-        metrics.finalize(test.model)
+        metrics.finalize(model=test.model, data=test.data)
 
         # Check that the solver has been properly allocated
         self.assertIsNotNone(metrics._data)
@@ -309,7 +309,7 @@ class TestSolverMetrics(unittest.TestCase):
         )
 
         # Creating a default solver metrics evaluator from the test model
-        metrics = SolutionMetrics(model=test.model)
+        metrics = SolutionMetrics(model=test.model, data=test.data)
 
         # Define a trivial solution (all zeros)
         with wp.ScopedDevice(test.model.device):
@@ -334,8 +334,6 @@ class TestSolverMetrics(unittest.TestCase):
             sigma=sigma,
             lambdas=lambdas,
             v_plus=v_plus,
-            model=test.model,
-            data=test.data,
             state_p=test.state_p,
             problem=test.problem,
             jacobians=test.jacobians,
@@ -418,7 +416,7 @@ class TestSolverMetrics(unittest.TestCase):
         solver = PADMMSolver(model=test.model, use_acceleration=False, collect_info=True)
 
         # Creating a default solver metrics evaluator from the test model
-        metrics = SolutionMetrics(model=test.model)
+        metrics = SolutionMetrics(model=test.model, data=test.data)
 
         # Solve the test problem
         test.build()
@@ -433,8 +431,6 @@ class TestSolverMetrics(unittest.TestCase):
             sigma=solver.data.state.sigma,
             lambdas=solver.data.solution.lambdas,
             v_plus=solver.data.solution.v_plus,
-            model=test.model,
-            data=test.data,
             state_p=test.state_p,
             problem=test.problem,
             jacobians=test.jacobians,
@@ -507,7 +503,7 @@ class TestSolverMetrics(unittest.TestCase):
         solver = PADMMSolver(model=test.model, use_acceleration=False, collect_info=True)
 
         # Creating a default solver metrics evaluator from the test model
-        metrics = SolutionMetrics(model=test.model)
+        metrics = SolutionMetrics(model=test.model, data=test.data)
 
         # Solve the test problem
         test.build()
@@ -521,8 +517,6 @@ class TestSolverMetrics(unittest.TestCase):
             sigma=solver.data.state.sigma,
             lambdas=solver.data.solution.lambdas,
             v_plus=solver.data.solution.v_plus,
-            model=test.model,
-            data=test.data,
             state_p=test.state_p,
             problem=test.problem,
             jacobians=test.jacobians,
@@ -596,7 +590,7 @@ class TestSolverMetrics(unittest.TestCase):
         solver = PADMMSolver(model=test.model, use_acceleration=False, collect_info=True)
 
         # Creating a default solver metrics evaluator from the test model
-        metrics = SolutionMetrics(model=test.model)
+        metrics = SolutionMetrics(model=test.model, data=test.data)
 
         # Solve the test problem
         test.build()
@@ -621,8 +615,6 @@ class TestSolverMetrics(unittest.TestCase):
             sigma=solver.data.state.sigma,
             lambdas=solver.data.solution.lambdas,
             v_plus=solver.data.solution.v_plus,
-            model=test.model,
-            data=test.data,
             state_p=test.state_p,
             problem=test.problem,
             jacobians=test.jacobians,
@@ -672,8 +664,8 @@ class TestSolverMetrics(unittest.TestCase):
         solver = PADMMSolver(model=test.model, use_acceleration=False, collect_info=True)
 
         # Creating a default solver metrics evaluator from the test model
-        metrics_dense = SolutionMetrics(model=test.model)
-        metrics_sparse = SolutionMetrics(model=test.model)
+        metrics_dense = SolutionMetrics(model=test.model, data=test.data)
+        metrics_sparse = SolutionMetrics(model=test.model, data=test.data)
 
         # Create sparse version of the Jacobians
         jacobians_sparse = SparseSystemJacobians(
@@ -732,8 +724,6 @@ class TestSolverMetrics(unittest.TestCase):
             sigma=solver.data.state.sigma,
             lambdas=solver.data.solution.lambdas,
             v_plus=solver.data.solution.v_plus,
-            model=test.model,
-            data=test.data,
             state_p=test.state_p,
             problem=test.problem,
             jacobians=test.jacobians,
@@ -744,8 +734,6 @@ class TestSolverMetrics(unittest.TestCase):
             sigma=solver.data.state.sigma,
             lambdas=solver.data.solution.lambdas,
             v_plus=solver.data.solution.v_plus,
-            model=test.model,
-            data=test.data,
             state_p=test.state_p,
             problem=problem_sparse,
             jacobians=jacobians_sparse,

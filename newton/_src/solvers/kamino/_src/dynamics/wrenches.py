@@ -8,6 +8,7 @@ KAMINO: Dynamics: Wrenches
 import warp as wp
 
 from ..core.data import DataKamino
+from ..core.joints import JointDoFType
 from ..core.model import ModelKamino
 from ..core.types import float32, int32, mat63f, vec2i, vec3f, vec6f
 from ..geometry.contacts import ContactsKamino
@@ -21,6 +22,7 @@ from ..kinematics.limits import LimitsKamino
 __all__ = [
     "compute_constraint_body_wrenches",
     "compute_joint_dof_body_wrenches",
+    "convert_joint_wrenches_to_body_parent_wrenches",
 ]
 
 
@@ -497,6 +499,44 @@ def _compute_cts_body_wrenches_sparse(
         wp.atomic_add(data_bodies_w_j_i, global_bid_j, w_ij)
 
 
+@wp.kernel
+def _convert_joint_wrenches_to_body_parent_wrenches(
+    # Inputs:
+    model_joints_dof_type: wp.array[int32],
+    model_joints_bid_F: wp.array[int32],
+    state_body_w_a_i: wp.array[vec6f],
+    state_body_w_j_i: wp.array[vec6f],
+    state_body_w_l_i: wp.array[vec6f],
+    # Outputs:
+    body_parent_f: wp.array[wp.spatial_vectorf],
+):
+    # Retrieve the joint index from the thread grid
+    jid = wp.tid()
+
+    # Retrieve the DoF type of the joint
+    dof_type_j = model_joints_dof_type[jid]
+
+    # Skip if the joint is a FREE joint because otherwise
+    # this will include purely external body forces
+    if dof_type_j == JointDoFType.FREE:
+        return
+
+    # Retrieve the follower body index
+    bid_F = model_joints_bid_F[jid]
+
+    # Retrieve the body-specific data
+    w_a_F = state_body_w_a_i[bid_F]
+    w_j_F = state_body_w_j_i[bid_F]
+    w_l_F = state_body_w_l_i[bid_F]
+
+    # Compute the net wrench applied to the
+    # follower body from the current joint
+    w_F_j = w_a_F + w_j_F + w_l_F
+
+    # Accumulate the wrench into the body parent wrench array
+    wp.atomic_add(body_parent_f, bid_F, w_F_j)
+
+
 ###
 # Launchers
 ###
@@ -778,3 +818,35 @@ def compute_constraint_body_wrenches(
         )
     else:
         raise ValueError(f"Expected `DenseSystemJacobians` or `SparseSystemJacobians` but got {type(jacobians)}.")
+
+
+def convert_joint_wrenches_to_body_parent_wrenches(
+    model: ModelKamino,
+    data: DataKamino,
+    body_parent_f: wp.array,
+):
+    """
+    Converts the joint actuation and constraint wrenches to the body parent wrenches.
+
+    Args:
+        model: The model containing the time-invariant data of the simulation.
+        data: The internal solver data container holding the time-varying data of the simulation.
+        body_parent_f: The output array to store the body parent wrenches.
+    """
+    # First clear the body parent wrench array
+    body_parent_f.zero_()
+
+    # First convert the joint constraint reactions to the body parent wrenches
+    wp.launch(
+        kernel=_convert_joint_wrenches_to_body_parent_wrenches,
+        dim=model.joints.num_joints,
+        inputs=[
+            model.joints.dof_type,
+            model.joints.bid_F,
+            data.bodies.w_a_i,
+            data.bodies.w_j_i,
+            data.bodies.w_l_i,
+        ],
+        outputs=[body_parent_f],
+        device=model.device,
+    )

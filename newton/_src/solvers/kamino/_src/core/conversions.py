@@ -1581,8 +1581,8 @@ def convert_geometries(
     else:
         model_min_contacts, world_min_contacts = compute_required_contact_capacity(model)
 
-    # Geometries
-    model_geoms = GeometriesModel(
+    # Construct and return the converted geometries model
+    return GeometriesModel(
         num_geoms=model.shape_count,
         num_collidable=model_num_collidable_geoms.numpy()[0],
         num_collidable_pairs=model.shape_contact_pair_count,
@@ -1604,7 +1604,6 @@ def convert_geometries(
         margin=model.shape_margin,
         collidable_pairs=model.shape_contact_pairs,
         excluded_pairs=wp.array(sorted(model.shape_collision_filter_pairs), dtype=vec2i, device=model.device),
-        # Mesh / heightfield data pass-through from Newton model
         heightfield_index=model.shape_heightfield_index,
         heightfield_data=model.heightfield_data,
         heightfield_elevations=model.heightfield_elevations,
@@ -1613,8 +1612,6 @@ def convert_geometries(
         voxel_resolution=model._shape_voxel_resolution,
         collision_radius=model.shape_collision_radius,
     )
-
-    return model_geoms
 
 
 def convert_target_dofs_to_target_coords(

@@ -671,9 +671,16 @@ class ModelKamino:
         return control
 
     @staticmethod
-    def from_newton(model: Model) -> ModelKamino:
+    def from_newton(model: Model, overwrite_source_model: bool = True) -> ModelKamino:
         """
         Finalizes the :class:`ModelKamino` from an existing instance of :class:`newton.Model`.
+
+        Args:
+            model:
+                The source :class:`newton.Model` instance to be converted.
+            overwrite_source_model:
+                Whether to overwrite the source model with
+                the converted model. Defaults to `True`.
         """
 
         # Ensure the base model is valid
@@ -784,11 +791,12 @@ class ModelKamino:
         # Modify the model's body COM and shape transform properties in-place to convert from body-frame-relative
         # NOTE: These are modified only so that the visualizer correctly
         # shows the shape poses, joints frames and body inertial properties
-        wp.copy(model.body_com, body_com)
-        wp.copy(model.body_inertia, body_inertia)
-        wp.copy(model.shape_transform, shape_transform)
-        wp.copy(model.joint_X_p, joint_X_p)
-        wp.copy(model.joint_X_c, joint_X_c)
+        if overwrite_source_model:
+            wp.copy(model.body_com, body_com)
+            wp.copy(model.body_inertia, body_inertia)
+            wp.copy(model.shape_transform, shape_transform)
+            wp.copy(model.joint_X_p, joint_X_p)
+            wp.copy(model.joint_X_c, joint_X_c)
 
         # Convert shape offsets from body-frame-relative to COM-relative
         convert_geom_offset_origin_to_com(

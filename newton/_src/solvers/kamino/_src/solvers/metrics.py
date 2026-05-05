@@ -1637,7 +1637,7 @@ class SolutionMetricsNewton:
                 )
             self._model = model_kamino
         else:
-            self._model = ModelKamino.from_newton(model)
+            self._model = ModelKamino.from_newton(model=model, overwrite_source_model=False)
 
         # Configure model time-steps
         self._model.time.dt.fill_(wp.float32(dt))

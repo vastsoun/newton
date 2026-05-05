@@ -275,7 +275,7 @@ class SolverKaminoImpl(SolverBase):
         # Allocate the solution metrics evaluator if enabled
         self._metrics: SolutionMetrics | None = None
         if self._config.compute_solution_metrics:
-            self._metrics = SolutionMetrics(model=self._model)
+            self._metrics = SolutionMetrics(model=self._model, data=self._data)
 
         # Initialize callbacks
         self._pre_reset_cb: SolverKaminoImpl.ResetCallbackType | None = None
@@ -1149,8 +1149,6 @@ class SolverKaminoImpl(SolverBase):
                 sigma=self._solver_fd.data.state.sigma,
                 lambdas=self._solver_fd.data.solution.lambdas,
                 v_plus=self._solver_fd.data.solution.v_plus,
-                model=self._model,
-                data=self._data,
                 state_p=state_in,
                 problem=self._problem_fd,
                 jacobians=self._jacobians,

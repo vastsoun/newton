@@ -84,7 +84,10 @@ from ..core.types import float32, int32, int64, mat33f, uint32, vec2f, vec3f, ve
 from ..dynamics.dual import DualProblem
 from ..geometry.contacts import ContactsKamino
 from ..geometry.keying import build_pair_key2
-from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
+from ..kinematics.jacobians import (
+    DenseSystemJacobians,
+    SystemJacobiansType,
+)
 from ..kinematics.limits import LimitsKamino
 from ..solvers.padmm.math import (
     compute_desaxce_corrections,
@@ -497,18 +500,14 @@ def compute_v_plus(
     with dimensions `dim`, starting from the vector index offset `vio`.
 
     Args:
-        maxdim (int32): The maximum dimension of the matrix `A`.
-        dim (int32): The active dimension of the matrix `A` and the vectors `x, b, c`.
-        vio (int32): The vector index offset (i.e. start index) for the vectors `x, b, c`.
-        mio (int32): The matrix index offset (i.e. start index) for the matrix `A`.
-        D_p (wp.array[float32]):
-            Input preconditioned Delassus matrix stored in row-major order.
-        v_f_p (wp.array[float32]):
-            Input preconditioned unconstrained constraint-space velocity vector.
-        lambdas (wp.array[float32]):
-            Input constraint reactions (i.e. Lagrange multipliers) vector.
-        v_plus (wp.array[float32]):
-            Output array to store the post-event constraint-space velocity vector.
+        maxdim: The maximum dimension of the matrix `A`.
+        dim: The active dimension of the matrix `A` and the vectors `x, b, c`.
+        vio: The vector index offset (i.e. start index) for the vectors `x, b, c`.
+        mio: The matrix index offset (i.e. start index) for the matrix `A`.
+        D_p: Input preconditioned Delassus matrix stored in row-major order.
+        v_f_p: Input preconditioned unconstrained constraint-space velocity vector.
+        lambdas: Input constraint reactions (i.e. Lagrange multipliers) vector.
+        v_plus: Output array to store the post-event constraint-space velocity vector.
     """
     v_f_p_i = float(0.0)
     lambdas_j = float(0.0)
@@ -551,15 +550,11 @@ def compute_v_plus_sparse(
     the vector index offset `vio`.
 
     Args:
-        dim (int32): The active dimension of the matrix `A` and the vectors `x, b, c`.
-        vio (int32): The vector index offset (i.e. start index) for the vectors `x, b, c`.
-        v_f_p (wp.array[float32]):
-            Input preconditioned unconstrained constraint-space velocity vector.
-        D_p_lambdas (wp.array[float32]):
-            Product of the Delassus matrix with the input constraint reactions
-            (i.e. Lagrange multipliers) vector.
-        v_plus (wp.array[float32]):
-            Output array to store the post-event constraint-space velocity vector.
+        dim: The active dimension of the matrix `A` and the vectors `x, b, c`.
+        vio: The vector index offset (i.e. start index) for the vectors `x, b, c`.
+        v_f_p: Input preconditioned unconstrained constraint-space velocity vector.
+        D_p_lambdas: Product of the Delassus matrix with the input constraint reactions
+        v_plus: Output array to store the post-event constraint-space velocity vector.
     """
     for i in range(dim):
         v_i = vio + i
@@ -578,11 +573,11 @@ def compute_vector_difference_infnorm(
     All vectors are stored in flat arrays, with dimension `dim` and starting from the vector index offset `vio`.
 
     Args:
-        dim (int32): The dimension (i.e. size) of the vectors.
-        vio (int32): The vector index offset (i.e. start index).
-        x (wp.array[float32]): The first vector.
-        y (wp.array[float32]): The second vector.
-        z (wp.array[float32]): The output vector where the sum is stored.
+        dim: The dimension (i.e. size) of the vectors.
+        vio: The vector index offset (i.e. start index).
+        x: The first vector.
+        y: The second vector.
+        z: The output vector where the sum is stored.
 
     Returns:
         None: The result is stored in the output vector `z`.
@@ -1113,73 +1108,83 @@ class SolutionMetrics:
     about the specific metrics computed, please refer to the documentation of that class.
     """
 
-    def __init__(self, model: ModelKamino | None = None):
+    def __init__(self, model: ModelKamino | None = None, data: DataKamino | None = None):
         """
         Initializes the solution metrics evaluator.
 
         Args:
-            model (ModelKamino):
-                The model containing the time-invariant data of the simulation.
+            model: The model container holding the time-invariant data of the simulation.
+            data: The data container holding the time-varying internal solver data.
         """
         # Declare the device cache
         self._device: wp.DeviceLike = None
 
+        # Declare a model reference for internal use (e.g. for finalization)
+        self._model: ModelKamino | None = None
+        self._data: DataKamino | None = None
+
         # Declare the metrics data container
-        self._data: SolutionMetricsData | None = None
+        self._metrics: SolutionMetricsData | None = None
 
         # Declare data buffers for metrics computations
         self._buffer_s: wp.array | None = None
         self._buffer_v: wp.array | None = None
 
-        # If a model is provided, finalize the metrics data allocations
-        if model is not None:
-            self.finalize(model)
+        # If a model and data are provided, finalize the metrics data allocations
+        if model is not None and data is not None:
+            self.finalize(model, data)
 
-    def finalize(self, model: ModelKamino):
+    def finalize(self, model: ModelKamino, data: DataKamino):
         """
         Finalizes the metrics data allocations on the specified device.
 
         Args:
-            model (ModelKamino):
-                The model containing the time-invariant data of the simulation.
+            model: The model container holding the time-invariant data of the simulation.
+            data: The data container holding the time-varying internal solver data.
         """
-        # Ensure the model is valid
+        # Ensure the model and data are valid
         if not isinstance(model, ModelKamino):
             raise TypeError("Expected 'model' to be of type ModelKamino.")
+        if not isinstance(data, DataKamino):
+            raise TypeError("Expected 'data' to be of type DataKamino.")
 
         # Use the model's device
         self._device = model.device
 
+        # Store a reference to the model and data for internal use (e.g. for finalization)
+        self._model = model
+        self._data = data
+
         # Allocate metrics data on the target device
         with wp.ScopedDevice(self._device):
             # Allocate reusable buffers for metrics computations
-            self._buffer_v = wp.zeros(model.size.sum_of_max_total_cts, dtype=float32)
-            self._buffer_s = wp.zeros(model.size.sum_of_max_total_cts, dtype=float32)
+            self._buffer_v = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=float32)
+            self._buffer_s = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=float32)
 
             # Allocate the metrics container data arrays
-            self._data = SolutionMetricsData(
-                r_eom=wp.zeros(model.size.num_worlds, dtype=float32),
-                r_eom_argmax=wp.full(model.size.num_worlds, value=-1, dtype=int64),
-                r_kinematics=wp.zeros(model.size.num_worlds, dtype=float32),
-                r_kinematics_argmax=wp.full(model.size.num_worlds, value=-1, dtype=int64),
-                r_cts_joints=wp.zeros(model.size.num_worlds, dtype=float32),
-                r_cts_joints_argmax=wp.full(model.size.num_worlds, value=-1, dtype=int64),
-                r_cts_limits=wp.zeros(model.size.num_worlds, dtype=float32),
-                r_cts_limits_argmax=wp.full(model.size.num_worlds, value=-1, dtype=int64),
-                r_cts_contacts=wp.zeros(model.size.num_worlds, dtype=float32),
-                r_cts_contacts_argmax=wp.full(model.size.num_worlds, value=-1, dtype=int32),
-                r_v_plus=wp.zeros(model.size.num_worlds, dtype=float32),
-                r_v_plus_argmax=wp.full(model.size.num_worlds, value=-1, dtype=int32),
-                r_ncp_primal=wp.zeros(model.size.num_worlds, dtype=float32),
-                r_ncp_primal_argmax=wp.full(model.size.num_worlds, value=-1, dtype=int32),
-                r_ncp_dual=wp.zeros(model.size.num_worlds, dtype=float32),
-                r_ncp_dual_argmax=wp.full(model.size.num_worlds, value=-1, dtype=int32),
-                r_ncp_compl=wp.zeros(model.size.num_worlds, dtype=float32),
-                r_ncp_compl_argmax=wp.full(model.size.num_worlds, value=-1, dtype=int32),
-                r_vi_natmap=wp.zeros(model.size.num_worlds, dtype=float32),
-                r_vi_natmap_argmax=wp.full(model.size.num_worlds, value=-1, dtype=int32),
-                f_ncp=wp.zeros(model.size.num_worlds, dtype=float32),
-                f_ccp=wp.zeros(model.size.num_worlds, dtype=float32),
+            self._metrics = SolutionMetricsData(
+                r_eom=wp.zeros(self._model.size.num_worlds, dtype=float32),
+                r_eom_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int64),
+                r_kinematics=wp.zeros(self._model.size.num_worlds, dtype=float32),
+                r_kinematics_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int64),
+                r_cts_joints=wp.zeros(self._model.size.num_worlds, dtype=float32),
+                r_cts_joints_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int64),
+                r_cts_limits=wp.zeros(self._model.size.num_worlds, dtype=float32),
+                r_cts_limits_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int64),
+                r_cts_contacts=wp.zeros(self._model.size.num_worlds, dtype=float32),
+                r_cts_contacts_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int32),
+                r_v_plus=wp.zeros(self._model.size.num_worlds, dtype=float32),
+                r_v_plus_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int32),
+                r_ncp_primal=wp.zeros(self._model.size.num_worlds, dtype=float32),
+                r_ncp_primal_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int32),
+                r_ncp_dual=wp.zeros(self._model.size.num_worlds, dtype=float32),
+                r_ncp_dual_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int32),
+                r_ncp_compl=wp.zeros(self._model.size.num_worlds, dtype=float32),
+                r_ncp_compl_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int32),
+                r_vi_natmap=wp.zeros(self._model.size.num_worlds, dtype=float32),
+                r_vi_natmap_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int32),
+                f_ncp=wp.zeros(self._model.size.num_worlds, dtype=float32),
+                f_ccp=wp.zeros(self._model.size.num_worlds, dtype=float32),
             )
 
     ###
@@ -1198,8 +1203,8 @@ class SolutionMetrics:
         """
         Returns the metrics data container.
         """
-        self._assert_has_data()
-        return self._data
+        self._assert_finalized()
+        return self._metrics
 
     ###
     # Public Operations
@@ -1209,18 +1214,16 @@ class SolutionMetrics:
         """
         Resets all metrics to zeros.
         """
-        self._data.reset()
+        self._metrics.reset()
 
     def evaluate(
         self,
         sigma: wp.array,
         lambdas: wp.array,
         v_plus: wp.array,
-        model: ModelKamino,
-        data: DataKamino,
         state_p: StateKamino,
-        problem: DualProblem,
-        jacobians: DenseSystemJacobians | SparseSystemJacobians,
+        jacobians: SystemJacobiansType,
+        problem: DualProblem | None = None,
         limits: LimitsKamino | None = None,
         contacts: ContactsKamino | None = None,
     ):
@@ -1228,44 +1231,34 @@ class SolutionMetrics:
         Evaluates all solution performance metrics.
 
         Args:
-            model (ModelKamino):
-                The model containing the time-invariant data of the simulation.
-            data (DataKamino):
-                The model data containing the time-variant data of the simulation.
-            state_p (StateKamino):
-                The previous state of the simulation.
-            limits (LimitsKamino):
-                The joint-limits data describing active limit constraints.
-            contacts (ContactsKamino):
-                The contact data describing active contact constraints.
-            problem (DualProblem):
-                The dual forward dynamics problem of the current time-step.
-            jacobians (DenseSystemJacobians | SparseSystemJacobians):
-                The system Jacobians of the current time-step.
-            sigma (wp.array):
-                The array diagonal regularization applied to the Delassus matrix of the current dual problem.
-            lambdas (wp.array):
-                The array of constraint reactions (i.e. Lagrange multipliers) of the current dual problem solution.
-            v_plus (wp.array):
-                The array of post-event constraint-space velocities of the current dual problem solution.
+            model: The model containing the time-invariant data of the simulation.
+            data: The model data containing the time-variant data of the simulation.
+            state_p: The previous state of the simulation.
+            limits: The joint-limits data describing active limit constraints.
+            contacts: The contact data describing active contact constraints.
+            problem: The dual forward dynamics problem of the current time-step.
+            jacobians: The system Jacobians of the current time-step.
+            sigma: The array diagonal regularization applied to the Delassus matrix of the current dual problem.
+            lambdas: The array of constraint reactions (i.e. Lagrange multipliers) of the current dual problem solution.
+            v_plus: The array of post-event constraint-space velocities of the current dual problem solution.
         """
-        self._assert_has_data()
-        self._evaluate_constraint_violations_perf(model, data, limits, contacts)
-        self._evaluate_primal_problem_perf(model, data, state_p, jacobians)
+        self._assert_finalized()
+        self._evaluate_constraint_violations_perf(self._model, self._data, limits, contacts)
+        self._evaluate_primal_problem_perf(self._model, self._data, state_p, jacobians)
         self._evaluate_dual_problem_perf(sigma, lambdas, v_plus, problem)
 
     ###
     # Internals
     ###
 
-    def _assert_has_data(self):
+    def _assert_finalized(self):
         """
         Asserts that the metrics data has been finalized and is available.
 
         Raises:
             RuntimeError: If the data is not available.
         """
-        if self._data is None:
+        if self._metrics is None:
             raise RuntimeError("SolutionMetrics data has not been finalized. Call finalize() first.")
 
     def _evaluate_constraint_violations_perf(
@@ -1279,17 +1272,13 @@ class SolutionMetrics:
         Evaluates the constraint-violation performance metrics.
 
         Args:
-            model (ModelKamino):
-                The model containing the time-invariant data of the simulation.
-            data (DataKamino):
-                The model data containing the time-variant data of the simulation.
-            limits (LimitsKamino):
-                The joint-limits data describing active limit constraints.
-            contacts (ContactsKamino):
-                The contact data describing active contact constraints.
+            model: The model containing the time-invariant data of the simulation.
+            data: The model data containing the time-variant data of the simulation.
+            limits: The joint-limits data describing active limit constraints.
+            contacts: The contact data describing active contact constraints.
         """
         # Ensure metrics data is available
-        self._assert_has_data()
+        self._assert_finalized()
 
         # Compute the largest configuration-level joint constraint residuals (i.e. violations)
         if model.size.sum_of_num_joints > 0:
@@ -1304,8 +1293,8 @@ class SolutionMetrics:
                     model.joints.kinematic_cts_offset,
                     data.joints.r_j,
                     # Outputs:
-                    self._data.r_cts_joints,
-                    self._data.r_cts_joints_argmax,
+                    self._metrics.r_cts_joints,
+                    self._metrics.r_cts_joints_argmax,
                 ],
                 device=model.device,
             )
@@ -1323,8 +1312,8 @@ class SolutionMetrics:
                     limits.data.dof,
                     limits.data.r_q,
                     # Outputs:
-                    self._data.r_cts_limits,
-                    self._data.r_cts_limits_argmax,
+                    self._metrics.r_cts_limits,
+                    self._metrics.r_cts_limits_argmax,
                 ],
                 device=model.device,
             )
@@ -1341,8 +1330,8 @@ class SolutionMetrics:
                     contacts.data.cid,
                     contacts.data.gapfunc,
                     # Outputs:
-                    self._data.r_cts_contacts,
-                    self._data.r_cts_contacts_argmax,
+                    self._metrics.r_cts_contacts,
+                    self._metrics.r_cts_contacts_argmax,
                 ],
                 device=model.device,
             )
@@ -1352,23 +1341,19 @@ class SolutionMetrics:
         model: ModelKamino,
         data: DataKamino,
         state_p: StateKamino,
-        jacobians: DenseSystemJacobians | SparseSystemJacobians,
+        jacobians: SystemJacobiansType,
     ):
         """
         Evaluates the primal problem performance metrics.
 
         Args:
-            model (ModelKamino):
-                The model containing the time-invariant data of the simulation.
-            data (DataKamino):
-                The model data containing the time-variant data of the simulation.
-            state_p (StateKamino):
-                The previous state of the simulation.
-            jacobians (DenseSystemJacobians | SparseSystemJacobians):
-                The system Jacobians of the current time-step.
+            model: The model containing the time-invariant data of the simulation.
+            data: The model data containing the time-variant data of the simulation.
+            state_p: The previous state of the simulation.
+            jacobians: The system Jacobians of the current time-step.
         """
         # Ensure metrics data is available
-        self._assert_has_data()
+        self._assert_finalized()
 
         # Compute the equations-of-motion residuals
         wp.launch(
@@ -1385,8 +1370,8 @@ class SolutionMetrics:
                 data.bodies.u_i,
                 state_p.u_i,
                 # Outputs:
-                self._data.r_eom,
-                self._data.r_eom_argmax,
+                self._metrics.r_eom,
+                self._metrics.r_eom_argmax,
             ],
             device=model.device,
         )
@@ -1412,8 +1397,8 @@ class SolutionMetrics:
                         jacobians.data.J_cts_offsets,
                         jacobians.data.J_cts_data,
                         # Outputs:
-                        self._data.r_kinematics,
-                        self._data.r_kinematics_argmax,
+                        self._metrics.r_kinematics,
+                        self._metrics.r_kinematics_argmax,
                     ],
                     device=model.device,
                 )
@@ -1435,8 +1420,8 @@ class SolutionMetrics:
                         J_cts.nzb_values,
                         jacobians._J_cts_joint_nzb_offsets,
                         # Outputs:
-                        self._data.r_kinematics,
-                        self._data.r_kinematics_argmax,
+                        self._metrics.r_kinematics,
+                        self._metrics.r_kinematics_argmax,
                     ],
                     device=model.device,
                 )
@@ -1452,17 +1437,13 @@ class SolutionMetrics:
         Evaluates the dual problem performance metrics.
 
         Args:
-            problem (DualProblem):
-                The dual problem containing the time-invariant and time-variant data of the simulation.
-            sigma (wp.array):
-                The array of sigma values for the dual problem.
-            lambdas (wp.array):
-                The array of lambda values for the dual problem.
-            v_plus (wp.array):
-                The array of v_plus values for the dual problem.
+            problem: The dual problem containing the time-invariant and time-variant data of the simulation.
+            sigma: The array of sigma values for the dual problem.
+            lambdas: The array of lambda values for the dual problem.
+            v_plus: The array of v_plus values for the dual problem.
         """
         # Ensure metrics data is available
-        self._assert_has_data()
+        self._assert_finalized()
 
         # Compute the dual problem NCP/VI performance metrics
         if problem.sparse:
@@ -1500,18 +1481,18 @@ class SolutionMetrics:
                     self._buffer_s,
                     self._buffer_v,
                     # Outputs:
-                    self._data.r_v_plus,
-                    self._data.r_v_plus_argmax,
-                    self._data.r_ncp_primal,
-                    self._data.r_ncp_primal_argmax,
-                    self._data.r_ncp_dual,
-                    self._data.r_ncp_dual_argmax,
-                    self._data.r_ncp_compl,
-                    self._data.r_ncp_compl_argmax,
-                    self._data.r_vi_natmap,
-                    self._data.r_vi_natmap_argmax,
-                    self._data.f_ncp,
-                    self._data.f_ccp,
+                    self._metrics.r_v_plus,
+                    self._metrics.r_v_plus_argmax,
+                    self._metrics.r_ncp_primal,
+                    self._metrics.r_ncp_primal_argmax,
+                    self._metrics.r_ncp_dual,
+                    self._metrics.r_ncp_dual_argmax,
+                    self._metrics.r_ncp_compl,
+                    self._metrics.r_ncp_compl_argmax,
+                    self._metrics.r_vi_natmap,
+                    self._metrics.r_vi_natmap_argmax,
+                    self._metrics.f_ncp,
+                    self._metrics.f_ccp,
                 ],
                 device=problem.device,
             )
@@ -1540,18 +1521,18 @@ class SolutionMetrics:
                     self._buffer_s,
                     self._buffer_v,
                     # Outputs:
-                    self._data.r_v_plus,
-                    self._data.r_v_plus_argmax,
-                    self._data.r_ncp_primal,
-                    self._data.r_ncp_primal_argmax,
-                    self._data.r_ncp_dual,
-                    self._data.r_ncp_dual_argmax,
-                    self._data.r_ncp_compl,
-                    self._data.r_ncp_compl_argmax,
-                    self._data.r_vi_natmap,
-                    self._data.r_vi_natmap_argmax,
-                    self._data.f_ncp,
-                    self._data.f_ccp,
+                    self._metrics.r_v_plus,
+                    self._metrics.r_v_plus_argmax,
+                    self._metrics.r_ncp_primal,
+                    self._metrics.r_ncp_primal_argmax,
+                    self._metrics.r_ncp_dual,
+                    self._metrics.r_ncp_dual_argmax,
+                    self._metrics.r_ncp_compl,
+                    self._metrics.r_ncp_compl_argmax,
+                    self._metrics.r_vi_natmap,
+                    self._metrics.r_vi_natmap_argmax,
+                    self._metrics.f_ncp,
+                    self._metrics.f_ccp,
                 ],
                 device=problem.device,
             )

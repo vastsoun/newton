@@ -1715,6 +1715,7 @@ class SolutionMetricsNewton:
         update_body_inertias(model=self._model.bodies, data=self._data.bodies)
         compute_joints_data(model=self._model, data=self._data, q_j_p=self._state_p.q_j)
         self._update_jacobians()
+        self._update_dynamics()
 
         # Compute the post-event constraint-space velocities given
         # the pre- and post-event state and constraint Jacobians
@@ -1746,8 +1747,8 @@ class SolutionMetricsNewton:
 
         # Update all dynamics quantities based
         # on the extracted constraint reactions
+        self._read_step_inputs(self._state, self._control)
         self._update_body_wrenches()
-        self._update_dynamics()
 
         # # Evaluate the metrics using the extracted solver data
         # self._metrics.evaluate(

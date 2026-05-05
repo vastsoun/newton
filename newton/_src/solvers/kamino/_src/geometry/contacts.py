@@ -405,24 +405,26 @@ class ContactsKamino:
         default_max_contacts: int | None = None,
         device: wp.DeviceLike = None,
     ):
-        # Raise errors if both model and capacity are provided or both are None
-        if model is not None and capacity is not None:
-            raise ValueError("Expected either 'model' or 'capacity' argument to be provided, but not both.")
-        if model is None and capacity is None:
-            raise ValueError("Expected either 'model' or 'capacity' argument to be provided, but got neither")
+        """
+        Initializes a new ContactsKamino container.
 
-        # If a model is provided, extract the required contacts capacity from that otherwise
-        if model is not None:
-            model_max_contacts: int = 0
-            world_max_contacts: list[int] = [0 for _ in range(model.size.num_worlds)]
-            if model.geoms.model_minimum_contacts > 0:
-                model_max_contacts = model.geoms.model_minimum_contacts
-                world_max_contacts = model.geoms.world_minimum_contacts
-            else:
-                num_worlds = model.size.num_worlds
-                world_max_contacts = [model_max_contacts // num_worlds] * num_worlds
-            capacity = world_max_contacts
-
+        Args:
+            model:
+                The model container holding the time-invariant data of the system being simulated.\n
+                If provided, the contacts will be finalized using the contact allocation meta-data of the model.\n
+                If `None`, the contacts will be created empty without allocating data, and
+                can be finalized later by providing a model to the `finalize` method.\n
+            capacity:
+                The maximum number of contacts to allocate.\n
+                If not provided, the contact allocation meta-data of the model will be used.\n
+                If an integer is provided, it specifies the capacity for a single world.\n
+                If a list of integers is provided, it specifies the capacity for each world.
+            default_max_contacts:
+                The default maximum number of contacts per world.\n
+                If `None`, uses the default value of 1000.
+            device:
+                The device on which to allocate the contacts data.
+        """
         # Declare and initialize the default maximum number of contacts per world
         self._default_max_world_contacts: int = DEFAULT_WORLD_MAX_CONTACTS
         if default_max_contacts is not None:
@@ -435,8 +437,8 @@ class ContactsKamino:
         self._data: ContactsKaminoData = ContactsKaminoData()
 
         # If a capacity is specified, finalize the contacts data allocation
-        if capacity is not None:
-            self.finalize(capacity=capacity, device=device)
+        if model is not None or capacity is not None:
+            self.finalize(model=model, capacity=capacity, device=device)
 
     ###
     # Properties
@@ -662,18 +664,50 @@ class ContactsKamino:
     # Operations
     ###
 
-    def finalize(self, capacity: int | list[int], device: wp.DeviceLike = None):
+    def finalize(
+        self,
+        model: ModelKamino | None = None,
+        capacity: int | list[int] | None = None,
+        device: wp.DeviceLike = None,
+    ):
         """
-        Finalizes the contacts data allocations based on the specified capacity.
+        Finalizes the contacts data allocations based on the specified model or capacity.
 
         Args:
-            capacity (int | list[int]):
+            model:
+                The model container holding the time-invariant data of the system being simulated.\n
+                If provided, the contacts will be finalized using the contact allocation meta-data of the model.\n
+                If `None`, the contacts will be created empty without allocating data, and
+                can be finalized later by providing a model to the `finalize` method.\n
+            capacity:
                 The maximum number of contacts to allocate.\n
+                If not provided, the contact allocation meta-data of the model will be used.\n
                 If an integer is provided, it specifies the capacity for a single world.\n
                 If a list of integers is provided, it specifies the capacity for each world.
-            device (wp.DeviceLike, optional):
+            device:
                 The device on which to allocate the contacts data.
         """
+        # Raise errors if both model and capacity are provided or both are None
+        if model is not None and capacity is not None:
+            raise ValueError("Expected either 'model' or 'capacity' argument to be provided, but not both.")
+        if model is None and capacity is None:
+            raise ValueError("Expected either 'model' or 'capacity' argument to be provided, but got neither")
+
+        # If a model is provided, extract the required contacts capacity from that
+        if model is not None:
+            model_max_contacts: int = 0
+            world_max_contacts: list[int] = [0 for _ in range(model.size.num_worlds)]
+            if model.geoms.model_minimum_contacts > 0:
+                model_max_contacts = model.geoms.model_minimum_contacts
+                world_max_contacts = model.geoms.world_minimum_contacts
+            else:
+                num_worlds = model.size.num_worlds
+                world_max_contacts = [model_max_contacts // num_worlds] * num_worlds
+            capacity = world_max_contacts
+            self._device = model.device
+        else:
+            self._device = device
+
         # The memory allocation requires the total number of contacts (over multiple worlds)
         # as well as the contacts capacities for each world. Corresponding sizes are defaulted to 0 (empty).
         model_max_contacts = 0
@@ -707,10 +741,6 @@ class ContactsKamino:
         if model_max_contacts == 0:
             msg.debug("ContactsKamino: Skipping contact data allocations since total requested capacity was `0`.")
             return
-
-        # Override the device if specified
-        if device is not None:
-            self._device = device
 
         # Allocate the contacts data on the specified device
         with wp.ScopedDevice(self._device):

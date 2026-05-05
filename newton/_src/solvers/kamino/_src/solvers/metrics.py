@@ -1732,6 +1732,7 @@ class SolutionMetricsNewton:
             model=self._model,
             state_in=state,
             control_in=self._control,
+            limits_out=self._limits,
             state_out=self._state,
             data_out=self._data,
         )

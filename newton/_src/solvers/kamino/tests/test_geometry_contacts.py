@@ -519,6 +519,7 @@ class TestGeometryContactConversions(unittest.TestCase):
             rigid_contact_max=kamino_contacts.model_max_contacts_host,
             soft_contact_max=0,
             device=self.default_device,
+            requested_attributes={"force"},
         )
         convert_contacts_kamino_to_newton(model, state, kamino_contacts, newton_contacts_out)
         wp.synchronize()
@@ -613,6 +614,7 @@ class TestGeometryContactConversions(unittest.TestCase):
             rigid_contact_max=kamino_out.model_max_contacts_host,
             soft_contact_max=0,
             device=self.default_device,
+            requested_attributes={"force"},
         )
         convert_contacts_kamino_to_newton(model, state, kamino_out, newton_contacts_rt)
         wp.synchronize()
@@ -693,6 +695,7 @@ class TestGeometryContactConversions(unittest.TestCase):
             rigid_contact_max=kamino_contacts.model_max_contacts_host,
             soft_contact_max=0,
             device=self.default_device,
+            requested_attributes={"force"},
         )
         convert_contacts_kamino_to_newton(model, state, kamino_contacts, newton_contacts_2)
         wp.synchronize()
@@ -776,6 +779,7 @@ class TestGeometryContactConversions(unittest.TestCase):
         box_blueprint.add_articulation([j])
 
         scene = ModelBuilder()
+        scene.request_contact_attributes("force")
         scene.add_ground_plane()
         scene.add_world(nunchaku_blueprint, xform=wp.transform(p=wp.vec3(0.0, 0.0, 0.0)))
         scene.add_world(nunchaku_blueprint, xform=wp.transform(p=wp.vec3(5.0, 0.0, 0.0)))
@@ -809,6 +813,7 @@ class TestGeometryContactConversions(unittest.TestCase):
             rigid_contact_max=kamino_out.model_max_contacts_host,
             soft_contact_max=0,
             device=self.default_device,
+            requested_attributes={"force"},
         )
         convert_contacts_kamino_to_newton(model, state, kamino_out, newton_rt)
         wp.synchronize()
@@ -847,6 +852,299 @@ class TestGeometryContactConversions(unittest.TestCase):
             )
 
 
+class TestGeometryContactForceConversions(unittest.TestCase):
+    """Tests for the contact-force / reaction conversion paths.
+
+    Newton stores per-contact forces as a world-frame :class:`spatial_vector`
+    (linear, torque) on the optional :attr:`Contacts.force` extended attribute.
+    Kamino stores them as a 3-vector :attr:`ContactsKaminoData.reaction` in the
+    local contact frame (axes ``[t, o, n]``).  These tests verify:
+
+    1. The N->K kernel produces ``reaction = R(frame)^T @ f_world`` for the
+       linear part of Newton's force, with ``R`` built from Kamino's post-swap
+       contact normal.
+    2. A full N->K->N round-trip preserves the world-frame linear force.
+    3. The K->N kernel produces ``f_world = R(frame) @ reaction`` independently.
+    4. Both launchers tolerate a missing optional ``Contacts.force`` attribute.
+    """
+
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose
+
+        if self.verbose:
+            msg.info("\n")
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.reset_log_level()
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
+    def _setup_scene_with_force(self):
+        """Build the nunchaku scene with the ``force`` extended attribute requested."""
+        builder = ModelBuilder()
+        builder.request_contact_attributes("force")
+        build_test_system(builder=builder)
+        model = builder.finalize(self.default_device)
+
+        if model.world_count == 1:
+            sw = model.shape_world.numpy()
+            if np.any(sw < 0):
+                sw[sw < 0] = 0
+                model.shape_world.assign(sw)
+
+        state = model.state()
+        newton.eval_fk(model, model.joint_q, model.joint_qd, state)
+        contacts = model.collide(state)
+        return model, state, contacts
+
+    @staticmethod
+    def _seed_constant_linear_force(contacts: Contacts, f_world: np.ndarray) -> None:
+        """Fill the linear part of every active rigid-contact ``force`` slot with ``f_world``.
+
+        Leaves the torque components zero, mirroring the conversion semantics
+        which currently only round-trip the linear part.
+        """
+        nc = int(contacts.rigid_contact_count.numpy()[0])
+        force_np = contacts.force.numpy()
+        force_np[:nc, :3] = f_world.astype(force_np.dtype, copy=False)
+        force_np[:nc, 3:] = 0.0
+        contacts.force.assign(force_np)
+
+    def test_06_newton_to_kamino_reaction_reference(self):
+        """N->K writes ``reaction = R(frame)^T @ f_world`` for every active contact."""
+        model, state, newton_contacts = self._setup_scene_with_force()
+        nc = int(newton_contacts.rigid_contact_count.numpy()[0])
+        self.assertGreater(nc, 0)
+
+        f_world = np.array([0.5, -0.7, 0.3], dtype=np.float64)
+        self._seed_constant_linear_force(newton_contacts, f_world)
+
+        kamino_out = ContactsKamino(capacity=nc + 16, device=self.default_device)
+        convert_contacts_newton_to_kamino(model, state, newton_contacts, kamino_out)
+        wp.synchronize()
+
+        nc_kamino = int(kamino_out.model_active_contacts.numpy()[0])
+        self.assertGreater(nc_kamino, 0)
+
+        gapfunc = kamino_out.gapfunc.numpy()[:nc_kamino]
+        reactions = kamino_out.reaction.numpy()[:nc_kamino]
+
+        for j in range(nc_kamino):
+            normal = gapfunc[j, :3].astype(np.float64)
+            r_wc = _make_contact_frame_znorm_np(normal)
+            expected = r_wc.T @ f_world
+            np.testing.assert_allclose(
+                reactions[j].astype(np.float64),
+                expected,
+                atol=1e-5,
+                err_msg=f"Contact {j}: reaction does not match R(normal)^T @ f_world",
+            )
+
+        if self.verbose:
+            msg.debug(
+                "N->K reference: %d Kamino contacts, max |reaction| = %g",
+                nc_kamino,
+                float(np.max(np.linalg.norm(reactions, axis=1))),
+            )
+
+    def test_07_force_roundtrip_preserves_linear_world_force(self):
+        """N->K->N preserves the world-frame linear force for every active contact."""
+        model, state, newton_contacts = self._setup_scene_with_force()
+        nc = int(newton_contacts.rigid_contact_count.numpy()[0])
+        self.assertGreater(nc, 0)
+
+        f_world = np.array([0.2, 0.4, -0.6], dtype=np.float64)
+        self._seed_constant_linear_force(newton_contacts, f_world)
+
+        kamino_out = ContactsKamino(capacity=nc + 16, device=self.default_device)
+        convert_contacts_newton_to_kamino(model, state, newton_contacts, kamino_out)
+        wp.synchronize()
+        nc_kamino = int(kamino_out.model_active_contacts.numpy()[0])
+        self.assertGreater(nc_kamino, 0)
+
+        newton_rt = Contacts(
+            rigid_contact_max=kamino_out.model_max_contacts_host,
+            soft_contact_max=0,
+            device=self.default_device,
+            requested_attributes={"force"},
+        )
+        convert_contacts_kamino_to_newton(model, state, kamino_out, newton_rt)
+        wp.synchronize()
+
+        nc_rt = int(newton_rt.rigid_contact_count.numpy()[0])
+        self.assertEqual(nc_rt, nc_kamino)
+
+        force_rt = newton_rt.force.numpy()[:nc_rt]
+        for j in range(nc_rt):
+            np.testing.assert_allclose(
+                force_rt[j, :3].astype(np.float64),
+                f_world,
+                atol=1e-5,
+                err_msg=f"Contact {j}: round-tripped linear force differs from input",
+            )
+            np.testing.assert_allclose(
+                force_rt[j, 3:].astype(np.float64),
+                np.zeros(3),
+                atol=1e-6,
+                err_msg=f"Contact {j}: round-tripped torque must be zero",
+            )
+
+    def test_08_kamino_to_newton_force_reference(self):
+        """K->N writes ``force.linear = R(frame) @ reaction`` for every active contact."""
+        model, state, newton_contacts = self._setup_scene_with_force()
+        nc = int(newton_contacts.rigid_contact_count.numpy()[0])
+        self.assertGreater(nc, 0)
+
+        kamino = ContactsKamino(capacity=nc + 16, device=self.default_device)
+        convert_contacts_newton_to_kamino(model, state, newton_contacts, kamino)
+        wp.synchronize()
+        nc_kamino = int(kamino.model_active_contacts.numpy()[0])
+        self.assertGreater(nc_kamino, 0)
+
+        # Overwrite Kamino reactions with chosen local-frame values, keeping the
+        # solver-meaningful frames produced by N->K.  This exercises the K->N
+        # rotation independently of the inverse-rotation in N->K.
+        reaction_local = np.tile(np.array([0.11, -0.22, 0.33], dtype=np.float32), (kamino.model_max_contacts_host, 1))
+        kamino.reaction.assign(reaction_local)
+
+        newton_out = Contacts(
+            rigid_contact_max=kamino.model_max_contacts_host,
+            soft_contact_max=0,
+            device=self.default_device,
+            requested_attributes={"force"},
+        )
+        convert_contacts_kamino_to_newton(model, state, kamino, newton_out)
+        wp.synchronize()
+
+        nc_out = int(newton_out.rigid_contact_count.numpy()[0])
+        self.assertEqual(nc_out, nc_kamino)
+
+        gapfunc = kamino.gapfunc.numpy()[:nc_kamino]
+        force_out = newton_out.force.numpy()[:nc_out]
+        for j in range(nc_out):
+            normal = gapfunc[j, :3].astype(np.float64)
+            r_wc = _make_contact_frame_znorm_np(normal)
+            expected_world = r_wc @ reaction_local[j].astype(np.float64)
+            np.testing.assert_allclose(
+                force_out[j, :3].astype(np.float64),
+                expected_world,
+                atol=1e-5,
+                err_msg=f"Contact {j}: world force does not match R(normal) @ reaction",
+            )
+            np.testing.assert_allclose(
+                force_out[j, 3:].astype(np.float64),
+                np.zeros(3),
+                atol=1e-6,
+                err_msg=f"Contact {j}: torque component must be zero",
+            )
+
+    def test_09_static_swap_branch_force_consistency(self):
+        """Static-shape contacts (``b1 < 0`` in Newton) follow the post-swap reference formula.
+
+        The nunchaku scene rests on a global ground plane, so every Newton
+        contact pairs a dynamic shape with the static ground.  After N->K the
+        Kamino convention forces ``bid_AB[0] == -1`` (Kamino A is the static
+        body) and the contact normal is the negation of Newton's.  This test
+        verifies the linear force still satisfies ``reaction = R^T @ f_world``
+        with the *swapped* normal.
+        """
+        model, state, newton_contacts = self._setup_scene_with_force()
+        nc = int(newton_contacts.rigid_contact_count.numpy()[0])
+        self.assertGreater(nc, 0)
+
+        f_world = np.array([0.0, 0.0, 1.25], dtype=np.float64)
+        self._seed_constant_linear_force(newton_contacts, f_world)
+
+        kamino = ContactsKamino(capacity=nc + 16, device=self.default_device)
+        convert_contacts_newton_to_kamino(model, state, newton_contacts, kamino)
+        wp.synchronize()
+        nc_kamino = int(kamino.model_active_contacts.numpy()[0])
+        self.assertGreater(nc_kamino, 0)
+
+        bid_AB = kamino.bid_AB.numpy()[:nc_kamino]
+        static_a = np.where(bid_AB[:, 0] == -1)[0]
+        self.assertGreater(
+            len(static_a),
+            0,
+            "Nunchaku scene is expected to produce contacts with a static body A",
+        )
+        # All ground contacts in this scene should be in the static-A branch.
+        np.testing.assert_array_equal(bid_AB[static_a, 0], np.full(len(static_a), -1, dtype=bid_AB.dtype))
+
+        gapfunc = kamino.gapfunc.numpy()[:nc_kamino]
+        reactions = kamino.reaction.numpy()[:nc_kamino]
+        for j in static_a:
+            normal = gapfunc[j, :3].astype(np.float64)
+            # Ground normal in Kamino points static->dynamic, i.e. +Z; verify.
+            self.assertGreater(
+                normal[2],
+                0.5,
+                f"Contact {j}: post-swap ground normal expected near +Z, got {normal}",
+            )
+            r_wc = _make_contact_frame_znorm_np(normal)
+            np.testing.assert_allclose(
+                reactions[j].astype(np.float64),
+                r_wc.T @ f_world,
+                atol=1e-5,
+                err_msg=f"Contact {j}: static-swap reaction mismatch",
+            )
+
+    def test_10_force_attribute_optional(self):
+        """Both launchers handle a missing optional ``Contacts.force`` attribute.
+
+        N->K must produce zero reactions; K->N must not raise and must not
+        clobber existing geometry outputs.
+        """
+        builder = ModelBuilder()
+        # Intentionally do NOT call request_contact_attributes("force").
+        build_test_system(builder=builder)
+        model = builder.finalize(self.default_device)
+
+        if model.world_count == 1:
+            sw = model.shape_world.numpy()
+            if np.any(sw < 0):
+                sw[sw < 0] = 0
+                model.shape_world.assign(sw)
+
+        state = model.state()
+        newton.eval_fk(model, model.joint_q, model.joint_qd, state)
+        contacts_no_force = model.collide(state)
+        nc = int(contacts_no_force.rigid_contact_count.numpy()[0])
+        self.assertGreater(nc, 0)
+        self.assertIsNone(contacts_no_force.force, "Test precondition: Contacts.force must be unallocated")
+
+        kamino = ContactsKamino(capacity=nc + 16, device=self.default_device)
+        convert_contacts_newton_to_kamino(model, state, contacts_no_force, kamino)
+        wp.synchronize()
+
+        nc_kamino = int(kamino.model_active_contacts.numpy()[0])
+        self.assertGreater(nc_kamino, 0)
+        reactions = kamino.reaction.numpy()[:nc_kamino]
+        np.testing.assert_array_equal(
+            reactions,
+            np.zeros_like(reactions),
+            err_msg="Reactions must be zero when Newton.force is unallocated",
+        )
+
+        newton_out_no_force = Contacts(
+            rigid_contact_max=kamino.model_max_contacts_host,
+            soft_contact_max=0,
+            device=self.default_device,
+        )
+        self.assertIsNone(newton_out_no_force.force)
+        convert_contacts_kamino_to_newton(model, state, kamino, newton_out_no_force)
+        wp.synchronize()
+
+        nc_out = int(newton_out_no_force.rigid_contact_count.numpy()[0])
+        self.assertEqual(nc_out, nc_kamino, "Geometry conversion must succeed without force")
+
+
 ###
 # Helpers
 ###
@@ -862,6 +1160,28 @@ def _quat_rotate(q: np.ndarray, v: np.ndarray) -> np.ndarray:
 def _transform_point(xform: np.ndarray, point: np.ndarray) -> np.ndarray:
     """Apply a Warp transform (p[0:3], q[3:7]) to a point."""
     return xform[:3] + _quat_rotate(xform[3:], point)
+
+
+def _make_contact_frame_znorm_np(n: np.ndarray) -> np.ndarray:
+    """NumPy reference of :func:`make_contact_frame_znorm`.
+
+    Returns the 3x3 rotation ``R = world <- contact`` whose columns are
+    ``[t, o, n]`` (tangent, other, normal), built with the same tangent-axis
+    selection rule as the Warp ``@wp.func`` (`UNIT_X` unless ``|n . X| >=
+    cos(pi/6)``, in which case `UNIT_Y`).
+    """
+    cos_pi_6 = 0.8660254037844387
+    unit_x = np.array([1.0, 0.0, 0.0])
+    unit_y = np.array([0.0, 1.0, 0.0])
+
+    n = np.asarray(n, dtype=np.float64)
+    n = n / np.linalg.norm(n)
+    e = unit_x if abs(np.dot(n, unit_x)) < cos_pi_6 else unit_y
+    o = np.cross(n, e)
+    o = o / np.linalg.norm(o)
+    t = np.cross(o, n)
+    t = t / np.linalg.norm(t)
+    return np.column_stack([t, o, n])
 
 
 ###

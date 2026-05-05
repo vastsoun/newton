@@ -93,7 +93,6 @@ from ..geometry.contacts import ContactsKamino, convert_contacts_newton_to_kamin
 from ..geometry.keying import build_pair_key2
 from ..kinematics.constraints import (
     make_unilateral_constraints_info,
-    unpack_constraint_solutions,
     update_constraints_info,
 )
 from ..kinematics.jacobians import (
@@ -1637,6 +1636,7 @@ class SolutionMetricsNewton:
                 )
             self._model = model_kamino
         else:
+            # TODO: We need a mechanism to force all joints being only kinematic, i.e. no dynamic constraints
             self._model = ModelKamino.from_newton(model=model, overwrite_source_model=False)
 
         # Configure model time-steps
@@ -1664,14 +1664,14 @@ class SolutionMetricsNewton:
             self._jacobians = DenseSystemJacobians(model=self._model, limits=self._limits, contacts=self._contacts)
 
         # Create the DualProblem container
+        # TODO: Create a solver config and set constraint stabilization to zero
         self._problem = DualProblem(
             model=self._model,
             data=self._data,
             limits=self._limits,
             contacts=self._contacts,
             jacobians=self._jacobians,
-            # solver=ConjugateResidualSolver if sparse else LLTBlockedSolver,
-            sparse=sparse,
+            sparse=False,
         )
 
         # Finalize the internal SolutionMetrics instance
@@ -1705,12 +1705,26 @@ class SolutionMetricsNewton:
         self._control.from_newton(control, self._model)
         convert_contacts_newton_to_kamino(self._model._model, state_p, contacts, self._contacts)
 
-        # Update the relevant data fields in `DataKamino` required for the
-        # metrics computations, using the provided `StateKamino` instance.
-        self._update_solver_data_prestep(self._model, self._state_p, self._data)
-
         # Run limit detection to generate active limits
         self._limits.detect(q_j=self._state_p.q_j)
+
+        # Update the relevant data fields of `DataKamino` and system Jacobians required
+        # for the metrics computations, using the provided `StateKamino` instances.
+        self._read_step_inputs(self._state_p, self._control)
+        update_constraints_info(model=self._model, data=self._data)
+        update_body_inertias(model=self._model.bodies, data=self._data.bodies)
+        compute_joints_data(model=self._model, data=self._data, q_j_p=self._state_p.q_j)
+        self._update_jacobians()
+
+        # Compute the post-event constraint-space velocities given
+        # the pre- and post-event state and constraint Jacobians
+        self._compute_postevent_constraint_velocities(
+            model=self._model,
+            state=self._state,
+            state_p=self._state_p,
+            jacobians=self._jacobians,
+            v_plus=self._v_plus,
+        )
 
         # Perform the necessary conversions and extractions to obtain the
         # solver data in the expected format for the metrics computations
@@ -1721,37 +1735,31 @@ class SolutionMetricsNewton:
             state_out=self._state,
             data_out=self._data,
         )
-        self._compute_constraint_velocities(
-            model=self._model,
-            state=self._state,
-            jacobians=self._jacobians,
-            v_plus=self._v_plus,
-        )
         self._extract_constraint_reactions(
             model=self._model,
             state=self._state,
             limits=self._limits,
             contacts=self._contacts,
-            jacobians=self._jacobians,
             lambdas=self._lambdas,
         )
 
-        self._update_constraints(contacts=self._contacts)
+        # Update all dynamics quantities based
+        # on the extracted constraint reactions
+        self._update_body_wrenches()
+        self._update_dynamics()
 
-        # --------------------------------------------------------
-
-        # Evaluate the metrics using the extracted solver data
-        self._metrics.evaluate(
-            sigma=self._sigma,
-            lambdas=self._lambdas,
-            v_plus=self._v_plus,
-            data=self._data,
-            state_p=self._state_p,
-            problem=self._problem,
-            jacobians=self._jacobians,
-            limits=self._limits,
-            contacts=self._contacts,
-        )
+        # # Evaluate the metrics using the extracted solver data
+        # self._metrics.evaluate(
+        #     sigma=self._sigma,
+        #     lambdas=self._lambdas,
+        #     v_plus=self._v_plus,
+        #     data=self._data,
+        #     state_p=self._state_p,
+        #     problem=self._problem,
+        #     jacobians=self._jacobians,
+        #     limits=self._limits,
+        #     contacts=self._contacts,
+        # )
 
     ###
     # Internals
@@ -1763,95 +1771,103 @@ class SolutionMetricsNewton:
         wp.copy(self._data.bodies.w_i, state_in.w_i)
         wp.copy(self._data.bodies.w_e_i, state_in.w_i_e)
         wp.copy(self._data.joints.q_j, state_in.q_j)
-        wp.copy(self._data.joints.q_j_p, state_in.q_j_p)
         wp.copy(self._data.joints.dq_j, state_in.dq_j)
-        wp.copy(self._data.joints.lambda_j, state_in.lambda_j)
         self._data.joints.tau_j = control_in.tau_j
-        self._data.joints.q_j_ref = control_in.q_j_ref
-        self._data.joints.dq_j_ref = control_in.dq_j_ref
-        self._data.joints.tau_j_ref = control_in.tau_j_ref
 
-    def _update_joints_data(self, q_j_p: wp.array | None = None):
-        if q_j_p is not None:
-            _q_j_p = q_j_p
-        else:
-            wp.copy(self._data.joints.q_j_p, self._data.joints.q_j)
-            _q_j_p = self._data.joints.q_j_p
-        compute_joints_data(
-            model=self._model,
-            data=self._data,
-            q_j_p=_q_j_p,
-        )
-
-    def _update_intermediates(self, state_in: StateKamino):
-        self._update_joints_data(q_j_p=state_in.q_j_p)
-        update_body_inertias(model=self._model.bodies, data=self._data.bodies)
-
-    def _update_constraint_info(self):
-        update_constraints_info(model=self._model, data=self._data)
-
-    def _update_jacobians(self, contacts: ContactsKamino | None = None):
+    def _update_jacobians(self):
         self._jacobians.build(
             model=self._model,
             data=self._data,
             limits=self._limits,
-            contacts=contacts,
+            contacts=self._contacts,
             reset_to_zero=True,
         )
 
-    def _update_dynamics(self, contacts: ContactsKamino | None = None):
+    def _update_dynamics(self):
         self._problem.build(
             model=self._model,
             data=self._data,
             limits=self._limits,
-            contacts=contacts,
+            contacts=self._contacts,
             jacobians=self._jacobians,
             reset_to_zero=True,
         )
 
-    def _update_actuation_wrenches(self):
+    def _update_body_wrenches(self):
+        # Compute the per-body actuation wrenches: `DataKamino.bodies.w_a_i`
+        # in world coordinates from the current joint torques
         compute_joint_dof_body_wrenches(self._model, self._data, self._jacobians)
 
-    def _update_wrenches(self):
+        # Compute the per-body constraint wrenches: `w_j_i`, `w_l_i`,
+        # and `w_c_i` of `DataKamino.bodies` in world coordinates
+        compute_constraint_body_wrenches(
+            model=self._model,
+            data=self._data,
+            limits=self._limits,
+            contacts=self._contacts,
+            jacobians=self._jacobians,
+            lambdas_offsets=self._problem.data.vio,
+            lambdas_data=self._lambdas,
+        )
+
+        # Compute the total applied wrenches per body by summing up all individual contributions,
+        # from joint actuation, joint limits, contacts, and purely external effects.
         update_body_wrenches(self._model.bodies, self._data.bodies)
 
-    def _update_solver_data_prestep(self, state_in: StateKamino, control_in: ControlKamino):
+    ###
+    # TODO: TO BE IMPLEMENTED
+    ###
+
+    def _compute_postevent_constraint_velocities(
+        self,
+        model: ModelKamino,
+        state: StateKamino,
+        state_p: StateKamino,
+        jacobians: SystemJacobiansType,
+        v_plus: wp.array,
+    ):
         """
-        Updates the relevant data fields in `DataKamino` required for the
-        metrics computations, using the provided `StateKamino` instance.
+        Computes the constraint-space velocities `v = J @ u`, where `J := J_cts` and `u := State.bodies.u_i`
+
+        This realizes the `v^{+/-} = J(q^{+/-}) @ u^{+/-}` operation.
+
+        Depending on whether we use the pre-event (-) or post-event (+) state,
+        we will compute the respective constraint-space velocities as:
+        - `v^{+} = J(q) @ u^{+}`, i.e. `v^{+} := v_plus`
+        - `v^{-} = J(q) @ u^{-}`, i.e. `v^{-} := v_minus`
+        - All computations also depend on whether the pre- or post-event coordinates are use
+          to evaluate the constraint Jacobian `J(q)`. However, for the purposes of evaluating
+          physical correctness, we will use the system coordinates `q` that are coincident
+          with the given state.
 
         Args:
             model:
                 The model containing the time-invariant data of the simulation.
-            state_in:
-                The input state data containing the current state of the simulation.
-            data_out:
-                The solver data to be updated.
+            state:
+                The input post-event state data containing the current state of the simulation.
+            state_p:
+                The input pre-event state data containing the initial state of the simulation.
+            jacobians:
+                The system Jacobians.
+            v_plus:
+                The output array to store the post-event constraint-space velocities.
         """
-        self._read_step_inputs(state_in=state_in, control_in=control_in)
-        self._update_intermediates(state_in=state_in)
-        self._update_constraint_info()
-        self._update_jacobians(contacts=self._contacts)
-        self._update_actuation_wrenches()
-        self._update_dynamics(contacts=self._contacts)
-        self._update_wrenches()
-
-    ###
-    # TODO
-    ###
+        pass  # TODO: TO BE IMPLEMENTED
 
     def _convert_body_parent_wrenches_to_joint_reactions(
         self,
         model: ModelKamino,
         state_in: State,
         control_in: ControlKamino,
+        data_out: DataKamino,
+        limits_out: LimitsKamino,
         state_out: StateKamino,
-        data_out: DataKamino | None = None,
     ):
         """
-        Converts Newton body-parent wrenches `newton.State.body_parent_f` data to Kamino `StateKamino.lambda_j`.
+        Converts Newton body-parent wrenches `newton.State.body_parent_f` data
+        to Kamino `StateKamino.lambda_j` and `DataKamino.joints.lambda_l_j`.
 
-        This operation also updates per-joint wrenches array `DataKamino.joints.j_w_j` as a byproduct, if provided.
+        This operation also updates per-joint wrenches arrays `DataKamino.joints.j_w_j` as a byproduct.
 
         Definitions:
         -  `body_parent_f` contains the wrench applied on each body by its parent body, referenced w.r.
@@ -1863,6 +1879,12 @@ class SolutionMetricsNewton:
            body, expressed in the local coordinates of the joint frame.
         -  `lambda_j` contains the constraint reaction impulses
            applied by each joint, expressed in the joint frame.
+        - `lambda_l_j` contains the joint-limit constraint reactions.
+        - `tau_c_j` is the joint-space actuation generalized forces.
+        - `tau_j` is the joint-space generaralized forces. However, as any acting joint-limit constraint
+           reactions also lie in the same space (i.e. DoF-space), we will consider this to be equal to
+           the total joint-space generalized forces `tau_j := tau_c_j + lambda_l_j`
+        - `dt` is the simulation time step.
 
         The conversion is performed parallel over joints as follows:
         -  We use the relation `w_j = inv(W_ij) @ w_ij` to compute `w_j`, i.e. the joint wrench
@@ -1874,9 +1896,17 @@ class SolutionMetricsNewton:
            is the `6x6` constant joint frame transform matrix extended to 6D (via 3x3 on both diagonals)
            and similarly `R_bar_j` is the `6x6` extended joint frame rotation matrix extended to 6D
            computed from the absolute pose of the joint frame `p_j`.
-        -  Having `j_w_j`, we compute `lambda_j` as `[lambda_j; tau_j] = inv(S_j) @ j_w_j`, where `S_j`
-           is the `6x6` joint constraint/dof selection matrix. `tau_j` is the joint actuation force and
-           can be discarded, as we only need the constraint reactions `lambda_j`.
+        -  Having `j_w_j`, we compute `lambda_j` as `[lambda_j; tau_j] = (1/dt) inv(S_j) @ j_w_j`, where `S_j`
+           is the `6x6` joint constraint/dof selection matrix. `tau_j` is the sum of the joint-space actuation
+           generalized forces plus the joint-limit constraint reactions. Thus to recover `lambda_l_j`, and
+           assuming we know `tau_c_j`, we can simply compute `lambda_l_j := tau_j - tau_c_j`.
+
+        Correspondences between data containers and conversion inputs/outputs:
+        - state_in.body_parent_f --> w_ij
+        - control_in.tau_j --> tau_c_j
+        - data_out.joints.j_w_j --> j_w_j
+        - limits_out.reaction --> lambda_l_j
+        - state_out.lambda_j --> lambda_j
 
         Args:
             model:
@@ -1892,21 +1922,9 @@ class SolutionMetricsNewton:
                 simulation. Used to store the joint reactions `lambda_j`.
             data_out:
                 The output data containing the current data of the simulation.
-                Optional, used to store the joint wrenches `j_w_j.
+                Used to store the joint wrenches `j_w_j and joint-limit reactions `lambda_l_j`.
         """
-        pass
-
-    def _compute_constraint_velocities(
-        self,
-        model: ModelKamino,
-        state: StateKamino,
-        jacobians: SystemJacobiansType,
-        v: wp.array,
-    ):
-        """
-        Computes `v = J @ u`, where `J := J_cts` and `u := State.bodies.u_i`
-        """
-        pass
+        pass  # TODO: TO BE IMPLEMENTED
 
     def _extract_constraint_reactions(
         self,
@@ -1914,27 +1932,24 @@ class SolutionMetricsNewton:
         state: StateKamino,
         limits: LimitsKamino,
         contacts: ContactsKamino,
-        jacobians: SystemJacobiansType,
         lambdas: wp.array,
     ):
         """
-        Fills in `lambdas` from `State.joints.lambda_j`, `Limits.reaction` and `Contacts.reaction`
-        """
-        pass
+        Fills in `lambdas` from:
+        - `State.joints.lambda_j` containing the joint constraint reactions.
+        - `LimitsKamino.reaction` containing the joint-limit constraint reactions.
+        - `Contacts.reaction` containing the contact constraint reactions.
 
-    def _update_constraints(self, contacts: ContactsKamino | None = None):
-        compute_constraint_body_wrenches(
-            model=self._model,
-            data=self._data,
-            limits=self._limits,
-            contacts=contacts,
-            jacobians=self._jacobians,
-            lambdas_offsets=self._problem.data.vio,
-            lambdas_data=self._lambdas,
-        )
-        unpack_constraint_solutions(
-            lambdas=self._lambdas,
-            v_plus=self._v_plus,
-            model=self._model,
-            data=self._data,
-        )
+        Args:
+            model:
+                The model containing the time-invariant data of the simulation.
+            state:
+                The input state data containing the current state of the simulation.
+            limits:
+                The input limits data containing the joint-limit data.
+            contacts:
+                The input contacts data containing the contact data.
+            lambdas:
+                The output array to store the constraint reactions.
+        """
+        pass  # TODO: TO BE IMPLEMENTED

@@ -34,6 +34,7 @@ from .....sim.contacts import Contacts
 from .....sim.model import Model
 from .....sim.state import State
 from ..core.math import COS_PI_6, UNIT_X, UNIT_Y
+from ..core.model import ModelKamino
 from ..core.types import (
     float32,
     int32,
@@ -399,10 +400,29 @@ class ContactsKamino:
 
     def __init__(
         self,
+        model: ModelKamino | None = None,
         capacity: int | list[int] | None = None,
         default_max_contacts: int | None = None,
         device: wp.DeviceLike = None,
     ):
+        # Raise errors if both model and capacity are provided or both are None
+        if model is not None and capacity is not None:
+            raise ValueError("Expected either 'model' or 'capacity' argument to be provided, but not both.")
+        if model is None and capacity is None:
+            raise ValueError("Expected either 'model' or 'capacity' argument to be provided, but got neither")
+
+        # If a model is provided, extract the required contacts capacity from that otherwise
+        if model is not None:
+            model_max_contacts: int = 0
+            world_max_contacts: list[int] = [0 for _ in range(model.size.num_worlds)]
+            if model.geoms.model_minimum_contacts > 0:
+                model_max_contacts = model.geoms.model_minimum_contacts
+                world_max_contacts = model.geoms.world_minimum_contacts
+            else:
+                num_worlds = model.size.num_worlds
+                world_max_contacts = [model_max_contacts // num_worlds] * num_worlds
+            capacity = world_max_contacts
+
         # Declare and initialize the default maximum number of contacts per world
         self._default_max_world_contacts: int = DEFAULT_WORLD_MAX_CONTACTS
         if default_max_contacts is not None:

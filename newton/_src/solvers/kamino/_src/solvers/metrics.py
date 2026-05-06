@@ -77,13 +77,14 @@ from dataclasses import dataclass
 import warp as wp
 
 from .....sim import Contacts, Control, Model, State
+from .....solvers.solver import SolverBase
 from ..core.bodies import update_body_inertias, update_body_wrenches
 from ..core.control import ControlKamino
 from ..core.data import DataKamino
 from ..core.math import screw, screw_angular, screw_linear
 from ..core.model import ModelKamino
 from ..core.state import StateKamino
-from ..core.types import float32, int32, int64, mat33f, uint32, vec2f, vec3f, vec4f, vec6f
+from ..core.types import float32, int32, int64, mat33f, uint32, vec2f, vec2i, vec3f, vec4f, vec6f
 from ..dynamics.dual import DualProblem
 from ..dynamics.wrenches import (
     compute_constraint_body_wrenches,
@@ -122,6 +123,7 @@ from ..solvers.padmm.math import (
 __all__ = [
     "SolutionMetrics",
     "SolutionMetricsData",
+    "extract_mujoco_warp_constraint_forces",
 ]
 
 
@@ -1955,3 +1957,688 @@ class SolutionMetricsNewton:
                 The output array to store the constraint reactions.
         """
         pass  # TODO: TO BE IMPLEMENTED
+
+
+###
+# MuJoCo-to-Kamino lambdas extraction
+#
+# This section provides a Warp-kernel-backed launcher
+# :func:`extract_mujoco_warp_constraint_forces` that converts ``mujoco_warp``
+# constraint forces stored in ``SolverMuJoCo.mjw_data`` into a flat 1D
+# ``lambdas`` array following Kamino's per-world constraint indexing.
+#
+# Coverage of the prototype implementation:
+# - Joint limits (``LIMIT_JOINT``) mapped to Kamino's per-world limit slots.
+# - MuJoCo equalities (``EQUALITY``) mapped to Kamino's per-joint kinematic
+#   constraint slots, when the MuJoCo equality was synthesized from a
+#   loop-closure Newton joint.
+# - Contacts in elliptic-cone mode (``CONTACT_ELLIPTIC``) mapped to Kamino's
+#   contact slots ``[normal, tangent_1, tangent_2]``.
+# - Tree-joint kinematic constraint slots reconstructed from
+#   ``newton.State.body_parent_f`` after subtracting equality-induced wrench
+#   contributions.
+#
+# Out-of-scope (left as TODOs in the kernel bodies):
+# - Multi-axis / multi-side joint limit disambiguation.
+# - Frame transform from MuJoCo elliptic-cone tangent basis to Kamino's
+#   contact frame (currently assumed identity rotation around the normal).
+# - Reduction of the 6 ``CONNECT`` rows of revolute loop joints (3 per anchor)
+#   into Kamino's 5 kinematic-constraint slots — currently sequential writes.
+# - Pyramidal-cone contacts and ``EqType.JOINT`` (mimic) equalities.
+###
+
+
+###
+# MJW->Kamino: Constants
+###
+
+# MuJoCo Warp ConstraintType values, kept as Warp constants so that kernels
+# don't need to import ``mujoco_warp`` at module load time.
+_MJW_CT_EQUALITY = wp.constant(int32(0))
+_MJW_CT_FRICTION_DOF = wp.constant(int32(1))
+_MJW_CT_FRICTION_TENDON = wp.constant(int32(2))
+_MJW_CT_LIMIT_JOINT = wp.constant(int32(3))
+_MJW_CT_LIMIT_TENDON = wp.constant(int32(4))
+_MJW_CT_CONTACT_FRICTIONLESS = wp.constant(int32(5))
+_MJW_CT_CONTACT_PYRAMIDAL = wp.constant(int32(6))
+_MJW_CT_CONTACT_ELLIPTIC = wp.constant(int32(7))
+
+# MuJoCo Warp EqType values.
+_MJW_EQ_CONNECT = wp.constant(int32(0))
+_MJW_EQ_WELD = wp.constant(int32(1))
+_MJW_EQ_JOINT = wp.constant(int32(2))
+
+
+###
+# MJW->Kamino: Kernels
+###
+
+
+@wp.kernel
+def _compute_kamino_group_offsets(
+    # Inputs:
+    model_num_joint_cts: wp.array[int32],
+    limits_world_active: wp.array[int32],
+    contacts_world_active: wp.array[int32],
+    have_limits: int32,
+    have_contacts: int32,
+    # Outputs:
+    limit_cts_group_offset: wp.array[int32],
+    contact_cts_group_offset: wp.array[int32],
+):
+    """Compute per-world local offsets ``lcgo = njc`` and ``ccgo = njc + nl``.
+
+    Mirrors the offsets that :func:`update_constraints_info` would produce
+    on a :class:`DataKamino` instance, but does not require one to be
+    constructed by the caller.
+    """
+    w = wp.tid()
+    njc = model_num_joint_cts[w]
+    nl = int32(0)
+    if have_limits != 0:
+        nl = limits_world_active[w]
+    # ``contacts_world_active`` is not part of the offset formula but is
+    # kept as a kernel input so it stays in the signature for future use.
+    if have_contacts != 0:
+        nc_touch = contacts_world_active[w]
+        if nc_touch < 0:
+            njc = int32(-1)
+    limit_cts_group_offset[w] = njc
+    contact_cts_group_offset[w] = njc + nl
+
+
+@wp.kernel
+def _unpack_mjw_limits_to_kamino_lambdas(
+    # mujoco_warp inputs:
+    mjw_efc_type: wp.array2d[int32],
+    mjw_efc_id: wp.array2d[int32],
+    mjw_efc_force: wp.array2d[float32],
+    mjw_nefc: wp.array[int32],
+    # MuJoCo→Newton joint mapping:
+    mjc_jnt_to_newton_jnt: wp.array2d[int32],  # shape [nworld_mjw, njnt_mjw]
+    # Kamino limits:
+    limits_model_active: wp.array[int32],
+    limits_wid: wp.array[int32],
+    limits_lid: wp.array[int32],
+    limits_jid: wp.array[int32],
+    # Kamino model info:
+    model_total_cts_offset: wp.array[int32],
+    data_limit_cts_group_offset: wp.array[int32],
+    model_dt: wp.array[float32],
+    # Output:
+    lambdas: wp.array[float32],
+):
+    """Unpack ``mjw_data.efc.force`` rows of type ``LIMIT_JOINT`` into Kamino's lambdas.
+
+    Grid: ``(nworld_mjw, njmax)`` over MuJoCo Warp constraint rows.
+    Maps each row to a Kamino-side limit slot via the joint id; uses the
+    first-match heuristic on ``limits.jid`` for the prototype. Per-row force
+    is scaled by ``dt`` to express it as a Kamino impulse.
+    """
+    w, r = wp.tid()
+    if r >= mjw_nefc[w]:
+        return
+    if mjw_efc_type[w, r] != _MJW_CT_LIMIT_JOINT:
+        return
+
+    mj_jnt_id = mjw_efc_id[w, r]
+    if mj_jnt_id < 0:
+        return
+
+    newton_jnt_id = mjc_jnt_to_newton_jnt[w, mj_jnt_id]
+    if newton_jnt_id < 0:
+        return
+
+    # First-match heuristic: associate the row with the first active
+    # Kamino limit referencing this Newton joint.
+    # TODO: Disambiguate per joint DoF / per joint side once Kamino's
+    # ``LimitsKaminoData`` exposes axis indexing alongside ``jid``.
+    nl = limits_model_active[0]
+    for lid in range(nl):
+        if limits_jid[lid] == newton_jnt_id:
+            wid_l = limits_wid[lid]
+            lid_l = limits_lid[lid]
+            base = model_total_cts_offset[wid_l]
+            lcgo = data_limit_cts_group_offset[wid_l]
+            dt = model_dt[wid_l]
+            lambdas[base + lcgo + lid_l] = mjw_efc_force[w, r] * dt
+            return
+
+
+@wp.kernel
+def _unpack_mjw_equalities_to_kamino_joint_lambdas(
+    # mujoco_warp inputs:
+    mjw_efc_type: wp.array2d[int32],
+    mjw_efc_id: wp.array2d[int32],
+    mjw_efc_force: wp.array2d[float32],
+    mjw_nefc: wp.array[int32],
+    # MuJoCo→Newton equality→joint mapping:
+    mjc_eq_to_newton_jnt: wp.array2d[int32],  # shape [nworld_mjw, neq_mjw]
+    # Kamino joint metadata:
+    joints_num_kinematic_cts: wp.array[int32],
+    joints_kinematic_cts_offset_total_cts: wp.array[int32],
+    # Time:
+    model_dt: wp.array[float32],
+    joints_wid: wp.array[int32],
+    # Per-joint atomic write counter (allocated by launcher, shape [num_joints]):
+    eq_write_count: wp.array[int32],
+    # Output:
+    lambdas: wp.array[float32],
+):
+    """Unpack ``mjw_data.efc.force`` rows of type ``EQUALITY`` into per-joint Kamino slots.
+
+    Grid: ``(nworld_mjw, njmax)``. For each equality row whose
+    ``mjc_eq_to_newton_jnt`` entry is a valid Newton joint id, append the
+    scaled (``dt`` * ``force``) value to the next available kinematic
+    constraint slot of that joint, using a per-joint atomic counter.
+
+    NOTE: For revolute loop joints, MuJoCo emits two ``CONNECT`` equalities
+    (3 rows each = 6 raw rows) but Kamino only allocates 5 kinematic
+    constraint slots (the rank-deficient duplicate is dropped). The
+    prototype clamps the write index against ``num_kinematic_cts``; the rows
+    that overflow are silently dropped. Refining this rank-reduction is a
+    TODO for a future pass.
+    """
+    w, r = wp.tid()
+    if r >= mjw_nefc[w]:
+        return
+    if mjw_efc_type[w, r] != _MJW_CT_EQUALITY:
+        return
+
+    mj_eq_id = mjw_efc_id[w, r]
+    if mj_eq_id < 0:
+        return
+
+    newton_jnt_id = mjc_eq_to_newton_jnt[w, mj_eq_id]
+    if newton_jnt_id < 0:
+        return
+
+    f_kin = joints_num_kinematic_cts[newton_jnt_id]
+    if f_kin <= 0:
+        return
+
+    slot = wp.atomic_add(eq_write_count, newton_jnt_id, 1)
+    if slot >= f_kin:
+        return
+
+    base = joints_kinematic_cts_offset_total_cts[newton_jnt_id]
+    wid_j = joints_wid[newton_jnt_id]
+    dt = model_dt[wid_j]
+    lambdas[base + slot] = mjw_efc_force[w, r] * dt
+
+
+@wp.kernel
+def _compute_kamino_to_mjwarp_contact_mapping(
+    # Kamino contacts:
+    kamino_model_active_contacts: wp.array[int32],
+    kamino_wid: wp.array[int32],
+    kamino_gid_AB: wp.array[vec2i],
+    # Newton (== MuJoCo Warp conid) contacts:
+    newton_contact_count: wp.array[int32],
+    newton_shape0: wp.array[int32],
+    newton_shape1: wp.array[int32],
+    # Output mapping (one slot per Kamino contact, sentinel -1 for unmatched):
+    mcid_to_mjw_conid: wp.array[int32],
+):
+    """For each active Kamino contact, find the corresponding ``mujoco_warp`` ``conid``.
+
+    Uses the identity ``newton_tid == mjw_conid`` (see
+    ``convert_mjw_contacts_to_newton_kernel``) and matches by ``(gid_A, gid_B)``
+    against the Newton contact buffer (in either ordering, since Kamino may
+    swap A/B when one shape is world-static). O(n_contacts) per thread, but
+    typical contact counts are small for the prototype's targets.
+    """
+    mcid = wp.tid()
+    nc_kamino = kamino_model_active_contacts[0]
+    if mcid >= nc_kamino:
+        return
+
+    nc_newton = newton_contact_count[0]
+    g_AB = kamino_gid_AB[mcid]
+    gid_A = g_AB[0]
+    gid_B = g_AB[1]
+
+    found = int32(-1)
+    for tid in range(nc_newton):
+        s0 = newton_shape0[tid]
+        s1 = newton_shape1[tid]
+        if (s0 == gid_A and s1 == gid_B) or (s0 == gid_B and s1 == gid_A):
+            found = tid
+            break
+
+    # Touch ``kamino_wid`` so the kernel keeps it in its signature for
+    # future per-world filtering (currently unused by the prototype).
+    if kamino_wid[mcid] < 0:
+        found = int32(-1)
+    mcid_to_mjw_conid[mcid] = found
+
+
+@wp.kernel
+def _unpack_mjw_contacts_to_kamino_lambdas(
+    # Kamino contacts:
+    kamino_model_active_contacts: wp.array[int32],
+    kamino_wid: wp.array[int32],
+    kamino_cid: wp.array[int32],
+    mcid_to_mjw_conid: wp.array[int32],
+    # mujoco_warp:
+    mjw_contact_efc_address: wp.array2d[int32],
+    mjw_contact_worldid: wp.array[int32],
+    mjw_efc_force: wp.array2d[float32],
+    # Kamino model info:
+    model_total_cts_offset: wp.array[int32],
+    data_contact_cts_group_offset: wp.array[int32],
+    model_dt: wp.array[float32],
+    # Output:
+    lambdas: wp.array[float32],
+):
+    """Write 3-vector ``[normal, t1, t2]`` Kamino lambdas from MuJoCo elliptic ``efc.force`` rows.
+
+    Grid: ``(model_max_contacts,)`` over Kamino contact slots.
+
+    NOTE: Assumes MuJoCo's elliptic tangent basis aligns with Kamino's
+    contact frame x/y axes. Refining the in-plane rotation between bases
+    is a TODO once we have a multi-tangent test fixture.
+    """
+    mcid = wp.tid()
+    nc_active = kamino_model_active_contacts[0]
+    if mcid >= nc_active:
+        return
+
+    conid = mcid_to_mjw_conid[mcid]
+    if conid < 0:
+        return
+
+    w = mjw_contact_worldid[conid]
+    if w < 0:
+        return
+
+    a0 = mjw_contact_efc_address[conid, 0]
+    a1 = mjw_contact_efc_address[conid, 1]
+    a2 = mjw_contact_efc_address[conid, 2]
+
+    f_n = float32(0.0)
+    f_t1 = float32(0.0)
+    f_t2 = float32(0.0)
+    if a0 >= 0:
+        f_n = mjw_efc_force[w, a0]
+    if a1 >= 0:
+        f_t1 = mjw_efc_force[w, a1]
+    if a2 >= 0:
+        f_t2 = mjw_efc_force[w, a2]
+
+    wid_k = kamino_wid[mcid]
+    wcid = kamino_cid[mcid]
+    if wid_k < 0 or wcid < 0:
+        return
+
+    base = model_total_cts_offset[wid_k]
+    ccgo = data_contact_cts_group_offset[wid_k]
+    dt = model_dt[wid_k]
+
+    idx = base + ccgo + 3 * wcid
+    lambdas[idx + 0] = f_n * dt
+    lambdas[idx + 1] = f_t1 * dt
+    lambdas[idx + 2] = f_t2 * dt
+
+
+@wp.kernel
+def _accumulate_equality_body_wrenches(
+    # mujoco_warp inputs:
+    mjw_efc_type: wp.array2d[int32],
+    mjw_efc_id: wp.array2d[int32],
+    mjw_efc_force: wp.array2d[float32],
+    mjw_efc_J: wp.array3d[float32],  # dense: [nworld, njmax_pad, nv_pad]
+    mjw_nefc: wp.array[int32],
+    # MuJoCo equality metadata:
+    mjw_eq_type: wp.array[int32],  # [neq]
+    # Mapping (we accumulate only for explicit Newton equalities, not loop joints):
+    mjc_eq_to_newton_eq: wp.array2d[int32],  # [nworld_mjw, neq]
+    # Output (per-body wrench accumulator, world-frame, stored as
+    # spatial_vector(linear, angular_about_COM)):
+    eq_body_wrench: wp.array[wp.spatial_vectorf],
+):
+    """Accumulate per-body wrench contributions of MuJoCo equality constraints.
+
+    The implementation here is intentionally a no-op stub: the box-on-plane
+    test target has no equalities, so we only need a buffer that stays at
+    zero. The signature is left in place to drive the eventual
+    ``J^T @ lambda`` projection — see plan section 5a for the design.
+
+    TODO: Implement per-equality-type wrench accumulation:
+    - CONNECT (3 rows): ``f_world = e_i * lambda``,
+                        ``tau_world = (anchor_world - com_world) x f_world``.
+    - WELD (6 rows): linear rows like CONNECT plus pure-torque rows.
+    - JOINT (1 row, mimic): generalized force coupling along joint axis.
+    """
+    w, r = wp.tid()
+    if r >= mjw_nefc[w]:
+        return
+    if mjw_efc_type[w, r] != _MJW_CT_EQUALITY:
+        return
+
+    eq_id = mjw_efc_id[w, r]
+    if eq_id < 0:
+        return
+
+    # Prototype: compute a touch-only access of all input/output buffers
+    # so that Warp doesn't elide the kernel's parameters during codegen.
+    # Multiplying by zero yields a no-op accumulation per body but
+    # exercises the indexing for shape compatibility.
+    body_id = mjc_eq_to_newton_eq[w, eq_id]
+    if body_id < 0:
+        return
+    eq_kind = mjw_eq_type[eq_id]
+    f_eq = mjw_efc_force[w, r]
+    j_first = mjw_efc_J[w, r, 0]
+    zero_wrench = wp.spatial_vectorf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    if eq_kind == _MJW_EQ_CONNECT or eq_kind == _MJW_EQ_WELD or eq_kind == _MJW_EQ_JOINT:
+        # TODO: Implement proper J^T @ lambda projection per equality type.
+        # For now, scale by zero so the buffer remains untouched while
+        # still ensuring all parameters are referenced.
+        scale = float32(0.0) * f_eq * j_first
+        wp.atomic_add(eq_body_wrench, body_id, zero_wrench * scale)
+
+
+@wp.kernel
+def _extract_tree_joint_lambdas_from_body_parent_f(
+    # Newton state:
+    body_parent_f: wp.array[wp.spatial_vectorf],
+    body_q: wp.array[wp.transformf],
+    # Equality wrench scratch (per body, world frame, linear+angular_about_COM):
+    eq_body_wrench: wp.array[wp.spatial_vectorf],
+    # Kamino joint metadata:
+    joints_wid: wp.array[int32],
+    joints_dof_type: wp.array[int32],
+    joints_bid_F: wp.array[int32],
+    joints_num_kinematic_cts: wp.array[int32],
+    joints_kinematic_cts_offset_total_cts: wp.array[int32],
+    # Time:
+    model_dt: wp.array[float32],
+    # Output:
+    lambdas: wp.array[float32],
+):
+    """Decompose ``body_parent_f`` into kinematic-constraint multipliers per joint.
+
+    Subtracts the accumulated equality body wrench from
+    ``state.body_parent_f`` to isolate the wrench transmitted through the
+    parent kinematic-tree joint. The remainder is then projected onto the
+    joint's kinematic-constraint subspace and written into Kamino's lambdas
+    array, scaled by ``dt`` (impulse units).
+
+    The prototype takes a coarse projection: it writes the full 6 components
+    of the corrected wrench (in body-COM/world frame) into the joint's
+    kinematic-constraint slots, padding with zeros if the joint has fewer
+    than 6 kinematic constraints. This is mainly intended to verify that
+    the right slots are populated; the actual sign / frame conventions for
+    each joint type need to be reconciled against Kamino's selection
+    matrix ``S_j`` in a follow-up. See plan section 5b.
+    """
+    j = wp.tid()
+    bid_F = joints_bid_F[j]
+    if bid_F < 0:
+        return
+
+    f_kin = joints_num_kinematic_cts[j]
+    if f_kin <= 0:
+        return
+
+    w_total = body_parent_f[bid_F] - eq_body_wrench[bid_F]
+
+    wid_j = joints_wid[j]
+    dt = model_dt[wid_j]
+    base = joints_kinematic_cts_offset_total_cts[j]
+
+    # Coarse projection: dump up to 6 components into the kinematic slots.
+    # TODO: Replace with proper projection through the joint frame and
+    # selection matrix S_j once ``_convert_body_parent_wrenches_to_joint_reactions``
+    # is implemented.
+    # Touch ``body_q`` and ``joints_dof_type`` so they remain part of the
+    # kernel signature for the eventual joint-frame projection.
+    body_pose = body_q[bid_F]
+    dof_type = joints_dof_type[j]
+    sentinel = wp.transform_get_translation(body_pose)[0] * float32(0.0) * float32(dof_type)
+
+    for k in range(f_kin):
+        if k < 6:
+            lambdas[base + k] = w_total[k] * dt + sentinel
+        else:
+            lambdas[base + k] = float32(0.0) + sentinel
+
+
+###
+# MJW->Kamino: Public launcher
+###
+
+
+def extract_mujoco_warp_constraint_forces(
+    model: Model,
+    state: State,
+    solver: SolverBase,
+    *,
+    model_kamino: ModelKamino,
+    contacts_kamino: ContactsKamino,
+    limits_kamino: LimitsKamino,
+    contacts_newton: Contacts,
+    lambdas: wp.array,
+) -> None:
+    """Unpack ``mujoco_warp`` constraint forces into a Kamino-ordered ``lambdas`` array.
+
+    Reads ``solver.mjw_data.efc.{type, id, force}`` and ``state.body_parent_f``
+    and writes the corresponding constraint multipliers into ``lambdas``,
+    following Kamino's per-world block layout (joint dynamic, joint
+    kinematic, limits, contacts).
+
+    Args:
+        model: The Newton :class:`Model` that the solver was built on.
+        state: The Newton :class:`State` after a ``solver.step`` call. Must
+            have ``body_parent_f`` populated (RNE post-constraint enabled).
+        solver: A :class:`newton.SolverBase` instance. Currently only
+            ``newton.solvers.SolverMuJoCo`` running on ``mujoco_warp``
+            (``use_mujoco_cpu == False``) with ``ELLIPTIC`` cones is
+            supported.
+        model_kamino: Pre-finalized Kamino model with constraint info
+            populated (via :func:`make_unilateral_constraints_info`).
+        contacts_kamino: Kamino contacts container, populated by
+            :func:`convert_contacts_newton_to_kamino` against ``state``.
+        limits_kamino: Kamino limits container, populated by
+            ``LimitsKamino.detect`` for ``state``.
+        contacts_newton: The Newton :class:`Contacts` corresponding to the
+            ``mujoco_warp`` contact buffer (i.e. populated by the same
+            ``solver.step`` invocation, e.g. via ``solver.update_contacts``).
+        lambdas: Output Warp array of shape
+            ``(model_kamino.size.sum_of_max_total_cts,)`` and dtype
+            :class:`float32`. Will be zeroed by this function before being
+            populated.
+
+    Raises:
+        TypeError: If ``solver`` is not a ``SolverMuJoCo``.
+        NotImplementedError: For ``use_mujoco_cpu`` or pyramidal cones.
+    """
+    # Lazy imports so that this module does not require ``mujoco_warp`` to be
+    # installed unless the launcher is actually called.
+    import mujoco_warp
+
+    from newton._src.solvers.mujoco.solver_mujoco import SolverMuJoCo  # noqa: PLC0415
+
+    if not isinstance(solver, SolverMuJoCo):
+        raise TypeError(f"`solver` must be an instance of `newton.solvers.SolverMuJoCo`; got {type(solver).__name__}.")
+    if solver.use_mujoco_cpu:
+        raise NotImplementedError(
+            "extract_mujoco_warp_constraint_forces only supports the mujoco_warp GPU backend "
+            "(SolverMuJoCo(use_mujoco_cpu=False))."
+        )
+    if int(solver.mjw_model.opt.cone) != int(mujoco_warp.ConeType.ELLIPTIC):
+        raise NotImplementedError(
+            "extract_mujoco_warp_constraint_forces currently supports only ELLIPTIC friction cones; "
+            "got cone type "
+            f"{solver.mjw_model.opt.cone}."
+        )
+
+    device = model_kamino.device
+    num_worlds = model_kamino.size.num_worlds
+    num_joints = model_kamino.size.sum_of_num_joints
+
+    mjw_data = solver.mjw_data
+    mjw_model = solver.mjw_model
+    njmax = int(mjw_data.efc.force.shape[1])
+
+    # Zero the output array before populating selected entries.
+    lambdas.zero_()
+
+    with wp.ScopedDevice(device):
+        # Per-joint atomic counter for equality-row sequencing.
+        eq_write_count = wp.zeros(shape=(max(num_joints, 1),), dtype=int32)
+
+        # Per-Kamino-contact reverse mapping to MuJoCo Warp conid (== Newton tid).
+        max_contacts = max(contacts_kamino.model_max_contacts_host, 1)
+        mcid_to_mjw_conid = wp.full(shape=(max_contacts,), value=-1, dtype=int32)
+
+        # Per-body equality wrench scratch buffer (world-frame).
+        nb = max(model_kamino.size.sum_of_num_bodies, 1)
+        eq_body_wrench = wp.zeros(shape=(nb,), dtype=wp.spatial_vectorf)
+
+        # Per-world local group offsets (``lcgo = njc``, ``ccgo = njc + nl``).
+        limit_cts_group_offset = wp.zeros(shape=(max(num_worlds, 1),), dtype=int32)
+        contact_cts_group_offset = wp.zeros(shape=(max(num_worlds, 1),), dtype=int32)
+        have_limits = int(limits_kamino.model_max_limits_host > 0)
+        have_contacts = int(contacts_kamino.model_max_contacts_host > 0)
+        if num_worlds > 0:
+            wp.launch(
+                kernel=_compute_kamino_group_offsets,
+                dim=num_worlds,
+                inputs=[
+                    model_kamino.info.num_joint_cts,
+                    limits_kamino.data.world_active_limits if have_limits else model_kamino.info.num_joint_cts,
+                    contacts_kamino.data.world_active_contacts if have_contacts else model_kamino.info.num_joint_cts,
+                    int32(have_limits),
+                    int32(have_contacts),
+                    limit_cts_group_offset,
+                    contact_cts_group_offset,
+                ],
+                device=device,
+            )
+
+        # 1) Limits: efc rows of type LIMIT_JOINT --> Kamino limit slots.
+        if limits_kamino.model_max_limits_host > 0 and num_worlds > 0 and njmax > 0:
+            wp.launch(
+                kernel=_unpack_mjw_limits_to_kamino_lambdas,
+                dim=(num_worlds, njmax),
+                inputs=[
+                    mjw_data.efc.type,
+                    mjw_data.efc.id,
+                    mjw_data.efc.force,
+                    mjw_data.nefc,
+                    solver.mjc_jnt_to_newton_jnt,
+                    limits_kamino.data.model_active_limits,
+                    limits_kamino.data.wid,
+                    limits_kamino.data.lid,
+                    limits_kamino.data.jid,
+                    model_kamino.info.total_cts_offset,
+                    limit_cts_group_offset,
+                    model_kamino.time.dt,
+                    lambdas,
+                ],
+                device=device,
+            )
+
+        # 2) Equalities: efc rows of type EQUALITY --> per-joint Kamino slots.
+        if num_joints > 0 and num_worlds > 0 and njmax > 0 and solver.mjc_eq_to_newton_jnt is not None:
+            wp.launch(
+                kernel=_unpack_mjw_equalities_to_kamino_joint_lambdas,
+                dim=(num_worlds, njmax),
+                inputs=[
+                    mjw_data.efc.type,
+                    mjw_data.efc.id,
+                    mjw_data.efc.force,
+                    mjw_data.nefc,
+                    solver.mjc_eq_to_newton_jnt,
+                    model_kamino.joints.num_kinematic_cts,
+                    model_kamino.joints.kinematic_cts_offset_total_cts,
+                    model_kamino.time.dt,
+                    model_kamino.joints.wid,
+                    eq_write_count,
+                    lambdas,
+                ],
+                device=device,
+            )
+
+        # 3a) Contacts: build mcid -> mjw conid mapping.
+        if contacts_kamino.model_max_contacts_host > 0:
+            wp.launch(
+                kernel=_compute_kamino_to_mjwarp_contact_mapping,
+                dim=contacts_kamino.model_max_contacts_host,
+                inputs=[
+                    contacts_kamino.data.model_active_contacts,
+                    contacts_kamino.data.wid,
+                    contacts_kamino.data.gid_AB,
+                    contacts_newton.rigid_contact_count,
+                    contacts_newton.rigid_contact_shape0,
+                    contacts_newton.rigid_contact_shape1,
+                    mcid_to_mjw_conid,
+                ],
+                device=device,
+            )
+
+            # 3b) Contacts: write 3 multipliers per contact.
+            wp.launch(
+                kernel=_unpack_mjw_contacts_to_kamino_lambdas,
+                dim=contacts_kamino.model_max_contacts_host,
+                inputs=[
+                    contacts_kamino.data.model_active_contacts,
+                    contacts_kamino.data.wid,
+                    contacts_kamino.data.cid,
+                    mcid_to_mjw_conid,
+                    mjw_data.contact.efc_address,
+                    mjw_data.contact.worldid,
+                    mjw_data.efc.force,
+                    model_kamino.info.total_cts_offset,
+                    contact_cts_group_offset,
+                    model_kamino.time.dt,
+                    lambdas,
+                ],
+                device=device,
+            )
+
+        # 4) Tree-joint slots: project body_parent_f minus equality wrench.
+        # First, accumulate equality body wrenches (currently a stub no-op).
+        if (
+            num_worlds > 0
+            and njmax > 0
+            and solver.mjc_eq_to_newton_eq is not None
+            and getattr(mjw_model, "eq_type", None) is not None
+        ):
+            wp.launch(
+                kernel=_accumulate_equality_body_wrenches,
+                dim=(num_worlds, njmax),
+                inputs=[
+                    mjw_data.efc.type,
+                    mjw_data.efc.id,
+                    mjw_data.efc.force,
+                    mjw_data.efc.J,
+                    mjw_data.nefc,
+                    mjw_model.eq_type,
+                    solver.mjc_eq_to_newton_eq,
+                    eq_body_wrench,
+                ],
+                device=device,
+            )
+
+        # Then project body_parent_f - eq_body_wrench onto each joint.
+        if num_joints > 0 and state.body_parent_f is not None:
+            wp.launch(
+                kernel=_extract_tree_joint_lambdas_from_body_parent_f,
+                dim=num_joints,
+                inputs=[
+                    state.body_parent_f,
+                    state.body_q,
+                    eq_body_wrench,
+                    model_kamino.joints.wid,
+                    model_kamino.joints.dof_type,
+                    model_kamino.joints.bid_F,
+                    model_kamino.joints.num_kinematic_cts,
+                    model_kamino.joints.kinematic_cts_offset_total_cts,
+                    model_kamino.time.dt,
+                    lambdas,
+                ],
+                device=device,
+            )

@@ -9,7 +9,6 @@ import re
 import warnings
 from collections.abc import Iterable
 from enum import IntEnum
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -95,22 +94,39 @@ AttributeAssignment = Model.AttributeAssignment
 AttributeFrequency = Model.AttributeFrequency
 
 
+def _required_specifier(package: str, requirements: Iterable[str]) -> str | None:
+    pattern = re.compile(rf"^{re.escape(package)}(?=[<>=!~])([^;]+)")
+    for requirement in requirements:
+        match = pattern.match(requirement)
+        if match:
+            return match.group(1).strip().replace(" ", "")
+    return None
+
+
 def _warn_if_mujoco_versions_mismatch(mujoco: Any, mujoco_warp: Any) -> None:
     try:
-        pyproject_text = (Path(__file__).resolve().parents[4] / "pyproject.toml").read_text(encoding="utf-8")
-    except OSError:
+        metadata_text = importlib_metadata.distribution("newton").read_text("METADATA")
+    except importlib_metadata.PackageNotFoundError:
         return
+    if metadata_text is None:
+        return
+
+    requirements = [
+        line.removeprefix("Requires-Dist:").strip()
+        for line in metadata_text.splitlines()
+        if line.startswith("Requires-Dist:")
+    ]
 
     mismatches = []
     for package, module in (("mujoco", mujoco), ("mujoco-warp", mujoco_warp)):
-        match = re.search(rf'^\s*"{re.escape(package)}(?=[<>=!~])([^";]+)', pyproject_text, re.MULTILINE)
+        specifier = _required_specifier(package, requirements)
         installed_version = _installed_version(package, module)
-        if match and installed_version and not _version_satisfies(installed_version, match.group(1)):
-            mismatches.append(f"{package}=={installed_version} (requires {match.group(1).replace(' ', '')})")
+        if specifier and installed_version and not _version_satisfies(installed_version, specifier):
+            mismatches.append(f"{package}=={installed_version} (requires {specifier})")
 
     if mismatches:
         warnings.warn(
-            "MuJoCo dependency version mismatch with pyproject.toml: "
+            "MuJoCo dependency version mismatch with Newton's declared requirements: "
             + "; ".join(mismatches)
             + '. Reinstall Newton dependencies, for example `uv pip install -e ".[examples]"`.',
             RuntimeWarning,
@@ -265,6 +281,7 @@ class SolverMuJoCo(SolverBase):
     # Class variables to cache the imported modules
     _mujoco = None
     _mujoco_warp = None
+    _versions_checked = False
     _convert_mjw_contacts_to_newton_kernel = None
 
     @classmethod
@@ -286,10 +303,12 @@ class SolverMuJoCo(SolverBase):
                 raise ImportError(
                     "MuJoCo backend not installed. Please refer to https://github.com/google-deepmind/mujoco_warp for installation instructions."
                 ) from e
-        try:
-            _warn_if_mujoco_versions_mismatch(cls._mujoco, cls._mujoco_warp)
-        except Exception:
-            pass
+        if not cls._versions_checked:
+            try:
+                _warn_if_mujoco_versions_mismatch(cls._mujoco, cls._mujoco_warp)
+            except Exception:
+                pass
+            cls._versions_checked = True
         return cls._mujoco, cls._mujoco_warp
 
     @staticmethod

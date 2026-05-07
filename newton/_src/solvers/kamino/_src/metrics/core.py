@@ -19,7 +19,7 @@ from ..core.math import (
 )
 from ..core.model import ModelKamino
 from ..core.state import StateKamino
-from ..core.types import float32, int32, mat33f, transformf, vec6f
+from ..core.types import float32, int32, mat33f, transformf, vec3f, vec6f
 from ..dynamics.dual import DualProblem
 from ..dynamics.wrenches import (
     compute_constraint_body_wrenches,
@@ -276,6 +276,119 @@ def _compute_limit_reactions_from_joint_wrenches(
     limits_reaction[lid] = side_l * (tau_total - tau_act)
 
 
+@wp.kernel
+def _extract_joint_constraint_reactions(
+    # Inputs:
+    model_time_dt: wp.array[float32],
+    model_joint_wid: wp.array[int32],
+    model_joints_num_dynamic_cts: wp.array[int32],
+    model_joints_num_kinematic_cts: wp.array[int32],
+    model_joints_dynamic_cts_offset_joint_cts: wp.array[int32],
+    model_joints_kinematic_cts_offset_joint_cts: wp.array[int32],
+    model_joints_dynamic_cts_offset_total_cts: wp.array[int32],
+    model_joints_kinematic_cts_offset_total_cts: wp.array[int32],
+    state_lambda_j: wp.array[float32],
+    # Outputs:
+    lambdas: wp.array[float32],
+):
+    # Retrieve the thread index as the joint index
+    jid = wp.tid()
+
+    # Retrieve the joint-specific model info
+    wid = model_joint_wid[jid]
+    num_dyn_cts_j = model_joints_num_dynamic_cts[jid]
+    num_kin_cts_j = model_joints_num_kinematic_cts[jid]
+
+    # Retrieve block offsets of the joint's constraints within
+    # the joint-only constraints and total constraints arrays
+    joint_dyn_cts_start_j = model_joints_dynamic_cts_offset_joint_cts[jid]
+    joint_kin_cts_start_j = model_joints_kinematic_cts_offset_joint_cts[jid]
+    dyn_cts_row_start_j = model_joints_dynamic_cts_offset_total_cts[jid]
+    kin_cts_row_start_j = model_joints_kinematic_cts_offset_total_cts[jid]
+
+    # Retrieve the world-specific time-step
+    dt = model_time_dt[wid]
+
+    # Pack the joint-constraint reactions into the global lambdas array,
+    # converting force units back to Lagrange impulse units via `dt`.
+    for j in range(num_dyn_cts_j):
+        lambdas[dyn_cts_row_start_j + j] = dt * state_lambda_j[joint_dyn_cts_start_j + j]
+    for j in range(num_kin_cts_j):
+        lambdas[kin_cts_row_start_j + j] = dt * state_lambda_j[joint_kin_cts_start_j + j]
+
+
+@wp.kernel
+def _extract_limit_constraint_reactions(
+    # Inputs:
+    model_time_dt: wp.array[float32],
+    model_info_total_cts_offset: wp.array[int32],
+    data_info_limit_cts_group_offset: wp.array[int32],
+    limit_model_num_limits: wp.array[int32],
+    limit_wid: wp.array[int32],
+    limit_lid: wp.array[int32],
+    limit_reaction: wp.array[float32],
+    # Outputs:
+    lambdas: wp.array[float32],
+):
+    # Retrieve the thread index as the limit index
+    lid = wp.tid()
+
+    # Skip if lid is greater than the number of limits active in the model
+    if lid >= limit_model_num_limits[0]:
+        return
+
+    # Retrieve the world index and the world-relative limit index for this limit
+    wid = limit_wid[lid]
+    lid_l = limit_lid[lid]
+
+    # Retrieve the world-specific time-step
+    dt = model_time_dt[wid]
+
+    # Compute the global constraint index for this limit
+    limit_cts_idx = model_info_total_cts_offset[wid] + data_info_limit_cts_group_offset[wid] + lid_l
+
+    # Pack the limit reaction into the global lambdas array,
+    # converting force units back to Lagrange impulse units via `dt`.
+    lambdas[limit_cts_idx] = dt * limit_reaction[lid]
+
+
+@wp.kernel
+def _extract_contact_constraint_reactions(
+    # Inputs:
+    model_time_dt: wp.array[float32],
+    model_info_total_cts_offset: wp.array[int32],
+    data_info_contact_cts_group_offset: wp.array[int32],
+    contact_model_num_contacts: wp.array[int32],
+    contact_wid: wp.array[int32],
+    contact_cid: wp.array[int32],
+    contact_reaction: wp.array[vec3f],
+    # Outputs:
+    lambdas: wp.array[float32],
+):
+    # Retrieve the thread index as the contact index
+    cid = wp.tid()
+
+    # Skip if cid is greater than the number of contacts active in the model
+    if cid >= contact_model_num_contacts[0]:
+        return
+
+    # Retrieve the world index and the world-relative contact index for this contact
+    wid = contact_wid[cid]
+    cid_k = contact_cid[cid]
+
+    # Retrieve the world-specific time-step
+    dt = model_time_dt[wid]
+
+    # Compute block offset of the contact constraints within the global constraints array
+    contact_cts_start = model_info_total_cts_offset[wid] + data_info_contact_cts_group_offset[wid] + 3 * cid_k
+
+    # Pack the contact reaction into the global lambdas array,
+    # converting force units back to Lagrange impulse units via `dt`.
+    lambda_k = dt * contact_reaction[cid]
+    for k in range(3):
+        lambdas[contact_cts_start + k] = lambda_k[k]
+
+
 ###
 # Launchers
 ###
@@ -342,6 +455,95 @@ def convert_body_parent_wrenches_to_joint_reactions(
                 control.tau_j,
             ],
             outputs=[limits.reaction],
+            device=model.device,
+        )
+
+
+def extract_constraint_reactions(
+    model: ModelKamino,
+    data: DataKamino,
+    state: StateKamino,
+    limits: LimitsKamino | None,
+    contacts: ContactsKamino | None,
+    lambdas: wp.array,
+    reset_to_zero: bool = True,
+):
+    """
+    Inverse of :func:`~newton._src.solvers.kamino._src.kinematics.constraints.unpack_constraint_solutions`.
+
+    Packs the per-container constraint reactions (in force units) back into the
+    global ``lambdas`` array (in Lagrange impulse units, sized
+    ``model.size.sum_of_max_total_cts``).
+
+    Args:
+        model: The model containing the time-invariant data of the simulation.
+        data: The solver data container holding the time-varying constraint
+            grouping info (``data.info.limit_cts_group_offset`` and
+            ``data.info.contact_cts_group_offset``); requires
+            :func:`~newton._src.solvers.kamino._src.kinematics.constraints.update_constraints_info`
+            to have been called.
+        state: The state containing ``state.lambda_j`` (joint constraint reactions in force units).
+        limits: Active joint-limits container providing ``limits.reaction`` (force units).
+            Optional; if ``None`` (or empty), limit constraints are skipped.
+        contacts: Active contacts container providing ``contacts.reaction`` (force units, vec3f).
+            Optional; if ``None`` (or empty), contact constraints are skipped.
+        lambdas: Output array of constraint reactions in Lagrange impulse units.
+        reset_to_zero: If True (default), zero ``lambdas`` before packing so that
+            inactive limit/contact slots are guaranteed to be zero.
+    """
+    if reset_to_zero:
+        lambdas.zero_()
+
+    if model.size.sum_of_num_joints > 0:
+        wp.launch(
+            kernel=_extract_joint_constraint_reactions,
+            dim=model.size.sum_of_num_joints,
+            inputs=[
+                model.time.dt,
+                model.joints.wid,
+                model.joints.num_dynamic_cts,
+                model.joints.num_kinematic_cts,
+                model.joints.dynamic_cts_offset_joint_cts,
+                model.joints.kinematic_cts_offset_joint_cts,
+                model.joints.dynamic_cts_offset_total_cts,
+                model.joints.kinematic_cts_offset_total_cts,
+                state.lambda_j,
+            ],
+            outputs=[lambdas],
+            device=model.device,
+        )
+
+    if limits is not None and limits.model_max_limits_host > 0:
+        wp.launch(
+            kernel=_extract_limit_constraint_reactions,
+            dim=limits.model_max_limits_host,
+            inputs=[
+                model.time.dt,
+                model.info.total_cts_offset,
+                data.info.limit_cts_group_offset,
+                limits.model_active_limits,
+                limits.wid,
+                limits.lid,
+                limits.reaction,
+            ],
+            outputs=[lambdas],
+            device=model.device,
+        )
+
+    if contacts is not None and contacts.model_max_contacts_host > 0:
+        wp.launch(
+            kernel=_extract_contact_constraint_reactions,
+            dim=contacts.model_max_contacts_host,
+            inputs=[
+                model.time.dt,
+                model.info.total_cts_offset,
+                data.info.contact_cts_group_offset,
+                contacts.model_active_contacts,
+                contacts.wid,
+                contacts.cid,
+                contacts.reaction,
+            ],
+            outputs=[lambdas],
             device=model.device,
         )
 
@@ -788,4 +990,11 @@ class SolutionMetricsNewton:
             lambdas:
                 The output array to store the constraint reactions.
         """
-        pass  # TODO: TO BE IMPLEMENTED
+        extract_constraint_reactions(
+            model=model,
+            data=self._data,
+            state=state,
+            limits=limits,
+            contacts=contacts,
+            lambdas=lambdas,
+        )

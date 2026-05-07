@@ -31,6 +31,7 @@ class TestSetup:
         max_world_contacts: int = 32,
         gravity: float | None = None,
         device: wp.DeviceLike = None,
+        request_state_attributes: tuple[str, ...] = (),
     ):
         # Cache the time-step size
         self.dt = dt
@@ -43,6 +44,10 @@ class TestSetup:
             builder_kwargs = {}
         self.builder: ModelBuilder = builder_fn(**builder_kwargs)
         self.builder.request_contact_attributes("force")
+
+        # Optionally request extended state attributes
+        if request_state_attributes:
+            self.builder.request_state_attributes(*request_state_attributes)
 
         # Set the maximum number of rigid contacts per world
         self.builder.num_rigid_contacts_per_world = max_world_contacts
@@ -321,6 +326,77 @@ class TestSolverMetricsNewton(unittest.TestCase):
         TODO
         """
         self.skipTest("Not implemented")
+
+    def test_05_convert_body_parent_wrenches_to_joint_reactions(self):
+        """
+        Verifies that ``SolutionMetricsNewton._convert_body_parent_wrenches_to_joint_reactions``
+        recovers the joint kinematic-constraint Lagrange multipliers produced by the Kamino
+        solver, by inverting the joint-wrench accumulation that produced ``body_parent_f``.
+
+        Uses the ``boxes_hinged`` system whose hinge contributes 5 kinematic constraints,
+        and compares the recovered ``StateKamino.lambda_j`` to the solver's ground truth.
+        """
+        # Create the test setup and request the `body_parent_f` extended state attribute
+        setup = TestSetup(
+            builder_fn=basics.build_boxes_hinged,
+            builder_kwargs={"z_offset": -1e-5},
+            max_world_contacts=32,
+            device=self.default_device,
+            request_state_attributes=("body_parent_f",),
+        )
+
+        # Re-allocate state buffers because requesting attributes after `model()` was created
+        setup.state = setup.model.state()
+        setup.state_p = setup.model.state()
+
+        # Create a SolutionMetricsNewton instance with the test model and time-step
+        metrics = SolutionMetricsNewton(dt=setup.dt, model=setup.builder.finalize(skip_validation_joints=True))
+
+        # Execute a single time-step of the test problem so that the solver populates
+        # both the joint constraint reactions and the body parent wrenches.
+        setup.model.collide(setup.state_p, setup.contacts)
+        setup.solver.step(
+            state_in=setup.state_p,
+            state_out=setup.state,
+            control=setup.control,
+            contacts=setup.contacts,
+            dt=setup.dt,
+        )
+
+        # Sanity checks on the simulation outputs needed by the metrics path
+        self.assertIsNotNone(setup.state.body_parent_f)
+        body_parent_f_np = setup.state.body_parent_f.numpy()
+        self.assertGreater(np.linalg.norm(body_parent_f_np), 0.0)
+
+        # Run the metrics evaluation, which internally invokes the method under test
+        metrics.evaluate(
+            state=setup.state,
+            state_p=setup.state_p,
+            control=setup.control,
+            contacts=setup.contacts,
+        )
+
+        # Compare the recovered joint constraint Lagrange multipliers (kinematic constraints)
+        # to the ground truth produced by the solver. Both are stored in force units.
+        recovered_lambda_j = metrics._state.lambda_j.numpy()
+        expected_lambda_j = setup.solver._solver_kamino._data.joints.lambda_j.numpy()
+        msg.warning("Recovered lambda_j: %s", recovered_lambda_j)
+        msg.warning("Expected lambda_j: %s", expected_lambda_j)
+        np.testing.assert_allclose(
+            recovered_lambda_j,
+            expected_lambda_j,
+            rtol=1e-5,
+            atol=1e-5,
+            err_msg="Recovered lambda_j does not match the solver's ground-truth lambda_j.",
+        )
+
+        # The hinge joint has 5 kinematic constraints; ensure the test was meaningful by
+        # checking that at least one of them carries a non-trivial reaction.
+        self.assertGreater(np.linalg.norm(expected_lambda_j), 0.0)
+
+        # `boxes_hinged` defines no joint limits, so the limits container should be empty
+        # and ``LimitsKamino.reaction`` should remain at its reset (zero) state.
+        self.assertEqual(metrics._limits.model_max_limits_host, 0)
 
 
 ###

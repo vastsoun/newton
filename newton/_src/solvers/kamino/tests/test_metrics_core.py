@@ -398,6 +398,108 @@ class TestSolverMetricsNewton(unittest.TestCase):
         # and ``LimitsKamino.reaction`` should remain at its reset (zero) state.
         self.assertEqual(metrics._limits.model_max_limits_host, 0)
 
+    def test_06_extract_constraint_reactions(self):
+        """
+        Verifies that ``SolutionMetricsNewton._extract_constraint_reactions`` packs the
+        per-container constraint reactions (joint, limit, contact) back into the global
+        ``lambdas`` array (in Lagrange impulse units), as the inverse of
+        ``unpack_constraint_solutions``.
+
+        Uses the ``boxes_hinged`` system, which produces both joint kinematic
+        constraint reactions (5 per hinge) and contact reactions (8 contacts -> 24 cts).
+        """
+        # Create the test setup and request the `body_parent_f` extended state attribute
+        # so that the upstream ``_convert_body_parent_wrenches_to_joint_reactions``
+        # populates ``self._state.lambda_j`` before we extract.
+        setup = TestSetup(
+            builder_fn=basics.build_boxes_hinged,
+            builder_kwargs={"z_offset": -1e-5},
+            max_world_contacts=32,
+            device=self.default_device,
+            request_state_attributes=("body_parent_f",),
+        )
+
+        # Re-allocate state buffers because requesting attributes after `model()` was created
+        setup.state = setup.model.state()
+        setup.state_p = setup.model.state()
+
+        # Create a SolutionMetricsNewton instance with the test model and time-step
+        metrics = SolutionMetricsNewton(dt=setup.dt, model=setup.builder.finalize(skip_validation_joints=True))
+
+        # Execute a single time-step of the test problem so that the solver populates
+        # both joint constraint reactions and per-contact reactions.
+        setup.model.collide(setup.state_p, setup.contacts)
+        setup.solver.step(
+            state_in=setup.state_p,
+            state_out=setup.state,
+            control=setup.control,
+            contacts=setup.contacts,
+            dt=setup.dt,
+        )
+
+        # Sanity check: confirm the expected number of contacts is active
+        nc = int(setup.contacts.rigid_contact_count.numpy()[0])
+        self.assertEqual(nc, 8)
+
+        # The solver does not write per-contact forces back to ``setup.contacts.force``
+        # automatically; explicitly request the conversion so that the downstream
+        # ``convert_contacts_newton_to_kamino`` inside ``metrics.evaluate`` populates
+        # ``self._contacts.reaction`` from non-zero values.
+        setup.solver.update_contacts(setup.contacts, setup.state)
+
+        # Run the metrics evaluation, which internally invokes the method under test
+        metrics.evaluate(
+            state=setup.state,
+            state_p=setup.state_p,
+            control=setup.control,
+            contacts=setup.contacts,
+        )
+
+        # Build the active-index mask from the solver's data.info / model.info.
+        # Both ``solution.lambdas`` (solver) and ``metrics._lambdas`` are sized
+        # ``sum_of_max_total_cts``; the solver does not zero unused contact/limit slots
+        # between iterations, so a full-array comparison would be brittle.
+        solver_impl = setup.solver._solver_kamino
+        total_cts_offset = solver_impl._model.info.total_cts_offset.numpy()
+        limit_cts_group_offset = solver_impl._data.info.limit_cts_group_offset.numpy()
+        contact_cts_group_offset = solver_impl._data.info.contact_cts_group_offset.numpy()
+        num_limit_cts = solver_impl._data.info.num_limit_cts.numpy()
+        num_contact_cts = solver_impl._data.info.num_contact_cts.numpy()
+
+        active = []
+        for w in range(solver_impl._model.size.num_worlds):
+            block_start = int(total_cts_offset[w])
+            njc = int(limit_cts_group_offset[w])  # joint cts occupy [0, njc) within the world block
+            ccgo = int(contact_cts_group_offset[w])
+            nlc = int(num_limit_cts[w])
+            ncc = int(num_contact_cts[w])
+            # Joint-constraint indices (always all of them, fixed in size per world)
+            active.extend(range(block_start, block_start + njc))
+            # Active limit-constraint indices (subset of the limit group)
+            active.extend(range(block_start + njc, block_start + njc + nlc))
+            # Active contact-constraint indices (subset of the contact group)
+            active.extend(range(block_start + ccgo, block_start + ccgo + ncc))
+        active_idx = np.array(active, dtype=int)
+
+        # Compare recovered (packed) lambdas to the solver's ground-truth lambdas
+        expected = solver_impl._solver_fd.data.solution.lambdas.numpy()
+        recovered = metrics._lambdas.numpy()
+        msg.warning("Recovered lambdas (active): %s", recovered[active_idx])
+        msg.warning("Expected lambdas (active): %s", expected[active_idx])
+        np.testing.assert_allclose(
+            recovered[active_idx],
+            expected[active_idx],
+            rtol=1e-5,
+            atol=1e-5,
+            err_msg="Recovered lambdas do not match the solver's ground-truth lambdas at active indices.",
+        )
+
+        # Ensure the test was meaningful: at least one constraint carries a non-trivial reaction.
+        self.assertGreater(np.linalg.norm(expected[active_idx]), 0.0)
+
+        # `boxes_hinged` defines no joint limits, so the limits container should be empty.
+        self.assertEqual(metrics._limits.model_max_limits_host, 0)
+
 
 ###
 # Test execution

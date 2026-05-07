@@ -280,7 +280,41 @@ class TestSolverMetricsNewton(unittest.TestCase):
         """
         TODO
         """
-        self.skipTest("Not implemented")
+        setup = TestSetup(
+            builder_fn=basics.build_boxes_hinged,
+            builder_kwargs={"z_offset": -1e-5},
+            max_world_contacts=32,
+            device=self.default_device,
+        )
+
+        # Create a SolutionMetricsNewton instance with the test model and time-step
+        metrics = SolutionMetricsNewton(dt=setup.dt, model=setup.builder.finalize(skip_validation_joints=True))
+
+        # Execute a single time-step of the test problem
+        setup.model.collide(setup.state_p, setup.contacts)
+        setup.solver.step(
+            state_in=setup.state_p,
+            state_out=setup.state,
+            control=setup.control,
+            contacts=setup.contacts,
+            dt=setup.dt,
+        )
+
+        # Ensure assumptions are true:
+        # - that 4x contacts are active
+        nc = int(setup.contacts.rigid_contact_count.numpy()[0])
+        self.assertEqual(nc, 8)
+
+        # Evaluate the metrics on the test problem
+        metrics.evaluate(
+            state=setup.state,
+            state_p=setup.state_p,
+            control=setup.control,
+            contacts=setup.contacts,
+        )
+
+        # Check if the metrics._data contains the same data as the solver._solver_kamino._data
+        assert_kamino_data_allclose(self, metrics._data, setup.solver._solver_kamino._data)
 
     def test_04_evaluate_on_boxes_nunchaku_vertical(self):
         """

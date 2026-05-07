@@ -13,7 +13,6 @@ from ..core.control import ControlKamino
 from ..core.data import DataKamino
 from ..core.model import ModelKamino
 from ..core.state import StateKamino
-from ..core.types import float32
 from ..dynamics.dual import DualProblem
 from ..dynamics.wrenches import (
     compute_constraint_body_wrenches,
@@ -31,6 +30,7 @@ from ..kinematics.jacobians import (
 )
 from ..kinematics.joints import compute_joints_data
 from ..kinematics.limits import LimitsKamino
+from ..kinematics.velocities import compute_constraint_space_velocities
 from ..solvers.metrics import SolutionMetrics
 
 ###
@@ -48,7 +48,15 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
-# Types
+# Kernels
+###
+
+
+# TODO
+
+
+###
+# Launchers
 ###
 
 
@@ -190,9 +198,9 @@ class SolutionMetricsNewton:
 
         # Allocate metrics data on the target device
         with wp.ScopedDevice(self.device):
-            self._v_plus = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=float32)
-            self._lambdas = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=float32)
-            self._sigma = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=float32)
+            self._v_plus = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=wp.float32)
+            self._lambdas = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=wp.float32)
+            self._sigma = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=wp.float32)
 
     def evaluate(
         self,
@@ -370,7 +378,14 @@ class SolutionMetricsNewton:
             v_plus:
                 The output array to store the post-event constraint-space velocities.
         """
-        pass  # TODO: TO BE IMPLEMENTED
+        compute_constraint_space_velocities(
+            model=model,
+            jacobians=jacobians,
+            u=state.u_i,
+            v_start=self._problem.data.vio,
+            v=v_plus,
+            reset_to_zero=True,
+        )
 
     def _convert_body_parent_wrenches_to_joint_reactions(
         self,

@@ -301,7 +301,7 @@ class TestSolverMetricsNewton(unittest.TestCase):
         )
 
         # Ensure assumptions are true:
-        # - that 4x contacts are active
+        # - that 8x contacts are active
         nc = int(setup.contacts.rigid_contact_count.numpy()[0])
         self.assertEqual(nc, 8)
 

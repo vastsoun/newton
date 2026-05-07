@@ -155,6 +155,10 @@ class SolutionMetricsNewton:
         self._limits = LimitsKamino(model=self._model)
         self._contacts = ContactsKamino(model=self._model)
 
+        # Reset limits and contacts containers
+        self._limits.reset()
+        self._contacts.reset()
+
         # Create and finalize the control container
         self._control = ControlKamino()
         self._control.finalize(self._model)
@@ -206,14 +210,19 @@ class SolutionMetricsNewton:
             control: The Newton control data containing the current control inputs of the simulation.
             contacts: The Newton contacts data containing the current contacts of the simulation.
         """
+        # Reset limits and contacts containers
+        self._limits.reset()
+        self._contacts.reset()
+
         # Interface the input state containers to Kamino's equivalents
         self._state = StateKamino.from_newton(self._model.size, self._model._model, state)
         self._state_p = StateKamino.from_newton(self._model.size, self._model._model, state_p)
         self._control.from_newton(control, self._model)
         convert_contacts_newton_to_kamino(self._model._model, state_p, contacts, self._contacts)
 
-        # Run limit detection to generate active limits
-        self._limits.detect(q_j=self._state_p.q_j)
+        # TODO: ENABLE THIS WHEN WE EXTEND TO SUPPORT JOINT LIMITS
+        # # Run limit detection to generate active limits
+        # self._limits.detect(q_j=self._state_p.q_j)
 
         # Update the relevant data fields of `DataKamino` and system Jacobians required
         # for the metrics computations, using the provided `StateKamino` instances.

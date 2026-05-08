@@ -220,14 +220,32 @@ class SolutionMetricsNewton:
         # # Run limit detection to generate active limits
         # self._limits.detect(q_j=self._state_p.q_j)
 
+        ###
+        # Computations using self._data synchronized with state_p
+        ###
+
         # Update the relevant data fields of `DataKamino` and system Jacobians required
-        # for the metrics computations, using the provided `StateKamino` instances.
-        self._read_step_inputs(self._state_p, self._control)
+        # for the metrics computations, using the previous-state `StateKamino` instance.
+        wp.copy(self._data.bodies.q_i, self._state_p.q_i)
+        wp.copy(self._data.bodies.u_i, self._state_p.u_i)
+        wp.copy(self._data.bodies.w_e_i, self._state_p.w_i_e)
+        wp.copy(self._data.joints.tau_j, self._control.tau_j)
+
+        # Update the relevant data intermediate quantities such as:
+        # - active constraint info
+        # - body inertias
+        # - joint frame poses, DoF velocities, coordinates, and constraint residuals
         update_constraints_info(model=self._model, data=self._data)
         update_body_inertias(model=self._model.bodies, data=self._data.bodies)
         compute_joints_data(model=self._model, data=self._data, q_j_p=self._state_p.q_j)
+
+        # Update the forward kinematics and dynamics quantities
         self._update_jacobians()
         self._update_dynamics()
+
+        ###
+        # Computations using self._data synchronized with state_p
+        ###
 
         # Compute the post-event constraint-space velocities given
         # the pre- and post-event state and constraint Jacobians
@@ -245,10 +263,24 @@ class SolutionMetricsNewton:
             # TODO: Add an additional solver-specific path to extract the constraint reactions from the internal solver data.
             raise ValueError("Expected either 'state.body_parent_f' or 'state.joint_parent_f', but both are None.")
 
+        ###
+        # Computations using self._data synchronized with state
+        ###
+
+        # Update the relevant data fields of `DataKamino` to synchronize it with the current-state
+        # `StateKamino` instance, emulating state integration after the forward dynamics solve.
+        wp.copy(self._data.bodies.q_i, self._state.q_i)
+        wp.copy(self._data.bodies.u_i, self._state.u_i)
+        wp.copy(self._data.joints.q_j, self._state.q_j)
+        wp.copy(self._data.joints.dq_j, self._state.dq_j)
+
         # Update all dynamics quantities based
         # on the extracted constraint reactions
-        self._read_step_inputs(self._state, self._control)
         self._update_body_wrenches()
+
+        ###
+        # Run metrics evaluation back-end
+        ###
 
         # # Evaluate the metrics using the extracted solver data
         # self._metrics.evaluate(
@@ -267,16 +299,11 @@ class SolutionMetricsNewton:
     # Internals
     ###
 
-    def _read_step_inputs(self, state_in: StateKamino, control_in: ControlKamino):
-        wp.copy(self._data.bodies.q_i, state_in.q_i)
-        wp.copy(self._data.bodies.u_i, state_in.u_i)
-        wp.copy(self._data.bodies.w_i, state_in.w_i)
-        wp.copy(self._data.bodies.w_e_i, state_in.w_i_e)
-        wp.copy(self._data.joints.q_j, state_in.q_j)
-        wp.copy(self._data.joints.dq_j, state_in.dq_j)
-        self._data.joints.tau_j = control_in.tau_j
-
     def _update_jacobians(self):
+        """
+        Builds the system Jacobians based on the current state of the system,
+        the set of active constraints, and the previous-state `StateKamino` instance.
+        """
         self._jacobians.build(
             model=self._model,
             data=self._data,
@@ -286,6 +313,10 @@ class SolutionMetricsNewton:
         )
 
     def _update_dynamics(self):
+        """
+        Constructs the forward dynamics problem quantities based on the current state of
+        the system, the set of active constraints, and the updated system Jacobians.
+        """
         self._problem.build(
             model=self._model,
             data=self._data,
@@ -296,6 +327,10 @@ class SolutionMetricsNewton:
         )
 
     def _update_body_wrenches(self):
+        """
+        Computes the per-body actuation and constraint wrenches based on the
+        extracted constraint reactions and the current system Jacobians.
+        """
         # Compute the per-body actuation wrenches: `DataKamino.bodies.w_a_i`
         # in world coordinates from the current joint torques
         compute_joint_dof_body_wrenches(self._model, self._data, self._jacobians)

@@ -650,6 +650,66 @@ def _convert_joint_wrenches_to_body_parent_wrenches(
     wp.atomic_add(body_parent_f, bid_F, w_F_j)
 
 
+@wp.func
+def _world_wrench_to_joint_local_wrench(
+    dof_type: int32,
+    X_j: mat33f,
+    T_j: transformf,
+    T_F_j: transformf,
+    T_B_j: transformf,
+    w_ij: vec6f,
+) -> vec6f:
+    """
+    Transforms a world-frame wrench applied at the follower body's CoM
+    into the joint-local frame.
+
+    The transform is performed in two stages:
+    - The wrench is first re-referenced from the follower CoM to the joint origin via the
+      inverse of the screw-transform matrix from the joint origin to the follower CoM.
+    - The result is then expressed in the joint-local frame using the 6D extension of the
+      joint-frame rotation matrix; for ``UNIVERSAL`` joints, the angular block is replaced
+      by the rotation into the intermediate body's frame so that the rotation constraints
+      are written in the correct basis.
+
+    Args:
+        dof_type: The DoF type of the joint.
+        X_j: The constant 3x3 joint-frame rotation expressed in the body frame of the base.
+        T_j: The world-frame pose of the joint frame.
+        T_F_j: The world-frame pose of the follower body's CoM frame.
+        T_B_j: The world-frame pose of the base body's CoM frame, or the identity transform
+            when the joint is unary (``bid_B == -1``). Only used for ``UNIVERSAL`` joints.
+        w_ij: The world-frame wrench applied at the follower body's CoM.
+
+    Returns:
+        The joint-local wrench ``j_w_j``.
+    """
+    # Retrieve the joint frame translation and rotation (in world coords)
+    r_j = wp.transform_get_translation(T_j)
+    R_X_j = wp.quat_to_matrix(wp.transform_get_rotation(T_j))
+
+    # Retrieve the follower body's CoM position (in world coords)
+    r_F_j = wp.transform_get_translation(T_F_j)
+
+    # Compute the inverse wrench-transform from the follower CoM to the joint frame.
+    # Since `W_j_F = screw_transform_matrix_from_points(r_j, r_F_j)` transforms a wrench
+    # from the joint frame to the body's CoM, its inverse swaps the role of the two points.
+    inv_W_j_F = screw_transform_matrix_from_points(r_F_j, r_j)
+
+    # General case: 6D extension of the constant joint-frame rotation matrix
+    if dof_type != JointDoFType.UNIVERSAL:
+        R_X_bar_j = expand6d(R_X_j)
+    # Universal joint: replace R_X_j with the frame of the intermediate body for rotation constraints
+    else:
+        j_q_j = compute_joint_relative_quaternion(T_B_j, T_F_j, X_j)
+        R_intermediate = compute_intermediate_body_frame_universal_joint(j_q_j)
+        R_X_bar_j = concat6d(R_X_j, R_X_j @ R_intermediate)
+
+    # Transform the wrench from body-F CoM to the joint frame (world-aligned),
+    # then express it in the joint-local frame.
+    w_j = inv_W_j_F @ w_ij
+    return wp.transpose(R_X_bar_j) @ w_j
+
+
 @wp.kernel
 def _compute_joint_wrenches_from_body_parent_wrenches(
     # Inputs:
@@ -672,7 +732,7 @@ def _compute_joint_wrenches_from_body_parent_wrenches(
     dof_type = model_joints_dof_type[jid]
 
     # Skip FREE joints: they have no kinematic constraints
-    # and `joint_parent_f`is not accumulated for FREE joints
+    # and `body_parent_f` is not accumulated for FREE joints
     if dof_type == JointDoFType.FREE:
         return
 
@@ -680,42 +740,22 @@ def _compute_joint_wrenches_from_body_parent_wrenches(
     bid_F = model_joints_bid_F[jid]
     bid_B = model_joints_bid_B[jid]
 
-    # Retrieve the joint frame pose (in world coords)
+    # Retrieve the joint frame and follower body poses (in world coords)
     T_j = data_joints_p_j[jid]
-    r_j = wp.transform_get_translation(T_j)
-    R_X_j = wp.quat_to_matrix(wp.transform_get_rotation(T_j))
-
-    # Retrieve the follower body's pose (CoM in world coords)
     T_F_j = data_bodies_q_i[bid_F]
-    r_F_j = wp.transform_get_translation(T_F_j)
 
-    # Compute the inverse wrench-transform from the follower CoM to the joint frame.
-    # Since `W_j_F = screw_transform_matrix_from_points(r_j, r_F_j)` transforms a wrench
-    # from the joint frame to the body's CoM, its inverse swaps the role of the two points.
-    inv_W_j_F = screw_transform_matrix_from_points(r_F_j, r_j)
-
-    # General case: 6D extension of the constant joint-frame rotation matrix
-    if dof_type != JointDoFType.UNIVERSAL:
-        R_X_bar_j = expand6d(R_X_j)
-    # Universal joint: replace R_X_j with the frame of the intermediate body for rotation constraints
-    else:
-        # The base body's pose is needed to compute the relative quaternion;
-        # for unary joints (bid_B == -1), use the world identity transform.
-        T_B_j = wp.transform_identity()
-        if bid_B > -1:
-            T_B_j = data_bodies_q_i[bid_B]
-        j_q_j = compute_joint_relative_quaternion(T_B_j, T_F_j, model_joints_X_j[jid])
-        R_intermediate = compute_intermediate_body_frame_universal_joint(j_q_j)
-        R_X_bar_j = concat6d(R_X_j, R_X_j @ R_intermediate)
+    # Retrieve the base body's pose. For unary joints (bid_B == -1),
+    # use the world identity transform (only consumed for UNIVERSAL joints).
+    T_B_j = wp.transform_identity()
+    if bid_B > -1:
+        T_B_j = data_bodies_q_i[bid_B]
 
     # Read the world-frame wrench applied on body F by joint j (at body F's CoM).
     w_ij_sv = body_parent_f[bid_F]
     w_ij = vec6f(w_ij_sv[0], w_ij_sv[1], w_ij_sv[2], w_ij_sv[3], w_ij_sv[4], w_ij_sv[5])
 
-    # Transform the wrench from body-F CoM to the joint frame (world-aligned),
-    # then express it in the joint-local frame.
-    w_j = inv_W_j_F @ w_ij
-    j_w_j = wp.transpose(R_X_bar_j) @ w_j
+    # Transform the world-frame wrench at body F's CoM to the joint-local frame.
+    j_w_j = _world_wrench_to_joint_local_wrench(dof_type, model_joints_X_j[jid], T_j, T_F_j, T_B_j, w_ij)
 
     # Store the joint-local wrench
     data_joints_j_w_j[jid] = j_w_j
@@ -747,7 +787,7 @@ def _compute_joint_wrenches_from_joint_parent_wrenches(
     dof_type = model_joints_dof_type[jid]
 
     # Skip FREE joints: they have no kinematic constraints
-    # and `joint_parent_f`is not accumulated for FREE joints
+    # and `joint_parent_f` is not accumulated for FREE joints
     if dof_type == JointDoFType.FREE:
         return
 
@@ -755,42 +795,22 @@ def _compute_joint_wrenches_from_joint_parent_wrenches(
     bid_F = model_joints_bid_F[jid]
     bid_B = model_joints_bid_B[jid]
 
-    # Retrieve the joint frame pose (in world coords)
+    # Retrieve the joint frame and follower body poses (in world coords)
     T_j = data_joints_p_j[jid]
-    r_j = wp.transform_get_translation(T_j)
-    R_X_j = wp.quat_to_matrix(wp.transform_get_rotation(T_j))
-
-    # Retrieve the follower body's pose (CoM in world coords)
     T_F_j = data_bodies_q_i[bid_F]
-    r_F_j = wp.transform_get_translation(T_F_j)
 
-    # Compute the inverse wrench-transform from the follower CoM to the joint frame.
-    # Since `W_j_F = screw_transform_matrix_from_points(r_j, r_F_j)` transforms a wrench
-    # from the joint frame to the body's CoM, its inverse swaps the role of the two points.
-    inv_W_j_F = screw_transform_matrix_from_points(r_F_j, r_j)
-
-    # General case: 6D extension of the constant joint-frame rotation matrix
-    if dof_type != JointDoFType.UNIVERSAL:
-        R_X_bar_j = expand6d(R_X_j)
-    # Universal joint: replace R_X_j with the frame of the intermediate body for rotation constraints
-    else:
-        # The base body's pose is needed to compute the relative quaternion;
-        # for unary joints (bid_B == -1), use the world identity transform.
-        T_B_j = wp.transform_identity()
-        if bid_B > -1:
-            T_B_j = data_bodies_q_i[bid_B]
-        j_q_j = compute_joint_relative_quaternion(T_B_j, T_F_j, model_joints_X_j[jid])
-        R_intermediate = compute_intermediate_body_frame_universal_joint(j_q_j)
-        R_X_bar_j = concat6d(R_X_j, R_X_j @ R_intermediate)
+    # Retrieve the base body's pose. For unary joints (bid_B == -1),
+    # use the world identity transform (only consumed for UNIVERSAL joints).
+    T_B_j = wp.transform_identity()
+    if bid_B > -1:
+        T_B_j = data_bodies_q_i[bid_B]
 
     # Read the world-frame wrench applied on body F by joint j (at body F's CoM).
     w_ij_sv = joint_parent_f[jid]
     w_ij = vec6f(w_ij_sv[0], w_ij_sv[1], w_ij_sv[2], w_ij_sv[3], w_ij_sv[4], w_ij_sv[5])
 
-    # Transform the wrench from body-F CoM to the joint frame (world-aligned),
-    # then express it in the joint-local frame.
-    w_j = inv_W_j_F @ w_ij
-    j_w_j = wp.transpose(R_X_bar_j) @ w_j
+    # Transform the world-frame wrench at body F's CoM to the joint-local frame.
+    j_w_j = _world_wrench_to_joint_local_wrench(dof_type, model_joints_X_j[jid], T_j, T_F_j, T_B_j, w_ij)
 
     # Store the joint-local wrench
     data_joints_j_w_j[jid] = j_w_j

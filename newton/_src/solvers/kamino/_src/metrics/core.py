@@ -34,7 +34,7 @@ from ..kinematics.jacobians import (
 from ..kinematics.joints import compute_joints_data
 from ..kinematics.limits import LimitsKamino
 from ..kinematics.velocities import compute_constraint_space_velocities
-from ..solvers.metrics import SolutionMetrics
+from ..solvers.metrics import SolutionMetrics, SolutionMetricsData
 
 ###
 # Module interface
@@ -103,6 +103,15 @@ class SolutionMetricsNewton:
         if self._model is None:
             raise RuntimeError("SolutionMetricsNewton data is not initialized. Call finalize() first.")
         return self._model.device
+
+    @property
+    def data(self) -> SolutionMetricsData:
+        """
+        Returns the solution metrics data container.
+        """
+        if self._metrics is None:
+            raise RuntimeError("SolutionMetricsNewton data is not initialized. Call finalize() first.")
+        return self._metrics.data
 
     ###
     # Operations
@@ -282,18 +291,18 @@ class SolutionMetricsNewton:
         # Run metrics evaluation back-end
         ###
 
-        # # Evaluate the metrics using the extracted solver data
-        # self._metrics.evaluate(
-        #     sigma=self._sigma,
-        #     lambdas=self._lambdas,
-        #     v_plus=self._v_plus,
-        #     data=self._data,
-        #     state_p=self._state_p,
-        #     problem=self._problem,
-        #     jacobians=self._jacobians,
-        #     limits=self._limits,
-        #     contacts=self._contacts,
-        # )
+        # Evaluate the metrics using the extracted solver data
+        self._metrics.evaluate(
+            sigma=self._sigma,
+            lambdas=self._lambdas,
+            v_plus=self._v_plus,
+            data=self._data,
+            state_p=self._state_p,
+            problem=self._problem,
+            jacobians=self._jacobians,
+            limits=self._limits,
+            contacts=self._contacts,
+        )
 
     ###
     # Internals

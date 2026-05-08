@@ -15,7 +15,10 @@ from .core.conversions import convert_model_joint_transforms
 from .core.gravity import convert_model_gravity
 from .core.model import ModelKamino
 from .core.state import StateKamino
-from .dynamics.wrenches import convert_joint_wrenches_to_body_parent_wrenches
+from .dynamics.wrenches import (
+    compute_body_parent_wrenches,
+    compute_joint_parent_wrenches,
+)
 from .geometry.contacts import (
     ContactsKamino,
     convert_contacts_kamino_to_newton,
@@ -36,12 +39,13 @@ __all__ = [
     "ModelKamino",
     "SolverKaminoImpl",
     "StateKamino",
+    "compute_body_parent_wrenches",
+    "compute_joint_parent_wrenches",
     "convert_base_origin_to_com",
     "convert_body_com_to_origin",
     "convert_body_origin_to_com",
     "convert_contacts_kamino_to_newton",
     "convert_contacts_newton_to_kamino",
-    "convert_joint_wrenches_to_body_parent_wrenches",
     "convert_model_gravity",
     "convert_model_joint_transforms",
     "msg",

@@ -578,6 +578,8 @@ class SolverKamino(SolverBase):
                 body_parent_f=state_out.body_parent_f,
             )
 
+        # TODO: ADD HANDLING OF `state_out.joint_parent_f`, similar to `body_parent_f` handling above.
+
         # Convert back from Kamino CoM-frame to Newton body-frame poses using
         # the same corrected body-com offsets as the forward conversion.
         self._kamino.convert_body_com_to_origin(

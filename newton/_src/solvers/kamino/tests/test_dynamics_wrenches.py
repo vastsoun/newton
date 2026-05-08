@@ -64,7 +64,7 @@ test_wrench_atol = 1e-4  # TODO: Should be 1e-6
 
 
 ###
-# Helper Functions
+# Helper functions for `TestDynamicsWrenches`
 ###
 
 
@@ -540,6 +540,18 @@ class TestDynamicsConvertWrenches(unittest.TestCase):
         self.default_device = wp.get_device(test_context.device)
         self.verbose = test_context.verbose
 
+        # Set info-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.INFO)
+        else:
+            msg.reset_log_level()
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
     @staticmethod
     def _builders_without_loops():
         """Builders whose multibody graph is a tree (no kinematic loops).
@@ -552,8 +564,8 @@ class TestDynamicsConvertWrenches(unittest.TestCase):
         """
         return [
             ("cartpole", basics.build_cartpole, {"z_offset": -1e-5}),
-            ("boxes_nunchaku_vertical", basics.build_boxes_nunchaku_vertical, {"z_offset": -1e-5}),
             ("boxes_hinged", basics.build_boxes_hinged, {"z_offset": -1e-5}),
+            ("boxes_nunchaku_vertical", basics.build_boxes_nunchaku_vertical, {"z_offset": -1e-5}),
         ]
 
     @staticmethod
@@ -566,8 +578,8 @@ class TestDynamicsConvertWrenches(unittest.TestCase):
         """
         return [
             ("cartpole", basics.build_cartpole, {"z_offset": -1e-5}),
-            ("boxes_nunchaku_vertical", basics.build_boxes_nunchaku_vertical, {"z_offset": -1e-5}),
             ("boxes_hinged", basics.build_boxes_hinged, {"z_offset": -1e-5}),
+            ("boxes_nunchaku_vertical", basics.build_boxes_nunchaku_vertical, {"z_offset": -1e-5}),
             ("boxes_fourbar", basics.build_boxes_fourbar, {"z_offset": -1e-5, "floatingbase": True}),
         ]
 
@@ -608,8 +620,9 @@ class TestDynamicsConvertWrenches(unittest.TestCase):
             )
 
     def test_01_convert_body_parent_wrenches_individual(self):
-        """Convert the solver-produced ``body_parent_f`` and compare against the solver's
-        reference ``data.joints.lambda_j``.
+        """
+        Convert the solver-produced ``body_parent_f`` and compare
+        against the solver's reference ``data.joints.lambda_j``.
         """
         for name, builder_fn, builder_kwargs in self._builders_without_loops():
             with self.subTest(builder=name):
@@ -639,14 +652,15 @@ class TestDynamicsConvertWrenches(unittest.TestCase):
                 recovered = setup.data_kamino.joints.lambda_j.numpy()
                 reference = setup.solver._solver_kamino._data.joints.lambda_j.numpy()
                 leaf_indices = get_leaf_joint_lambda_indices(setup.model_kamino)
-                msg.warning(f"[{name}] Recovered lambda_j: {recovered}")
-                msg.warning(f"[{name}] Expected  lambda_j: {reference}")
-                msg.warning(f"[{name}] Leaf-joint lambda indices: {leaf_indices}")
+                msg.info(f"[{name}] Recovered lambda_j: {recovered}")
+                msg.info(f"[{name}] Expected  lambda_j: {reference}")
+                msg.info(f"[{name}] Leaf-joint lambda indices: {leaf_indices}")
                 self._assert_leaf_kinematic_lambdas_close(recovered, reference, leaf_indices)
 
     def test_02_convert_body_parent_wrenches_round_trip(self):
-        """Pack the recovered ``lambda_j`` into a global ``lambdas`` array and unpack it
-        back into the joint-cts buffer, verifying ``pack`` / ``unpack`` symmetry.
+        """
+        Pack the recovered ``lambda_j`` into a global ``lambdas`` array and unpack
+        it back into the joint-cts buffer, verifying ``pack`` / ``unpack`` symmetry.
         """
         for name, builder_fn, builder_kwargs in self._builders_without_loops():
             with self.subTest(builder=name):
@@ -749,9 +763,9 @@ class TestDynamicsConvertWrenches(unittest.TestCase):
                 recovered = setup.data_kamino.joints.lambda_j.numpy()
                 reference = setup.solver._solver_kamino._data.joints.lambda_j.numpy()
                 leaf_indices = get_leaf_joint_lambda_indices(setup.model_kamino)
-                msg.warning(f"[{name}] Recovered lambda_j: {recovered}")
-                msg.warning(f"[{name}] Expected  lambda_j: {reference}")
-                msg.warning(f"[{name}] Leaf-joint lambda indices: {leaf_indices}")
+                msg.info(f"[{name}] Recovered lambda_j: {recovered}")
+                msg.info(f"[{name}] Expected  lambda_j: {reference}")
+                msg.info(f"[{name}] Leaf-joint lambda indices: {leaf_indices}")
                 self._assert_leaf_kinematic_lambdas_close(recovered, reference, leaf_indices)
 
     def test_04_convert_joint_parent_wrenches_round_trip(self):

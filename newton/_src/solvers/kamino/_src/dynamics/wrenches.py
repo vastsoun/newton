@@ -7,12 +7,23 @@ KAMINO: Dynamics: Wrenches
 
 import warp as wp
 
+from ..core.control import ControlKamino
 from ..core.data import DataKamino
 from ..core.joints import JointDoFType
+from ..core.math import (
+    concat6d,
+    expand6d,
+    screw_transform_matrix_from_points,
+)
 from ..core.model import ModelKamino
-from ..core.types import float32, int32, mat63f, vec2i, vec3f, vec6f
+from ..core.types import float32, int32, mat33f, mat63f, transformf, vec2i, vec3f, vec6f
 from ..geometry.contacts import ContactsKamino
-from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
+from ..kinematics.jacobians import (
+    DenseSystemJacobians,
+    SparseSystemJacobians,
+    compute_intermediate_body_frame_universal_joint,
+    compute_joint_relative_quaternion,
+)
 from ..kinematics.limits import LimitsKamino
 
 ###
@@ -22,6 +33,7 @@ from ..kinematics.limits import LimitsKamino
 __all__ = [
     "compute_constraint_body_wrenches",
     "compute_joint_dof_body_wrenches",
+    "convert_body_parent_wrenches_to_joint_reactions",
     "convert_joint_wrenches_to_body_parent_wrenches",
 ]
 
@@ -31,6 +43,107 @@ __all__ = [
 ###
 
 wp.set_module_options({"enable_backward": False})
+
+
+###
+# Functions
+###
+
+
+@wp.func
+def joint_dof_axis_from_index(dof_type: int32, dof_within_joint: int32) -> int32:
+    """
+    Maps a joint's local DoF index (i.e. ``dof_within_joint``) to the corresponding
+    6D axis index in the joint frame, based on the joint's DoF type.
+    """
+    if dof_type == JointDoFType.REVOLUTE:
+        return 3
+    elif dof_type == JointDoFType.PRISMATIC:
+        return 0
+    elif dof_type == JointDoFType.CYLINDRICAL:
+        # CYLINDRICAL DoFs are: T_x (axis 0), R_x (axis 3)
+        if dof_within_joint == 0:
+            return 0
+        return 3
+    elif dof_type == JointDoFType.UNIVERSAL:
+        return 3 + dof_within_joint
+    elif dof_type == JointDoFType.SPHERICAL:
+        return 3 + dof_within_joint
+    elif dof_type == JointDoFType.GIMBAL:
+        return 3 + dof_within_joint
+    elif dof_type == JointDoFType.CARTESIAN:
+        return dof_within_joint
+    elif dof_type == JointDoFType.FREE:
+        return dof_within_joint
+    return -1
+
+
+def make_typed_write_joint_kinematic_lambdas(dof_type: JointDoFType):
+    """
+    Generates a per-joint-type Warp function that writes the kinematic-constraint
+    Lagrange multipliers of a single joint into the global ``state_lambda_j`` array.
+    """
+    cts_axes = dof_type.cts_axes
+    num_cts = dof_type.num_cts
+
+    @wp.func
+    def _typed_write_joint_kinematic_lambdas(
+        cts_offset_j: int32,
+        j_w_j: vec6f,
+        state_lambda_j: wp.array[float32],
+    ):
+        for k in range(num_cts):
+            state_lambda_j[cts_offset_j + k] = j_w_j[cts_axes[k]]
+
+    return _typed_write_joint_kinematic_lambdas
+
+
+def make_write_joint_kinematic_lambdas():
+    """
+    Generates a Warp function that dispatches the per-joint-type writer of the
+    joint's kinematic-constraint Lagrange multipliers, based on the joint's DoF type.
+    """
+
+    @wp.func
+    def _write_joint_kinematic_lambdas(
+        dof_type: int32,
+        cts_offset_j: int32,
+        j_w_j: vec6f,
+        state_lambda_j: wp.array[float32],
+    ):
+        if dof_type == JointDoFType.REVOLUTE:
+            wp.static(make_typed_write_joint_kinematic_lambdas(JointDoFType.REVOLUTE))(
+                cts_offset_j, j_w_j, state_lambda_j
+            )
+        elif dof_type == JointDoFType.PRISMATIC:
+            wp.static(make_typed_write_joint_kinematic_lambdas(JointDoFType.PRISMATIC))(
+                cts_offset_j, j_w_j, state_lambda_j
+            )
+        elif dof_type == JointDoFType.CYLINDRICAL:
+            wp.static(make_typed_write_joint_kinematic_lambdas(JointDoFType.CYLINDRICAL))(
+                cts_offset_j, j_w_j, state_lambda_j
+            )
+        elif dof_type == JointDoFType.UNIVERSAL:
+            wp.static(make_typed_write_joint_kinematic_lambdas(JointDoFType.UNIVERSAL))(
+                cts_offset_j, j_w_j, state_lambda_j
+            )
+        elif dof_type == JointDoFType.SPHERICAL:
+            wp.static(make_typed_write_joint_kinematic_lambdas(JointDoFType.SPHERICAL))(
+                cts_offset_j, j_w_j, state_lambda_j
+            )
+        elif dof_type == JointDoFType.GIMBAL:
+            wp.static(make_typed_write_joint_kinematic_lambdas(JointDoFType.GIMBAL))(
+                cts_offset_j, j_w_j, state_lambda_j
+            )
+        elif dof_type == JointDoFType.CARTESIAN:
+            wp.static(make_typed_write_joint_kinematic_lambdas(JointDoFType.CARTESIAN))(
+                cts_offset_j, j_w_j, state_lambda_j
+            )
+        elif dof_type == JointDoFType.FIXED:
+            wp.static(make_typed_write_joint_kinematic_lambdas(JointDoFType.FIXED))(cts_offset_j, j_w_j, state_lambda_j)
+        # FREE: no kinematic constraints; nothing to write
+
+    return _write_joint_kinematic_lambdas
 
 
 ###
@@ -537,6 +650,120 @@ def _convert_joint_wrenches_to_body_parent_wrenches(
     wp.atomic_add(body_parent_f, bid_F, w_F_j)
 
 
+@wp.kernel
+def _compute_joint_wrenches_from_body_parent_wrenches(
+    # Inputs:
+    model_joints_dof_type: wp.array[int32],
+    model_joints_kinematic_cts_offset_joint_cts: wp.array[int32],
+    model_joints_bid_F: wp.array[int32],
+    model_joints_bid_B: wp.array[int32],
+    model_joints_X_j: wp.array[mat33f],
+    data_joints_p_j: wp.array[transformf],
+    data_bodies_q_i: wp.array[transformf],
+    state_body_parent_f: wp.array[wp.spatial_vectorf],
+    # Outputs:
+    data_joints_j_w_j: wp.array[vec6f],
+    state_lambda_j: wp.array[float32],
+):
+    # Retrieve the thread index as the joint index
+    jid = wp.tid()
+
+    # Retrieve the joint model data
+    dof_type = model_joints_dof_type[jid]
+
+    # Skip FREE joints: they have no kinematic constraints and `body_parent_f`
+    # is not accumulated for FREE joints (see `_convert_joint_wrenches_to_body_parent_wrenches`).
+    if dof_type == JointDoFType.FREE:
+        return
+
+    # Retrieve the body indices of the joint
+    bid_F = model_joints_bid_F[jid]
+    bid_B = model_joints_bid_B[jid]
+
+    # Retrieve the joint frame pose (in world coords)
+    T_j = data_joints_p_j[jid]
+    r_j = wp.transform_get_translation(T_j)
+    R_X_j = wp.quat_to_matrix(wp.transform_get_rotation(T_j))
+
+    # Retrieve the follower body's pose (CoM in world coords)
+    T_F_j = data_bodies_q_i[bid_F]
+    r_F_j = wp.transform_get_translation(T_F_j)
+
+    # Compute the inverse wrench-transform from the follower CoM to the joint frame.
+    # Since `W_j_F = screw_transform_matrix_from_points(r_j, r_F_j)` transforms a wrench
+    # from the joint frame to the body's CoM, its inverse swaps the role of the two points.
+    inv_W_j_F = screw_transform_matrix_from_points(r_F_j, r_j)
+
+    # General case: 6D extension of the constant joint-frame rotation matrix
+    if dof_type != JointDoFType.UNIVERSAL:
+        R_X_bar_j = expand6d(R_X_j)
+    # Universal joint: replace R_X_j with the frame of the intermediate body for rotation constraints
+    else:
+        # The base body's pose is needed to compute the relative quaternion;
+        # for unary joints (bid_B == -1), use the world identity transform.
+        T_B_j = wp.transform_identity()
+        if bid_B > -1:
+            T_B_j = data_bodies_q_i[bid_B]
+        j_q_j = compute_joint_relative_quaternion(T_B_j, T_F_j, model_joints_X_j[jid])
+        R_intermediate = compute_intermediate_body_frame_universal_joint(j_q_j)
+        R_X_bar_j = concat6d(R_X_j, R_X_j @ R_intermediate)
+
+    # Read the world-frame wrench applied on body F by joint j (at body F's CoM).
+    w_ij_sv = state_body_parent_f[bid_F]
+    w_ij = vec6f(w_ij_sv[0], w_ij_sv[1], w_ij_sv[2], w_ij_sv[3], w_ij_sv[4], w_ij_sv[5])
+
+    # Transform the wrench from body-F CoM to the joint frame (world-aligned),
+    # then express it in the joint-local frame.
+    w_j = inv_W_j_F @ w_ij
+    j_w_j = wp.transpose(R_X_bar_j) @ w_j
+
+    # Store the joint-local wrench
+    data_joints_j_w_j[jid] = j_w_j
+
+    # Write the kinematic-constraint Lagrange multipliers for this joint
+    cts_offset_j = model_joints_kinematic_cts_offset_joint_cts[jid]
+    wp.static(make_write_joint_kinematic_lambdas())(dof_type, cts_offset_j, j_w_j, state_lambda_j)
+
+
+@wp.kernel
+def _compute_limit_reactions_from_joint_wrenches(
+    # Inputs:
+    model_joints_dof_type: wp.array[int32],
+    model_joints_dofs_offset: wp.array[int32],
+    limits_model_num: wp.array[int32],
+    limits_model_max: int32,
+    limits_jid: wp.array[int32],
+    limits_dof: wp.array[int32],
+    limits_side: wp.array[float32],
+    data_joints_j_w_j: wp.array[vec6f],
+    control_tau_j: wp.array[float32],
+    # Outputs:
+    limits_reaction: wp.array[float32],
+):
+    # Retrieve the limit index from the thread grid
+    lid = wp.tid()
+
+    # Skip if lid is greater than the number of active limits in the model
+    if lid >= wp.min(limits_model_num[0], limits_model_max):
+        return
+
+    # Retrieve the joint and DoF indices for this active limit
+    jid = limits_jid[lid]
+    dof_l = limits_dof[lid]
+    side_l = limits_side[lid]
+
+    # Map the global DoF index to the joint-local DoF index, then to the 6D joint-frame axis
+    dof_within_joint = dof_l - model_joints_dofs_offset[jid]
+    axis = joint_dof_axis_from_index(model_joints_dof_type[jid], dof_within_joint)
+
+    # Recover the limit reaction: the joint-frame total wrench at the DoF axis is
+    # `tau_total = tau_actuation + side * lambda_l`, so `lambda_l = side * (tau_total - tau_actuation)`.
+    j_w_j = data_joints_j_w_j[jid]
+    tau_total = j_w_j[axis]
+    tau_act = control_tau_j[dof_l]
+    limits_reaction[lid] = side_l * (tau_total - tau_act)
+
+
 ###
 # Launchers
 ###
@@ -820,6 +1047,11 @@ def compute_constraint_body_wrenches(
         raise ValueError(f"Expected `DenseSystemJacobians` or `SparseSystemJacobians` but got {type(jacobians)}.")
 
 
+###
+# Conversions
+###
+
+
 def convert_joint_wrenches_to_body_parent_wrenches(
     model: ModelKamino,
     data: DataKamino,
@@ -850,3 +1082,125 @@ def convert_joint_wrenches_to_body_parent_wrenches(
         outputs=[body_parent_f],
         device=model.device,
     )
+
+
+def convert_body_parent_wrenches_to_joint_reactions(
+    body_parent_f: wp.array[wp.spatial_vectorf],
+    model: ModelKamino,
+    data: DataKamino,
+    control: ControlKamino,
+    limits: LimitsKamino | None = None,
+    reset_to_zero: bool = True,
+):
+    """
+    Converts Newton body-parent wrenches `newton.State.body_parent_f`
+    data to Kamino `StateKamino.lambda_j` and `LimitsKamino.reaction`.
+
+    This operation also updates per-joint wrenches arrays `DataKamino.joints.j_w_j` as a byproduct.
+
+    Definitions:
+    - `body_parent_f` contains the wrench applied on each body by its parent body, referenced w.r.
+        the child body's center of mass (COM) and expressed in the world frame (i.e. world coordinates).
+        Each entry is equal to `w_ij`, the world wrench applied by parent body `i` joint `j`.
+    - `w_j` is the wrench applied by joint `j` on its follower/child
+        body, referenced w.r.t. the joint frame in world coordinates.
+    - `j_w_j` is the wrench applied by joint `j` on its follower/child
+        body, expressed in the local coordinates of the joint frame.
+    - `lambda_j` contains the constraint reaction impulses
+        applied by each joint, expressed in the joint frame.
+    - `lambda_l_j` contains the joint-limit constraint reactions.
+    - `tau_c_j` is the joint-space actuation generalized forces.
+    - `tau_j` is the joint-space generaralized forces. However, as any acting joint-limit constraint
+        reactions also lie in the same space (i.e. DoF-space), we will consider this to be equal to
+        the total joint-space generalized forces `tau_j := tau_c_j + lambda_l_j`
+    - `dt` is the simulation time step.
+
+    The conversion is performed parallel over joints as follows:
+    - We use the relation `w_j = inv(W_ij) @ w_ij` to compute `w_j`, i.e. the joint wrench
+        referenced w.r.t. the joint frame in world coordinates, where `W_ij` is the `6x6` wrench
+        transform matrix transforming `w_j` from the joint frame to the COM frame of body `i`.
+        When body `i` is the  follower/child we use the absolute pose of the body and joint
+        frames to compute `W_ij`.
+    - Having `w_j`, we compute `j_w_j` as `j_w_j = X_bar_j.T @ R_bar_j.T @ w_j`, where `X_bar_j`
+        is the `6x6` constant joint frame transform matrix extended to 6D (via 3x3 on both diagonals)
+        and similarly `R_bar_j` is the `6x6` extended joint frame rotation matrix extended to 6D
+        computed from the absolute pose of the joint frame `p_j`.
+    - Having `j_w_j`, we compute `lambda_j` as `[lambda_j; tau_j] = inv(S_j) @ j_w_j`, where `S_j`
+        is the `6x6` joint constraint/dof selection matrix. `tau_j` is the sum of the joint-space actuation
+        generalized forces plus the joint-limit constraint reactions. Thus to recover `lambda_l_j`, and
+        assuming we know `tau_c_j`, we can simply compute `lambda_l_j := tau_j - tau_c_j`.
+
+    Correspondences between data containers and conversion inputs/outputs:
+    - body_parent_f --> w_ij
+    - control.tau_j --> tau_c_j
+    - data.joints.j_w_j --> j_w_j
+    - data.joints.lambda_j --> lambda_j
+    - limits.reaction --> lambda_l_j
+
+    Args:
+        body_parent_f:
+            The input array of per-body parent wrenches (world frame, at body CoM).
+        model:
+            The model containing the time-invariant data of the simulation.
+        data:
+            The internal solver data container holding the time-varying data of the simulation.
+        control:
+            The input control data containing the current control inputs of
+            the simulation. Used to compute the joint actuation forces `tau_j`.
+        limits:
+            The active joint-limits container. Optional; if ``None`` (or empty), ``limits.reaction`` is not updated.
+
+    """
+    # Early exit if there are no joints, so there is nothing to convert
+    if model.size.sum_of_num_joints == 0:
+        return
+
+    # Helper function to check if a limit container
+    # is provided and if limits have been allocated
+    def _has_limits(limits: LimitsKamino | None) -> bool:
+        return limits is not None and limits.model_max_limits_host > 0
+
+    # Optionally clear the previous joint wrenches and limit reactions
+    if reset_to_zero:
+        data.joints.j_w_j.zero_()
+        data.joints.lambda_j.zero_()
+        if _has_limits(limits):
+            limits.reaction.zero_()
+
+    # First convert the body parent wrenches to joint wrenches
+    wp.launch(
+        kernel=_compute_joint_wrenches_from_body_parent_wrenches,
+        dim=model.size.sum_of_num_joints,
+        inputs=[
+            model.joints.dof_type,
+            model.joints.kinematic_cts_offset_joint_cts,
+            model.joints.bid_F,
+            model.joints.bid_B,
+            model.joints.X_j,
+            data.joints.p_j,
+            data.bodies.q_i,
+            body_parent_f,
+        ],
+        outputs=[data.joints.j_w_j, data.joints.lambda_j],
+        device=model.device,
+    )
+
+    # Then convert the joint wrenches to limit reactions, if limits are provided
+    if _has_limits(limits):
+        wp.launch(
+            kernel=_compute_limit_reactions_from_joint_wrenches,
+            dim=limits.model_max_limits_host,
+            inputs=[
+                model.joints.dof_type,
+                model.joints.dofs_offset,
+                limits.model_active_limits,
+                limits.model_max_limits_host,
+                limits.jid,
+                limits.dof,
+                limits.side,
+                data.joints.j_w_j,
+                control.tau_j,
+            ],
+            outputs=[limits.reaction],
+            device=model.device,
+        )

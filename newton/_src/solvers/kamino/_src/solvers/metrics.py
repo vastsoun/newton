@@ -890,7 +890,7 @@ def _compute_cts_contacts_residual(
 
 
 @wp.kernel
-def _compute_dual_problem_metrics(
+def _compute_dual_problem_metrics_dense(
     # Inputs:
     problem_nl: wp.array[int32],
     problem_nc: wp.array[int32],
@@ -1495,7 +1495,7 @@ class SolutionMetrics:
             )
         else:
             wp.launch(
-                kernel=_compute_dual_problem_metrics,
+                kernel=_compute_dual_problem_metrics_dense,
                 dim=problem.size.num_worlds,
                 inputs=[
                     # Inputs:

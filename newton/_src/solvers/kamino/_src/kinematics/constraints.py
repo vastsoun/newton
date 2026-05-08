@@ -471,6 +471,119 @@ def _unpack_contact_constraint_solutions(
     contact_velocity[cid] = v_plus_k
 
 
+@wp.kernel
+def _pack_joint_constraint_reactions(
+    # Inputs:
+    model_time_dt: wp.array[float32],
+    model_joint_wid: wp.array[int32],
+    model_joints_num_dynamic_cts: wp.array[int32],
+    model_joints_num_kinematic_cts: wp.array[int32],
+    model_joints_dynamic_cts_offset_joint_cts: wp.array[int32],
+    model_joints_kinematic_cts_offset_joint_cts: wp.array[int32],
+    model_joints_dynamic_cts_offset_total_cts: wp.array[int32],
+    model_joints_kinematic_cts_offset_total_cts: wp.array[int32],
+    state_lambda_j: wp.array[float32],
+    # Outputs:
+    lambdas: wp.array[float32],
+):
+    # Retrieve the thread index as the joint index
+    jid = wp.tid()
+
+    # Retrieve the joint-specific model info
+    wid = model_joint_wid[jid]
+    num_dyn_cts_j = model_joints_num_dynamic_cts[jid]
+    num_kin_cts_j = model_joints_num_kinematic_cts[jid]
+
+    # Retrieve block offsets of the joint's constraints within
+    # the joint-only constraints and total constraints arrays
+    joint_dyn_cts_start_j = model_joints_dynamic_cts_offset_joint_cts[jid]
+    joint_kin_cts_start_j = model_joints_kinematic_cts_offset_joint_cts[jid]
+    dyn_cts_row_start_j = model_joints_dynamic_cts_offset_total_cts[jid]
+    kin_cts_row_start_j = model_joints_kinematic_cts_offset_total_cts[jid]
+
+    # Retrieve the world-specific time-step
+    dt = model_time_dt[wid]
+
+    # Pack the joint-constraint reactions into the global lambdas array,
+    # converting force units back to Lagrange impulse units via `dt`.
+    for j in range(num_dyn_cts_j):
+        lambdas[dyn_cts_row_start_j + j] = dt * state_lambda_j[joint_dyn_cts_start_j + j]
+    for j in range(num_kin_cts_j):
+        lambdas[kin_cts_row_start_j + j] = dt * state_lambda_j[joint_kin_cts_start_j + j]
+
+
+@wp.kernel
+def _pack_limit_constraint_reactions(
+    # Inputs:
+    model_time_dt: wp.array[float32],
+    model_info_total_cts_offset: wp.array[int32],
+    data_info_limit_cts_group_offset: wp.array[int32],
+    limit_model_num_limits: wp.array[int32],
+    limit_wid: wp.array[int32],
+    limit_lid: wp.array[int32],
+    limit_reaction: wp.array[float32],
+    # Outputs:
+    lambdas: wp.array[float32],
+):
+    # Retrieve the thread index as the limit index
+    lid = wp.tid()
+
+    # Skip if lid is greater than the number of limits active in the model
+    if lid >= limit_model_num_limits[0]:
+        return
+
+    # Retrieve the world index and the world-relative limit index for this limit
+    wid = limit_wid[lid]
+    lid_l = limit_lid[lid]
+
+    # Retrieve the world-specific time-step
+    dt = model_time_dt[wid]
+
+    # Compute the global constraint index for this limit
+    limit_cts_idx = model_info_total_cts_offset[wid] + data_info_limit_cts_group_offset[wid] + lid_l
+
+    # Pack the limit reaction into the global lambdas array,
+    # converting force units back to Lagrange impulse units via `dt`.
+    lambdas[limit_cts_idx] = dt * limit_reaction[lid]
+
+
+@wp.kernel
+def _pack_contact_constraint_reactions(
+    # Inputs:
+    model_time_dt: wp.array[float32],
+    model_info_total_cts_offset: wp.array[int32],
+    data_info_contact_cts_group_offset: wp.array[int32],
+    contact_model_num_contacts: wp.array[int32],
+    contact_wid: wp.array[int32],
+    contact_cid: wp.array[int32],
+    contact_reaction: wp.array[vec3f],
+    # Outputs:
+    lambdas: wp.array[float32],
+):
+    # Retrieve the thread index as the contact index
+    cid = wp.tid()
+
+    # Skip if cid is greater than the number of contacts active in the model
+    if cid >= contact_model_num_contacts[0]:
+        return
+
+    # Retrieve the world index and the world-relative contact index for this contact
+    wid = contact_wid[cid]
+    cid_k = contact_cid[cid]
+
+    # Retrieve the world-specific time-step
+    dt = model_time_dt[wid]
+
+    # Compute block offset of the contact constraints within the global constraints array
+    contact_cts_start = model_info_total_cts_offset[wid] + data_info_contact_cts_group_offset[wid] + 3 * cid_k
+
+    # Pack the contact reaction into the global lambdas array,
+    # converting force units back to Lagrange impulse units via `dt`.
+    lambda_k = dt * contact_reaction[cid]
+    for k in range(3):
+        lambdas[contact_cts_start + k] = lambda_k[k]
+
+
 ###
 # Launchers
 ###
@@ -484,18 +597,18 @@ def update_constraints_info(
     Updates the active constraints info for the given model and current data.
 
     Args:
-        model (ModelKamino): The model container holding time-invariant data.
-        data (DataKamino): The solver container holding time-varying data.
+        model: The model container holding time-invariant data.
+        data: The solver container holding time-varying data.
     """
     wp.launch(
         _update_constraints_info,
         dim=model.info.num_worlds,
         inputs=[
-            # Inputs:
             model.info.num_joint_cts,
             data.info.num_limits,
             data.info.num_contacts,
-            # Outputs:
+        ],
+        outputs=[
             data.info.num_total_cts,
             data.info.num_limit_cts,
             data.info.num_contact_cts,
@@ -507,32 +620,39 @@ def update_constraints_info(
 
 
 def unpack_constraint_solutions(
-    lambdas: wp.array,
-    v_plus: wp.array,
+    lambdas: wp.array[wp.float32],
+    v_plus: wp.array[wp.float32],
     model: ModelKamino,
     data: DataKamino,
     limits: LimitsKamino | None = None,
     contacts: ContactsKamino | None = None,
+    reset_to_zero: bool = False,
 ):
     """
-    Unpacks the constraint reactions and velocities into respective data containers.
+    Unpacks the constraint-space forces and velocities arrays into the Kamino containers.
+
+    This operation is the inverse of :func:`pack_constraint_solutions`.
 
     Args:
-        lambdas (wp.array): The array of constraint reactions (i.e. lagrange multipliers).
-        v_plus (wp.array): The array of post-event constraint velocities.
-        data (DataKamino): The solver container holding time-varying data.
-        limits (LimitsKamino, optional): The limits container holding the joint-limit data.\n
-            If None, limits will be skipped.
-        contacts (ContactsKamino, optional): The contacts container holding the contact data.\n
-            If None, contacts will be skipped.
+        lambdas: The array of constraint reactions (i.e. lagrange multipliers).
+        v_plus: The array of post-event constraint velocities.
+        model: The model containing the time-invariant data of the simulation.
+        data: The solver container holding time-varying data.
+        limits: The limits container holding the joint-limit data. If ``None``, limits will be skipped.
+        contacts: The contacts container holding the contact data. If ``None``, contacts will be skipped.
+        reset_to_zero: If ``True``, the joint constraint reactions will be zeroed-out before unpacking.
     """
+    # Zero the joint constraint reactions if requested
+    # NOTE: limits and contacts are expected to be zeroed by the caller.
+    if reset_to_zero:
+        data.joints.lambda_j.zero_()
+
     # Unpack joint constraint multipliers if the model has joints
     if model.size.sum_of_num_joints > 0:
         wp.launch(
             kernel=_unpack_joint_constraint_solutions,
             dim=model.size.sum_of_num_joints,
             inputs=[
-                # Inputs:
                 model.time.inv_dt,
                 model.joints.wid,
                 model.joints.num_dynamic_cts,
@@ -542,9 +662,8 @@ def unpack_constraint_solutions(
                 model.joints.dynamic_cts_offset_total_cts,
                 model.joints.kinematic_cts_offset_total_cts,
                 lambdas,
-                # Outputs:
-                data.joints.lambda_j,
             ],
+            outputs=[data.joints.lambda_j],
             device=model.device,
         )
 
@@ -554,7 +673,6 @@ def unpack_constraint_solutions(
             kernel=_unpack_limit_constraint_solutions,
             dim=limits.model_max_limits_host,
             inputs=[
-                # Inputs:
                 model.time.inv_dt,
                 model.info.total_cts_offset,
                 data.info.limit_cts_group_offset,
@@ -563,10 +681,8 @@ def unpack_constraint_solutions(
                 limits.lid,
                 lambdas,
                 v_plus,
-                # Outputs:
-                limits.reaction,
-                limits.velocity,
             ],
+            outputs=[limits.reaction, limits.velocity],
             device=model.device,
         )
 
@@ -576,7 +692,6 @@ def unpack_constraint_solutions(
             kernel=_unpack_contact_constraint_solutions,
             dim=contacts.model_max_contacts_host,
             inputs=[
-                # Inputs:
                 model.time.inv_dt,
                 model.info.total_cts_offset,
                 data.info.contact_cts_group_offset,
@@ -585,10 +700,100 @@ def unpack_constraint_solutions(
                 contacts.cid,
                 lambdas,
                 v_plus,
-                # Outputs:
-                contacts.mode,
+            ],
+            outputs=[contacts.mode, contacts.reaction, contacts.velocity],
+            device=model.device,
+        )
+
+
+def pack_constraint_solutions(
+    lambdas: wp.array[wp.float32],
+    # TODO: v_plus: wp.array[wp.float32],
+    model: ModelKamino,
+    data: DataKamino,
+    limits: LimitsKamino | None = None,
+    contacts: ContactsKamino | None = None,
+    reset_to_zero: bool = True,
+):
+    """
+    Packs the constraint-space forces and velocities arrays from the Kamino containers.
+
+    This operation is the inverse of :func:`unpack_constraint_solutions`.
+
+    Args:
+        lambdas: The array of constraint reactions (i.e. lagrange multipliers).
+        v_plus: The array of post-event constraint velocities.
+        model: The model containing the time-invariant data of the simulation.
+        data: The solver container holding time-varying data.
+        limits: The limits container holding the joint-limit data. If ``None``, limits will be skipped.
+        contacts: The contacts container holding the contact data. If ``None``, contacts will be skipped.
+        reset_to_zero: If ``True``, the global constraint-space forces and velocities arrays will be zeroed-out before packing.
+    """
+    if reset_to_zero:
+        lambdas.zero_()
+        # TODO: v_plus.zero_()
+
+    if model.size.sum_of_num_joints > 0:
+        wp.launch(
+            kernel=_pack_joint_constraint_reactions,
+            dim=model.size.sum_of_num_joints,
+            inputs=[
+                model.time.dt,
+                model.joints.wid,
+                model.joints.num_dynamic_cts,
+                model.joints.num_kinematic_cts,
+                model.joints.dynamic_cts_offset_joint_cts,
+                model.joints.kinematic_cts_offset_joint_cts,
+                model.joints.dynamic_cts_offset_total_cts,
+                model.joints.kinematic_cts_offset_total_cts,
+                data.joints.lambda_j,
+                # TODO: data.joints.dr_j,
+            ],
+            outputs=[
+                lambdas,
+                # TODO: v_plus,
+            ],
+            device=model.device,
+        )
+
+    if limits is not None and limits.model_max_limits_host > 0:
+        wp.launch(
+            kernel=_pack_limit_constraint_reactions,
+            dim=limits.model_max_limits_host,
+            inputs=[
+                model.time.dt,
+                model.info.total_cts_offset,
+                data.info.limit_cts_group_offset,
+                limits.model_active_limits,
+                limits.wid,
+                limits.lid,
+                limits.reaction,
+                # TODO: limits.velocity,
+            ],
+            outputs=[
+                lambdas,
+                # TODO: v_plus,
+            ],
+            device=model.device,
+        )
+
+    if contacts is not None and contacts.model_max_contacts_host > 0:
+        wp.launch(
+            kernel=_pack_contact_constraint_reactions,
+            dim=contacts.model_max_contacts_host,
+            inputs=[
+                model.time.dt,
+                model.info.total_cts_offset,
+                data.info.contact_cts_group_offset,
+                contacts.model_active_contacts,
+                contacts.wid,
+                contacts.cid,
                 contacts.reaction,
-                contacts.velocity,
+                # TODO: contacts.velocity,
+            ],
+            outputs=[
+                lambdas,
+                # TODO: v_plus,
             ],
             device=model.device,
         )

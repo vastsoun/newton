@@ -18,6 +18,7 @@ from ..dynamics.wrenches import (
     compute_constraint_body_wrenches,
     compute_joint_dof_body_wrenches,
     convert_body_parent_wrenches_to_joint_reactions,
+    convert_joint_parent_wrenches_to_joint_reactions,
 )
 from ..geometry.contacts import ContactsKamino, convert_contacts_newton_to_kamino
 from ..kinematics.constraints import (
@@ -234,8 +235,15 @@ class SolutionMetricsNewton:
 
         # Perform the necessary conversions and extractions to obtain the
         # solver data in the expected format for the metrics computations
-        self._convert_body_parent_wrenches_to_joint_reactions(state.body_parent_f)
-        self._extract_constraint_reactions()
+        if state.joint_parent_f is not None:
+            self._convert_joint_parent_wrenches_to_joint_reactions(state.joint_parent_f)
+            self._extract_constraint_reactions()
+        elif state.body_parent_f is not None:
+            self._convert_body_parent_wrenches_to_joint_reactions(state.body_parent_f)
+            self._extract_constraint_reactions()
+        else:
+            # TODO: Add an additional solver-specific path to extract the constraint reactions from the internal solver data.
+            raise ValueError("Expected either 'state.body_parent_f' or 'state.joint_parent_f', but both are None.")
 
         # Update all dynamics quantities based
         # on the extracted constraint reactions
@@ -336,6 +344,20 @@ class SolutionMetricsNewton:
         """
         convert_body_parent_wrenches_to_joint_reactions(
             body_parent_f=body_parent_f,
+            model=self._model,
+            data=self._data,
+            control=self._control,
+            limits=self._limits,
+            reset_to_zero=True,
+        )
+
+    def _convert_joint_parent_wrenches_to_joint_reactions(self, joint_parent_f: wp.array[wp.spatial_vectorf]):
+        """
+        Converts Newton joint-parent wrenches `newton.State.joint_parent_f` data
+        to Kamino `StateKamino.lambda_j` and `DataKamino.joints.lambda_l_j`.
+        """
+        convert_joint_parent_wrenches_to_joint_reactions(
+            joint_parent_f=joint_parent_f,
             model=self._model,
             data=self._data,
             control=self._control,

@@ -54,14 +54,14 @@ _vec11 = wp.types.vector(length=11, dtype=wp.float32)
 
 def _mjw_eq_type_connect() -> int:
     """Lazy import of ``mujoco_warp._src.types.EqType.CONNECT`` as an int."""
-    from mujoco_warp._src.types import EqType  # noqa: PLC0415
+    from mujoco_warp._src.types import EqType
 
     return int(EqType.CONNECT)
 
 
 def _mjw_constraint_type_equality() -> int:
     """Lazy import of ``mujoco_warp._src.types.ConstraintType.EQUALITY`` as an int."""
-    from mujoco_warp._src.types import ConstraintType  # noqa: PLC0415
+    from mujoco_warp._src.types import ConstraintType
 
     return int(ConstraintType.EQUALITY)
 
@@ -461,9 +461,7 @@ def populate_joint_parent_f_from_mjw_connect_equalities(
         return
 
     if connect_constraint_force is None:
-        connect_constraint_force = wp.zeros(
-            shape=(nworld, neq), dtype=wp.spatial_vectorf, device=model.device
-        )
+        connect_constraint_force = wp.zeros(shape=(nworld, neq), dtype=wp.spatial_vectorf, device=model.device)
     else:
         connect_constraint_force.zero_()
 

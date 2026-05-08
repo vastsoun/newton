@@ -250,6 +250,7 @@ class TestSolverMetricsNewton(unittest.TestCase):
             builder_kwargs={"z_offset": -1e-5},
             max_world_contacts=8,
             device=self.default_device,
+            request_state_attributes=("body_parent_f",),
         )
 
         # Create a SolutionMetricsNewton instance with the test model and time-step
@@ -290,6 +291,7 @@ class TestSolverMetricsNewton(unittest.TestCase):
             builder_kwargs={"z_offset": -1e-5},
             max_world_contacts=32,
             device=self.default_device,
+            request_state_attributes=("body_parent_f",),
         )
 
         # Create a SolutionMetricsNewton instance with the test model and time-step

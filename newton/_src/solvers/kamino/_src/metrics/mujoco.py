@@ -9,6 +9,7 @@ from functools import cache
 
 import warp as wp
 
+from .....sim import Model, State
 from .....solvers.solver import SolverBase
 from ..core.model import ModelKamino
 from ..kinematics.limits import LimitsKamino
@@ -19,6 +20,7 @@ from ..kinematics.limits import LimitsKamino
 
 __all__ = [
     "extract_constraint_reactions_mujoco_warp",
+    "populate_joint_parent_f_from_mjw_connect_equalities",
 ]
 
 
@@ -27,6 +29,15 @@ __all__ = [
 ###
 
 wp.set_module_options({"enable_backward": False})
+
+
+###
+# Local types
+###
+
+# Layout-compatible with ``mujoco_warp._src.types.vec11`` so kernels can read
+# ``efc_data`` rows without forcing a top-level ``mujoco_warp`` import.
+_vec11 = wp.types.vector(length=11, dtype=wp.float32)
 
 
 ###
@@ -39,6 +50,116 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Kernels
 ###
+
+
+def _mjw_eq_type_connect() -> int:
+    """Lazy import of ``mujoco_warp._src.types.EqType.CONNECT`` as an int."""
+    from mujoco_warp._src.types import EqType
+
+    return int(EqType.CONNECT)
+
+
+def _mjw_constraint_type_equality() -> int:
+    """Lazy import of ``mujoco_warp._src.types.ConstraintType.EQUALITY`` as an int."""
+    from mujoco_warp._src.types import ConstraintType
+
+    return int(ConstraintType.EQUALITY)
+
+
+@wp.kernel
+def _extract_mjw_connect_constraint_force(
+    # Inputs:
+    mjw_eq_type: wp.array[wp.int32],
+    mjw_efc_type: wp.array2d[wp.int32],
+    mjw_efc_id: wp.array2d[wp.int32],
+    mjw_efc_force: wp.array2d[wp.float32],
+    mjw_ne: wp.array[wp.int32],
+    # Outputs:
+    connect_constraint_force: wp.array2d[wp.spatial_vectorf],
+):
+    """
+    Reads the cartesian constraint force of each MuJoCo CONNECT equality from
+    ``efc.force`` and stores it (as a 3-D force in ``spatial_top``, zeros in
+    ``spatial_bottom``) in a per-equality output buffer.
+
+    The kernel scans the ``efc`` rows up to ``ne`` and matches by ``(efc.type ==
+    EQUALITY, efc.id == eq)`` because mujoco_warp allocates ``efc`` rows via
+    ``atomic_add`` -- the row order is non-deterministic.
+    """
+    wid, eq = wp.tid()
+    if mjw_eq_type[eq] != wp.static(_mjw_eq_type_connect()):
+        return
+
+    ne = mjw_ne[wid]
+    efcid = int(-1)
+    for i in range(ne):
+        if mjw_efc_type[wid, i] == wp.static(_mjw_constraint_type_equality()) and mjw_efc_id[wid, i] == eq:
+            efcid = i
+            break
+    if efcid < 0:
+        return
+
+    fx = mjw_efc_force[wid, efcid + 0]
+    fy = mjw_efc_force[wid, efcid + 1]
+    fz = mjw_efc_force[wid, efcid + 2]
+    connect_constraint_force[wid, eq] = wp.spatial_vector(wp.vec3(fx, fy, fz), wp.vec3(0.0))
+
+
+@wp.kernel
+def _accumulate_mjw_connect_force_to_joint_parent_f(
+    # Inputs:
+    mjc_eq_to_newton_jnt: wp.array2d[wp.int32],
+    mjw_eq_data: wp.array2d[_vec11],
+    connect_constraint_force: wp.array2d[wp.spatial_vectorf],
+    joint_parent: wp.array[wp.int32],
+    joint_child: wp.array[wp.int32],
+    body_q: wp.array[wp.transform],
+    body_com: wp.array[wp.vec3],
+    # Outputs:
+    joint_parent_f: wp.array[wp.spatial_vectorf],
+):
+    """
+    Accumulates the per-equality CONNECT constraint force into ``state.joint_parent_f``
+    (Newton convention: world frame, moment referenced to the child body's COM).
+
+    For each CONNECT equality mapped to a Newton loop-closure joint via
+    ``mjc_eq_to_newton_jnt``, the force on the child body (= negation of mujoco_warp's
+    ``efc.force``, since the CONNECT Jacobian is ``pos1 - pos2``) is applied at
+    ``anchor1`` (in body1=parent's local frame, mapped to world). The moment is
+    computed about the child body's COM in world frame.
+
+    Multiple equalities mapping to the same joint accumulate via ``wp.atomic_add``.
+    The output buffer must be zeroed by the caller before invocation.
+    """
+    wid, eq = wp.tid()
+
+    jnt = mjc_eq_to_newton_jnt[wid, eq]
+    if jnt == -1:
+        return
+
+    # Force on child body. mujoco_warp's CONNECT Jacobian is ``pos1 - pos2``, so
+    # ``efc.force`` is the force on body1 (parent); negate to get the force on
+    # body2 (child).
+    f = -wp.spatial_top(connect_constraint_force[wid, eq])
+
+    # ``eq_data[0:3]`` is anchor1 in body1=parent's local frame. Map to world.
+    data = mjw_eq_data[wid % mjw_eq_data.shape[0], eq]
+    anchor1_local = wp.vec3(data[0], data[1], data[2])
+
+    parent = joint_parent[jnt]
+    if parent >= 0:
+        anchor1 = wp.transform_point(body_q[parent], anchor1_local)
+    else:
+        anchor1 = anchor1_local
+
+    # Child body COM in world frame.
+    child = joint_child[jnt]
+    child_com_world = wp.transform_point(body_q[child], body_com[child])
+
+    r = anchor1 - child_com_world
+    moment = wp.cross(r, f)
+
+    wp.atomic_add(joint_parent_f, jnt, wp.spatial_vector(f, moment))
 
 
 @cache
@@ -292,6 +413,86 @@ def unpack_mjw_joint_limited_to_limits_kamino(
             limits_kamino.data.reaction,
         ],
         device=model_kamino.device,
+    )
+
+
+def populate_joint_parent_f_from_mjw_connect_equalities(
+    solver: SolverBase,
+    model: Model,
+    state: State,
+    *,
+    connect_constraint_force: wp.array | None = None,
+):
+    """
+    Populates ``state.joint_parent_f`` with the per-joint constraint wrench induced
+    by MuJoCo CONNECT equality constraints (loop-closure ball joints).
+
+    The output convention matches :attr:`newton.State.joint_parent_f`: world frame,
+    moment referenced to the child body's center of mass. Joints not associated with
+    a CONNECT equality are left untouched -- the caller is expected to zero
+    ``state.joint_parent_f`` (and the optional ``connect_constraint_force`` buffer)
+    before invocation.
+
+    Args:
+        solver: The :class:`SolverMuJoCo` instance whose ``mjw_data.efc.force`` is read.
+        model: The Newton :class:`Model` providing joint topology and body COMs.
+        state: The Newton :class:`State` whose ``joint_parent_f`` is accumulated into.
+            Must have been allocated via ``Model.request_state_attributes("joint_parent_f")``.
+        connect_constraint_force: Optional pre-allocated per-equality scratch buffer
+            of shape ``(nworld, neq)`` and dtype ``wp.spatial_vectorf``. If ``None``,
+            a fresh buffer is allocated on the model's device.
+    """
+    from newton._src.solvers.mujoco.solver_mujoco import SolverMuJoCo  # noqa: PLC0415
+
+    if not isinstance(solver, SolverMuJoCo):
+        raise TypeError(f"`solver` must be an instance of `newton.solvers.SolverMuJoCo`; got {type(solver).__name__}.")
+    if solver.use_mujoco_cpu:
+        raise NotImplementedError(
+            "populate_joint_parent_f_from_mjw_connect_equalities only supports the "
+            "mujoco_warp GPU backend (SolverMuJoCo(use_mujoco_cpu=False))."
+        )
+
+    if state.joint_parent_f is None or model.joint_count == 0:
+        return
+
+    nworld = solver.mjw_data.nworld
+    neq = solver.mjw_model.neq
+    if neq == 0:
+        return
+
+    if connect_constraint_force is None:
+        connect_constraint_force = wp.zeros(shape=(nworld, neq), dtype=wp.spatial_vectorf, device=model.device)
+    else:
+        connect_constraint_force.zero_()
+
+    wp.launch(
+        kernel=_extract_mjw_connect_constraint_force,
+        dim=(nworld, neq),
+        inputs=[
+            solver.mjw_model.eq_type,
+            solver.mjw_data.efc.type,
+            solver.mjw_data.efc.id,
+            solver.mjw_data.efc.force,
+            solver.mjw_data.ne,
+        ],
+        outputs=[connect_constraint_force],
+        device=model.device,
+    )
+
+    wp.launch(
+        kernel=_accumulate_mjw_connect_force_to_joint_parent_f,
+        dim=(nworld, neq),
+        inputs=[
+            solver.mjc_eq_to_newton_jnt,
+            solver.mjw_model.eq_data,
+            connect_constraint_force,
+            model.joint_parent,
+            model.joint_child,
+            state.body_q,
+            model.body_com,
+        ],
+        outputs=[state.joint_parent_f],
+        device=model.device,
     )
 
 

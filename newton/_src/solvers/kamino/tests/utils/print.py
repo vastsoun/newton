@@ -243,9 +243,11 @@ def print_data(data: DataKamino, info=True):
     print(f"data.joints.q_j_ref: {data.joints.q_j_ref}")
     print(f"data.joints.dq_j_ref: {data.joints.dq_j_ref}")
     print(f"data.joints.j_w_j: {data.joints.j_w_j}")
-    print(f"data.joints.j_w_a_j: {data.joints.j_w_a_j}")
-    print(f"data.joints.j_w_c_j: {data.joints.j_w_c_j}")
-    print(f"data.joints.j_w_l_j: {data.joints.j_w_l_j}")
+    print(f"data.joints.j_w_j_dof_act: {data.joints.j_w_j_dof_act}")
+    print(f"data.joints.j_w_j_cts_dyn: {data.joints.j_w_j_cts_dyn}")
+    print(f"data.joints.j_w_j_cts_kin: {data.joints.j_w_j_cts_kin}")
+    print(f"data.joints.j_w_j_cts_lim: {data.joints.j_w_j_cts_lim}")
+    print(f"data.joints.j_w_j_cts_fri: {data.joints.j_w_j_cts_fri}")
     # Print the geometry state data
     print(f"data.geoms.pose: {data.geoms.pose}")
 

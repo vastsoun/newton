@@ -569,6 +569,10 @@ class SolverKamino(SolverBase):
             dt=dt,
         )
 
+        # Finalize the per-joint wrenches data arrays if they are requested
+        if state_out.body_parent_f is not None or state_out.joint_parent_f is not None:
+            self._solver_kamino._data.joints.finalize_wrenches()
+
         # If the `body_parent_f` extended attribute array is requested and the model
         # has joints, convert the joint constraint wrenches to the body parent wrenches
         if state_out.body_parent_f is not None and self.model.joint_count > 0:

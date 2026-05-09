@@ -253,7 +253,7 @@ class SolutionMetricsNewton:
         self._update_dynamics()
 
         ###
-        # Computations using self._data synchronized with state_p
+        # Computations to recover the constraint-space velocities and reactions
         ###
 
         # Compute the post-event constraint-space velocities given
@@ -262,6 +262,10 @@ class SolutionMetricsNewton:
 
         # Perform the necessary conversions and extractions to obtain the
         # solver data in the expected format for the metrics computations
+
+        # First attempt to extract the constraint reactions from data cached in the Newton state:
+        # - `state.joint_parent_f` contains the per-joint wrenches applied joint parents
+        # - `state.body_parent_f` contains the per-body wrenches applied joint parents
         if state.joint_parent_f is not None:
             self._convert_joint_parent_wrenches_to_joint_reactions(state.joint_parent_f)
             self._extract_constraint_reactions()

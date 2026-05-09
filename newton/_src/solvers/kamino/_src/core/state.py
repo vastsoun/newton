@@ -63,6 +63,16 @@ class StateKamino:
     """
 
     ###
+    # Meta-data
+    ###
+
+    src: State | None = None
+    """
+    A source :class:`newton.State` object that this :class:`StateKamino` object is wrapping.
+    If ``None``, the :class:`StateKamino` object is not associated with a :class:`newton.State` object.
+    """
+
+    ###
     # Attributes
     ###
 
@@ -116,6 +126,26 @@ class StateKamino:
     """
     Array of generalized joint constraint forces.\n
     Shape is ``(sum_of_num_joint_cts,)`` and dtype is :class:`float32`.
+    """
+
+    ###
+    # Auxiliary
+    ###
+
+    w_i_j: wp.array[wp.spatial_vectorf] | None = None
+    """
+    Array of per-body wrenches applied by associated joints, expressed in
+    world coordinates, and referenced w.r.t. the body's center of mass (COM).\n
+    First three entries: linear force [N]; last three: torque [N·m].\n
+    Shape is ``(num_bodies,)`` and dtype is :class:`wp.spatial_vectorf`.
+    """
+
+    j_w_j: wp.array[wp.spatial_vectorf] | None = None
+    """
+    Array of per-joint wrenches applied by the associated base/parent body onto the respective
+    child/follower, expressed in world coordinates, and referenced w.r.t. the joint frame.\n
+    First three entries: linear force [N]; last three: torque [N·m].\n
+    Shape is ``(num_joints,)`` and dtype is :class:`wp.spatial_vectorf`.
     """
 
     ###
@@ -299,6 +329,7 @@ class StateKamino:
 
         # Create a new StateKamino object, aliasing the relevant data from the input newton.State
         state_kamino = StateKamino(
+            src=state,
             q_i=state.body_q,
             u_i=state.body_qd.view(dtype=vec6f),  # TODO: change to wp.spatial_vector
             w_i=body_f_total.view(dtype=vec6f),  # TODO: change to wp.spatial_vector
@@ -307,6 +338,8 @@ class StateKamino:
             q_j_p=joint_q_prev,
             dq_j=state.joint_qd,
             lambda_j=joint_lambdas,
+            w_i_j=state.body_parent_f,
+            j_w_j=state.joint_parent_f,
         )
 
         # Optionally convert body poses to CoM frame

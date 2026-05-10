@@ -569,28 +569,37 @@ class SolverKamino(SolverBase):
             dt=dt,
         )
 
-        # Finalize the per-joint wrenches data arrays if they are requested
-        if state_out.body_parent_f is not None or state_out.joint_parent_f is not None:
+        # If `body_parent_f` and/or `joint_parent_f` are requested, compute the per-joint
+        # parent wrenches first and (optionally) accumulate them into the per-body parent
+        # wrenches. `compute_body_parent_wrenches` derives body-parent wrenches from the
+        # per-joint ones so we must always have a populated `joint_parent_f` first.
+        if (state_out.body_parent_f is not None or state_out.joint_parent_f is not None) and self.model.joint_count > 0:
+            # First ensure that the joint wrench buffers are allocated
             self._solver_kamino._data.joints.finalize_wrenches()
 
-        # If the `body_parent_f` extended attribute array is requested and the model
-        # has joints, convert the joint constraint wrenches to the body parent wrenches
-        if state_out.body_parent_f is not None and self.model.joint_count > 0:
-            self._kamino.compute_body_parent_wrenches(
-                model=self._model_kamino,
-                data=self._solver_kamino._data,
-                body_parent_f=state_out.body_parent_f,
+            # Use the requested output slot if available, otherwise use the internal buffer
+            joint_parent_f = (
+                state_out.joint_parent_f
+                if state_out.joint_parent_f is not None
+                else self._solver_kamino._data.joints.j_w_j
             )
 
-        # If the `joint_parent_f` extended attribute array is requested and the model
-        # has joints, convert the joint constraint wrenches to the joint parent wrenches
-        if state_out.joint_parent_f is not None and self.model.joint_count > 0:
             self._kamino.compute_joint_parent_wrenches(
+                joint_parent_f=joint_parent_f,
                 model=self._model_kamino,
                 data=self._solver_kamino._data,
                 jacobians=self._solver_kamino._jacobians,
-                joint_parent_f=state_out.joint_parent_f,
+                lambdas_offsets=self._solver_kamino._problem_fd.data.vio,
+                lambdas_data=self._solver_kamino._solver_fd.data.solution.lambdas,
+                limits=self._solver_kamino._limits,
             )
+
+            if state_out.body_parent_f is not None:
+                self._kamino.compute_body_parent_wrenches(
+                    body_parent_f=state_out.body_parent_f,
+                    joint_parent_f=joint_parent_f,
+                    model=self._model_kamino,
+                )
 
         # Convert back from Kamino CoM-frame to Newton body-frame poses using
         # the same corrected body-com offsets as the forward conversion.

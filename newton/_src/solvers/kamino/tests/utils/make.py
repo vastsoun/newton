@@ -127,7 +127,7 @@ def make_containers(
     model.time.inv_dt.fill_(wp.float32(1.0 / dt))
 
     # Create a data and state container
-    data = model.data()
+    data = model.data(joint_wrenches=True)
     state = model.state()
 
     # Create the limits container
@@ -206,8 +206,8 @@ def make_test_problem(
     model.time.inv_dt.fill_(wp.float32(1.0 / dt))
 
     # Create a model state container
-    data = model.data(device=device)
-    state = model.state(device=device)
+    data = model.data(joint_wrenches=True)
+    state = model.state()
 
     # Construct and allocate the limits container
     limits = None

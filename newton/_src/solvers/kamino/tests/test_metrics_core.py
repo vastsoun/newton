@@ -79,7 +79,7 @@ TOL_STRICT_ATOL = 1e-5
 # PADMM solution (the active lambdas, and any scalar metric derived from
 # them). The PADMM cold-start defaults are good to a few parts in ``1e-4``
 # on the small builders used here.
-TOL_SOLVED_RTOL = 1e-4
+TOL_SOLVED_RTOL = 1e-5
 TOL_SOLVED_ATOL = 1e-5
 
 
@@ -680,6 +680,8 @@ def assert_metrics_data_allclose(
     for field in fields:
         arr_lhs = getattr(data_lhs, field)
         arr_rhs = getattr(data_rhs, field)
+        msg.info("[LHS] SolutionMetricsData.%s: %s", field, arr_lhs.numpy())
+        msg.info("[RHS] SolutionMetricsData.%s: %s\n", field, arr_rhs.numpy())
         testcase.assertIsNotNone(arr_lhs, msg=f"SolutionMetricsData.{field} is None on the metrics side.")
         testcase.assertIsNotNone(arr_rhs, msg=f"SolutionMetricsData.{field} is None on the solver side.")
         np.testing.assert_allclose(
@@ -939,7 +941,7 @@ class TestSolverMetricsNewton(unittest.TestCase):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
-        self.verbose = test_context.verbose
+        self.verbose = True
         self.seed = 42
 
         if self.verbose:

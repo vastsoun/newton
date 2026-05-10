@@ -191,13 +191,13 @@ class SolutionMetricsNewton:
         )
 
         # Finalize the internal SolutionMetrics instance
-        self._metrics = SolutionMetrics(model=self._model)
+        self._metrics = SolutionMetrics(model=self._model, data=self._data)
 
         # Allocate metrics data on the target device
         with wp.ScopedDevice(self.device):
             self._v_plus = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=wp.float32)
             self._lambdas = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=wp.float32)
-            self._sigma = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=wp.float32)
+            self._sigma = wp.zeros(self._model.size.num_worlds, dtype=wp.vec2f)
 
     def evaluate(
         self,
@@ -300,10 +300,9 @@ class SolutionMetricsNewton:
             sigma=self._sigma,
             lambdas=self._lambdas,
             v_plus=self._v_plus,
-            data=self._data,
             state_p=self._state_p,
-            problem=self._problem,
             jacobians=self._jacobians,
+            problem=self._problem,
             limits=self._limits,
             contacts=self._contacts,
         )

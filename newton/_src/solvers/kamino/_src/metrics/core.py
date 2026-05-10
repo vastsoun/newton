@@ -105,6 +105,15 @@ class SolutionMetricsNewton:
         return self._model.device
 
     @property
+    def model(self) -> ModelKamino:
+        """
+        Returns the Kamino model wrapped by the metrics container.
+        """
+        if self._model is None:
+            raise RuntimeError("SolutionMetricsNewton data is not initialized. Call finalize() first.")
+        return self._model
+
+    @property
     def data(self) -> SolutionMetricsData:
         """
         Returns the solution metrics data container.

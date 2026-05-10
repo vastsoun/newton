@@ -1196,6 +1196,14 @@ class SolutionMetrics:
         return self._device
 
     @property
+    def model(self) -> ModelKamino:
+        """
+        Returns the Kamino model the metrics container was finalized against.
+        """
+        self._assert_finalized()
+        return self._model
+
+    @property
     def data(self) -> SolutionMetricsData:
         """
         Returns the metrics data container.

@@ -49,6 +49,7 @@ import numpy as np
 import warp as wp
 
 from ..core.types import float32, int32, int64
+from ..solvers.metrics import SolutionMetrics
 from ..utils import logger as msg
 from .core import SolutionMetricsNewton
 
@@ -185,14 +186,19 @@ def _write_log_row_int32(
 
 class SolutionMetricsLogger:
     """
-    Records :class:`SolutionMetricsNewton` history on the metrics' device.
+    Records :class:`SolutionMetricsData` history on the metrics' device.
+
+    The logger accepts either a :class:`SolutionMetricsNewton` wrapper or a
+    raw :class:`SolutionMetrics` instance. Both expose the same trio of
+    public properties (``model``, ``data``, ``device``) that the logger
+    relies on, so it works against either backend interchangeably.
 
     The logger allocates one Warp 2-D buffer per
     :class:`SolutionMetricsData` field of shape
     ``(max_frames, num_worlds)`` on the same device as the wrapped
-    :class:`SolutionMetricsNewton`. Each call to :meth:`log` appends the
-    current per-world values from :attr:`SolutionMetricsNewton.data` into
-    the next slot of the rolling window.
+    metrics container. Each call to :meth:`log` appends the current
+    per-world values from ``metrics.data`` into the next slot of the
+    rolling window.
 
     The buffer-overflow policy is controlled by :class:`Mode`:
 
@@ -241,7 +247,7 @@ class SolutionMetricsLogger:
 
     def __init__(
         self,
-        metrics: SolutionMetricsNewton,
+        metrics: SolutionMetricsNewton | SolutionMetrics,
         max_frames: int,
         mode: Mode = Mode.BOUNDED,
         decimation: int = 1,
@@ -251,7 +257,10 @@ class SolutionMetricsLogger:
         Initializes the solution-metrics logger.
 
         Args:
-            metrics: The :class:`SolutionMetricsNewton` instance to record from.
+            metrics: The metrics container to record from. Either a
+                :class:`SolutionMetricsNewton` wrapper (Newton front-end API)
+                or a raw :class:`SolutionMetrics` instance (the back-end
+                container used internally by :class:`SolverKaminoImpl`).
                 Must have been finalized prior to constructing the logger.
             max_frames: The maximum number of frames recorded by the logger.
                 Must be a strictly positive integer.
@@ -260,16 +269,23 @@ class SolutionMetricsLogger:
                 :meth:`log` call writes a new frame. Defaults to ``1`` (no
                 decimation). Must be a strictly positive integer.
             dt: Optional simulation time step used to scale the time axis on
-                plots. If ``None`` the time step is read from
-                ``metrics._model.time.dt[0]`` if available, otherwise the time
-                axis falls back to a unit-less "Simulation Step" labelling.
+                plots. If a positive value is supplied it is pinned for the
+                lifetime of the logger. If ``None``, the time step is read
+                live from ``metrics.model.time.dt[0]`` on every access (so
+                values populated by the solver after logger construction are
+                picked up); non-positive or unreadable values fall back to a
+                unit-less "Simulation Step" labelling.
         """
-        if not isinstance(metrics, SolutionMetricsNewton):
-            raise TypeError("Expected 'metrics' to be of type `SolutionMetricsNewton`.")
-        if metrics._metrics is None or metrics._model is None:
+        if not isinstance(metrics, (SolutionMetricsNewton, SolutionMetrics)):
+            raise TypeError("Expected 'metrics' to be of type `SolutionMetricsNewton` or `SolutionMetrics`.")
+        try:
+            # `data` raises RuntimeError on either container when not finalized.
+            _ = metrics.data
+            _ = metrics.model
+        except RuntimeError as e:
             raise RuntimeError(
-                "SolutionMetricsLogger requires a finalized `SolutionMetricsNewton` instance. Call finalize() first."
-            )
+                "SolutionMetricsLogger requires a finalized metrics instance. Call finalize() first."
+            ) from e
         if not isinstance(max_frames, int) or max_frames <= 0:
             raise ValueError(f"Expected 'max_frames' to be a positive integer, got {max_frames!r}.")
         if not isinstance(decimation, int) or decimation <= 0:
@@ -279,25 +295,24 @@ class SolutionMetricsLogger:
 
         self.initialize_plt()
 
-        self._metrics: SolutionMetricsNewton = metrics
+        self._metrics: SolutionMetricsNewton | SolutionMetrics = metrics
         self._max_frames: int = int(max_frames)
         self._mode: SolutionMetricsLogger.Mode = mode
         self._decimation: int = int(decimation)
         self._device: wp.DeviceLike = metrics.device
-        self._num_worlds: int = int(metrics._model.size.num_worlds)
+        self._num_worlds: int = int(metrics.model.size.num_worlds)
 
-        # Resolve the simulation time step. Prefer the explicit override; fall back to
-        # the metrics-side `time.dt[0]`. If neither is available the time axis will
-        # be reported in simulation steps.
+        # Resolve the simulation time step. An explicit positive ``dt`` is pinned
+        # for the lifetime of the logger; otherwise the value is read live from
+        # ``metrics.model.time.dt[0]`` on every access so updates the solver
+        # makes after logger construction (e.g. via ``set_uniform_timestep`` in
+        # ``SolverKamino.step``) are reflected in the time axis.
         if dt is not None:
             if not isinstance(dt, (int, float)) or float(dt) <= 0.0:
                 raise ValueError(f"Expected 'dt' to be a positive number, got {dt!r}.")
-            self._dt: float | None = float(dt)
+            self._dt_override: float | None = float(dt)
         else:
-            try:
-                self._dt = float(metrics._model.time.dt.numpy()[0])
-            except Exception:
-                self._dt = None
+            self._dt_override = None
 
         # Internal counters: ``_call_count`` tracks every :meth:`log` invocation (used
         # by the decimation gate); ``_frames_total`` tracks the number of writes that
@@ -372,8 +387,28 @@ class SolutionMetricsLogger:
 
     @property
     def dt(self) -> float | None:
-        """Returns the resolved simulation time step, or ``None`` if unavailable."""
-        return self._dt
+        """Returns the resolved simulation time step, or ``None`` if unavailable.
+
+        If an explicit positive ``dt`` was provided to the constructor it is
+        returned as-is; otherwise the value is read live from
+        ``metrics.model.time.dt[0]`` so updates made by the solver after the
+        logger was constructed are reflected here. Non-positive (or
+        unreadable) values yield ``None``.
+        """
+        return self._resolve_dt()
+
+    def _resolve_dt(self) -> float | None:
+        """Resolve the current effective time step.
+
+        See :attr:`dt` for the resolution policy.
+        """
+        if self._dt_override is not None:
+            return self._dt_override
+        try:
+            value = float(self._metrics.model.time.dt.numpy()[0])
+        except Exception:
+            return None
+        return value if value > 0.0 else None
 
     @property
     def num_logged_frames(self) -> int:
@@ -492,7 +527,8 @@ class SolutionMetricsLogger:
         to a unit-less simulation-step axis (also scaled by ``decimation``).
         """
         n = self.num_logged_frames
-        scale = (self._dt if self._dt is not None else 1.0) * float(self._decimation)
+        dt = self._resolve_dt()
+        scale = (dt if dt is not None else 1.0) * float(self._decimation)
         return np.arange(n, dtype=np.float32) * scale
 
     @staticmethod
@@ -545,7 +581,7 @@ class SolutionMetricsLogger:
             raise ValueError(f"Plot output directory '{path}' does not exist. Please create it before calling plot().")
 
         time = self.time_axis()
-        x_label = "Time (s)" if self._dt is not None else "Simulation Step"
+        x_label = "Time (s)" if self._resolve_dt() is not None else "Simulation Step"
 
         np_data = self.to_numpy()
         for field in _SCALAR_METRIC_FIELDS:

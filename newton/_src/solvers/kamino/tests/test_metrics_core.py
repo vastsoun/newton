@@ -57,6 +57,11 @@ from newton._src.solvers.kamino._src.kinematics.jacobians import (
 )
 from newton._src.solvers.kamino._src.kinematics.limits import LimitsKamino
 from newton._src.solvers.kamino._src.metrics import SolutionMetricsLogger, SolutionMetricsNewton
+from newton._src.solvers.kamino._src.metrics.logging import (
+    _METRIC_EQUATIONS,
+    _METRIC_TITLES,
+    _SCALAR_METRIC_FIELDS,
+)
 from newton._src.solvers.kamino._src.solvers.metrics import SolutionMetrics, SolutionMetricsData
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -1466,6 +1471,522 @@ class TestSolutionMetricsLogger(unittest.TestCase):
                 for field in _SCALAR_METRIC_FIELDS_FOR_TEST:
                     fig_path = self.output_path / f"{field}.pdf"
                     self.assertTrue(fig_path.is_file(), msg=f"expected plot at {fig_path}")
+
+
+###
+# Stepwise per-builder comparison helpers
+###
+
+
+def _resolve_solver_metrics(solver: newton.solvers.SolverKamino) -> SolutionMetrics:
+    """Return the :class:`SolverKamino`-internal :class:`SolutionMetrics` reference.
+
+    The reference is populated on every :meth:`SolverKamino.step` call when
+    the solver is configured with ``compute_solution_metrics=True`` (which
+    :func:`_make_zero_stab_solver_config` enables). Raises :class:`RuntimeError`
+    if the solver was constructed without that flag, so the per-step
+    comparison cannot proceed against a missing reference.
+    """
+    impl_metrics = solver._solver_kamino.metrics
+    if impl_metrics is None:
+        raise RuntimeError(
+            "SolverKamino was not configured with `compute_solution_metrics=True`; "
+            "the per-step comparison cannot proceed."
+        )
+    return impl_metrics
+
+
+def _step_and_log_trajectory(
+    setup: TestSetup,
+    metrics: SolutionMetricsNewton,
+    logger_metrics: SolutionMetricsLogger,
+    logger_solver: SolutionMetricsLogger,
+    num_steps: int,
+):
+    """Step the solver ``num_steps`` times and log both metrics each step.
+
+    Each iteration:
+
+    #. Runs Newton-side collision detection at the current ``state_p``.
+    #. Steps :class:`SolverKamino`.
+    #. If the post-step Newton state advertises a ``joint_parent_f``
+       buffer, synthesises an exact per-joint wrench from the solver's
+       Jacobians and lambdas via :func:`make_joint_parent_f_from_solver_state`
+       and copies it into the state. (The solver itself only writes
+       ``body_parent_f`` natively; the synthesised version is exact for
+       every non-FREE joint, including non-leaf joints in tree
+       articulations and joints in kinematic loops.)
+    #. Refreshes ``contacts.force`` so the metrics-side ``contacts.force``
+       matches the values the solver consumed internally.
+    #. Calls :meth:`SolutionMetricsNewton.evaluate`.
+    #. Logs both the wrapper-side and solver-internal metrics.
+    #. Swaps ``state``/``state_p`` so the latest state becomes the input
+       to the next step.
+
+    Args:
+        setup: The per-builder Newton-side scaffolding.
+        metrics: The :class:`SolutionMetricsNewton` instance under test.
+        logger_metrics: Logger wrapping ``metrics``.
+        logger_solver: Logger wrapping the solver-internal :class:`SolutionMetrics`.
+        num_steps: Number of simulation steps to execute and log.
+    """
+    for _ in range(num_steps):
+        setup.model.collide(setup.state_p, setup.contacts)
+        setup.solver.step(
+            state_in=setup.state_p,
+            state_out=setup.state,
+            control=setup.control,
+            contacts=setup.contacts,
+            dt=setup.dt,
+        )
+        if setup.state.joint_parent_f is not None:
+            joint_parent_f_synth = make_joint_parent_f_from_solver_state(setup.solver)
+            wp.copy(setup.state.joint_parent_f, joint_parent_f_synth)
+        setup.solver.update_contacts(setup.contacts, setup.state)
+        metrics.evaluate(
+            state=setup.state,
+            state_p=setup.state_p,
+            control=setup.control,
+            contacts=setup.contacts,
+        )
+        logger_metrics.log()
+        logger_solver.log()
+        setup.state, setup.state_p = setup.state_p, setup.state
+
+
+def _assert_loggers_match(
+    testcase: unittest.TestCase,
+    logger_metrics: SolutionMetricsLogger,
+    logger_solver: SolutionMetricsLogger,
+    *,
+    fields: tuple[str, ...],
+    rtol: float = TOL_SOLVED_RTOL,
+    atol: float = TOL_SOLVED_ATOL,
+):
+    """Cross-check the two loggers' recorded data field-by-field.
+
+    Compares the full ``(num_logged_frames, num_worlds)`` arrays for every
+    entry in ``fields``, then iterates step-by-step so the failure message
+    surfaces the first divergent step.
+    """
+    np_metrics = logger_metrics.to_numpy()
+    np_solver = logger_solver.to_numpy()
+
+    for field in fields:
+        arr_metrics = np_metrics[field]
+        arr_solver = np_solver[field]
+        testcase.assertEqual(
+            arr_metrics.shape,
+            arr_solver.shape,
+            msg=f"SolutionMetricsData.{field} shape mismatch: {arr_metrics.shape} vs {arr_solver.shape}",
+        )
+        np.testing.assert_allclose(
+            arr_metrics,
+            arr_solver,
+            rtol=rtol,
+            atol=atol,
+            err_msg=(
+                f"SolutionMetricsData.{field} disagrees between SolutionMetricsNewton "
+                f"and the SolverKamino reference over the full trajectory."
+            ),
+        )
+        for step_idx in range(arr_metrics.shape[0]):
+            np.testing.assert_allclose(
+                arr_metrics[step_idx],
+                arr_solver[step_idx],
+                rtol=rtol,
+                atol=atol,
+                err_msg=(
+                    f"SolutionMetricsData.{field} disagrees at step {step_idx} between "
+                    f"SolutionMetricsNewton and the SolverKamino reference."
+                ),
+            )
+
+
+def plot_logger_comparison(
+    logger_metrics: SolutionMetricsLogger,
+    logger_solver: SolutionMetricsLogger,
+    *,
+    path: str | None = None,
+    show: bool = False,
+    ext: str = "pdf",
+    label_metrics: str = "SolutionMetricsNewton",
+    label_solver: str = "SolverKamino",
+):
+    """Render one matplotlib figure per scalar metric overlaying two loggers.
+
+    Plots ``logger_metrics`` data in blue (marker ``"o"``, solid line) and
+    ``logger_solver`` data in red (marker ``"x"``, dashed line) on the same
+    axis, drawing one curve per world per source. The figure title and
+    LaTeX subtitle follow the same format as :meth:`SolutionMetricsLogger.plot`,
+    so the per-metric output is visually consistent with the single-source
+    plots produced by the logger itself.
+
+    Args:
+        logger_metrics: Logger wrapping the :class:`SolutionMetricsNewton`
+            instance under test (rendered in blue).
+        logger_solver: Logger wrapping the :class:`SolverKamino`-internal
+            :class:`SolutionMetrics` reference (rendered in red).
+        path: If provided, saves each figure as ``{path}/{metric_name}.{ext}``.
+            The directory must already exist.
+        show: If ``True``, displays the figures interactively (blocking).
+        ext: File extension / matplotlib format. Defaults to ``"pdf"`` to
+            match the benchmarks output.
+        label_metrics: Legend label prefix for the wrapper-side data.
+        label_solver: Legend label prefix for the solver-side data.
+    """
+    SolutionMetricsLogger.initialize_plt()
+    if SolutionMetricsLogger.plt is None:
+        msg.warning("matplotlib is not available, skipping plotting.")
+        return
+    if logger_metrics.num_logged_frames == 0 or logger_solver.num_logged_frames == 0:
+        msg.warning("No logged frames to plot, skipping plotting.")
+        return
+    if path is not None and not os.path.isdir(path):
+        raise ValueError(
+            f"Plot output directory '{path}' does not exist. Please create it before calling plot_logger_comparison()."
+        )
+
+    plt = SolutionMetricsLogger.plt
+
+    time_metrics = logger_metrics.time_axis()
+    time_solver = logger_solver.time_axis()
+    x_label = "Time (s)" if logger_metrics.dt is not None else "Simulation Step"
+
+    np_metrics = logger_metrics.to_numpy()
+    np_solver = logger_solver.to_numpy()
+
+    nw_metrics = logger_metrics.num_worlds
+    nw_solver = logger_solver.num_worlds
+
+    for field in _SCALAR_METRIC_FIELDS:
+        equation = _METRIC_EQUATIONS[field]
+        base_title = _METRIC_TITLES[field]
+        title = f"{base_title} \n ({equation})"
+
+        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+        for w in range(nw_metrics):
+            world_label = f" (world_{w})" if nw_metrics > 1 else ""
+            ax.plot(
+                time_metrics,
+                np_metrics[field][:, w],
+                color="blue",
+                marker="o",
+                markersize=3,
+                linestyle="-",
+                label=f"{label_metrics}{world_label}",
+            )
+        for w in range(nw_solver):
+            world_label = f" (world_{w})" if nw_solver > 1 else ""
+            ax.plot(
+                time_solver,
+                np_solver[field][:, w],
+                color="red",
+                marker="x",
+                markersize=3,
+                linestyle="--",
+                label=f"{label_solver}{world_label}",
+            )
+        ax.set_title(title)
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(field)
+        ax.grid()
+        ax.legend(loc="best", frameon=False)
+
+        fig.tight_layout()
+
+        if path is not None:
+            fig_path = os.path.join(path, f"{field}.{ext}")
+            fig.savefig(fig_path, format=ext, dpi=300, bbox_inches="tight")
+
+        if show:
+            plt.show()
+
+        plt.close(fig)
+
+
+###
+# Stepwise per-builder cross-check tests
+###
+
+
+class TestSolutionMetricsNewtonStepwise(unittest.TestCase):
+    """End-to-end stepwise cross-check of :class:`SolutionMetricsNewton`.
+
+    For each builder under test the test:
+
+    #. Builds a :class:`TestSetup` whose state requests both wrench
+       attributes (joint-parent-f path) or only ``body_parent_f``
+       (body-parent-f path).
+    #. Creates a :class:`SolutionMetricsNewton` instance to verify and
+       resolves the solver-internal :class:`SolutionMetrics` reference
+       via :func:`_resolve_solver_metrics`.
+    #. Allocates two :class:`SolutionMetricsLogger` instances - one per
+       metrics container.
+    #. Steps the solver :attr:`NUM_STEPS` times via
+       :func:`_step_and_log_trajectory`, calling
+       :meth:`SolutionMetricsNewton.evaluate` after every step and logging
+       both metrics containers.
+    #. Asserts the recorded :class:`SolutionMetricsData` arrays match
+       (full trajectory and per-step), restricting the comparison to
+       the lambda-independent fields along the body-parent-f path
+       (where lambdas can only be exactly recovered for leaf joints).
+    #. Optionally renders an overlay plot per metric when
+       :attr:`savefig` / :attr:`show` are enabled - one red line for the
+       :class:`SolverKamino` reference and one blue line for the
+       :class:`SolutionMetricsNewton` data, on the same axis.
+
+    Each ``test_*`` targets exactly one (path, builder) combination and
+    can be invoked individually, e.g.::
+
+        python -m newton._src.solvers.kamino.tests.test_metrics_core \\
+            TestSolutionMetricsNewtonStepwise.test_joint_parent_f_box_on_plane
+    """
+
+    NUM_STEPS = 200
+    """Trajectory length used by every per-(path, builder) test."""
+
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+
+        # Mirror the toggles used by :class:`TestSolutionMetricsLogger`:
+        # ``verbose`` and ``savefig`` piggyback on ``test_context.verbose``;
+        # ``show`` is off by default so the test runner is never blocked by
+        # plot windows.
+        self.verbose = True
+        self.savefig = True
+        self.show = False
+        self.output_path = test_context.output_path / "test_solution_metrics_newton_stepwise"
+
+        if self.savefig:
+            self.output_path.mkdir(parents=True, exist_ok=True)
+
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.INFO)
+        else:
+            msg.reset_log_level()
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
+    def _run_one(
+        self,
+        builder_fn,
+        builder_kwargs: dict,
+        max_world_contacts: int,
+        *,
+        body_parent_f_path: bool,
+        builder_name: str,
+    ):
+        """Execute the stepwise comparison for one (path, builder) combination.
+
+        Args:
+            builder_fn: The builder function to invoke.
+            builder_kwargs: Builder keyword arguments.
+            max_world_contacts: Per-world rigid-contact capacity.
+            body_parent_f_path: ``True`` to drive
+                :meth:`SolutionMetricsNewton.evaluate` from
+                ``state.body_parent_f`` (lambda-independent fields only);
+                ``False`` to use the synthesised ``state.joint_parent_f``
+                (full metric-field coverage).
+            builder_name: Builder name used as the plot output subdirectory.
+        """
+        if body_parent_f_path:
+            request_state_attributes: tuple[str, ...] = ("body_parent_f",)
+        else:
+            request_state_attributes = ("body_parent_f", "joint_parent_f")
+
+        setup = TestSetup(
+            builder_fn=builder_fn,
+            builder_kwargs=builder_kwargs,
+            max_world_contacts=max_world_contacts,
+            device=self.default_device,
+            request_state_attributes=request_state_attributes,
+        )
+
+        # Reuse ``setup.model`` so :class:`SolutionMetricsNewton` infers the
+        # same ``rigid_contact_max`` (and therefore ``model_max_contacts_host``)
+        # as the solver. See the comment in :meth:`test_02_evaluate_body_parent_f_path`
+        # for the exhaustive rationale.
+        metrics = SolutionMetricsNewton(
+            dt=setup.dt,
+            model=setup.model,
+            sparse=False,
+        )
+
+        solver_metrics = _resolve_solver_metrics(setup.solver)
+
+        logger_metrics = SolutionMetricsLogger(
+            metrics=metrics,
+            max_frames=self.NUM_STEPS,
+            mode=SolutionMetricsLogger.Mode.BOUNDED,
+        )
+        logger_solver = SolutionMetricsLogger(
+            metrics=solver_metrics,
+            max_frames=self.NUM_STEPS,
+            mode=SolutionMetricsLogger.Mode.BOUNDED,
+        )
+
+        _step_and_log_trajectory(
+            setup=setup,
+            metrics=metrics,
+            logger_metrics=logger_metrics,
+            logger_solver=logger_solver,
+            num_steps=self.NUM_STEPS,
+        )
+
+        self.assertEqual(logger_metrics.num_logged_frames, self.NUM_STEPS)
+        self.assertEqual(logger_solver.num_logged_frames, self.NUM_STEPS)
+
+        fields = METRIC_FIELDS_LAMBDA_INDEPENDENT
+        if not body_parent_f_path:
+            fields = fields + METRIC_FIELDS_LAMBDA_DEPENDENT
+
+        _assert_loggers_match(
+            self,
+            logger_metrics,
+            logger_solver,
+            fields=fields,
+        )
+
+        if self.savefig or self.show:
+            path_label = "body_parent_f" if body_parent_f_path else "joint_parent_f"
+            plot_dir = self.output_path / path_label / builder_name
+            save_path: str | None = None
+            if self.savefig:
+                plot_dir.mkdir(parents=True, exist_ok=True)
+                save_path = str(plot_dir)
+            msg.notif(f"Generating overlay plots for {path_label} / {builder_name}...")
+            plot_logger_comparison(
+                logger_metrics=logger_metrics,
+                logger_solver=logger_solver,
+                path=save_path,
+                show=self.show,
+                ext="pdf",
+            )
+
+    ###
+    # body_parent_f path tests (5 builders, lambda-independent fields only)
+    ###
+
+    def test_body_parent_f_box_on_plane(self):
+        """Body-parent-f path stepwise cross-check on ``box_on_plane``."""
+        self._run_one(
+            builder_fn=basics.build_box_on_plane,
+            builder_kwargs={"z_offset": -1e-5},
+            max_world_contacts=8,
+            body_parent_f_path=True,
+            builder_name="box_on_plane",
+        )
+
+    def test_body_parent_f_cartpole(self):
+        """Body-parent-f path stepwise cross-check on ``cartpole``."""
+        self._run_one(
+            builder_fn=basics.build_cartpole,
+            builder_kwargs={"z_offset": -1e-5},
+            max_world_contacts=8,
+            body_parent_f_path=True,
+            builder_name="cartpole",
+        )
+
+    def test_body_parent_f_boxes_hinged(self):
+        """Body-parent-f path stepwise cross-check on ``boxes_hinged``."""
+        self._run_one(
+            builder_fn=basics.build_boxes_hinged,
+            builder_kwargs={"z_offset": -1e-5},
+            max_world_contacts=32,
+            body_parent_f_path=True,
+            builder_name="boxes_hinged",
+        )
+
+    def test_body_parent_f_boxes_nunchaku(self):
+        """Body-parent-f path stepwise cross-check on ``boxes_nunchaku``."""
+        self._run_one(
+            builder_fn=basics.build_boxes_nunchaku,
+            builder_kwargs={"z_offset": -1e-5},
+            max_world_contacts=32,
+            body_parent_f_path=True,
+            builder_name="boxes_nunchaku",
+        )
+
+    def test_body_parent_f_boxes_nunchaku_vertical(self):
+        """Body-parent-f path stepwise cross-check on ``boxes_nunchaku_vertical``."""
+        self._run_one(
+            builder_fn=basics.build_boxes_nunchaku_vertical,
+            builder_kwargs={"z_offset": -1e-5},
+            max_world_contacts=32,
+            body_parent_f_path=True,
+            builder_name="boxes_nunchaku_vertical",
+        )
+
+    ###
+    # joint_parent_f path tests (6 builders, full metric-field comparison)
+    ###
+
+    def test_joint_parent_f_box_on_plane(self):
+        """Joint-parent-f path stepwise cross-check on ``box_on_plane``."""
+        self._run_one(
+            builder_fn=basics.build_box_on_plane,
+            builder_kwargs={"z_offset": -1e-5},
+            max_world_contacts=8,
+            body_parent_f_path=False,
+            builder_name="box_on_plane",
+        )
+
+    def test_joint_parent_f_cartpole(self):
+        """Joint-parent-f path stepwise cross-check on ``cartpole``."""
+        self._run_one(
+            builder_fn=basics.build_cartpole,
+            builder_kwargs={"z_offset": -1e-5},
+            max_world_contacts=8,
+            body_parent_f_path=False,
+            builder_name="cartpole",
+        )
+
+    def test_joint_parent_f_boxes_hinged(self):
+        """Joint-parent-f path stepwise cross-check on ``boxes_hinged``."""
+        self._run_one(
+            builder_fn=basics.build_boxes_hinged,
+            builder_kwargs={"z_offset": -1e-5},
+            max_world_contacts=32,
+            body_parent_f_path=False,
+            builder_name="boxes_hinged",
+        )
+
+    def test_joint_parent_f_boxes_nunchaku(self):
+        """Joint-parent-f path stepwise cross-check on ``boxes_nunchaku``."""
+        self._run_one(
+            builder_fn=basics.build_boxes_nunchaku,
+            builder_kwargs={"z_offset": -1e-5},
+            max_world_contacts=32,
+            body_parent_f_path=False,
+            builder_name="boxes_nunchaku",
+        )
+
+    def test_joint_parent_f_boxes_nunchaku_vertical(self):
+        """Joint-parent-f path stepwise cross-check on ``boxes_nunchaku_vertical``."""
+        self._run_one(
+            builder_fn=basics.build_boxes_nunchaku_vertical,
+            builder_kwargs={"z_offset": -1e-5},
+            max_world_contacts=32,
+            body_parent_f_path=False,
+            builder_name="boxes_nunchaku_vertical",
+        )
+
+    def test_joint_parent_f_boxes_fourbar(self):
+        """Joint-parent-f path stepwise cross-check on ``boxes_fourbar`` (closed-loop)."""
+        self._run_one(
+            builder_fn=basics.build_boxes_fourbar,
+            builder_kwargs={"z_offset": -1e-5, "floatingbase": True},
+            max_world_contacts=32,
+            body_parent_f_path=False,
+            builder_name="boxes_fourbar",
+        )
 
 
 ###

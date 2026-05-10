@@ -3,41 +3,11 @@
 
 """TODO"""
 
-########################################################################################
-# SYSTEMS TO TEST ON:
-#
-# - Box-on-Plane
-# - Boxes Hinged
-# - Boxes Nunchaku vertical
-# - Boxes Nunchaku horizontal
-# - Boxes Fourbar - Variant with base being any of the four bodies
-# - ANYmal D
-# - BDX
-# - DR Legs
-#
-########################################################################################
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-########################################################################################
-
 from .core import SolutionMetricsNewton
+from .logging import SolutionMetricsLogger
 
 ###
 # Module interface
 ###
 
-__all__ = ["SolutionMetricsNewton"]
+__all__ = ["SolutionMetricsLogger", "SolutionMetricsNewton"]

@@ -37,6 +37,8 @@ and the lambda-independent metric fields, while the joint-parent-f path
 performs the full comparison.
 """
 
+import os
+import tempfile
 import unittest
 
 import numpy as np
@@ -54,7 +56,7 @@ from newton._src.solvers.kamino._src.kinematics.jacobians import (
     SparseSystemJacobians,
 )
 from newton._src.solvers.kamino._src.kinematics.limits import LimitsKamino
-from newton._src.solvers.kamino._src.metrics import SolutionMetricsNewton
+from newton._src.solvers.kamino._src.metrics import SolutionMetricsLogger, SolutionMetricsNewton
 from newton._src.solvers.kamino._src.solvers.metrics import SolutionMetrics, SolutionMetricsData
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -941,7 +943,7 @@ class TestSolverMetricsNewton(unittest.TestCase):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
-        self.verbose = True
+        self.verbose = test_context.verbose
         self.seed = 42
 
         if self.verbose:
@@ -1073,6 +1075,397 @@ class TestSolverMetricsNewton(unittest.TestCase):
                     metrics,
                     body_parent_f_path=False,
                 )
+
+
+###
+# SolutionMetricsLogger helpers
+###
+
+
+def _make_finalized_metrics(device: wp.DeviceLike) -> tuple[TestSetup, SolutionMetricsNewton]:
+    """Build a small finalized :class:`SolutionMetricsNewton` for logger tests.
+
+    The wrapper's inner :class:`SolutionMetrics` is finalised against the
+    metrics-side ``model`` / ``data`` so that ``metrics.data`` is a fully
+    allocated :class:`SolutionMetricsData` instance whose per-world arrays
+    can be filled in deterministically by the tests.
+    """
+    setup = TestSetup(builder_fn=basics.build_box_on_plane, max_world_contacts=8, device=device)
+    metrics = SolutionMetricsNewton(dt=setup.dt, model=setup.model, sparse=False)
+    # Finalise the inner SolutionMetrics so ``metrics.data`` exposes valid arrays.
+    metrics._metrics.finalize(metrics._model, metrics._data)
+    return setup, metrics
+
+
+def _seed_metrics_data(metrics: SolutionMetricsNewton, value: float, argmax_value: int = 0):
+    """Populate :attr:`SolutionMetricsNewton.data` with deterministic test values."""
+    data = metrics.data
+    data.r_eom.fill_(value)
+    data.r_kinematics.fill_(value + 1.0)
+    data.r_cts_joints.fill_(value + 2.0)
+    data.r_cts_limits.fill_(value + 3.0)
+    data.r_cts_contacts.fill_(value + 4.0)
+    data.r_v_plus.fill_(value + 5.0)
+    data.r_ncp_primal.fill_(value + 6.0)
+    data.r_ncp_dual.fill_(value + 7.0)
+    data.r_ncp_compl.fill_(value + 8.0)
+    data.r_vi_natmap.fill_(value + 9.0)
+    data.f_ncp.fill_(value + 10.0)
+    data.f_ccp.fill_(value + 11.0)
+    data.r_eom_argmax.fill_(argmax_value)
+    data.r_kinematics_argmax.fill_(argmax_value + 1)
+    data.r_cts_joints_argmax.fill_(argmax_value + 2)
+    data.r_cts_limits_argmax.fill_(argmax_value + 3)
+    data.r_cts_contacts_argmax.fill_(argmax_value + 4)
+    data.r_v_plus_argmax.fill_(argmax_value + 5)
+    data.r_ncp_primal_argmax.fill_(argmax_value + 6)
+    data.r_ncp_dual_argmax.fill_(argmax_value + 7)
+    data.r_ncp_compl_argmax.fill_(argmax_value + 8)
+    data.r_vi_natmap_argmax.fill_(argmax_value + 9)
+
+
+_SCALAR_METRIC_FIELDS_FOR_TEST: tuple[str, ...] = (
+    "r_eom",
+    "r_kinematics",
+    "r_cts_joints",
+    "r_cts_limits",
+    "r_cts_contacts",
+    "r_v_plus",
+    "r_ncp_primal",
+    "r_ncp_dual",
+    "r_ncp_compl",
+    "r_vi_natmap",
+    "f_ncp",
+    "f_ccp",
+)
+
+
+_ARGMAX_METRIC_FIELDS_FOR_TEST: tuple[str, ...] = (
+    "r_eom_argmax",
+    "r_kinematics_argmax",
+    "r_cts_joints_argmax",
+    "r_cts_limits_argmax",
+    "r_cts_contacts_argmax",
+    "r_v_plus_argmax",
+    "r_ncp_primal_argmax",
+    "r_ncp_dual_argmax",
+    "r_ncp_compl_argmax",
+    "r_vi_natmap_argmax",
+)
+
+
+def _matplotlib_available() -> bool:
+    """Return ``True`` if matplotlib can be imported in this environment."""
+    try:
+        import matplotlib
+        import matplotlib.pyplot  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+###
+# SolutionMetricsLogger tests
+###
+
+
+class TestSolutionMetricsLogger(unittest.TestCase):
+    """Unit tests for :class:`SolutionMetricsLogger`.
+
+    These tests exercise the logger's allocation/sizing semantics, the
+    bounded vs rolling overflow modes, the decimation gate, and the
+    matplotlib export. They populate the wrapped metrics container with
+    deterministic per-world values via :func:`_seed_metrics_data` so the
+    assertions don't depend on the iterative solver's convergence.
+
+    The plot test mirrors the :mod:`test_solvers_padmm` convention: when
+    ``test_context.verbose`` is set, the generated figures are also
+    persisted under ``test_context.output_path / "test_solution_metrics_logger"``.
+    Set :attr:`show` to ``True`` to additionally display the plots
+    interactively (blocks until the windows are closed).
+    """
+
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+
+        # Toggle these to opt in to detailed test output, persistent plot
+        # artifacts, and interactive plot display. Defaults follow the
+        # ``test_solvers_padmm.py`` pattern: ``verbose`` and ``savefig``
+        # piggyback on ``test_context.verbose`` and ``show`` is off by
+        # default so the test runner is never blocked by plot windows.
+        self.verbose = test_context.verbose
+        self.savefig = test_context.verbose
+        self.show = False
+        self.output_path = test_context.output_path / "test_solution_metrics_logger"
+
+        # Create the per-test output directory only when we're actually
+        # going to save anything to it.
+        if self.savefig:
+            self.output_path.mkdir(parents=True, exist_ok=True)
+
+        # Set debug-level logging to print verbose test output to console
+        if self.verbose:
+            print("\n")  # Add newline before test output for better readability
+            msg.set_log_level(msg.LogLevel.INFO)
+        else:
+            msg.reset_log_level()
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
+    def test_logger_make_default(self):
+        """``__init__`` allocates every log buffer on the metrics' device."""
+        _setup, metrics = _make_finalized_metrics(self.default_device)
+        max_frames = 7
+
+        logger = SolutionMetricsLogger(
+            metrics=metrics,
+            max_frames=max_frames,
+            mode=SolutionMetricsLogger.Mode.BOUNDED,
+            decimation=1,
+        )
+
+        self.assertEqual(logger.max_frames, max_frames)
+        self.assertEqual(logger.mode, SolutionMetricsLogger.Mode.BOUNDED)
+        self.assertEqual(logger.decimation, 1)
+        self.assertEqual(logger.num_logged_frames, 0)
+        self.assertEqual(logger.num_total_writes, 0)
+        self.assertFalse(logger.is_full)
+        self.assertEqual(logger.num_worlds, metrics._model.size.num_worlds)
+        self.assertEqual(logger.device, metrics.device)
+
+        expected_shape = (max_frames, metrics._model.size.num_worlds)
+        for field in _SCALAR_METRIC_FIELDS_FOR_TEST:
+            buf = getattr(logger, f"log_{field}")
+            self.assertIsNotNone(buf, msg=f"log_{field} was not allocated")
+            self.assertEqual(buf.shape, expected_shape)
+            self.assertEqual(buf.dtype, wp.float32)
+            self.assertEqual(buf.device, metrics.device)
+        for field in _ARGMAX_METRIC_FIELDS_FOR_TEST:
+            buf = getattr(logger, f"log_{field}")
+            self.assertIsNotNone(buf, msg=f"log_{field} was not allocated")
+            self.assertEqual(buf.shape, expected_shape)
+            self.assertEqual(buf.device, metrics.device)
+
+    def test_logger_invalid_construction(self):
+        """The constructor rejects malformed arguments early."""
+        _setup, metrics = _make_finalized_metrics(self.default_device)
+
+        with self.assertRaises(TypeError):
+            SolutionMetricsLogger(metrics=object(), max_frames=4)
+
+        with self.assertRaises(ValueError):
+            SolutionMetricsLogger(metrics=metrics, max_frames=0)
+
+        with self.assertRaises(ValueError):
+            SolutionMetricsLogger(metrics=metrics, max_frames=4, decimation=0)
+
+        with self.assertRaises(ValueError):
+            SolutionMetricsLogger(metrics=metrics, max_frames=4, dt=0.0)
+
+        # An un-finalised metrics container is rejected.
+        empty = SolutionMetricsNewton()
+        with self.assertRaises(RuntimeError):
+            SolutionMetricsLogger(metrics=empty, max_frames=4)
+
+    def test_logger_log_records_per_world_data(self):
+        """A single :meth:`log` call captures every metric field."""
+        _setup, metrics = _make_finalized_metrics(self.default_device)
+        logger = SolutionMetricsLogger(metrics=metrics, max_frames=4)
+
+        _seed_metrics_data(metrics, value=1.5, argmax_value=2)
+        logger.log()
+
+        self.assertEqual(logger.num_logged_frames, 1)
+        self.assertEqual(logger.num_total_writes, 1)
+
+        np_data = logger.to_numpy()
+        nw = metrics._model.size.num_worlds
+
+        for offset, field in enumerate(_SCALAR_METRIC_FIELDS_FOR_TEST):
+            expected = np.full((1, nw), 1.5 + float(offset), dtype=np.float32)
+            np.testing.assert_array_equal(np_data[field], expected)
+
+        for offset, field in enumerate(_ARGMAX_METRIC_FIELDS_FOR_TEST):
+            expected = np.full((1, nw), 2 + offset)
+            np.testing.assert_array_equal(np_data[field].astype(np.int64), expected.astype(np.int64))
+
+    def test_logger_bounded_early_exit(self):
+        """In :attr:`Mode.BOUNDED` extra calls past ``max_frames`` are no-ops."""
+        _setup, metrics = _make_finalized_metrics(self.default_device)
+        max_frames = 3
+        logger = SolutionMetricsLogger(
+            metrics=metrics,
+            max_frames=max_frames,
+            mode=SolutionMetricsLogger.Mode.BOUNDED,
+        )
+
+        # Log ``2 * max_frames`` distinct values; only the first ``max_frames`` should land.
+        for i in range(2 * max_frames):
+            _seed_metrics_data(metrics, value=float(i))
+            logger.log()
+
+        self.assertEqual(logger.num_logged_frames, max_frames)
+        self.assertEqual(logger.num_total_writes, max_frames)
+        self.assertTrue(logger.is_full)
+
+        np_data = logger.to_numpy()
+        nw = metrics._model.size.num_worlds
+        expected_r_eom = np.array([[0.0] * nw, [1.0] * nw, [2.0] * nw], dtype=np.float32)
+        np.testing.assert_array_equal(np_data["r_eom"], expected_r_eom)
+
+    def test_logger_rolling_wrap_around(self):
+        """In :attr:`Mode.ROLLING` :meth:`to_numpy` returns the most recent frames in order."""
+        _setup, metrics = _make_finalized_metrics(self.default_device)
+        max_frames = 4
+        logger = SolutionMetricsLogger(
+            metrics=metrics,
+            max_frames=max_frames,
+            mode=SolutionMetricsLogger.Mode.ROLLING,
+        )
+
+        # Log ``max_frames + N`` distinct values; the buffer should hold the most
+        # recent ``max_frames`` of them, rotated to chronological order.
+        n_extra = 3
+        total_logs = max_frames + n_extra
+        for i in range(total_logs):
+            _seed_metrics_data(metrics, value=float(i))
+            logger.log()
+
+        self.assertEqual(logger.num_logged_frames, max_frames)
+        self.assertEqual(logger.num_total_writes, total_logs)
+        self.assertTrue(logger.is_full)
+
+        np_data = logger.to_numpy()
+        nw = metrics._model.size.num_worlds
+        expected_first_world = np.array(
+            [float(i) for i in range(total_logs - max_frames, total_logs)],
+            dtype=np.float32,
+        )
+        np.testing.assert_array_equal(np_data["r_eom"][:, 0], expected_first_world)
+        # All worlds should carry the same per-frame value (since fill_ broadcasts).
+        for w in range(1, nw):
+            np.testing.assert_array_equal(np_data["r_eom"][:, w], expected_first_world)
+
+    def test_logger_decimation_skips_calls(self):
+        """``decimation=k`` records only every ``k``-th :meth:`log` call."""
+        _setup, metrics = _make_finalized_metrics(self.default_device)
+        decimation = 3
+        max_frames = 4
+        logger = SolutionMetricsLogger(
+            metrics=metrics,
+            max_frames=max_frames,
+            mode=SolutionMetricsLogger.Mode.BOUNDED,
+            decimation=decimation,
+        )
+
+        # Make ``decimation * max_frames`` calls; exactly ``max_frames`` should land.
+        for i in range(decimation * max_frames):
+            _seed_metrics_data(metrics, value=float(i))
+            logger.log()
+
+        self.assertEqual(logger.num_logged_frames, max_frames)
+        self.assertEqual(logger.num_total_writes, max_frames)
+
+        np_data = logger.to_numpy()
+        # The recorded values correspond to calls 0, decimation, 2*decimation, ...
+        expected_first_world = np.array(
+            [float(i * decimation) for i in range(max_frames)],
+            dtype=np.float32,
+        )
+        np.testing.assert_array_equal(np_data["r_eom"][:, 0], expected_first_world)
+
+        # The time axis should account for the decimation factor.
+        time_axis = logger.time_axis()
+        self.assertEqual(time_axis.shape, (max_frames,))
+        scale = (logger.dt if logger.dt is not None else 1.0) * float(decimation)
+        np.testing.assert_allclose(time_axis, np.arange(max_frames, dtype=np.float32) * scale)
+
+    def test_logger_reset(self):
+        """:meth:`reset` clears counters and zeroes the buffers."""
+        _setup, metrics = _make_finalized_metrics(self.default_device)
+        logger = SolutionMetricsLogger(metrics=metrics, max_frames=4)
+
+        _seed_metrics_data(metrics, value=5.0)
+        logger.log()
+        logger.log()
+        self.assertEqual(logger.num_logged_frames, 2)
+
+        logger.reset()
+        self.assertEqual(logger.num_logged_frames, 0)
+        self.assertEqual(logger.num_total_writes, 0)
+        self.assertFalse(logger.is_full)
+
+        # Buffers must be zero after reset (scalar fields) and -1 (argmax fields).
+        nw = metrics._model.size.num_worlds
+        np.testing.assert_array_equal(logger.log_r_eom.numpy(), np.zeros((logger.max_frames, nw), dtype=np.float32))
+        np.testing.assert_array_equal(
+            logger.log_r_eom_argmax.numpy(), np.full((logger.max_frames, nw), -1, dtype=np.int64)
+        )
+
+        # A subsequent log() writes at index 0 again.
+        _seed_metrics_data(metrics, value=7.0)
+        logger.log()
+        self.assertEqual(logger.num_logged_frames, 1)
+        np.testing.assert_array_equal(logger.to_numpy()["r_eom"][0], np.full((nw,), 7.0, dtype=np.float32))
+
+    def test_logger_unpack_argmax_key(self):
+        """:meth:`unpack_argmax_key` reverses the ``build_pair_key2`` packing."""
+        index_a = 0x12345
+        index_b = 0xABCDE
+        key = (index_a << 32) | index_b
+        a, b = SolutionMetricsLogger.unpack_argmax_key(key)
+        self.assertEqual(a, index_a)
+        self.assertEqual(b, index_b)
+
+    @unittest.skipUnless(_matplotlib_available(), "matplotlib is required for plot generation")
+    def test_logger_plot_writes_per_metric_files(self):
+        """:meth:`plot` writes exactly one file per scalar metric.
+
+        The test always validates the file-generation logic via a temporary
+        directory (so it leaves no artifacts behind by default). When
+        :attr:`savefig` is enabled the plots are additionally persisted as
+        PDFs under :attr:`output_path` so they can be inspected after the
+        run, and when :attr:`show` is enabled the plots are also displayed
+        interactively (note: this blocks the test runner until the plot
+        windows are closed).
+        """
+        _setup, metrics = _make_finalized_metrics(self.default_device)
+        logger = SolutionMetricsLogger(metrics=metrics, max_frames=4)
+
+        for i in range(3):
+            _seed_metrics_data(metrics, value=float(i))
+            logger.log()
+
+        # Always verify the file-generation logic via a temporary directory.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logger.plot(path=tmpdir, ext="png")
+
+            for field in _SCALAR_METRIC_FIELDS_FOR_TEST:
+                fig_path = os.path.join(tmpdir, f"{field}.png")
+                self.assertTrue(os.path.isfile(fig_path), msg=f"expected plot at {fig_path}")
+            # No additional files should be produced for argmax fields.
+            self.assertEqual(
+                len(os.listdir(tmpdir)),
+                len(_SCALAR_METRIC_FIELDS_FOR_TEST),
+            )
+
+        # Optionally persist the plots under the unit-test output directory
+        # and/or display them interactively (see the class docstring for
+        # details on the ``savefig`` / ``show`` toggles).
+        if self.savefig or self.show:
+            msg.notif("Generating solution metrics logger plots...")
+            save_path = str(self.output_path) if self.savefig else None
+            logger.plot(path=save_path, show=self.show, ext="pdf")
+            if self.savefig:
+                for field in _SCALAR_METRIC_FIELDS_FOR_TEST:
+                    fig_path = self.output_path / f"{field}.pdf"
+                    self.assertTrue(fig_path.is_file(), msg=f"expected plot at {fig_path}")
 
 
 ###

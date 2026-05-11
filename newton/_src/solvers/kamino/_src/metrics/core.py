@@ -293,6 +293,13 @@ class SolutionMetricsNewton:
         # `StateKamino` instance, emulating state integration after the forward dynamics solve.
         wp.copy(self._data.bodies.q_i, self._state.q_i)
         wp.copy(self._data.bodies.u_i, self._state.u_i)
+
+        # Recompute the joint kinematic constraint residuals (and associated joint frame
+        # data) from the post-event body poses. This mirrors :meth:`SolverKaminoImpl.step`,
+        # which calls :meth:`_update_joints_data` after time-integration so that the
+        # ``data.joints.r_j`` consumed by ``_compute_cts_joints_residual`` reflects the
+        # post-event configuration rather than the pre-event one.
+        compute_joints_data(model=self._model, data=self._data, q_j_p=self._state_p.q_j)
         wp.copy(self._data.joints.q_j, self._state.q_j)
         wp.copy(self._data.joints.dq_j, self._state.dq_j)
 
@@ -305,6 +312,7 @@ class SolutionMetricsNewton:
         ###
 
         # Evaluate the metrics using the extracted solver data
+        self._metrics.reset()
         self._metrics.evaluate(
             sigma=self._sigma,
             lambdas=self._lambdas,

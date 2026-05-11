@@ -23,6 +23,7 @@ from .geometry.contacts import (
     ContactsKamino,
     convert_contacts_kamino_to_newton,
     convert_contacts_newton_to_kamino,
+    convert_contact_forces_kamino_to_newton,
 )
 from .geometry.detector import CollisionDetector
 from .solver_kamino_impl import SolverKaminoImpl
@@ -46,6 +47,7 @@ __all__ = [
     "convert_body_origin_to_com",
     "convert_contacts_kamino_to_newton",
     "convert_contacts_newton_to_kamino",
+    "convert_contact_forces_kamino_to_newton",
     "convert_model_gravity",
     "convert_model_joint_transforms",
     "msg",

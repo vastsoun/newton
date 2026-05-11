@@ -31,11 +31,23 @@ from newton.tests.utils import basics
 # Constants
 ###
 
-# Strict tolerance for quantities that are computed on identical inputs
-# across both sides of the comparison (e.g. system Jacobians, dual-problem
-# building blocks, post-event constraint-space velocity at active rows).
-TOL_STRICT_RTOL = 1e-6
-TOL_STRICT_ATOL = 1e-6
+# Tolerance for *lambda-independent* metrics. These reduce to comparing per-step
+# kinematic residuals and constraint gap functions on the post-event state, which
+# both evaluation paths populate from identical inputs and through identical
+# kernels, so bit-exact agreement is achievable.
+TOL_STRICT_RTOL = 1e-7
+TOL_STRICT_ATOL = 0.0
+
+# Tolerance for *lambda-dependent* metrics. SolverKamino consumes its internally
+# computed constraint reactions directly, whereas SolutionMetricsNewton recovers
+# them from the float32 ``joint_parent_f`` snapshot via the inverse joint-wrench
+# transform; that roundtrip is bounded below by ~1 ULP per scalar (~1e-9 for
+# reactions of magnitude ~1e-2) and is amplified by ``1/dt`` when reconstructing
+# body wrenches. The peak observed gap on `boxes_fourbar` is ~3e-6 in
+# ``r_v_plus``/``r_ncp_dual``, so an atol/rtol of 1e-5 leaves ~3x headroom while
+# still keeping the comparison meaningful.
+TOL_LAMBDA_DEP_RTOL = 1e-5
+TOL_LAMBDA_DEP_ATOL = 1e-5
 
 # Lambda-independent metric residuals. These depend only on the post-event
 # state, the kinematic constraint residuals stored on `data`, and the limit /
@@ -59,6 +71,9 @@ METRIC_FIELDS_LAMBDA_DEPENDENT = (
     "f_ncp",
     "f_ccp",
 )
+
+# All metric fields
+METRIC_FIELDS_ALL = METRIC_FIELDS_LAMBDA_INDEPENDENT + METRIC_FIELDS_LAMBDA_DEPENDENT
 
 ###
 # Scaffolding
@@ -132,7 +147,6 @@ class TestSetup:
             contacts=self.contacts,
             dt=self.dt,
         )
-        self.solver.update_contacts(self.contacts, self.state)
         self.metrics.evaluate(
             state=self.state,
             state_p=self.state_p,
@@ -339,7 +353,7 @@ class TestSolutionMetricsNewton(unittest.TestCase):
         if self.verbose:
             msg.reset_log_level()
 
-    def _run_one(
+    def _run_test_setup(
         self,
         builder_fn: Callable,
         builder_kwargs: dict,
@@ -377,24 +391,37 @@ class TestSolutionMetricsNewton(unittest.TestCase):
         self.assertEqual(setup.logger_metrics.num_logged_frames, num_frames)
         self.assertEqual(setup.logger_solver.num_logged_frames, num_frames)
 
-        fields = METRIC_FIELDS_LAMBDA_INDEPENDENT
-        fields = fields + METRIC_FIELDS_LAMBDA_DEPENDENT
-
+        # Lambda-independent metrics: both paths derive these from the same
+        # post-event state and constraint data, so we require bit-exact agreement.
         _assert_loggers_match(
-            self,
-            setup.logger_metrics,
-            setup.logger_solver,
-            fields=fields,
+            testcase=self,
+            logger_metrics=setup.logger_metrics,
+            logger_solver=setup.logger_solver,
+            fields=METRIC_FIELDS_LAMBDA_INDEPENDENT,
+            rtol=TOL_STRICT_RTOL,
+            atol=TOL_STRICT_ATOL,
+        )
+
+        # Lambda-dependent metrics: SolutionMetricsNewton must reconstruct the
+        # constraint reactions from the float32 joint_parent_f snapshot exported
+        # by SolverKamino; the roundtrip introduces a ~1 ULP precision floor that
+        # the inverse wrench transform and inv(dt) scaling propagate downstream.
+        _assert_loggers_match(
+            testcase=self,
+            logger_metrics=setup.logger_metrics,
+            logger_solver=setup.logger_solver,
+            fields=METRIC_FIELDS_LAMBDA_DEPENDENT,
+            rtol=TOL_LAMBDA_DEP_RTOL,
+            atol=TOL_LAMBDA_DEP_ATOL,
         )
 
         if self.savefig or self.show:
-            path_label = "joint_parent_f"
-            plot_dir = self.output_path / path_label / builder_name
+            plot_dir = self.output_path / builder_name
             save_path: str | None = None
             if self.savefig:
                 plot_dir.mkdir(parents=True, exist_ok=True)
                 save_path = str(plot_dir)
-            msg.notif(f"Generating overlay plots for {path_label} / {builder_name}...")
+            msg.notif(f"Generating overlay plots for {builder_name}...")
             plot_logger_comparison(
                 logger_metrics=setup.logger_metrics,
                 logger_solver=setup.logger_solver,
@@ -408,15 +435,14 @@ class TestSolutionMetricsNewton(unittest.TestCase):
     ###
 
     def test_boxes_fourbar(self):
-        self._run_one(
+        self._run_test_setup(
             builder_fn=basics.build_boxes_fourbar,
-            builder_kwargs={"z_offset": -1e-5, "floatingbase": True},
+            builder_kwargs={"z_offset": -1e-5, "floatingbase": True, "limits": False},
             builder_name="boxes_fourbar",
             max_world_contacts=32,
             max_frames=500,
-            num_frames=100,
+            num_frames=500,
         )
-
 
 ###
 # Test execution

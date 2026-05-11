@@ -614,6 +614,10 @@ class SolverKamino(SolverBase):
             body_q=state_out_kamino.q_i,
         )
 
+        # Convert contact forces from Kamino to Newton format if contact forces were requested
+        if contacts is not None and contacts.force is not None:
+            self._kamino.convert_contact_forces_kamino_to_newton(self.model, self._contacts_kamino, contacts)
+
     @override
     def notify_model_changed(self, flags: int) -> None:
         """Propagate Newton model property changes to Kamino's internal ModelKamino.

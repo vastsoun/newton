@@ -809,7 +809,7 @@ def _convert_contacts_newton_to_kamino(
     newton_normal: wp.array[vec3f],
     newton_thickness0: wp.array[float32],
     newton_thickness1: wp.array[float32],
-    newton_force: wp.array[wp.spatial_vectorf],
+    newton_force: wp.array[wp.vec3f],
     # Model lookups
     shape_body: wp.array[int32],
     shape_world: wp.array[int32],
@@ -912,8 +912,7 @@ def _convert_contacts_newton_to_kamino(
     q_frame = wp.quat_from_matrix(make_contact_frame_znorm(normal))
 
     X_body = wp.transform_inverse(wp.transformf(vec3f(0.0), q_frame))
-    f_world = vec3f(f_newton[0], f_newton[1], f_newton[2])
-    f_a = wp.transform_vector(X_body, f_world)
+    f_a = wp.transform_vector(X_body, f_newton)
 
     mu = float32(0.5) * (shape_mu[s0] + shape_mu[s1])
     rest = float32(0.5) * (shape_restitution[s0] + shape_restitution[s1])
@@ -958,7 +957,7 @@ def _convert_contacts_kamino_to_newton(
     rigid_contact_point0: wp.array[vec3f],
     rigid_contact_point1: wp.array[vec3f],
     rigid_contact_normal: wp.array[vec3f],
-    rigid_contact_force: wp.array[wp.spatial_vectorf],
+    rigid_contact_force: wp.array[wp.vec3f],
 ):
     """Converts Kamino's internal contact representation to Newton's Contacts format."""
     # Retrieve the contact index for this thread
@@ -1013,7 +1012,43 @@ def _convert_contacts_kamino_to_newton(
     rigid_contact_normal[cid] = vec3f(gapfunc[0], gapfunc[1], gapfunc[2])
     rigid_contact_point0[cid] = wp.transform_point(X_inv_a, position_A)
     rigid_contact_point1[cid] = wp.transform_point(X_inv_b, position_B)
-    rigid_contact_force[cid] = wp.spatial_vector(force_a, zero3)
+    rigid_contact_force[cid] = force_a
+
+
+@wp.kernel
+def _convert_contact_forces_kamino_to_newton(
+    max_output: int32,
+    model_active_contacts: wp.array[int32],
+    kamino_frame: wp.array[quatf],
+    kamino_reaction: wp.array[vec3f],
+    # outputs
+    rigid_contact_force: wp.array[wp.vec3f],
+):
+    """Converts Kamino's internal contact representation to Newton's Contacts format."""
+    # Retrieve the contact index for this thread
+    cid = wp.tid()
+
+    # Determine the total number of contacts to convert, which is the smaller
+    # of the number of active contacts and the maximum output capacity.
+    ncmax = wp.min(model_active_contacts[0], max_output)
+
+    # Skip conversion if this contact index exceeds the
+    # number of active contacts or the output capacity
+    if cid >= ncmax:
+        return
+
+    # Retrieve contact-specific data
+    frame = kamino_frame[cid]
+    reaction = kamino_reaction[cid]
+
+    # Transform the contact reaction to world-space
+    # and convert to spatial vector format
+    zero3 = vec3f(0.0, 0.0, 0.0)
+    X_a = wp.transformf(zero3, frame)
+    force_a = wp.transform_vector(X_a, reaction)
+
+    # Store the converted contact data in the Newton format
+    rigid_contact_force[cid] = force_a
 
 
 ###
@@ -1060,18 +1095,6 @@ def convert_contacts_newton_to_kamino(
     # counts and optionally reset contact data to sentinel values.
     contacts_out.clear()
 
-    # Newton's per-contact spatial force is an optional extended attribute
-    # (only allocated when the user calls `Model.request_contact_attributes("force")`).
-    # When absent, fall back to a zero buffer so reactions are produced as zero
-    # without forcing every caller to opt in to the extended attribute.
-    newton_force = contacts_in.force
-    if newton_force is None:
-        newton_force = wp.zeros(
-            contacts_in.rigid_contact_max,
-            dtype=wp.spatial_vectorf,
-            device=contacts_in.device,
-        )
-
     # Launch the conversion kernel to convert Newton contacts to Kamino's format
     # NOTE: To reduce overhead, the total thread count is set to the smallest of
     # the number of contacts detected and the maximum capacity of the output contacts.
@@ -1089,7 +1112,7 @@ def convert_contacts_newton_to_kamino(
             contacts_in.rigid_contact_normal,
             contacts_in.rigid_contact_margin0,
             contacts_in.rigid_contact_margin1,
-            newton_force,
+            contacts_in.rigid_contact_force,
             model.shape_body,
             model.shape_world,
             model.shape_material_mu,
@@ -1154,19 +1177,6 @@ def convert_contacts_kamino_to_newton(
             contacts_out.rigid_contact_max,
         )
 
-    # Newton's per-contact spatial force is an optional extended attribute
-    # (only allocated when the user calls `Model.request_contact_attributes("force")`).
-    # When absent on the output container, route force writes to a discard buffer so
-    # callers that only need geometry (e.g., the legacy `update_contacts` path)
-    # remain functional.
-    newton_force = contacts_out.force
-    if newton_force is None:
-        newton_force = wp.zeros(
-            contacts_out.rigid_contact_max,
-            dtype=wp.spatial_vectorf,
-            device=contacts_out.device,
-        )
-
     # Launch the conversion kernel to convert Kamino contacts to Newton's format.
     # NOTE: To reduce overhead, the total thread count is set to the smallest of the
     # number of contacts detected and the maximum capacity of the output contacts.
@@ -1192,7 +1202,61 @@ def convert_contacts_kamino_to_newton(
             contacts_out.rigid_contact_point0,
             contacts_out.rigid_contact_point1,
             contacts_out.rigid_contact_normal,
-            newton_force,
+            contacts_out.rigid_contact_force,
         ],
+        device=model.device,
+    )
+
+
+def convert_contact_forces_kamino_to_newton(
+    model: Model,
+    contacts_in: ContactsKamino,
+    contacts_out: Contacts,
+) -> None:
+    """
+    Converts Kamino :class:`ContactsKamino` to Newton's :class:`Contacts` format.
+
+    The Kamino contact-frame reaction (vec3) is rotated back to world-space and
+    written as the linear part of Newton's :attr:`Contacts.force` (the angular
+    part is set to zero).  When ``contacts_out.force`` is ``None`` (the
+    extended attribute was not requested), force writes are silently dropped.
+
+    Args:
+        model (Model):
+            The :class:`newton.Model` object providing shape and body information
+            used to interpret Kamino's contact data and populate Newton's contact data.
+        state (State):
+            The :class:`newton.State` object providing ``body_q``
+            used to transform contact points to world coordinates.
+        contacts_in (ContactsKamino):
+            The :class:`ContactsKamino` object containing contact information to be converted.
+        contacts_out (Contacts):
+            The :class:`newton.Contacts` object to populate with the converted contact data.
+    """
+    # Skip conversion if there are no contacts to convert or no capacity to store them.
+    if contacts_in.data.model_max_contacts_host == 0 or contacts_out.rigid_contact_max == 0 or contacts_out.force is None:
+        return
+
+    # Issue warning to the user if the number of contacts to convert exceeds the capacity of the output contacts.
+    if contacts_in.data.model_max_contacts_host > contacts_out.rigid_contact_max:
+        msg.warning(
+            "Kamino `model_max_contacts` (%d) exceeds Newton `rigid_contact_max` (%d); contacts will be truncated.",
+            contacts_in.data.model_max_contacts_host,
+            contacts_out.rigid_contact_max,
+        )
+
+    # Launch the conversion kernel to convert Kamino contacts to Newton's format.
+    # NOTE: To reduce overhead, the total thread count is set to the smallest of the
+    # number of contacts detected and the maximum capacity of the output contacts.
+    wp.launch(
+        kernel=_convert_contact_forces_kamino_to_newton,
+        dim=min(contacts_in.data.model_max_contacts_host, contacts_out.rigid_contact_max),
+        inputs=[
+            int32(contacts_out.rigid_contact_max),
+            contacts_in.data.model_active_contacts,
+            contacts_in.data.frame,
+            contacts_in.data.reaction,
+        ],
+        outputs=[contacts_out.rigid_contact_force],
         device=model.device,
     )

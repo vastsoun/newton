@@ -668,7 +668,7 @@ def unpack_constraint_solutions(
         )
 
     # Unpack limit constraint multipliers if a limits container is provided
-    if limits is not None:
+    if limits is not None and limits.model_max_limits_host > 0:
         wp.launch(
             kernel=_unpack_limit_constraint_solutions,
             dim=limits.model_max_limits_host,
@@ -687,7 +687,7 @@ def unpack_constraint_solutions(
         )
 
     # Unpack contact constraint multipliers if a contacts container is provided
-    if contacts is not None:
+    if contacts is not None and contacts.model_max_contacts_host > 0:
         wp.launch(
             kernel=_unpack_contact_constraint_solutions,
             dim=contacts.model_max_contacts_host,

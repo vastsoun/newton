@@ -14,7 +14,9 @@ def PhysicsScene "World"
     vector3f physics:gravityDirection = (0, 0, -1)
 }
 
-def Xform "boxes_fourbar"
+def Xform "boxes_fourbar" (
+    prepend apiSchemas = ["PhysicsArticulationRootAPI"]
+)
 {
     def Scope "RigidBodies"
     {
@@ -206,6 +208,7 @@ def Xform "boxes_fourbar"
 
         def PhysicsRevoluteJoint "joint_4"
         {
+            bool physics:excludeFromArticulation = true
             uniform token physics:axis = "Y"
             rel physics:body0 = </boxes_fourbar/RigidBodies/body_4>
             rel physics:body1 = </boxes_fourbar/RigidBodies/body_1>

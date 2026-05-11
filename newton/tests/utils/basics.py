@@ -1086,7 +1086,7 @@ def build_boxes_fourbar(
 
     # Set default actuator IDs if none are provided
     if actuator_ids is None:
-        actuator_ids = [1, 3]
+        actuator_ids = [1]
     elif not isinstance(actuator_ids, list):
         raise TypeError("actuator_ids, if specified, must be provided as a list of integers.")
 
@@ -1289,44 +1289,38 @@ def build_boxes_fourbar(
         limit_lower=qmin,
         limit_upper=qmax,
     )
-    effort_joint_1 = ModelBuilder.JointDofConfig(
+    effort_joint_dof_config = ModelBuilder.JointDofConfig(
         axis=Axis.Y,
         actuator_mode=JointTargetMode.EFFORT,
-        limit_lower=qmin,
-        limit_upper=qmax,
-        armature=0.1 if dynamic_joints else 0.0,
-        friction=0.001 if dynamic_joints else 0.0,
-    )
-    effort_joint_other = ModelBuilder.JointDofConfig(
-        axis=Axis.Y,
-        actuator_mode=JointTargetMode.EFFORT,
-        limit_lower=qmin,
-        limit_upper=qmax,
-    )
-    pd_joint_dof_config = ModelBuilder.JointDofConfig(
-        axis=Axis.Y,
-        actuator_mode=JointTargetMode.POSITION_VELOCITY,
-        armature=0.1 if dynamic_joints else 0.0,
-        friction=0.001 if dynamic_joints else 0.0,
-        target_ke=1000.0,
-        target_kd=20.0,
         limit_lower=qmin,
         limit_upper=qmax,
     )
 
+    # # TODO
+    # pd_joint_dof_config = ModelBuilder.JointDofConfig(
+    #     axis=Axis.Y,
+    #     actuator_mode=JointTargetMode.POSITION_VELOCITY,
+    #     armature=0.1 if dynamic_joints else 0.0,
+    #     friction=0.001 if dynamic_joints else 0.0,
+    #     target_ke=1000.0,
+    #     target_kd=20.0,
+    #     limit_lower=qmin,
+    #     limit_upper=qmax,
+    # )
+    # joint_1_axis = (
+    #     pd_joint_dof_config
+    #     if implicit_pd and 1 in actuator_ids
+    #     else effort_joint_1
+    #     if 1 in actuator_ids
+    #     else passive_joint_dof_config
+    # )
+
     # Add a revolute joint between link 1 and link 2
-    joint_1_axis = (
-        pd_joint_dof_config
-        if implicit_pd and 1 in actuator_ids
-        else effort_joint_1
-        if 1 in actuator_ids
-        else passive_joint_dof_config
-    )
     _builder.add_joint_revolute(
         label="link1_to_link2",
         parent=bid1,
         child=bid2,
-        axis=joint_1_axis,
+        axis=effort_joint_dof_config if 1 in actuator_ids else passive_joint_dof_config,
         parent_xform=wp.transformf(r_j1 - r_b1, wp.quat_identity(dtype=wp.float32)),
         child_xform=wp.transformf(r_j1 - r_b2, wp.quat_identity(dtype=wp.float32)),
     )
@@ -1336,7 +1330,7 @@ def build_boxes_fourbar(
         label="link2_to_link3",
         parent=bid2,
         child=bid3,
-        axis=effort_joint_other if 2 in actuator_ids else passive_joint_dof_config,
+        axis=effort_joint_dof_config if 2 in actuator_ids else passive_joint_dof_config,
         parent_xform=wp.transformf(r_j2 - r_b2, wp.quat_identity(dtype=wp.float32)),
         child_xform=wp.transformf(r_j2 - r_b3, wp.quat_identity(dtype=wp.float32)),
     )
@@ -1346,7 +1340,7 @@ def build_boxes_fourbar(
         label="link3_to_link4",
         parent=bid3,
         child=bid4,
-        axis=effort_joint_other if 3 in actuator_ids else passive_joint_dof_config,
+        axis=effort_joint_dof_config if 3 in actuator_ids else passive_joint_dof_config,
         parent_xform=wp.transformf(r_j3 - r_b3, wp.quat_identity(dtype=wp.float32)),
         child_xform=wp.transformf(r_j3 - r_b4, wp.quat_identity(dtype=wp.float32)),
     )
@@ -1356,7 +1350,7 @@ def build_boxes_fourbar(
         label="link4_to_link1",
         parent=bid4,
         child=bid1,
-        axis=effort_joint_other if 4 in actuator_ids else passive_joint_dof_config,
+        axis=effort_joint_dof_config if 4 in actuator_ids else passive_joint_dof_config,
         parent_xform=wp.transformf(r_j4 - r_b4, wp.quat_identity(dtype=wp.float32)),
         child_xform=wp.transformf(r_j4 - r_b1, wp.quat_identity(dtype=wp.float32)),
     )

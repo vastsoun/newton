@@ -1234,7 +1234,11 @@ def convert_contact_forces_kamino_to_newton(
             The :class:`newton.Contacts` object to populate with the converted contact data.
     """
     # Skip conversion if there are no contacts to convert or no capacity to store them.
-    if contacts_in.data.model_max_contacts_host == 0 or contacts_out.rigid_contact_max == 0 or contacts_out.force is None:
+    if (
+        contacts_in.data.model_max_contacts_host == 0
+        or contacts_out.rigid_contact_max == 0
+        or contacts_out.force is None
+    ):
         return
 
     # Issue warning to the user if the number of contacts to convert exceeds the capacity of the output contacts.

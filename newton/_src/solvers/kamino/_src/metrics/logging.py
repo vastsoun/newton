@@ -84,6 +84,7 @@ _SCALAR_METRIC_FIELDS: tuple[str, ...] = (
     "r_cts_limits",
     "r_cts_contacts",
     "r_v_plus",
+    "r_v_plus_alt",
     "r_ncp_primal",
     "r_ncp_dual",
     "r_ncp_compl",
@@ -104,6 +105,7 @@ _ARGMAX_FIELDS_INT64: tuple[str, ...] = (
 _ARGMAX_FIELDS_INT32: tuple[str, ...] = (
     "r_cts_contacts_argmax",
     "r_v_plus_argmax",
+    "r_v_plus_alt_argmax",
     "r_ncp_primal_argmax",
     "r_ncp_dual_argmax",
     "r_ncp_compl_argmax",
@@ -118,6 +120,7 @@ _METRIC_TITLES: dict[str, str] = {
     "r_cts_limits": "Limits Constraint Residual",
     "r_cts_contacts": "Contacts Constraint Residual",
     "r_v_plus": "Post-Event Constraint Velocity Residual",
+    "r_v_plus_alt": "Post-Event Constraint Velocity Residual (Alternative)",
     "r_ncp_primal": "NCP Primal Residual",
     "r_ncp_dual": "NCP Dual Residual",
     "r_ncp_compl": "NCP Complementary Residual",
@@ -136,6 +139,7 @@ _METRIC_EQUATIONS: dict[str, str] = {
     "r_cts_limits": r"$\Vert \, f_l(q) \, \Vert_\infty $",
     "r_cts_contacts": r"$\Vert \, f_{c,N}(q) \, \Vert_\infty $",
     "r_v_plus": r"$\Vert \, v^+ - D \cdot \lambda - v_f \, \Vert_\infty $",
+    "r_v_plus_alt": r"$\Vert \, v^+ - J \cdot u^+ \, \Vert_\infty $",
     "r_ncp_primal": r"$\Vert \, \lambda - P_K(\lambda) \, \Vert_\infty $",
     "r_ncp_dual": r"$\Vert \, v_a^+ - P_{K^*}(v_a^+) \, \Vert_\infty $",
     "r_ncp_compl": r"$\Vert \, \lambda^T \, v_a^+ \, \Vert_\infty $",
@@ -704,7 +708,7 @@ class SolutionMetricsLogger:
         # Plot the data: If grid is True, plot all metrics in a
         # single 3x4 grid Otherwise, plot one figure per metric
         if grid:
-            n_rows, n_cols = 3, 4
+            n_rows, n_cols = 4, 4
             fig, axes = plt.subplots(n_rows, n_cols, figsize=(24, 14))
             axes = axes.flatten()
             for i, field in enumerate(_SCALAR_METRIC_FIELDS):

@@ -86,6 +86,7 @@ from ..geometry.contacts import ContactsKamino
 from ..geometry.keying import build_pair_key2
 from ..kinematics.jacobians import DenseSystemJacobians, SystemJacobiansType
 from ..kinematics.limits import LimitsKamino
+from ..kinematics.velocities import compute_constraint_space_velocities
 from ..solvers.padmm.math import (
     compute_desaxce_corrections,
     compute_dot_product,
@@ -288,6 +289,31 @@ class SolutionMetricsData:
     Shape of ``(num_worlds,)`` and type :class:`int32`.
     """
 
+    r_v_plus_alt: wp.array | None = None
+    """
+    The largest error in the estimation of the post-event constraint-space velocity.
+
+    Measures how well the computed post-event constraint-space velocity `v^+` was estimated.
+
+    Computed as the maximum absolute value (i.e. infinity-norm) over velocity-level kinematics constraints:
+    `r_v_plus := || v_plus_est - v_plus_true ||_inf`,
+
+    where:
+    - `v_plus_est` is the estimated post-event constraint-space velocity
+    - v_plus_true` is the true post-event constraint-space velocity computed as
+      `v_plus_true = J_cts @ u`, where `J_cts` is the constraint Jacobian matrix
+      and `u` is the post-event generalized velocity.
+
+    Shape of ``(num_worlds,)`` and type :class:`float32`.
+    """
+
+    r_v_plus_alt_argmax: wp.array | None = None
+    """
+    The index of the constraint with the largest post-event constraint-space velocity estimation error.
+
+    Shape of ``(num_worlds,)`` and type :class:`int32`.
+    """
+
     r_ncp_primal: wp.array | None = None
     """
     The NCP primal residual representing the violation of set-valued constraint reactions.
@@ -430,6 +456,7 @@ class SolutionMetricsData:
         self.r_cts_limits_argmax.fill_(-1)
         self.r_cts_contacts_argmax.fill_(-1)
         self.r_v_plus_argmax.fill_(-1)
+        self.r_v_plus_alt_argmax.fill_(-1)
         self.r_ncp_primal_argmax.fill_(-1)
         self.r_ncp_dual_argmax.fill_(-1)
         self.r_ncp_compl_argmax.fill_(-1)
@@ -445,6 +472,7 @@ class SolutionMetricsData:
         self.r_cts_limits.zero_()
         self.r_cts_contacts.zero_()
         self.r_v_plus.zero_()
+        self.r_v_plus_alt.zero_()
         self.r_ncp_primal.zero_()
         self.r_ncp_dual.zero_()
         self.r_ncp_compl.zero_()
@@ -907,12 +935,16 @@ def _compute_dual_problem_metrics_dense(
     solution_sigma: wp.array[vec2f],
     solution_lambdas: wp.array[float32],
     solution_v_plus: wp.array[float32],
+    # References:
+    reference_v_plus: wp.array[float32],
     # Buffers:
     buffer_s: wp.array[float32],
     buffer_v: wp.array[float32],
     # Outputs:
     metric_r_v_plus: wp.array[float32],
     metric_r_v_plus_argmax: wp.array[int32],
+    metric_r_v_plus_alt: wp.array[float32],
+    metric_r_v_plus_alt_argmax: wp.array[int32],
     metric_r_ncp_primal: wp.array[float32],
     metric_r_ncp_primal_argmax: wp.array[int32],
     metric_r_ncp_dual: wp.array[float32],
@@ -948,6 +980,9 @@ def _compute_dual_problem_metrics_dense(
     # Compute the post-event constraint-space velocity error as: r_v_plus = || v_plus_est - v_plus_true ||_inf
     r_v_plus, r_v_plus_argmax = compute_vector_difference_infnorm(ncts, vio, solution_v_plus, buffer_v)
 
+    # Compute the post-event constraint-space velocity error as: r_v_plus = || v_plus_est - v_plus_true ||_inf
+    r_v_plus_alt, r_v_plus_alt_argmax = compute_vector_difference_infnorm(ncts, vio, reference_v_plus, buffer_v)
+
     # Compute the De Saxce correction for each contact as: s = G(v_plus)
     compute_desaxce_corrections(nc, cio, vio, ccgo, problem_mu, buffer_v, buffer_s)
 
@@ -978,6 +1013,8 @@ def _compute_dual_problem_metrics_dense(
     # Store the computed metrics in the output arrays
     metric_r_v_plus[wid] = r_v_plus
     metric_r_v_plus_argmax[wid] = r_v_plus_argmax
+    metric_r_v_plus_alt[wid] = r_v_plus_alt
+    metric_r_v_plus_alt_argmax[wid] = r_v_plus_alt_argmax
     metric_r_ncp_primal[wid] = r_ncp_p
     metric_r_ncp_primal_argmax[wid] = r_ncp_p_argmax
     metric_r_ncp_dual[wid] = r_ncp_d
@@ -1005,12 +1042,16 @@ def _compute_dual_problem_metrics_sparse(
     problem_P: wp.array[float32],
     solution_lambdas: wp.array[float32],
     solution_v_plus: wp.array[float32],
+    # References:
+    reference_v_plus: wp.array[float32],
     # Buffers:
     buffer_s: wp.array[float32],
     buffer_v: wp.array[float32],
     # Outputs:
     metric_r_v_plus: wp.array[float32],
     metric_r_v_plus_argmax: wp.array[int32],
+    metric_r_v_plus_alt: wp.array[float32],
+    metric_r_v_plus_alt_argmax: wp.array[int32],
     metric_r_ncp_primal: wp.array[float32],
     metric_r_ncp_primal_argmax: wp.array[int32],
     metric_r_ncp_dual: wp.array[float32],
@@ -1045,6 +1086,9 @@ def _compute_dual_problem_metrics_sparse(
     # Compute the post-event constraint-space velocity error as: r_v_plus = || v_plus_est - v_plus_true ||_inf
     r_v_plus, r_v_plus_argmax = compute_vector_difference_infnorm(ncts, vio, solution_v_plus, buffer_v)
 
+    # Compute the post-event constraint-space velocity error as: r_v_plus = || v_plus_est - v_plus_true ||_inf
+    r_v_plus_alt, r_v_plus_alt_argmax = compute_vector_difference_infnorm(ncts, vio, reference_v_plus, buffer_v)
+
     # Compute the De Saxce correction for each contact as: s = G(v_plus)
     compute_desaxce_corrections(nc, cio, vio, ccgo, problem_mu, buffer_v, buffer_s)
 
@@ -1075,6 +1119,8 @@ def _compute_dual_problem_metrics_sparse(
     # Store the computed metrics in the output arrays
     metric_r_v_plus[wid] = r_v_plus
     metric_r_v_plus_argmax[wid] = r_v_plus_argmax
+    metric_r_v_plus_alt[wid] = r_v_plus_alt
+    metric_r_v_plus_alt_argmax[wid] = r_v_plus_alt_argmax
     metric_r_ncp_primal[wid] = r_ncp_p
     metric_r_ncp_primal_argmax[wid] = r_ncp_p_argmax
     metric_r_ncp_dual[wid] = r_ncp_d
@@ -1126,6 +1172,7 @@ class SolutionMetrics:
         # Declare data buffers for metrics computations
         self._buffer_s: wp.array | None = None
         self._buffer_v: wp.array | None = None
+        self._v_plus: wp.array | None = None
 
         # If a model and data are provided, finalize the metrics data allocations
         if model is not None and data is not None:
@@ -1157,6 +1204,7 @@ class SolutionMetrics:
             # Allocate reusable buffers for metrics computations
             self._buffer_v = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=float32)
             self._buffer_s = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=float32)
+            self._v_plus = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=float32)
 
             # Allocate the metrics container data arrays
             self._metrics = SolutionMetricsData(
@@ -1172,6 +1220,8 @@ class SolutionMetrics:
                 r_cts_contacts_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int32),
                 r_v_plus=wp.zeros(self._model.size.num_worlds, dtype=float32),
                 r_v_plus_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int32),
+                r_v_plus_alt=wp.zeros(self._model.size.num_worlds, dtype=float32),
+                r_v_plus_alt_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int32),
                 r_ncp_primal=wp.zeros(self._model.size.num_worlds, dtype=float32),
                 r_ncp_primal_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int32),
                 r_ncp_dual=wp.zeros(self._model.size.num_worlds, dtype=float32),
@@ -1226,6 +1276,7 @@ class SolutionMetrics:
         sigma: wp.array,
         lambdas: wp.array,
         v_plus: wp.array,
+        state: StateKamino,
         state_p: StateKamino,
         jacobians: SystemJacobiansType,
         problem: DualProblem | None = None,
@@ -1238,6 +1289,7 @@ class SolutionMetrics:
         Args:
             model: The model containing the time-invariant data of the simulation.
             data: The model data containing the time-variant data of the simulation.
+            state: The current state of the simulation.
             state_p: The previous state of the simulation.
             limits: The joint-limits data describing active limit constraints.
             contacts: The contact data describing active contact constraints.
@@ -1247,7 +1299,14 @@ class SolutionMetrics:
             lambdas: The array of constraint reactions (i.e. Lagrange multipliers) of the current dual problem solution.
             v_plus: The array of post-event constraint-space velocities of the current dual problem solution.
         """
+        # Ensure metrics data is available
         self._assert_finalized()
+
+        # First compute reference quantities such as:
+        # - the true post-event constraint-space velocity `v+ = J_cts @ u`
+        self._eval_reference_quantities(state, jacobians, problem)
+
+        # Evaluate the performance metrics
         self._evaluate_constraint_violations_perf(self._model, self._data, limits, contacts)
         self._evaluate_primal_problem_perf(self._model, self._data, state_p, jacobians)
         self._evaluate_dual_problem_perf(sigma, lambdas, v_plus, problem)
@@ -1265,6 +1324,26 @@ class SolutionMetrics:
         """
         if self._metrics is None:
             raise RuntimeError("SolutionMetrics data has not been finalized. Call finalize() first.")
+
+    def _eval_reference_quantities(self, state: StateKamino, jacobians: SystemJacobiansType, problem: DualProblem):
+        """
+        Evaluates the reference quantities such as:
+        - the true post-event constraint-space velocity `v+ = J_cts @ u`
+
+        Args:
+            state: The current state of the simulation.
+            jacobians: The system Jacobians of the current time-step.
+            problem: The dual forward dynamics problem of the current time-step.
+        """
+        # First compute the true post-event constraint-space velocity `v+ = J_cts @ u`
+        compute_constraint_space_velocities(
+            model=self._model,
+            jacobians=jacobians,
+            u=state.u_i,
+            v_start=problem.data.vio,
+            v=self._v_plus,
+            reset_to_zero=True,
+        )
 
     def _evaluate_constraint_violations_perf(
         self,
@@ -1482,12 +1561,16 @@ class SolutionMetrics:
                     problem.data.P,
                     lambdas,
                     v_plus,
+                    # References:
+                    self._v_plus,
                     # Buffers:
                     self._buffer_s,
                     self._buffer_v,
                     # Outputs:
                     self._metrics.r_v_plus,
                     self._metrics.r_v_plus_argmax,
+                    self._metrics.r_v_plus_alt,
+                    self._metrics.r_v_plus_alt_argmax,
                     self._metrics.r_ncp_primal,
                     self._metrics.r_ncp_primal_argmax,
                     self._metrics.r_ncp_dual,
@@ -1522,12 +1605,16 @@ class SolutionMetrics:
                     sigma,
                     lambdas,
                     v_plus,
+                    # References:
+                    self._v_plus,
                     # Buffers:
                     self._buffer_s,
                     self._buffer_v,
                     # Outputs:
                     self._metrics.r_v_plus,
                     self._metrics.r_v_plus_argmax,
+                    self._metrics.r_v_plus_alt,
+                    self._metrics.r_v_plus_alt_argmax,
                     self._metrics.r_ncp_primal,
                     self._metrics.r_ncp_primal_argmax,
                     self._metrics.r_ncp_dual,

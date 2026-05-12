@@ -315,6 +315,7 @@ class SolutionMetricsNewton:
             sigma=self._sigma,
             lambdas=self._lambdas,
             v_plus=self._v_plus,
+            state=self._state,
             state_p=self._state_p,
             jacobians=self._jacobians,
             problem=self._problem,

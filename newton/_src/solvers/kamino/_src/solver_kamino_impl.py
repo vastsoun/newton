@@ -578,7 +578,7 @@ class SolverKaminoImpl(SolverBase):
         self._update_joints_data()
 
         # Compute solver solution metrics if enabled
-        self._compute_metrics(state_in=state_in, contacts=contacts)
+        self._compute_metrics(state_in=state_in, state_out=state_out, contacts=contacts)
 
         # Update time-keeping (i.e. physical time and discrete steps)
         self._advance_time()
@@ -1139,7 +1139,7 @@ class SolverKaminoImpl(SolverBase):
         # Run the mid-step callback if it has been set
         self._run_midstep_callback(state_in, state_out, control, contacts)
 
-    def _compute_metrics(self, state_in: StateKamino, contacts: ContactsKamino | None = None):
+    def _compute_metrics(self, state_in: StateKamino, state_out: StateKamino, contacts: ContactsKamino | None = None):
         """
         Computes performance metrics measuring the physical fidelity of the dynamics solver solution.
         """
@@ -1149,6 +1149,7 @@ class SolverKaminoImpl(SolverBase):
                 sigma=self._solver_fd.data.state.sigma,
                 lambdas=self._solver_fd.data.solution.lambdas,
                 v_plus=self._solver_fd.data.solution.v_plus,
+                state=state_out,
                 state_p=state_in,
                 problem=self._problem_fd,
                 jacobians=self._jacobians,

@@ -296,7 +296,9 @@ class SolutionMetricsLogger:
                 unit-less "Simulation Step" labelling.
         """
         if not isinstance(metrics, (SolutionMetricsNewton, SolutionMetrics)):
-            raise TypeError("Expected 'metrics' to be of type `SolutionMetricsNewton` or `SolutionMetrics`.")
+            raise TypeError(
+                f"Expected 'metrics' to be of type `SolutionMetricsNewton` or `SolutionMetrics`, got {type(metrics)}."
+            )
         try:
             # `data` raises RuntimeError on either container when not finalized.
             _ = metrics.data
@@ -572,6 +574,7 @@ class SolutionMetricsLogger:
 
     def plot(
         self,
+        filename: str | None = None,
         path: str | None = None,
         show: bool = False,
         ext: str = "pdf",
@@ -601,6 +604,12 @@ class SolutionMetricsLogger:
             return
         if path is not None and not os.path.isdir(path):
             raise ValueError(f"Plot output directory '{path}' does not exist. Please create it before calling plot().")
+        if filename is None:
+            filename = ""
+            separator = ""
+        else:
+            separator = "_"
+
         time = self.time_axis()
         np_data = self.to_numpy()
         x_label = "Time (s)" if self._resolve_dt() is not None else "Step"
@@ -626,7 +635,7 @@ class SolutionMetricsLogger:
                 ax.legend(loc="best", frameon=False)
             fig.tight_layout()
             if path is not None:
-                fig_path = os.path.join(path, f"{field}.{ext}")
+                fig_path = os.path.join(path, f"{filename}{separator}{field}.{ext}")
                 fig.savefig(fig_path, format=ext, dpi=300, bbox_inches="tight")
             if show:
                 self.plt.show()
@@ -636,6 +645,7 @@ class SolutionMetricsLogger:
     def plot_comparison(
         cls,
         loggers: dict[str, SolutionMetricsLogger],
+        filename: str | None = None,
         path: str | None = None,
         show: bool = False,
         grid: bool = False,
@@ -708,6 +718,8 @@ class SolutionMetricsLogger:
         # Plot the data: If grid is True, plot all metrics in a
         # single 3x4 grid Otherwise, plot one figure per metric
         if grid:
+            if filename is None:
+                filename = "metrics"
             n_rows, n_cols = 4, 4
             fig, axes = plt.subplots(n_rows, n_cols, figsize=(24, 14))
             axes = axes.flatten()
@@ -718,17 +730,27 @@ class SolutionMetricsLogger:
                 axes[j].set_visible(False)
             fig.tight_layout()
             if path is not None:
-                fig.savefig(os.path.join(path, f"metrics_grid.{ext}"), format=ext, dpi=300, bbox_inches="tight")
+                fig.savefig(os.path.join(path, f"{filename}.{ext}"), format=ext, dpi=300, bbox_inches="tight")
             if show:
                 plt.show()
             plt.close(fig)
         else:
+            if filename is None:
+                filename = ""
+                separator = ""
+            else:
+                separator = "_"
             for field in _SCALAR_METRIC_FIELDS:
                 fig, ax = plt.subplots(1, 1, figsize=(10, 6))
                 cls._plot_overlay_metric(logged_data, field, x_label, ax)
                 fig.tight_layout()
                 if path is not None:
-                    fig.savefig(os.path.join(path, f"{field}.{ext}"), format=ext, dpi=300, bbox_inches="tight")
+                    fig.savefig(
+                        os.path.join(path, f"{filename}{separator}{field}.{ext}"),
+                        format=ext,
+                        dpi=300,
+                        bbox_inches="tight",
+                    )
                 if show:
                     plt.show()
                 plt.close(fig)

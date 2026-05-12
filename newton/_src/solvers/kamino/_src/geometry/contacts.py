@@ -1069,11 +1069,8 @@ def convert_contacts_newton_to_kamino(
     convention expected by Kamino (bid_B >= 0, normal A -> B), and populates
     all required ContactsKamino fields.
 
-    The linear part of Newton's optional :attr:`Contacts.force` (world frame)
-    is rotated into the local Kamino contact frame and stored in
-    :attr:`ContactsKaminoData.reaction`.  When ``contacts_in.force`` is
-    ``None`` (the extended attribute was not requested), reactions are written
-    as zero.
+    The linear part of Newton's optional :attr:`Contacts.rigid_contact_force` (world frame)
+    is rotated into the local Kamino contact frame and stored in :attr:`ContactsKaminoData.reaction`.
 
     Args:
         model (Model):
@@ -1149,9 +1146,7 @@ def convert_contacts_kamino_to_newton(
     Converts Kamino :class:`ContactsKamino` to Newton's :class:`Contacts` format.
 
     The Kamino contact-frame reaction (vec3) is rotated back to world-space and
-    written as the linear part of Newton's :attr:`Contacts.force` (the angular
-    part is set to zero).  When ``contacts_out.force`` is ``None`` (the
-    extended attribute was not requested), force writes are silently dropped.
+    written as the linear part of Newton's :attr:`Contacts.rigid_contact_force`.
 
     Args:
         model (Model):
@@ -1214,27 +1209,20 @@ def convert_contact_forces_kamino_to_newton(
     contacts_out: Contacts,
 ) -> None:
     """
-    Converts Kamino :class:`ContactsKamino` to Newton's :class:`Contacts` format.
-
-    The Kamino contact-frame reaction (vec3) is rotated back to world-space and
-    written as the linear part of Newton's :attr:`Contacts.force` (the angular
-    part is set to zero).  When ``contacts_out.force`` is ``None`` (the
-    extended attribute was not requested), force writes are silently dropped.
+    Converts Kamino :class:`ContactsKamino.reaction` to
+    Newton's :class:`Contacts.rigid_contact_force` format.
 
     Args:
         model (Model):
-            The :class:`newton.Model` object providing shape and body information
-            used to interpret Kamino's contact data and populate Newton's contact data.
-        state (State):
-            The :class:`newton.State` object providing ``body_q``
-            used to transform contact points to world coordinates.
+            The :class:`newton.Model` object providing shape and body information used
+            to interpret Kamino's contact reactions and populate Newton's contact forces.
         contacts_in (ContactsKamino):
-            The :class:`ContactsKamino` object containing contact information to be converted.
+            The :class:`ContactsKamino` object containing the contact reactions to be converted.
         contacts_out (Contacts):
-            The :class:`newton.Contacts` object to populate with the converted contact data.
+            The :class:`newton.Contacts` object to populate with the converted contact forces.
     """
     # Skip conversion if there are no contacts to convert or no capacity to store them.
-    if contacts_in.data.model_max_contacts_host == 0 or contacts_out.rigid_contact_max == 0 or contacts_out.force is None:
+    if contacts_in.data.model_max_contacts_host == 0 or contacts_out.rigid_contact_max == 0:
         return
 
     # Issue warning to the user if the number of contacts to convert exceeds the capacity of the output contacts.

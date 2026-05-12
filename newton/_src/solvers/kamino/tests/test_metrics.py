@@ -14,7 +14,6 @@ import warp as wp
 
 import newton
 from newton import Contacts, Control, Model, ModelBuilder, State
-from newton._src.solvers.kamino._src.dynamics.dual import DualProblem
 from newton._src.solvers.kamino._src.metrics import SolutionMetricsLogger, SolutionMetricsNewton
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.examples import print_progress_bar
@@ -156,8 +155,6 @@ class TestSetup:
     @staticmethod
     def _make_solver_config_default() -> newton.solvers.SolverKamino.Config:
         config = newton.solvers.SolverKamino.Config()
-        config.constraints = config.constraints or DualProblem.Config().constraints.__class__()
-        config.dynamics = config.dynamics or DualProblem.Config().dynamics.__class__()
         config.constraints.alpha = 0.0
         config.constraints.beta = 0.0
         config.constraints.gamma = 0.0

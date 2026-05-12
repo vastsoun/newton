@@ -856,7 +856,7 @@ class TestGeometryContactForceConversions(unittest.TestCase):
     """Tests for the contact-force / reaction conversion paths.
 
     Newton stores per-contact forces as a world-frame :class:`spatial_vector`
-    (linear, torque) on the optional :attr:`Contacts.force` extended attribute.
+    (linear, torque) on the optional :attr:`Contacts.rigid_contact_force` extended attribute.
     Kamino stores them as a 3-vector :attr:`ContactsKaminoData.reaction` in the
     local contact frame (axes ``[t, o, n]``).  These tests verify:
 
@@ -865,7 +865,7 @@ class TestGeometryContactForceConversions(unittest.TestCase):
        contact normal.
     2. A full N->K->N round-trip preserves the world-frame linear force.
     3. The K->N kernel produces ``f_world = R(frame) @ reaction`` independently.
-    4. Both launchers tolerate a missing optional ``Contacts.force`` attribute.
+    4. Both launchers tolerate a missing optional ``Contacts.rigid_contact_force`` attribute.
     """
 
     def setUp(self):
@@ -888,7 +888,6 @@ class TestGeometryContactForceConversions(unittest.TestCase):
     def _setup_scene_with_force(self):
         """Build the nunchaku scene with the ``force`` extended attribute requested."""
         builder = ModelBuilder()
-        builder.request_contact_attributes("force")
         build_test_system(builder=builder)
         model = builder.finalize(self.default_device)
 

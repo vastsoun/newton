@@ -58,7 +58,7 @@ class SolutionMetricsNewton:
         dt: float | None = None,
         model: Model | None = None,
         model_kamino: ModelKamino | None = None,
-        sparse: bool = True,
+        sparse: bool = False,
     ):
         """
         Initializes the SolutionMetricsNewton wrapper.
@@ -126,7 +126,7 @@ class SolutionMetricsNewton:
     # Operations
     ###
 
-    def finalize(self, dt: float, model: Model, model_kamino: ModelKamino | None = None, sparse: bool = True):
+    def finalize(self, dt: float, model: Model, model_kamino: ModelKamino | None = None, sparse: bool = False):
         """
         Finalizes the SolutionMetricsNewton wrapper.
 

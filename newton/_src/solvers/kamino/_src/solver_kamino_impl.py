@@ -577,17 +577,19 @@ class SolverKaminoImpl(SolverBase):
         # updated body states after time-integration
         self._update_joints_data()
 
-        # Compute solver solution metrics if enabled
-        self._compute_metrics(state_in=state_in, state_out=state_out, contacts=contacts)
+        # Publish the updated internal solver state to the output state container
+        # before evaluating metrics and running user callbacks, so they observe the
+        # post-event state rather than stale data from a previous frame.
+        self._write_step_output(state_out=state_out)
 
         # Update time-keeping (i.e. physical time and discrete steps)
         self._advance_time()
 
+        # Compute solver solution metrics if enabled
+        self._compute_metrics(state_in=state_in, state_out=state_out, contacts=contacts)
+
         # Run the post-step callback if it has been set
         self._run_poststep_callback(state_in, state_out, control, contacts)
-
-        # Copy the updated internal solver state to the output state
-        self._write_step_output(state_out=state_out)
 
     @override
     def notify_model_changed(self, flags: int) -> None:

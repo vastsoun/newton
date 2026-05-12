@@ -616,7 +616,7 @@ class SolverKamino(SolverBase):
         )
 
         # Convert contact forces from Kamino to Newton format if contact forces were requested
-        if contacts is not None and contacts.force is not None:
+        if contacts is not None:
             self._kamino.convert_contact_forces_kamino_to_newton(self.model, self._contacts_kamino, contacts)
 
     @override

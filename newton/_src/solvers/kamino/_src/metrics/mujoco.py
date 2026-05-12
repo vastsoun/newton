@@ -9,6 +9,8 @@ from functools import cache
 
 import warp as wp
 
+from newton.solvers import SolverMuJoCo
+
 from .....sim import Model, State
 from .....solvers.solver import SolverBase
 from ..core.model import ModelKamino
@@ -20,7 +22,7 @@ from ..kinematics.limits import LimitsKamino
 
 __all__ = [
     "extract_constraint_reactions_mujoco_warp",
-    "populate_joint_parent_f_from_mjw_connect_equalities",
+    "extract_joint_wrenches_solvermujoco",
 ]
 
 
@@ -416,6 +418,36 @@ def unpack_mjw_joint_limited_to_limits_kamino(
     )
 
 
+@wp.kernel
+def populate_joint_parent_f_from_body_parent_f_kernel(
+    model_joint_parent: wp.array[int],
+    model_joint_child: wp.array[int],
+    model_joint_articulation: wp.array[wp.int32],
+    state_body_parent_f: wp.array[wp.spatial_vector],
+    state_joint_parent_f: wp.array[wp.spatial_vector],
+):
+    jnt = wp.tid()
+    # no articulation - no body_parent_f
+    if model_joint_articulation[jnt] == -1:
+        return
+    body = model_joint_child[jnt]
+    # translate
+    state_joint_parent_f[jnt] = state_body_parent_f[body]
+
+
+def populate_joint_parent_f_from_body_parent_f(
+    solver: SolverBase,
+    model: Model,
+    state: State,
+):
+    wp.launch(
+        populate_joint_parent_f_from_body_parent_f_kernel,
+        model.joint_count,
+        inputs=[model.joint_parent, model.joint_child, model.joint_articulation, state.body_parent_f],
+        outputs=[state.joint_parent_f],
+    )
+
+
 def populate_joint_parent_f_from_mjw_connect_equalities(
     solver: SolverBase,
     model: Model,
@@ -447,10 +479,7 @@ def populate_joint_parent_f_from_mjw_connect_equalities(
     if not isinstance(solver, SolverMuJoCo):
         raise TypeError(f"`solver` must be an instance of `newton.solvers.SolverMuJoCo`; got {type(solver).__name__}.")
     if solver.use_mujoco_cpu:
-        raise NotImplementedError(
-            "populate_joint_parent_f_from_mjw_connect_equalities only supports the "
-            "mujoco_warp GPU backend (SolverMuJoCo(use_mujoco_cpu=False))."
-        )
+        raise NotImplementedError("populate_joint_parent_f_from_mjw_connect_equalities only supports mjwarp")
 
     if state.joint_parent_f is None or model.joint_count == 0:
         return
@@ -501,6 +530,20 @@ def populate_joint_parent_f_from_mjw_connect_equalities(
 ###
 
 
+def extract_joint_wrenches_solvermujoco(
+    solver: SolverMuJoCo,
+    model: Model,
+    state: State,
+):
+    if getattr(state, "joint_parent_f", None) is None:
+        state.joint_parent_f = wp.zeros_like(model.joint_count, dtype=wp.spatial_vector)
+
+    # Populate proper joints from body_parent_f
+    populate_joint_parent_f_from_body_parent_f(solver, model, state)
+    # Populate inequality constraints from mjwarp dta
+    populate_joint_parent_f_from_mjw_connect_equalities(solver, model, state)
+
+
 def extract_constraint_reactions_mujoco_warp(
     # Inputs:
     solver: SolverBase,
@@ -512,9 +555,6 @@ def extract_constraint_reactions_mujoco_warp(
     """
     TODO
     """
-    # # Use lazy imports so that this module does not require ``mujoco_warp``
-    import mujoco_warp
-
     # Import SolverMuJoCo from upstream newton to check model assumptions
     from ......_src.solvers.mujoco.solver_mujoco import SolverMuJoCo  # noqa: PLC0415
 

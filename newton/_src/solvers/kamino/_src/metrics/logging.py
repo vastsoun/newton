@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import os
 from enum import IntEnum
+from typing import TYPE_CHECKING
 
 import numpy as np
 import warp as wp
@@ -52,6 +53,9 @@ from ..core.types import float32, int32, int64
 from ..solvers.metrics import SolutionMetrics
 from ..utils import logger as msg
 from .core import SolutionMetricsNewton
+
+if TYPE_CHECKING:
+    import matplotlib.pyplot as plt
 
 ###
 # Module interface
@@ -140,6 +144,17 @@ _METRIC_EQUATIONS: dict[str, str] = {
     "f_ccp": r"$ 0.5 \, \lambda^T \, D \, \lambda + v_f^T \, \lambda $",
 }
 
+# Color palette for cross-setup overlay plots, cycled if more than 8 setups.
+_OVERLAY_COLORS: tuple[str, ...] = (
+    "purple",
+    "blue",
+    "red",
+    "green",
+    "yellow",
+    "cyan",
+    "orange",
+    "brown",
+)
 
 ###
 # Kernels
@@ -235,7 +250,7 @@ class SolutionMetricsLogger:
     """Class-level cache for the optional :mod:`matplotlib.pyplot` import."""
 
     @classmethod
-    def initialize_plt(cls):
+    def _initialize_plt(cls):
         """Imports :mod:`matplotlib.pyplot` lazily and caches it on the class."""
         if cls.plt is None:
             try:
@@ -293,8 +308,10 @@ class SolutionMetricsLogger:
         if not isinstance(mode, SolutionMetricsLogger.Mode):
             raise TypeError("Expected 'mode' to be a `SolutionMetricsLogger.Mode` value.")
 
-        self.initialize_plt()
+        # Attempt to initialize matplotlib for plotting
+        self._initialize_plt()
 
+        # Store the metrics instance and related configurations
         self._metrics: SolutionMetricsNewton | SolutionMetrics = metrics
         self._max_frames: int = int(max_frames)
         self._mode: SolutionMetricsLogger.Mode = mode
@@ -555,7 +572,8 @@ class SolutionMetricsLogger:
         show: bool = False,
         ext: str = "pdf",
     ):
-        """Renders one matplotlib figure per scalar metric.
+        """
+        Renders one matplotlib figure per scalar metric.
 
         Each figure follows the equation-subtitled format used by
         :func:`render_physics_metrics_plots`: the title is the
@@ -579,16 +597,13 @@ class SolutionMetricsLogger:
             return
         if path is not None and not os.path.isdir(path):
             raise ValueError(f"Plot output directory '{path}' does not exist. Please create it before calling plot().")
-
         time = self.time_axis()
-        x_label = "Time (s)" if self._resolve_dt() is not None else "Simulation Step"
-
         np_data = self.to_numpy()
+        x_label = "Time (s)" if self._resolve_dt() is not None else "Step"
         for field in _SCALAR_METRIC_FIELDS:
             equation = _METRIC_EQUATIONS[field]
             base_title = _METRIC_TITLES[field]
             title = f"{base_title} \n ({equation})"
-
             fig, ax = self.plt.subplots(1, 1, figsize=(10, 6))
             data = np_data[field]
             for w in range(self._num_worlds):
@@ -605,14 +620,152 @@ class SolutionMetricsLogger:
             ax.grid()
             if self._num_worlds > 1:
                 ax.legend(loc="best", frameon=False)
-
             fig.tight_layout()
-
             if path is not None:
                 fig_path = os.path.join(path, f"{field}.{ext}")
                 fig.savefig(fig_path, format=ext, dpi=300, bbox_inches="tight")
-
             if show:
                 self.plt.show()
-
             self.plt.close(fig)
+
+    @classmethod
+    def plot_comparison(
+        cls,
+        loggers: dict[str, SolutionMetricsLogger],
+        path: str | None = None,
+        show: bool = False,
+        grid: bool = False,
+        ext: str = "pdf",
+    ):
+        """
+        Renders overlaid :class:`SolutionMetricsLogger` plots across multiple logger instances.
+
+        Iterates the scalar metric fields recorded by every setup's logger and
+        plots them on a shared axis, drawing one curve per world per setup using
+        :data:`PLOT_COLORS` cycled by setup index. The figure title and LaTeX
+        subtitle follow :meth:`SolutionMetricsLogger.plot`, so the output is
+        visually consistent with the per-logger plots.
+
+        Args:
+            loggers:
+                A dictionary of logger instances keyed by name.
+            path:
+                If provided, each figure is saved as ``{path}/{metric_name}.{ext}``.
+                The directory must already exist.
+            show:
+                If ``True`` the figures are also displayed (blocking).
+            grid:
+                If ``True``, render all metrics in a single 3x4
+                grid figure instead of one figure per metric.
+            ext:
+                The file extension / matplotlib format to save with.
+                Defaults to ``"pdf"`` to match the benchmarks output.
+        """
+        # Attempt to initialize matplotlib for plotting
+        if cls.plt is None:
+            cls._initialize_plt()
+        if cls.plt is None:
+            msg.critical("matplotlib is not available, skipping plotting.")
+            return
+
+        # Ensure all loggers are valid
+        if not all(isinstance(logger, SolutionMetricsLogger) for logger in loggers.values()):
+            raise ValueError("All loggers must be instances of SolutionMetricsLogger.")
+
+        # Check that at least one logger has logged frames
+        if not any(logger.num_logged_frames > 0 for logger in loggers.values()):
+            msg.warning("No logged frames to plot, skipping plotting.")
+            return
+
+        # Get the first logger
+        first_logger = list[SolutionMetricsLogger](loggers.values())[0]
+
+        # Check that all loggers have the same number of worlds
+        if not all(logger.num_worlds == first_logger.num_worlds for logger in loggers.values()):
+            raise ValueError("All loggers must have the same number of worlds.")
+
+        # Check that the output directory exists
+        if path is not None and not os.path.isdir(path):
+            raise ValueError(
+                f"Plot output directory '{path}' does not exist. Please create it before calling plot_comparison()."
+            )
+
+        # Get the matplotlib instance
+        plt = cls.plt
+
+        # Get the time axis for the first logger
+        x_label = "Time (s)" if first_logger.dt is not None else "Step"
+
+        # Get the numpy data for all loggers
+        logged_data = [
+            (name, logger.num_worlds, logger.time_axis(), logger.to_numpy()) for name, logger in loggers.items()
+        ]
+
+        # Plot the data: If grid is True, plot all metrics in a
+        # single 3x4 grid Otherwise, plot one figure per metric
+        if grid:
+            n_rows, n_cols = 3, 4
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(24, 14))
+            axes = axes.flatten()
+            for i, field in enumerate(_SCALAR_METRIC_FIELDS):
+                cls._plot_overlay_metric(logged_data, field, x_label, axes[i])
+            # Hide any unused cells in case _SCALAR_METRIC_FIELDS shrinks below n_rows*n_cols.
+            for j in range(len(_SCALAR_METRIC_FIELDS), len(axes)):
+                axes[j].set_visible(False)
+            fig.tight_layout()
+            if path is not None:
+                fig.savefig(os.path.join(path, f"metrics_grid.{ext}"), format=ext, dpi=300, bbox_inches="tight")
+            if show:
+                plt.show()
+            plt.close(fig)
+        else:
+            for field in _SCALAR_METRIC_FIELDS:
+                fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+                cls._plot_overlay_metric(logged_data, field, x_label, ax)
+                fig.tight_layout()
+                if path is not None:
+                    fig.savefig(os.path.join(path, f"{field}.{ext}"), format=ext, dpi=300, bbox_inches="tight")
+                if show:
+                    plt.show()
+                plt.close(fig)
+
+    ###
+    # Internals
+    ###
+
+    @staticmethod
+    def _plot_overlay_metric(
+        data: list[tuple[str, int, np.ndarray, dict[str, np.ndarray]]],
+        field: str,
+        x_label: str,
+        ax: plt.Axes,
+    ):
+        """
+        Draws one overlaid metric panel onto ``ax`` for the given scalar ``field``.
+
+        Each entry of ``data`` is a ``(name, nw, time, np_data)`` tuple where ``time`` and
+        ``np_data`` are pre-computed via the logger's :meth:`SolutionMetricsLogger.time_axis`
+        and :meth:`SolutionMetricsLogger.to_numpy` methods. One curve is drawn per world per
+        logger, cycling through :data:`_OVERLAY_COLORS`.
+        """
+        for i, (name, nw, time, np_data) in enumerate(data):
+            color = _OVERLAY_COLORS[i % len(_OVERLAY_COLORS)]
+            for w in range(nw):
+                world_label = f" (world_{w})" if nw > 1 else ""
+                ax.plot(
+                    time,
+                    np_data[field][:, w],
+                    color=color,
+                    marker="o",
+                    markersize=3,
+                    linestyle="-",
+                    # linewidth=1.0,
+                    label=f"{name}{world_label}",
+                )
+        equation = _METRIC_EQUATIONS[field]
+        base_title = _METRIC_TITLES[field]
+        ax.set_title(f"{base_title} \n ({equation})")
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(field)
+        ax.grid()
+        ax.legend(loc="best", frameon=False)

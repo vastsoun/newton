@@ -5,7 +5,6 @@
 TODO
 """
 
-import os
 import time
 import unittest
 from collections.abc import Callable
@@ -17,11 +16,6 @@ import newton
 from newton import Contacts, Control, Model, ModelBuilder, State
 from newton._src.solvers.kamino._src.dynamics.dual import DualProblem
 from newton._src.solvers.kamino._src.metrics import SolutionMetricsLogger, SolutionMetricsNewton
-from newton._src.solvers.kamino._src.metrics.logging import (
-    _METRIC_EQUATIONS,
-    _METRIC_TITLES,
-    _SCALAR_METRIC_FIELDS,
-)
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.examples import print_progress_bar
 from newton._src.solvers.kamino.tests import setup_tests, test_context
@@ -226,107 +220,6 @@ def _assert_loggers_match(
             )
 
 
-def plot_logger_comparison(
-    logger_metrics: SolutionMetricsLogger,
-    logger_solver: SolutionMetricsLogger,
-    path: str | None = None,
-    show: bool = False,
-    ext: str = "pdf",
-    label_metrics: str = "SolutionMetricsNewton",
-    label_solver: str = "SolverKamino",
-):
-    """Render one matplotlib figure per scalar metric overlaying two loggers.
-
-    Plots ``logger_metrics`` data in blue (marker ``"o"``, solid line) and
-    ``logger_solver`` data in red (marker ``"x"``, dashed line) on the same
-    axis, drawing one curve per world per source. The figure title and
-    LaTeX subtitle follow the same format as :meth:`SolutionMetricsLogger.plot`,
-    so the per-metric output is visually consistent with the single-source
-    plots produced by the logger itself.
-
-    Args:
-        logger_metrics: Logger wrapping the :class:`SolutionMetricsNewton`
-            instance under test (rendered in blue).
-        logger_solver: Logger wrapping the :class:`SolverKamino`-internal
-            :class:`SolutionMetrics` reference (rendered in red).
-        path: If provided, saves each figure as ``{path}/{metric_name}.{ext}``.
-            The directory must already exist.
-        show: If ``True``, displays the figures interactively (blocking).
-        ext: File extension / matplotlib format. Defaults to ``"pdf"`` to
-            match the benchmarks output.
-        label_metrics: Legend label prefix for the wrapper-side data.
-        label_solver: Legend label prefix for the solver-side data.
-    """
-    SolutionMetricsLogger.initialize_plt()
-    if SolutionMetricsLogger.plt is None:
-        msg.warning("matplotlib is not available, skipping plotting.")
-        return
-    if logger_metrics.num_logged_frames == 0 or logger_solver.num_logged_frames == 0:
-        msg.warning("No logged frames to plot, skipping plotting.")
-        return
-    if path is not None and not os.path.isdir(path):
-        raise ValueError(
-            f"Plot output directory '{path}' does not exist. Please create it before calling plot_logger_comparison()."
-        )
-
-    plt = SolutionMetricsLogger.plt
-
-    time_metrics = logger_metrics.time_axis()
-    time_solver = logger_solver.time_axis()
-    x_label = "Time (s)" if logger_metrics.dt is not None else "Simulation Step"
-
-    np_metrics = logger_metrics.to_numpy()
-    np_solver = logger_solver.to_numpy()
-
-    nw_metrics = logger_metrics.num_worlds
-    nw_solver = logger_solver.num_worlds
-
-    for field in _SCALAR_METRIC_FIELDS:
-        equation = _METRIC_EQUATIONS[field]
-        base_title = _METRIC_TITLES[field]
-        title = f"{base_title} \n ({equation})"
-
-        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-        for w in range(nw_metrics):
-            world_label = f" (world_{w})" if nw_metrics > 1 else ""
-            ax.plot(
-                time_metrics,
-                np_metrics[field][:, w],
-                color="blue",
-                marker="o",
-                markersize=3,
-                linestyle="-",
-                label=f"{label_metrics}{world_label}",
-            )
-        for w in range(nw_solver):
-            world_label = f" (world_{w})" if nw_solver > 1 else ""
-            ax.plot(
-                time_solver,
-                np_solver[field][:, w],
-                color="red",
-                marker="x",
-                markersize=3,
-                linestyle="--",
-                label=f"{label_solver}{world_label}",
-            )
-        ax.set_title(title)
-        ax.set_xlabel(x_label)
-        ax.set_ylabel(field)
-        ax.grid()
-        ax.legend(loc="best", frameon=False)
-
-        fig.tight_layout()
-
-        if path is not None:
-            fig_path = os.path.join(path, f"{field}.{ext}")
-            fig.savefig(fig_path, format=ext, dpi=300, bbox_inches="tight")
-
-        if show:
-            plt.show()
-
-        plt.close(fig)
-
-
 ###
 # Stepwise per-builder cross-check tests
 ###
@@ -426,11 +319,11 @@ class TestSolutionMetricsNewton(unittest.TestCase):
                 plot_dir.mkdir(parents=True, exist_ok=True)
                 save_path = str(plot_dir)
             msg.notif(f"Generating overlay plots for {builder_name}...")
-            plot_logger_comparison(
-                logger_metrics=setup.logger_metrics,
-                logger_solver=setup.logger_solver,
+            SolutionMetricsLogger.plot_comparison(
+                loggers={"metrics": setup.logger_metrics, "solver": setup.logger_solver},
                 path=save_path,
                 show=self.show,
+                grid=True,
                 ext="pdf",
             )
 

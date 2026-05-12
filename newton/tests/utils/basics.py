@@ -1262,6 +1262,9 @@ def build_boxes_fourbar(
         qmin = float(-MAXVAL)
         qmax = float(MAXVAL)
 
+    # List of articulation joints
+    articulation_joints = []
+
     # Optional fixed base: attach link_1 rigidly to the world
     if fixedbase:
         _builder.add_joint_fixed(
@@ -1274,13 +1277,14 @@ def build_boxes_fourbar(
 
     # Optional floating base: attach link_1 to the world with a 6-DoF free joint
     if floatingbase:
-        _builder.add_joint_free(
+        jf = _builder.add_joint_free(
             label="world_to_link1",
             parent=-1,
             child=bid1,
             parent_xform=wp.transform_identity(dtype=wp.float32),
             child_xform=wp.transform_identity(dtype=wp.float32),
         )
+        articulation_joints.append(jf)
 
     # Per-DoF configurations reused across the revolute joints
     passive_joint_dof_config = ModelBuilder.JointDofConfig(
@@ -1316,7 +1320,7 @@ def build_boxes_fourbar(
     # )
 
     # Add a revolute joint between link 1 and link 2
-    _builder.add_joint_revolute(
+    j1 = _builder.add_joint_revolute(
         label="link1_to_link2",
         parent=bid1,
         child=bid2,
@@ -1326,7 +1330,7 @@ def build_boxes_fourbar(
     )
 
     # Add a revolute joint between link 2 and link 3
-    _builder.add_joint_revolute(
+    j2 = _builder.add_joint_revolute(
         label="link2_to_link3",
         parent=bid2,
         child=bid3,
@@ -1336,7 +1340,7 @@ def build_boxes_fourbar(
     )
 
     # Add a revolute joint between link 3 and link 4
-    _builder.add_joint_revolute(
+    j3 = _builder.add_joint_revolute(
         label="link3_to_link4",
         parent=bid3,
         child=bid4,
@@ -1354,6 +1358,10 @@ def build_boxes_fourbar(
         parent_xform=wp.transformf(r_j4 - r_b4, wp.quat_identity(dtype=wp.float32)),
         child_xform=wp.transformf(r_j4 - r_b1, wp.quat_identity(dtype=wp.float32)),
     )
+
+    # Add the joints to the articulation
+    articulation_joints.extend([j1, j2, j3])
+    _builder.add_articulation(articulation_joints)
 
     # Close the world context if we opened one
     if new_world or builder is None:

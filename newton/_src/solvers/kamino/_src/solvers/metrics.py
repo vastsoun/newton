@@ -80,7 +80,7 @@ from ..core.data import DataKamino
 from ..core.math import screw, screw_angular, screw_linear
 from ..core.model import ModelKamino
 from ..core.state import StateKamino
-from ..core.types import float32, int32, int64, mat33f, uint32, vec2f, vec3f, vec4f, vec6f
+from ..core.types import float32, int32, int64, mat33f, uint32, vec3f, vec4f, vec6f
 from ..dynamics.dual import DualProblem
 from ..geometry.contacts import ContactsKamino
 from ..geometry.keying import build_pair_key2
@@ -90,7 +90,6 @@ from ..kinematics.velocities import compute_constraint_space_velocities
 from ..solvers.padmm.math import (
     compute_desaxce_corrections,
     compute_dot_product,
-    compute_double_dot_product,
     compute_ncp_complementarity_residual,
     compute_ncp_dual_residual,
     compute_ncp_natural_map_residual,
@@ -289,31 +288,6 @@ class SolutionMetricsData:
     Shape of ``(num_worlds,)`` and type :class:`int32`.
     """
 
-    r_v_plus_alt: wp.array | None = None
-    """
-    The largest error in the estimation of the post-event constraint-space velocity.
-
-    Measures how well the computed post-event constraint-space velocity `v^+` was estimated.
-
-    Computed as the maximum absolute value (i.e. infinity-norm) over velocity-level kinematics constraints:
-    `r_v_plus := || v_plus_est - v_plus_true ||_inf`,
-
-    where:
-    - `v_plus_est` is the estimated post-event constraint-space velocity
-    - v_plus_true` is the true post-event constraint-space velocity computed as
-      `v_plus_true = J_cts @ u`, where `J_cts` is the constraint Jacobian matrix
-      and `u` is the post-event generalized velocity.
-
-    Shape of ``(num_worlds,)`` and type :class:`float32`.
-    """
-
-    r_v_plus_alt_argmax: wp.array | None = None
-    """
-    The index of the constraint with the largest post-event constraint-space velocity estimation error.
-
-    Shape of ``(num_worlds,)`` and type :class:`int32`.
-    """
-
     r_ncp_primal: wp.array | None = None
     """
     The NCP primal residual representing the violation of set-valued constraint reactions.
@@ -456,7 +430,6 @@ class SolutionMetricsData:
         self.r_cts_limits_argmax.fill_(-1)
         self.r_cts_contacts_argmax.fill_(-1)
         self.r_v_plus_argmax.fill_(-1)
-        self.r_v_plus_alt_argmax.fill_(-1)
         self.r_ncp_primal_argmax.fill_(-1)
         self.r_ncp_dual_argmax.fill_(-1)
         self.r_ncp_compl_argmax.fill_(-1)
@@ -472,7 +445,6 @@ class SolutionMetricsData:
         self.r_cts_limits.zero_()
         self.r_cts_contacts.zero_()
         self.r_v_plus.zero_()
-        self.r_v_plus_alt.zero_()
         self.r_ncp_primal.zero_()
         self.r_ncp_dual.zero_()
         self.r_ncp_compl.zero_()
@@ -616,6 +588,62 @@ def compute_vector_difference_infnorm(
         if err == max:
             argmax = i
     return max, argmax
+
+
+@wp.func
+def compute_ccp_objectiv_product(
+    dim: int32,
+    vio: int32,
+    x: wp.array[float32],
+    y: wp.array[float32],
+    z: wp.array[float32],
+    w: wp.array[float32],
+    epsilon: float32 = 1.0e-6,
+) -> float32:
+    """
+    Computes the the inner product `x.T @ (y + w^-1 @ z)` between a vector `x` and
+    the sum of two vectors `y` and `z` scaled by the reciprocal of the vector `w`.
+
+    All vectors are stored in flat arrays, with dimension
+    `dim` and starting from the vector index offset `vio`.
+
+    Args:
+        dim (int32): The dimension (i.e. size) of the vectors.
+        vio (int32): The vector index offset (i.e. start index).
+        x (wp.array[float32]): The left product vector.
+        y (wp.array[float32]): The first right product vector.
+        z (wp.array[float32]): The second right product vector.
+        w (wp.array[float32]): The reciprocal of the scaling vector.
+
+    Returns:
+        float32: The inner product of `x` with the sum of `y` and `z` scaled by the reciprocal of `w`.
+    """
+    product = float(0.0)
+    for i in range(dim):
+        v_i = vio + i
+        product += x[v_i] * (y[v_i] + z[v_i] / (w[v_i] + epsilon))
+    return product
+
+
+@wp.func
+def compute_dual_problem_objectives(
+    ncts: int32,
+    vio: int32,
+    v_f: wp.array[float32],
+    P: wp.array[float32],
+    lambdas: wp.array[float32],
+    v_plus: wp.array[float32],
+    s: wp.array[float32],
+):
+    # Compute the CCP optimization objective as: f_ccp = 0.5 * lambda.dot(v_plus + P^-1 @ v_f)
+    f_ccp = 0.5 * compute_ccp_objectiv_product(ncts, vio, lambdas, v_plus, v_f, P)
+
+    # Compute the NCP optimization objective as:  f_ncp = f_ccp + lambda.dot(s)
+    f_ncp = compute_dot_product(ncts, vio, lambdas, s)
+    f_ncp += f_ccp
+
+    # Return the computed dual problem objectives
+    return f_ncp, f_ccp
 
 
 ###
@@ -918,117 +946,7 @@ def _compute_cts_contacts_residual(
 
 
 @wp.kernel
-def _compute_dual_problem_metrics_dense(
-    # Inputs:
-    problem_nl: wp.array[int32],
-    problem_nc: wp.array[int32],
-    problem_cio: wp.array[int32],
-    problem_lcgo: wp.array[int32],
-    problem_ccgo: wp.array[int32],
-    problem_dim: wp.array[int32],
-    problem_vio: wp.array[int32],
-    problem_mio: wp.array[int32],
-    problem_mu: wp.array[float32],
-    problem_v_f: wp.array[float32],
-    problem_D: wp.array[float32],
-    problem_P: wp.array[float32],
-    solution_sigma: wp.array[vec2f],
-    solution_lambdas: wp.array[float32],
-    solution_v_plus: wp.array[float32],
-    # References:
-    reference_v_plus: wp.array[float32],
-    # Buffers:
-    buffer_s: wp.array[float32],
-    buffer_v: wp.array[float32],
-    # Outputs:
-    metric_r_v_plus: wp.array[float32],
-    metric_r_v_plus_argmax: wp.array[int32],
-    metric_r_v_plus_alt: wp.array[float32],
-    metric_r_v_plus_alt_argmax: wp.array[int32],
-    metric_r_ncp_primal: wp.array[float32],
-    metric_r_ncp_primal_argmax: wp.array[int32],
-    metric_r_ncp_dual: wp.array[float32],
-    metric_r_ncp_dual_argmax: wp.array[int32],
-    metric_r_ncp_compl: wp.array[float32],
-    metric_r_ncp_compl_argmax: wp.array[int32],
-    metric_r_vi_natmap: wp.array[float32],
-    metric_r_vi_natmap_argmax: wp.array[int32],
-    metric_f_ncp: wp.array[float32],
-    metric_f_ccp: wp.array[float32],
-):
-    # Retrieve the thread index as the world index
-    wid = wp.tid()
-
-    # Retrieve the world-specific data
-    nl = problem_nl[wid]
-    nc = problem_nc[wid]
-    ncts = problem_dim[wid]
-    cio = problem_cio[wid]
-    lcgo = problem_lcgo[wid]
-    ccgo = problem_ccgo[wid]
-    vio = problem_vio[wid]
-    mio = problem_mio[wid]
-    sigma = solution_sigma[wid]
-
-    # Compute additional info
-    njc = ncts - (nl + 3 * nc)
-
-    # Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
-    # NOTE: We assume the dual problem linear terms `D` and `v_f` have already been preconditioned in-place using `P`
-    compute_v_plus(ncts, vio, mio, sigma[0], problem_P, problem_D, problem_v_f, solution_lambdas, buffer_v)
-
-    # Compute the post-event constraint-space velocity error as: r_v_plus = || v_plus_est - v_plus_true ||_inf
-    r_v_plus, r_v_plus_argmax = compute_vector_difference_infnorm(ncts, vio, solution_v_plus, buffer_v)
-
-    # Compute the post-event constraint-space velocity error as: r_v_plus = || v_plus_est - v_plus_true ||_inf
-    r_v_plus_alt, r_v_plus_alt_argmax = compute_vector_difference_infnorm(ncts, vio, reference_v_plus, buffer_v)
-
-    # Compute the De Saxce correction for each contact as: s = G(v_plus)
-    compute_desaxce_corrections(nc, cio, vio, ccgo, problem_mu, buffer_v, buffer_s)
-
-    # Compute the CCP optimization objective as: f_ccp = 0.5 * lambda.dot(v_plus + v_f)
-    f_ccp = 0.5 * compute_double_dot_product(ncts, vio, solution_lambdas, buffer_v, problem_v_f)
-
-    # Compute the NCP optimization objective as:  f_ncp = f_ccp + lambda.dot(s)
-    f_ncp = compute_dot_product(ncts, vio, solution_lambdas, buffer_s)
-    f_ncp += f_ccp
-
-    # Compute the augmented post-event constraint-space velocity as: v_aug = v_plus + s
-    compute_vector_sum(ncts, vio, buffer_v, buffer_s, buffer_v)
-
-    # Compute the NCP primal residual as: r_p := || lambda - proj_K(lambda) ||_inf
-    r_ncp_p, r_ncp_p_argmax = compute_ncp_primal_residual(nl, nc, vio, lcgo, ccgo, cio, problem_mu, solution_lambdas)
-
-    # Compute the NCP dual residual as: r_d := || v_plus + s - proj_dual_K(v_plus + s)  ||_inf
-    r_ncp_d, r_ncp_d_argmax = compute_ncp_dual_residual(njc, nl, nc, vio, lcgo, ccgo, cio, problem_mu, buffer_v)
-
-    # Compute the NCP complementarity (lambda _|_ (v_plus + s)) residual as r_c := || lambda.dot(v_plus + s) ||_inf
-    r_ncp_c, r_ncp_c_argmax = compute_ncp_complementarity_residual(nl, nc, vio, lcgo, ccgo, buffer_v, solution_lambdas)
-
-    # Compute the natural-map residuals as: r_natmap = || lambda - proj_K(lambda - (v + s)) ||_inf
-    r_ncp_natmap, r_ncp_natmap_argmax = compute_ncp_natural_map_residual(
-        nl, nc, vio, lcgo, ccgo, cio, problem_mu, buffer_v, solution_lambdas
-    )
-
-    # Store the computed metrics in the output arrays
-    metric_r_v_plus[wid] = r_v_plus
-    metric_r_v_plus_argmax[wid] = r_v_plus_argmax
-    metric_r_v_plus_alt[wid] = r_v_plus_alt
-    metric_r_v_plus_alt_argmax[wid] = r_v_plus_alt_argmax
-    metric_r_ncp_primal[wid] = r_ncp_p
-    metric_r_ncp_primal_argmax[wid] = r_ncp_p_argmax
-    metric_r_ncp_dual[wid] = r_ncp_d
-    metric_r_ncp_dual_argmax[wid] = r_ncp_d_argmax
-    metric_r_ncp_compl[wid] = r_ncp_c
-    metric_r_ncp_compl_argmax[wid] = r_ncp_c_argmax
-    metric_r_vi_natmap[wid] = r_ncp_natmap
-    metric_r_vi_natmap_argmax[wid] = r_ncp_natmap_argmax
-    metric_f_ncp[wid] = f_ncp
-    metric_f_ccp[wid] = f_ccp
-
-
-@wp.kernel
-def _compute_dual_problem_metrics_sparse(
+def _compute_dual_problem_metrics(
     # Inputs:
     problem_nl: wp.array[int32],
     problem_nc: wp.array[int32],
@@ -1042,16 +960,12 @@ def _compute_dual_problem_metrics_sparse(
     problem_P: wp.array[float32],
     solution_lambdas: wp.array[float32],
     solution_v_plus: wp.array[float32],
-    # References:
-    reference_v_plus: wp.array[float32],
-    # Buffers:
+    v_plus: wp.array[float32],
     buffer_s: wp.array[float32],
     buffer_v: wp.array[float32],
     # Outputs:
     metric_r_v_plus: wp.array[float32],
     metric_r_v_plus_argmax: wp.array[int32],
-    metric_r_v_plus_alt: wp.array[float32],
-    metric_r_v_plus_alt_argmax: wp.array[int32],
     metric_r_ncp_primal: wp.array[float32],
     metric_r_ncp_primal_argmax: wp.array[int32],
     metric_r_ncp_dual: wp.array[float32],
@@ -1078,29 +992,19 @@ def _compute_dual_problem_metrics_sparse(
     # Compute additional info
     njc = ncts - (nl + 3 * nc)
 
-    # Compute the post-event constraint-space velocity from the current solution: v_plus = v_f + D @ lambda
-    # NOTE: We assume the dual problem term `v_f` has already been preconditioned in-place using `P`, and
-    #       D @ lambdas is already provided in `buffer_v`
-    compute_v_plus_sparse(ncts, vio, problem_P, problem_v_f, buffer_v, buffer_v)
-
     # Compute the post-event constraint-space velocity error as: r_v_plus = || v_plus_est - v_plus_true ||_inf
-    r_v_plus, r_v_plus_argmax = compute_vector_difference_infnorm(ncts, vio, solution_v_plus, buffer_v)
-
-    # Compute the post-event constraint-space velocity error as: r_v_plus = || v_plus_est - v_plus_true ||_inf
-    r_v_plus_alt, r_v_plus_alt_argmax = compute_vector_difference_infnorm(ncts, vio, reference_v_plus, buffer_v)
+    r_v_plus, r_v_plus_argmax = compute_vector_difference_infnorm(ncts, vio, solution_v_plus, v_plus)
 
     # Compute the De Saxce correction for each contact as: s = G(v_plus)
-    compute_desaxce_corrections(nc, cio, vio, ccgo, problem_mu, buffer_v, buffer_s)
+    compute_desaxce_corrections(nc, cio, vio, ccgo, problem_mu, v_plus, buffer_s)
 
-    # Compute the CCP optimization objective as: f_ccp = 0.5 * lambda.dot(v_plus + v_f)
-    f_ccp = 0.5 * compute_double_dot_product(ncts, vio, solution_lambdas, buffer_v, problem_v_f)
-
-    # Compute the NCP optimization objective as:  f_ncp = f_ccp + lambda.dot(s)
-    f_ncp = compute_dot_product(ncts, vio, solution_lambdas, buffer_s)
-    f_ncp += f_ccp
+    # Compute the dual problem objectives
+    f_ncp, f_ccp = compute_dual_problem_objectives(
+        ncts, vio, problem_v_f, problem_P, solution_lambdas, v_plus, buffer_s
+    )
 
     # Compute the augmented post-event constraint-space velocity as: v_aug = v_plus + s
-    compute_vector_sum(ncts, vio, buffer_v, buffer_s, buffer_v)
+    compute_vector_sum(ncts, vio, v_plus, buffer_s, buffer_v)
 
     # Compute the NCP primal residual as: r_p := || lambda - proj_K(lambda) ||_inf
     r_ncp_p, r_ncp_p_argmax = compute_ncp_primal_residual(nl, nc, vio, lcgo, ccgo, cio, problem_mu, solution_lambdas)
@@ -1119,8 +1023,6 @@ def _compute_dual_problem_metrics_sparse(
     # Store the computed metrics in the output arrays
     metric_r_v_plus[wid] = r_v_plus
     metric_r_v_plus_argmax[wid] = r_v_plus_argmax
-    metric_r_v_plus_alt[wid] = r_v_plus_alt
-    metric_r_v_plus_alt_argmax[wid] = r_v_plus_alt_argmax
     metric_r_ncp_primal[wid] = r_ncp_p
     metric_r_ncp_primal_argmax[wid] = r_ncp_p_argmax
     metric_r_ncp_dual[wid] = r_ncp_d
@@ -1220,8 +1122,6 @@ class SolutionMetrics:
                 r_cts_contacts_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int32),
                 r_v_plus=wp.zeros(self._model.size.num_worlds, dtype=float32),
                 r_v_plus_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int32),
-                r_v_plus_alt=wp.zeros(self._model.size.num_worlds, dtype=float32),
-                r_v_plus_alt_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int32),
                 r_ncp_primal=wp.zeros(self._model.size.num_worlds, dtype=float32),
                 r_ncp_primal_argmax=wp.full(self._model.size.num_worlds, value=-1, dtype=int32),
                 r_ncp_dual=wp.zeros(self._model.size.num_worlds, dtype=float32),
@@ -1273,7 +1173,6 @@ class SolutionMetrics:
 
     def evaluate(
         self,
-        sigma: wp.array,
         lambdas: wp.array,
         v_plus: wp.array,
         state: StateKamino,
@@ -1309,7 +1208,7 @@ class SolutionMetrics:
         # Evaluate the performance metrics
         self._evaluate_constraint_violations_perf(self._model, self._data, limits, contacts)
         self._evaluate_primal_problem_perf(self._model, self._data, state_p, jacobians)
-        self._evaluate_dual_problem_perf(sigma, lambdas, v_plus, problem)
+        self._evaluate_dual_problem_perf(lambdas, v_plus, problem)
 
     ###
     # Internals
@@ -1512,7 +1411,6 @@ class SolutionMetrics:
 
     def _evaluate_dual_problem_perf(
         self,
-        sigma: wp.array,
         lambdas: wp.array,
         v_plus: wp.array,
         problem: DualProblem,
@@ -1521,110 +1419,54 @@ class SolutionMetrics:
         Evaluates the dual problem performance metrics.
 
         Args:
-            problem: The dual problem containing the time-invariant and time-variant data of the simulation.
-            sigma: The array of sigma values for the dual problem.
-            lambdas: The array of lambda values for the dual problem.
-            v_plus: The array of v_plus values for the dual problem.
+            problem: The dual forward dynamics problem solved by a solver.
+            lambdas: The array of lambda solutions computed by a solver.
+            v_plus: The array of v_plus solutions computed by a solver.
         """
         # Ensure metrics data is available
         self._assert_finalized()
 
-        # Compute the dual problem NCP/VI performance metrics
-        if problem.sparse:
-            # Compute post-event constraint-space velocity from solution: v_plus = v_f + D @ lambda
-            # Store it in buffer for further processing in dual problem metrics computation
-            delassus_reg_prev = problem.delassus._eta
-            delassus_pre_prev = problem.delassus._preconditioner
-            problem.delassus.set_regularization(None)
-            problem.delassus.set_preconditioner(None)
-            problem.delassus.matvec(
-                x=lambdas,
-                y=self._buffer_v,
-                world_mask=wp.ones((problem.data.num_worlds,), dtype=wp.int32, device=self.device),
-            )
-            problem.delassus.set_regularization(delassus_reg_prev)
-            problem.delassus.set_preconditioner(delassus_pre_prev)
-            wp.launch(
-                kernel=_compute_dual_problem_metrics_sparse,
-                dim=problem.size.num_worlds,
-                inputs=[
-                    # Inputs:
-                    problem.data.nl,
-                    problem.data.nc,
-                    problem.data.cio,
-                    problem.data.lcgo,
-                    problem.data.ccgo,
-                    problem.data.dim,
-                    problem.data.vio,
-                    problem.data.mu,
-                    problem.data.v_f,
-                    problem.data.P,
-                    lambdas,
-                    v_plus,
-                    # References:
-                    self._v_plus,
-                    # Buffers:
-                    self._buffer_s,
-                    self._buffer_v,
-                    # Outputs:
-                    self._metrics.r_v_plus,
-                    self._metrics.r_v_plus_argmax,
-                    self._metrics.r_v_plus_alt,
-                    self._metrics.r_v_plus_alt_argmax,
-                    self._metrics.r_ncp_primal,
-                    self._metrics.r_ncp_primal_argmax,
-                    self._metrics.r_ncp_dual,
-                    self._metrics.r_ncp_dual_argmax,
-                    self._metrics.r_ncp_compl,
-                    self._metrics.r_ncp_compl_argmax,
-                    self._metrics.r_vi_natmap,
-                    self._metrics.r_vi_natmap_argmax,
-                    self._metrics.f_ncp,
-                    self._metrics.f_ccp,
-                ],
-                device=problem.device,
-            )
-        else:
-            wp.launch(
-                kernel=_compute_dual_problem_metrics_dense,
-                dim=problem.size.num_worlds,
-                inputs=[
-                    # Inputs:
-                    problem.data.nl,
-                    problem.data.nc,
-                    problem.data.cio,
-                    problem.data.lcgo,
-                    problem.data.ccgo,
-                    problem.data.dim,
-                    problem.data.vio,
-                    problem.data.mio,
-                    problem.data.mu,
-                    problem.data.v_f,
-                    problem.data.D,
-                    problem.data.P,
-                    sigma,
-                    lambdas,
-                    v_plus,
-                    # References:
-                    self._v_plus,
-                    # Buffers:
-                    self._buffer_s,
-                    self._buffer_v,
-                    # Outputs:
-                    self._metrics.r_v_plus,
-                    self._metrics.r_v_plus_argmax,
-                    self._metrics.r_v_plus_alt,
-                    self._metrics.r_v_plus_alt_argmax,
-                    self._metrics.r_ncp_primal,
-                    self._metrics.r_ncp_primal_argmax,
-                    self._metrics.r_ncp_dual,
-                    self._metrics.r_ncp_dual_argmax,
-                    self._metrics.r_ncp_compl,
-                    self._metrics.r_ncp_compl_argmax,
-                    self._metrics.r_vi_natmap,
-                    self._metrics.r_vi_natmap_argmax,
-                    self._metrics.f_ncp,
-                    self._metrics.f_ccp,
-                ],
-                device=problem.device,
-            )
+        # Compute the dual problem metrics
+        wp.launch(
+            kernel=_compute_dual_problem_metrics,
+            dim=problem.size.num_worlds,
+            inputs=[
+                # Problem:
+                problem.data.nl,
+                problem.data.nc,
+                problem.data.cio,
+                problem.data.lcgo,
+                problem.data.ccgo,
+                problem.data.dim,
+                problem.data.vio,
+                problem.data.mu,
+                problem.data.v_f,
+                problem.data.P,
+                # Solutions:
+                lambdas,
+                v_plus,
+                # References:
+                self._v_plus,
+                # Buffers:
+                self._buffer_s,
+                self._buffer_v,
+            ],
+            outputs=[
+                # V^+ := J_cts @ u^+ = v_f + D @ lambda:
+                self._metrics.r_v_plus,
+                self._metrics.r_v_plus_argmax,
+                # NCP:
+                self._metrics.r_ncp_primal,
+                self._metrics.r_ncp_primal_argmax,
+                self._metrics.r_ncp_dual,
+                self._metrics.r_ncp_dual_argmax,
+                self._metrics.r_ncp_compl,
+                self._metrics.r_ncp_compl_argmax,
+                self._metrics.r_vi_natmap,
+                self._metrics.r_vi_natmap_argmax,
+                # Objectives:
+                self._metrics.f_ncp,
+                self._metrics.f_ccp,
+            ],
+            device=problem.device,
+        )

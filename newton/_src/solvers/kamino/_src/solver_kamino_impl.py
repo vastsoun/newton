@@ -1148,7 +1148,6 @@ class SolverKaminoImpl(SolverBase):
         if self._config.compute_solution_metrics:
             self.metrics.reset()
             self._metrics.evaluate(
-                sigma=self._solver_fd.data.state.sigma,
                 lambdas=self._solver_fd.data.solution.lambdas,
                 v_plus=self._solver_fd.data.solution.v_plus,
                 state=state_out,

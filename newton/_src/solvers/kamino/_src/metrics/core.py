@@ -82,7 +82,6 @@ class SolutionMetricsNewton:
         # Declare additional buffers for metrics computations
         self._v_plus: wp.array | None = None
         self._lambdas: wp.array | None = None
-        self._sigma: wp.array | None = None
 
         # Declare the metrics data container
         self._metrics: SolutionMetrics | None = None
@@ -204,7 +203,6 @@ class SolutionMetricsNewton:
         with wp.ScopedDevice(self.device):
             self._v_plus = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=wp.float32)
             self._lambdas = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=wp.float32)
-            self._sigma = wp.zeros(self._model.size.num_worlds, dtype=wp.vec2f)
 
     def evaluate(
         self,
@@ -312,7 +310,6 @@ class SolutionMetricsNewton:
         # Evaluate the metrics using the extracted solver data
         self._metrics.reset()
         self._metrics.evaluate(
-            sigma=self._sigma,
             lambdas=self._lambdas,
             v_plus=self._v_plus,
             state=self._state,

@@ -90,6 +90,7 @@ class TestSetup:
         max_world_contacts: int = 32,
         max_frames: int = 100,
         dt: float = 0.001,
+        sparse_jacobian: bool = False,
     ):
         # Cache scalar configurations
         self.max_world_contacts = max_world_contacts
@@ -112,17 +113,18 @@ class TestSetup:
         self.control: Control = self.model.control()
         self.contacts: Contacts = self.model.contacts()
 
+        # Reference solver with metrics computation enabled
+        solver_config = self._make_solver_config_default()
+        solver_config.compute_solution_metrics = True
+        solver_config.sparse_jacobian = sparse_jacobian
+        self.solver = newton.solvers.SolverKamino(model=self.model, config=solver_config)
+
         # Metrics evaluator
         self.metrics = SolutionMetricsNewton(
             model=self.builder.finalize(skip_validation_joints=True),
             dt=self.dt,
-            sparse=False,
+            sparse=sparse_jacobian,
         )
-
-        # Reference solver with metrics computation enabled
-        solver_config = self._make_solver_config_default()
-        solver_config.compute_solution_metrics = True
-        self.solver = newton.solvers.SolverKamino(model=self.model, config=solver_config)
 
         # Metrics loggers
         self.logger_metrics = SolutionMetricsLogger(
@@ -361,6 +363,7 @@ class TestSolutionMetricsNewton(unittest.TestCase):
         max_world_contacts: int,
         max_frames: int,
         num_frames: int,
+        sparse_jacobian: bool = False,
     ):
         """
         Execute the stepwise comparison for one (path, builder) combination.
@@ -380,6 +383,7 @@ class TestSolutionMetricsNewton(unittest.TestCase):
             device=self.default_device,
             max_world_contacts=max_world_contacts,
             max_frames=max_frames,
+            sparse_jacobian=sparse_jacobian,
         )
 
         start_time = time.time()
@@ -434,7 +438,7 @@ class TestSolutionMetricsNewton(unittest.TestCase):
     # Tests
     ###
 
-    def test_boxes_fourbar(self):
+    def test_with_joint_parent_f_on_boxes_fourbar(self):
         self._run_test_setup(
             builder_fn=basics.build_boxes_fourbar,
             builder_kwargs={"z_offset": -1e-5, "floatingbase": True, "limits": False},
@@ -442,7 +446,9 @@ class TestSolutionMetricsNewton(unittest.TestCase):
             max_world_contacts=32,
             max_frames=500,
             num_frames=500,
+            sparse_jacobian=True,
         )
+
 
 ###
 # Test execution

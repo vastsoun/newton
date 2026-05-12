@@ -2231,6 +2231,13 @@ class JointsData:
     # Per-Body Wrenches
     ###
 
+    w_j_F_com: wp.array[wp.spatial_vectorf] | None = None
+    """
+    Total wrench applied by each joint onto the corresponding follower
+    body, computed at body CoM and expressed in world coordinates.\n
+    Shape of ``(num_joints,)`` and type :class:`wp.spatial_vectorf`.
+    """
+
     j_w_j: wp.array[wp.spatial_vectorf] | None = None
     """
     Total wrench applied by each joint onto the corresponding follower
@@ -2266,16 +2273,22 @@ class JointsData:
     Shape of ``(num_joints,)`` and type :class:`wp.spatial_vectorf`.
     """
 
-    j_w_j_cts_fri: wp.array[wp.spatial_vectorf] | None = None
-    """
-    Friction constraint wrench applied by each joint onto the corresponding
-    follower body, expressed in and about the corresponding joint frame.\n
-    Shape of ``(num_joints,)`` and type :class:`wp.spatial_vectorf`.
-    """
-
     ###
     # Operations
     ###
+
+    def has_wrenches(self) -> bool:
+        """
+        Checks if the per-joint wrenches data arrays are allocated.
+        """
+        return (
+            self.w_j_F_com is not None
+            and self.j_w_j is not None
+            and self.j_w_j_dof_act is not None
+            and self.j_w_j_cts_dyn is not None
+            and self.j_w_j_cts_kin is not None
+            and self.j_w_j_cts_lim is not None
+        )
 
     def finalize_wrenches(self):
         """
@@ -2287,6 +2300,8 @@ class JointsData:
 
         # Allocate the per-joint wrenches data arrays on the target device
         with wp.ScopedDevice(device):
+            if self.w_j_F_com is None:
+                self.w_j_F_com = wp.zeros((self.num_joints,), dtype=wp.spatial_vectorf)
             if self.j_w_j is None:
                 self.j_w_j = wp.zeros((self.num_joints,), dtype=wp.spatial_vectorf)
             if self.j_w_j_dof_act is None:
@@ -2297,9 +2312,6 @@ class JointsData:
                 self.j_w_j_cts_kin = wp.zeros((self.num_joints,), dtype=wp.spatial_vectorf)
             if self.j_w_j_cts_lim is None:
                 self.j_w_j_cts_lim = wp.zeros((self.num_joints,), dtype=wp.spatial_vectorf)
-            # TODO: Enable this when joint friction constraints are implemented
-            # if self.j_w_j_cts_fri is None:
-            #     self.j_w_j_cts_fri = wp.zeros((self.num_joints,), dtype=wp.spatial_vectorf)
 
     def reset_state(self, q_j_0: wp.array | None = None):
         """
@@ -2371,14 +2383,13 @@ class JointsData:
         """
         Resets all joint wrenches to zero.
         """
-        if self.j_w_j is not None:
+        if self.has_wrenches():
+            self.w_j_F_com.zero_()
             self.j_w_j.zero_()
             self.j_w_j_dof_act.zero_()
             self.j_w_j_cts_dyn.zero_()
             self.j_w_j_cts_kin.zero_()
             self.j_w_j_cts_lim.zero_()
-            # TODO: Enable this when joint friction constraints are implemented
-            # TODO: self.j_w_j_cts_fri.zero_()
 
     def clear_all(self):
         """

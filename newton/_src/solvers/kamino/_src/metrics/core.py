@@ -156,9 +156,7 @@ class SolutionMetricsNewton:
         self._model.time.dt.fill_(wp.float32(dt))
         self._model.time.inv_dt.fill_(wp.float32(1.0 / dt))
 
-        # Create the data, limits and contacts containers. ``joint_wrenches=True`` allocates
-        # the per-joint local-frame wrench buffers (e.g. ``data.joints.j_w_j``) used by the
-        # joint-reaction recovery in :meth:`_convert_body_parent_wrenches_to_joint_reactions`.
+        # Create the data, limits and contacts containers.
         self._data = self._model.data(joint_wrenches=True)
         self._limits = LimitsKamino(model=self._model)
         self._contacts = ContactsKamino(model=self._model)
@@ -399,9 +397,7 @@ class SolutionMetricsNewton:
     def _convert_body_parent_wrenches_to_joint_reactions(self, body_parent_f: wp.array[wp.spatial_vectorf]):
         """
         Converts Newton body-parent wrenches `newton.State.body_parent_f` data
-        to Kamino `StateKamino.lambda_j` and `DataKamino.joints.lambda_l_j`.
-
-        This operation also updates per-joint wrenches arrays `DataKamino.joints.j_w_j` as a byproduct.
+        to Kamino `StateKamino.lambda_j` and `LimitsKamino.reaction`.
 
         Args:
             body_parent_f: The input array of per-body parent wrenches (world frame, at body CoM).
@@ -418,7 +414,7 @@ class SolutionMetricsNewton:
     def _convert_joint_parent_wrenches_to_joint_reactions(self, joint_parent_f: wp.array[wp.spatial_vectorf]):
         """
         Converts Newton joint-parent wrenches `newton.State.joint_parent_f` data
-        to Kamino `StateKamino.lambda_j` and `DataKamino.joints.lambda_l_j`.
+        to Kamino `StateKamino.lambda_j` and `LimitsKamino.reaction`.
         """
         convert_joint_parent_wrenches_to_joint_reactions(
             joint_parent_f=joint_parent_f,

@@ -575,13 +575,14 @@ class SolverKamino(SolverBase):
         # per-joint ones so we must always have a populated `joint_parent_f` first.
         if (state_out.body_parent_f is not None or state_out.joint_parent_f is not None) and self.model.joint_count > 0:
             # First ensure that the joint wrench buffers are allocated
-            self._solver_kamino._data.joints.finalize_wrenches()
+            if not self._solver_kamino._data.joints.has_wrenches():
+                self._solver_kamino._data.joints.finalize_wrenches()
 
             # Use the requested output slot if available, otherwise use the internal buffer
             joint_parent_f = (
                 state_out.joint_parent_f
                 if state_out.joint_parent_f is not None
-                else self._solver_kamino._data.joints.j_w_j
+                else self._solver_kamino._data.joints.w_j_F_com
             )
 
             self._kamino.compute_joint_parent_wrenches(

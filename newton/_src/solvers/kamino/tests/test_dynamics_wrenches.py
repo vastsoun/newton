@@ -473,8 +473,7 @@ class ConvertWrenchesTestSetup:
         self.model_kamino.time.dt.fill_(wp.float32(dt))
         self.model_kamino.time.inv_dt.fill_(wp.float32(1.0 / dt))
 
-        # ``joint_wrenches=True`` allocates ``data.joints.j_w_j`` which the convert
-        # functions write to as a byproduct of recovering the joint-reaction lambdas.
+        # Create the data, limits and contacts containers.
         self.data_kamino: DataKamino = self.model_kamino.data(joint_wrenches=True)
         self.limits_kamino: LimitsKamino = LimitsKamino(model=self.model_kamino)
         self.contacts_kamino: ContactsKamino = ContactsKamino(model=self.model_kamino)

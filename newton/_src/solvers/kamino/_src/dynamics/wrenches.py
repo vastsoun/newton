@@ -746,9 +746,8 @@ def _compute_joint_parent_wrenches_dense(
     data_joints_j_w_j_dof_act: wp.array[wp.spatial_vectorf],
     data_joints_j_w_j_cts_dyn: wp.array[wp.spatial_vectorf],
     data_joints_j_w_j_cts_kin: wp.array[wp.spatial_vectorf],
-    # TODO: Enable this when joint friction constraints are implemented
-    # data_joints_j_w_j_cts_fri: wp.array[wp.spatial_vectorf],
     data_joints_j_w_j: wp.array[wp.spatial_vectorf],
+    data_joints_w_j_F_com: wp.array[wp.spatial_vectorf],
     joint_parent_f: wp.array[wp.spatial_vectorf],
 ):
     # Retrieve the thread index as the joint index
@@ -832,9 +831,12 @@ def _compute_joint_parent_wrenches_dense(
     # Store the total joint parent wrench of the current joint
     data_joints_j_w_j[jid] = w_F_j
 
+    # Store the total joint parent wrench of the current joint at the body F's CoM
+    data_joints_w_j_F_com[jid] = w_F_j
+
     # If a distinct `joint_parent_f` array is provided,
     # also store the net per-joint parent wrench there
-    if joint_parent_f and joint_parent_f.ptr != data_joints_j_w_j.ptr:
+    if joint_parent_f and joint_parent_f.ptr != data_joints_w_j_F_com.ptr:
         joint_parent_f[jid] = w_F_j
 
 
@@ -861,9 +863,8 @@ def _compute_joint_parent_wrenches_sparse(
     data_joints_j_w_j_dof_act: wp.array[wp.spatial_vectorf],
     data_joints_j_w_j_cts_dyn: wp.array[wp.spatial_vectorf],
     data_joints_j_w_j_cts_kin: wp.array[wp.spatial_vectorf],
-    # TODO: Enable this when joint friction constraints are implemented
-    # data_joints_j_w_j_cts_fri: wp.array[wp.spatial_vectorf],
     data_joints_j_w_j: wp.array[wp.spatial_vectorf],
+    data_joints_w_j_F_com: wp.array[wp.spatial_vectorf],
     joint_parent_f: wp.array[wp.spatial_vectorf],
 ):
     # Retrieve the thread index as the joint index
@@ -935,9 +936,12 @@ def _compute_joint_parent_wrenches_sparse(
     # Store the total joint parent wrench of the current joint
     data_joints_j_w_j[jid] = w_F_j
 
+    # Store the total joint parent wrench of the current joint at the body F's CoM
+    data_joints_w_j_F_com[jid] = w_F_j
+
     # If a distinct `joint_parent_f` array is provided,
     # also store the net per-joint parent wrench there
-    if joint_parent_f and joint_parent_f.ptr != data_joints_j_w_j.ptr:
+    if joint_parent_f and joint_parent_f.ptr != data_joints_w_j_F_com.ptr:
         joint_parent_f[jid] = w_F_j
 
 
@@ -960,6 +964,7 @@ def _add_limit_to_joint_parent_wrench_dense(
     # Outputs:
     data_joints_j_w_j_cts_lim: wp.array[wp.spatial_vectorf],
     data_joints_j_w_j: wp.array[wp.spatial_vectorf],
+    data_joints_w_j_F_com: wp.array[wp.spatial_vectorf],
     joint_parent_f: wp.array[wp.spatial_vectorf],
 ):
     # Retrieve the limit index from the thread grid
@@ -1004,9 +1009,12 @@ def _add_limit_to_joint_parent_wrench_dense(
     wp.atomic_add(data_joints_j_w_j_cts_lim, jid_l, w_l_F)
     wp.atomic_add(data_joints_j_w_j, jid_l, w_l_F)
 
+    # Store the total joint parent wrench of the current joint at the body F's CoM
+    wp.atomic_add(data_joints_w_j_F_com, jid_l, w_l_F)
+
     # If a distinct `joint_parent_f` array is provided, also
     # accumulate the limit wrench into the output array
-    if joint_parent_f and joint_parent_f.ptr != data_joints_j_w_j.ptr:
+    if joint_parent_f and joint_parent_f.ptr != data_joints_w_j_F_com.ptr:
         wp.atomic_add(joint_parent_f, jid_l, w_l_F)
 
 
@@ -1027,6 +1035,7 @@ def _add_limit_to_joint_parent_wrench_sparse(
     # Outputs:
     data_joints_j_w_j_cts_lim: wp.array[wp.spatial_vectorf],
     data_joints_j_w_j: wp.array[wp.spatial_vectorf],
+    data_joints_w_j_F_com: wp.array[wp.spatial_vectorf],
     joint_parent_f: wp.array[wp.spatial_vectorf],
 ):
     # Retrieve the thread index
@@ -1063,9 +1072,12 @@ def _add_limit_to_joint_parent_wrench_sparse(
     wp.atomic_add(data_joints_j_w_j_cts_lim, jid_l, w_l_F)
     wp.atomic_add(data_joints_j_w_j, jid_l, w_l_F)
 
+    # Store the total joint parent wrench of the current joint at the body F's CoM
+    wp.atomic_add(data_joints_w_j_F_com, jid_l, w_l_F)
+
     # If a distinct `joint_parent_f` array is provided, also
     # accumulate the limit wrench into the output array
-    if joint_parent_f and joint_parent_f.ptr != data_joints_j_w_j.ptr:
+    if joint_parent_f and joint_parent_f.ptr != data_joints_w_j_F_com.ptr:
         wp.atomic_add(joint_parent_f, jid_l, w_l_F)
 
 
@@ -1100,6 +1112,7 @@ def _compute_joint_wrenches_from_body_parent_wrenches(
     bid_B = model_joints_bid_B[jid]
 
     # Retrieve the joint frame and follower body poses (in world coords)
+    X_j = model_joints_X_j[jid]
     T_j = data_joints_p_j[jid]
     T_F_j = data_bodies_q_i[bid_F]
 
@@ -1110,11 +1123,10 @@ def _compute_joint_wrenches_from_body_parent_wrenches(
         T_B_j = data_bodies_q_i[bid_B]
 
     # Read the world-frame wrench applied on body F by joint j (at body F's CoM).
-    w_ij_sv = body_parent_f[bid_F]
-    w_ij = vec6f(w_ij_sv[0], w_ij_sv[1], w_ij_sv[2], w_ij_sv[3], w_ij_sv[4], w_ij_sv[5])
+    w_F_j = body_parent_f[bid_F]
 
     # Transform the world-frame wrench at body F's CoM to the joint-local frame.
-    j_w_j = _world_wrench_to_joint_local_wrench(dof_type, model_joints_X_j[jid], T_j, T_F_j, T_B_j, w_ij)
+    j_w_j = _world_wrench_to_joint_local_wrench(dof_type, X_j, T_j, T_F_j, T_B_j, w_F_j)
 
     # Store the joint-local wrench
     data_joints_j_w_j[jid] = j_w_j
@@ -1155,6 +1167,7 @@ def _compute_joint_wrenches_from_joint_parent_wrenches(
     bid_B = model_joints_bid_B[jid]
 
     # Retrieve the joint frame and follower body poses (in world coords)
+    X_j = model_joints_X_j[jid]
     T_j = data_joints_p_j[jid]
     T_F_j = data_bodies_q_i[bid_F]
 
@@ -1165,11 +1178,10 @@ def _compute_joint_wrenches_from_joint_parent_wrenches(
         T_B_j = data_bodies_q_i[bid_B]
 
     # Read the world-frame wrench applied on body F by joint j (at body F's CoM).
-    w_ij_sv = joint_parent_f[jid]
-    w_ij = vec6f(w_ij_sv[0], w_ij_sv[1], w_ij_sv[2], w_ij_sv[3], w_ij_sv[4], w_ij_sv[5])
+    w_F_j = joint_parent_f[jid]
 
     # Transform the world-frame wrench at body F's CoM to the joint-local frame.
-    j_w_j = _world_wrench_to_joint_local_wrench(dof_type, model_joints_X_j[jid], T_j, T_F_j, T_B_j, w_ij)
+    j_w_j = _world_wrench_to_joint_local_wrench(dof_type, X_j, T_j, T_F_j, T_B_j, w_F_j)
 
     # Store the joint-local wrench
     data_joints_j_w_j[jid] = j_w_j
@@ -1202,17 +1214,17 @@ def _compute_limit_reactions_from_joint_wrenches(
         return
 
     # Retrieve the joint and DoF indices for this active limit
-    jid = limits_jid[lid]
+    jid_l = limits_jid[lid]
     dof_l = limits_dof[lid]
     side_l = limits_side[lid]
 
     # Map the global DoF index to the joint-local DoF index, then to the 6D joint-frame axis
-    dof_within_joint = dof_l - model_joints_dofs_offset[jid]
-    axis = joint_dof_axis_from_index(model_joints_dof_type[jid], dof_within_joint)
+    dof_within_joint = dof_l - model_joints_dofs_offset[jid_l]
+    axis = joint_dof_axis_from_index(model_joints_dof_type[jid_l], dof_within_joint)
 
     # Recover the limit reaction: the joint-frame total wrench at the DoF axis is
     # `tau_total = tau_actuation + side * lambda_l`, so `lambda_l = side * (tau_total - tau_actuation)`.
-    j_w_j = data_joints_j_w_j[jid]
+    j_w_j = data_joints_j_w_j[jid_l]
     tau_total = j_w_j[axis]
     tau_act = control_tau_j[dof_l]
     limits_reaction[lid] = side_l * (tau_total - tau_act)
@@ -1583,6 +1595,7 @@ def compute_joint_parent_wrenches_dense(
     # so the array must be zeroed before launching the limits kernel.
     if reset_to_zero:
         joint_parent_f.zero_()
+        data.joints.clear_wrenches()
 
     if model.size.sum_of_num_joints > 0:
         wp.launch(
@@ -1614,9 +1627,8 @@ def compute_joint_parent_wrenches_dense(
                 data.joints.j_w_j_dof_act,
                 data.joints.j_w_j_cts_dyn,
                 data.joints.j_w_j_cts_kin,
-                # TODO: Enable this when joint friction constraints are implemented
-                # data.joints.j_w_j_cts_fri,
                 data.joints.j_w_j,
+                data.joints.w_j_F_com,
                 joint_parent_f,
             ],
             device=model.device,
@@ -1644,6 +1656,7 @@ def compute_joint_parent_wrenches_dense(
             outputs=[
                 data.joints.j_w_j_cts_lim,
                 data.joints.j_w_j,
+                data.joints.w_j_F_com,
                 joint_parent_f,
             ],
             device=model.device,
@@ -1676,6 +1689,7 @@ def compute_joint_parent_wrenches_sparse(
     # so the array must be zeroed before launching the limits kernel.
     if reset_to_zero:
         joint_parent_f.zero_()
+        data.joints.clear_wrenches()
 
     if model.size.sum_of_num_joints > 0:
         wp.launch(
@@ -1703,9 +1717,8 @@ def compute_joint_parent_wrenches_sparse(
                 data.joints.j_w_j_dof_act,
                 data.joints.j_w_j_cts_dyn,
                 data.joints.j_w_j_cts_kin,
-                # TODO: Enable this when joint friction constraints are implemented
-                # data.joints.j_w_j_cts_fri,
                 data.joints.j_w_j,
+                data.joints.w_j_F_com,
                 joint_parent_f,
             ],
             device=model.device,
@@ -1731,6 +1744,7 @@ def compute_joint_parent_wrenches_sparse(
             outputs=[
                 data.joints.j_w_j_cts_lim,
                 data.joints.j_w_j,
+                data.joints.w_j_F_com,
                 joint_parent_f,
             ],
             device=model.device,

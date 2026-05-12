@@ -721,14 +721,9 @@ DATA_BODY_ATTRS_LAMBDA_DEPENDENT = ("w_j_i", "w_l_i", "w_c_i", "w_i")
 DATA_JOINT_ATTRS_PATH_INVARIANT = ("q_j", "dq_j", "tau_j")
 
 # DataKamino joint fields that depend on the extracted constraint reactions.
-# ``j_w_j`` and the ``j_w_*_j`` family are skipped because :class:`SolverKamino`
-# allocates its internal :class:`DataKamino` with ``joint_wrenches=False``;
-# the corresponding fields are therefore ``None`` on the solver side, while
-# :class:`SolutionMetricsNewton` keeps them allocated for the metrics
-# computations that consume them. ``lambda_j`` carries the same per-joint
-# information in the joint-frame basis used by the convert kernels and is
-# populated by both flows, so it stands in for the joint wrenches in the
-# cross-check.
+# ``lambda_j`` carries the same per-joint information in the joint-frame basis
+# used by the convert kernels and is populated by both flows, so it stands in
+# for the joint wrenches in the cross-check.
 DATA_JOINT_ATTRS_LAMBDA_DEPENDENT = ("lambda_j",)
 
 # Lambda-independent metric residuals. These depend only on the post-event

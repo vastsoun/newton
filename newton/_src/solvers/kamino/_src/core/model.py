@@ -587,13 +587,12 @@ class ModelKamino:
                 q_j_ref=wp.clone(self.joints.q_j_0, requires_grad=requires_grad),
                 dq_j_ref=wp.clone(self.joints.dq_j_0, requires_grad=requires_grad),
                 tau_j_ref=wp.zeros(shape=njdofs, dtype=float32, requires_grad=requires_grad),
+                w_j_F_com=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
                 j_w_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
                 j_w_j_dof_act=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
                 j_w_j_cts_dyn=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
                 j_w_j_cts_kin=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
                 j_w_j_cts_lim=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
-                # TODO: Enable this when joint friction constraints are implemented
-                # TODO: j_w_j_cts_fri=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
             )
 
             # Construct the geometries data from the model's initial state
@@ -611,7 +610,12 @@ class ModelKamino:
             geoms=geoms,
         )
 
-    def state(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> StateKamino:
+    def state(
+        self,
+        requires_grad: bool = False,
+        device: wp.DeviceLike = None,
+        joint_wrenches: bool = False,
+    ) -> StateKamino:
         """
         Creates state container initialized to the initial body state defined in the model.
 
@@ -627,6 +631,10 @@ class ModelKamino:
 
         # Create a new state container with the initial state of the model entities on the specified device
         with wp.ScopedDevice(device=device):
+            njdof = self.size.sum_of_num_joint_dofs
+            njcts = self.size.sum_of_num_joint_cts
+            nb = self.size.sum_of_num_bodies
+            nj = self.size.sum_of_num_joints
             state = StateKamino(
                 q_i=wp.clone(self.bodies.q_i_0, requires_grad=requires_grad),
                 u_i=wp.clone(self.bodies.u_i_0, requires_grad=requires_grad),
@@ -634,8 +642,10 @@ class ModelKamino:
                 w_i_e=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
                 q_j=wp.clone(self.joints.q_j_0, requires_grad=requires_grad),
                 q_j_p=wp.clone(self.joints.q_j_0, requires_grad=requires_grad),
-                dq_j=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
-                lambda_j=wp.zeros(shape=self.size.sum_of_num_joint_cts, dtype=float32, requires_grad=requires_grad),
+                dq_j=wp.zeros(shape=njdof, dtype=float32, requires_grad=requires_grad),
+                lambda_j=wp.zeros(shape=njcts, dtype=float32, requires_grad=requires_grad),
+                w_i_F_com=wp.zeros(shape=nb, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
+                w_j_F_com=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
             )
 
         # Return the constructed state container

@@ -40,6 +40,7 @@ from newton._src.solvers.kamino._src.topology.utils import (
     discover_topology_for_builder,
     export_usd_with_discovered_topology,
     extract_graph_inputs_from_builder,
+    joint_chord_weights_from_builder,
     joints_from_builder,
 )
 from newton._src.solvers.kamino._src.utils import logger as msg
@@ -1265,7 +1266,97 @@ class TestTopologySpanningTreeGenerator(unittest.TestCase):
         chord_sets = {tuple(t.chords) for t in trees}
         self.assertEqual(len(chord_sets), 2)
 
-    ###
+    def test_min_height_backtrack_includes_non_bfs_parent_trees(self):
+        """Detour graph: some min-height trees attach a BFS-layer-1 leaf via a deeper hub.
+
+        Default BFS-layer enumeration fixes the ``r-v`` arc; backtracking also
+        admits a height-``D`` tree that uses ``v-x2`` and drops ``r-v``.
+        """
+        nodes = [0, 1, 2, 3, 4]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (0, 1)),
+            (JointDoFType.REVOLUTE.value, 2, (0, 2)),
+            (JointDoFType.REVOLUTE.value, 3, (2, 3)),
+            (JointDoFType.REVOLUTE.value, 4, (3, 4)),
+            (JointDoFType.REVOLUTE.value, 5, (1, 3)),
+        ]
+        G = _build_graph(nodes, edges)
+        comp = G.components[0]
+
+        gen_bfs = topology.TopologyMinimumDepthSpanningTreeGenerator()
+        trees_bfs = gen_bfs.generate_spanning_trees(component=comp, traversal_mode="bfs")
+        gen_bt = topology.TopologyMinimumDepthSpanningTreeGenerator(min_height_backtrack=True)
+        trees_bt = gen_bt.generate_spanning_trees(component=comp, traversal_mode="bfs")
+
+        self.assertGreater(len(trees_bt), len(trees_bfs))
+        self.assertTrue(all(t.depth == 3 for t in trees_bt))
+        self.assertTrue(all(t.depth == 3 for t in trees_bfs))
+        roots_bt = {t.root for t in trees_bt}
+        self.assertEqual(roots_bt, {0})
+        arc_sets_bt = {tuple(t.arcs) for t in trees_bt}
+        self.assertGreater(len(arc_sets_bt), len({tuple(t.arcs) for t in trees_bfs}))
+        for t in trees_bt:
+            _assert_featherstone_invariants(self, t)
+
+    def test_min_height_backtrack_lists_bfs_layer_trees_first(self):
+        """Backtracking output places legacy BFS-layer candidates before others."""
+        nodes = [0, 1, 2, 3, 4]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (0, 1)),
+            (JointDoFType.REVOLUTE.value, 2, (0, 2)),
+            (JointDoFType.REVOLUTE.value, 3, (2, 3)),
+            (JointDoFType.REVOLUTE.value, 4, (3, 4)),
+            (JointDoFType.REVOLUTE.value, 5, (1, 3)),
+        ]
+        G = _build_graph(nodes, edges)
+        comp = G.components[0]
+        root = 0
+        gen = topology.TopologyMinimumDepthSpanningTreeGenerator()
+        body_nodes = [int(n) for n in (comp.nodes or [])]
+        internal, _ = gen._partition_edges(comp, comp.world_node)
+        adj = gen._build_internal_adjacency(body_nodes, internal, directed=False)
+        dist = gen._bfs_distances(root, adj)
+
+        trees_bfs = topology.TopologyMinimumDepthSpanningTreeGenerator().generate_spanning_trees(
+            component=comp, traversal_mode="bfs"
+        )
+        trees_bt = topology.TopologyMinimumDepthSpanningTreeGenerator(
+            min_height_backtrack=True
+        ).generate_spanning_trees(component=comp, traversal_mode="bfs")
+        self.assertGreater(len(trees_bt), len(trees_bfs))
+        n_bfs = len(trees_bfs)
+        for i in range(n_bfs):
+            self.assertTrue(
+                gen._tree_is_bfs_shortest_path_from_root(trees_bt[i], comp, dist),
+                msg=f"tree at index {i} should be a BFS-layer candidate",
+            )
+        self.assertFalse(gen._tree_is_bfs_shortest_path_from_root(trees_bt[n_bfs], comp, dist))
+
+    def test_four_bar_chord_weights_prefer_high_penalty_joint_as_arc(self):
+        """Chord penalties bias selection so a costly chord joint stays a tree arc."""
+        nodes = [0, 1, 2, 3]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (0, 1)),
+            (JointDoFType.REVOLUTE.value, 2, (1, 2)),
+            (JointDoFType.REVOLUTE.value, 3, (2, 3)),
+            (JointDoFType.REVOLUTE.value, 4, (3, 0)),
+        ]
+        G = _build_graph(nodes, edges)
+        comp = G.components[0]
+
+        weights = {0: 0.0, 1: 0.0, 2: 100.0, 3: 0.0, 4: 0.0}
+        gen = topology.TopologyMinimumDepthSpanningTreeGenerator(joint_chord_weight=weights)
+        trees = gen.generate_spanning_trees(component=comp, traversal_mode="bfs")
+        self.assertEqual(len(trees), 2)
+
+        sel = topology.TopologyMinimumDepthSpanningTreeSelector(joint_chord_weight=weights)
+        picked = sel.select_spanning_tree(trees)
+        self.assertNotIn(2, picked.chords)
+        self.assertIn(2, picked.arcs)
+
     # Multi-grounding (no auto-base)
     ###
 
@@ -2177,6 +2268,27 @@ class TestTopologyGraph(unittest.TestCase):
         )
         # `edges` preserves the raw input; `parse_components` collapses duplicates.
         self.assertEqual(len(G.edges), 2)
+
+    def test_09f_joint_chord_weight_forwards_to_default_pipeline(self):
+        """``joint_chord_weight`` is forwarded to the default min-depth generator/selector."""
+        nodes = [0, 1, 2, 3]
+        edges = [
+            (JointDoFType.FREE.value, 0, (-1, 0)),
+            (JointDoFType.REVOLUTE.value, 1, (0, 1)),
+            (JointDoFType.REVOLUTE.value, 2, (1, 2)),
+            (JointDoFType.REVOLUTE.value, 3, (2, 3)),
+            (JointDoFType.REVOLUTE.value, 4, (3, 0)),
+        ]
+        w = {0: 0.0, 1: 0.0, 2: 100.0, 3: 0.0, 4: 0.0}
+        G = topology.TopologyGraph(
+            nodes,
+            edges,
+            joint_chord_weight=w,
+            autoparse=True,
+            reassign_indices_inplace=False,
+        )
+        self.assertEqual(len(G.trees), 1)
+        self.assertNotIn(2, G.trees[0].chords)
 
     ###
     # Component parsing
@@ -3187,6 +3299,20 @@ class TestTopologyInteropUtils(unittest.TestCase):
             self.assertEqual(joint.name, builder.joint_label[j])
             self.assertEqual(int(joint.dof_type), NEWTON_TO_KAMINO_JOINT_TYPE[int(builder.joint_type[j])])
 
+    def test_02b_joint_chord_weights_from_builder_use_joint_target_mode(self):
+        """``joint_chord_weights_from_builder`` marks joints with non-NONE target modes."""
+        builder = ModelBuilder()
+        builder.begin_world()
+        b0 = builder.add_link(label="link0", mass=1.0)
+        b1 = builder.add_link(label="link1", mass=1.0)
+        builder.add_joint_free(child=b0, label="j0")
+        builder.add_joint_revolute(parent=b0, child=b1, axis=newton.Axis.Z, target_ke=10.0, label="j1")
+        builder.end_world()
+
+        weights = joint_chord_weights_from_builder(builder)
+        self.assertEqual(weights.get(0, 0.0), 0.0)
+        self.assertEqual(weights.get(1, 0.0), 1.0)
+
     def test_03_discover_topology_rejects_multi_world_builder(self):
         """``discover_topology_for_builder`` enforces the single-world precondition."""
         builder = ModelBuilder()
@@ -3487,7 +3613,9 @@ class TestTopologyInteropUtils(unittest.TestCase):
         """Author a minimal USD with a reversed-polarity revolute joint and verify
         :func:`export_usd_with_discovered_topology` swaps ``body0`` / ``body1``
         and the matching ``localPos0`` / ``localPos1`` / ``localRot0`` /
-        ``localRot1`` attributes on the output stage.
+        ``localRot1`` attributes on the output stage, and applies a joint-
+        frame axis negation twist for Revolute / Prismatic joints so signed
+        joint coordinates stay consistent with the source asset.
 
         The asset has two rigid bodies (``BodyA`` heavier than ``BodyB`` so the
         heaviest-body base selector picks ``BodyA`` as the spanning-tree root)
@@ -3564,13 +3692,21 @@ class TestTopologyInteropUtils(unittest.TestCase):
         self.assertEqual(out_body0, ["/World/BodyA"], "body0 must point to BodyA after the swap.")
         self.assertEqual(out_body1, ["/World/BodyB"], "body1 must point to BodyB after the swap.")
 
-        # Local anchor attributes must mirror the same swap.
+        # Local anchor translations swap; rotations swap then receive the same
+        # joint-frame 180° twist used to negate the DOF axis (``physics:axis``
+        # token stays ``Z``).
         self.assertEqual(out_joint_prim.GetAttribute("physics:localPos0").Get(), src_local_pos_1)
         self.assertEqual(out_joint_prim.GetAttribute("physics:localPos1").Get(), src_local_pos_0)
-        self.assertEqual(out_joint_prim.GetAttribute("physics:localRot0").Get(), src_local_rot_1)
-        self.assertEqual(out_joint_prim.GetAttribute("physics:localRot1").Get(), src_local_rot_0)
 
-        # The joint axis token must be left untouched (anchor frames coincide).
+        q_flip = Gf.Rotation(Gf.Vec3d(1.0, 0.0, 0.0), 180.0).GetQuat()
+        q_flip_f = Gf.Quatf(q_flip)
+        exp_local_rot_0 = Gf.Quatf(src_local_rot_1) * q_flip_f
+        exp_local_rot_1 = Gf.Quatf(src_local_rot_0) * q_flip_f
+        exp_local_rot_0.Normalize()
+        exp_local_rot_1.Normalize()
+        self.assertEqual(out_joint_prim.GetAttribute("physics:localRot0").Get(), exp_local_rot_0)
+        self.assertEqual(out_joint_prim.GetAttribute("physics:localRot1").Get(), exp_local_rot_1)
+
         self.assertEqual(out_joint_prim.GetAttribute("physics:axis").Get(), UsdPhysics.Tokens.z)
 
         # Articulation root must land on BodyA (the heaviest body in the

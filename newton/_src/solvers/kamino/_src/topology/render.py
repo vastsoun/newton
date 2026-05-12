@@ -173,17 +173,6 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         # behaviour (name prefix included) is preserved.
         joints_for_labels = None if (show_inline_names or show_tables_mode) else joints
 
-        # Set default figure size if not provided. When the tables row is
-        # active, we grow the figure vertically by `tables_h` so the graph
-        # keeps its requested size and the tables sit underneath without
-        # squashing anything. The 2.5-inch height comfortably fits up to
-        # ~15 rows at the default cell font size.
-        if figsize is None:
-            figsize = (12, 12)
-        tables_h = 2.5
-        if tables_visible:
-            figsize = (figsize[0], figsize[1] + tables_h)
-
         # Coerce the edges to GraphEdge instances and the nodes to raw int indices.
         # NetworkX uses node identity as a hashable key, and `GraphEdge.nodes` is
         # already a `tuple[int, int]`; mixing `GraphNode` and int identities here
@@ -222,6 +211,30 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         for e in graph_edges:
             G.add_edge(*e.nodes)
 
+        # Scale fonts, markers, and default figure size from graph complexity so
+        # dense assets stay readable (same sqrt falloff as the per-component
+        # spanning-tree renderers). Grow the default canvas modestly when there
+        # are many nodes so layout has more physical space.
+        n_nodes = G.number_of_nodes()
+        n_edges = G.number_of_edges()
+        size_scale, fig_scale = TopologyGraphVisualizer._topology_plot_scales(n_nodes, n_edges)
+        node_label_fs = max(7, int(round(10 * size_scale)))
+        edge_label_fs = max(6, int(round(8 * size_scale)))
+        legend_fs = max(7, int(round(9 * size_scale)))
+        inline_name_fs = max(4, int(round(5 * size_scale)))
+        table_title_fs = max(7, int(round(9 * size_scale)))
+        table_cell_fs = max(5, int(round(7 * size_scale)))
+
+        eff_edge_offset = edge_label_offset_pts
+        if eff_edge_offset is None:
+            eff_edge_offset = self._EDGE_LABEL_OFFSET_PTS * max(0.6, float(size_scale))
+
+        tables_h = 2.5
+        if figsize is None:
+            figsize = (12.0 * fig_scale, 12.0 * fig_scale)
+        if tables_visible:
+            figsize = (figsize[0], figsize[1] + tables_h)
+
         # Classify each edge into one of three role buckets via a per-component
         # scan. Compare on `(joint_type, joint_index)` for cheap, unambiguous keys.
         base_keys: set[tuple[int, int]] = set()
@@ -256,15 +269,19 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         node_edge_color_map: dict[int, str] = {}
         node_linewidth_map: dict[int, float] = {}
 
+        sz_default = max(200, int(round(600 * size_scale)))
+        sz_island = max(220, int(round(700 * size_scale)))
+        sz_world = max(280, int(round(900 * size_scale)))
+
         for n in G.nodes:
             node_color_map[n] = "lightgray"
-            node_size_map[n] = 600
+            node_size_map[n] = sz_default
             node_edge_color_map[n] = "black"
             node_linewidth_map[n] = 1.0
 
         if world_in_graph:
             node_color_map[world_node] = "black"
-            node_size_map[world_node] = 900
+            node_size_map[world_node] = sz_world
             node_edge_color_map[world_node] = "black"
             node_linewidth_map[world_node] = 1.5
 
@@ -277,7 +294,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 for n in comp.nodes:
                     nidx = int(n)
                     node_color_map[nidx] = color
-                    node_size_map[nidx] = 700
+                    node_size_map[nidx] = sz_island
                 island_index += 1
             else:
                 # Single-node component: connected vs isolated orphan
@@ -286,7 +303,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                     node_color_map[nidx] = "grey"
                 else:
                     node_color_map[nidx] = "white"
-                node_size_map[nidx] = 700
+                node_size_map[nidx] = sz_island
 
         # Base nodes get a thicker border to mark them as the local root, while
         # keeping their component fill so they remain visually grouped.
@@ -298,7 +315,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         # mismatches between `nodes` and the per-component node lists.
         for n in G.nodes:
             node_color_map.setdefault(n, "lightgray")
-            node_size_map.setdefault(n, 600)
+            node_size_map.setdefault(n, sz_default)
             node_edge_color_map.setdefault(n, "black")
             node_linewidth_map.setdefault(n, 1.0)
 
@@ -318,15 +335,18 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             ax_tables_joints = None
             ax_tables_bodies = None
 
-        # Edges first, behind the nodes
+        # Edges first, behind the nodes (stroke width scales down slightly with density).
+        ew_int = max(0.9, 1.5 * size_scale)
+        ew_gr = max(1.0, 1.8 * size_scale)
+        ew_base = max(1.3, 2.5 * size_scale)
         if internal_edges_uv:
-            nx.draw_networkx_edges(G, pos, edgelist=internal_edges_uv, width=1.5, edge_color="0.55", ax=ax)
+            nx.draw_networkx_edges(G, pos, edgelist=internal_edges_uv, width=ew_int, edge_color="0.55", ax=ax)
         if ground_edges_uv:
             nx.draw_networkx_edges(
-                G, pos, edgelist=ground_edges_uv, width=1.8, style="dashed", edge_color="0.35", ax=ax
+                G, pos, edgelist=ground_edges_uv, width=ew_gr, style="dashed", edge_color="0.35", ax=ax
             )
         if base_edges_uv:
-            nx.draw_networkx_edges(G, pos, edgelist=base_edges_uv, width=2.5, edge_color="black", ax=ax)
+            nx.draw_networkx_edges(G, pos, edgelist=base_edges_uv, width=ew_base, edge_color="black", ax=ax)
 
         # Nodes — `draw_networkx_nodes` requires per-node lists to be parallel to
         # the supplied `nodelist`, so we iterate in a stable node order.
@@ -346,24 +366,26 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         node_labels = {n: ("W" if n == world_node else str(n)) for n in G.nodes}
         # Draw world label in white, everything else in black, by splitting the call
         if world_in_graph:
-            nx.draw_networkx_labels(G, pos, labels={world_node: "W"}, font_size=10, font_color="white", ax=ax)
+            nx.draw_networkx_labels(
+                G, pos, labels={world_node: "W"}, font_size=node_label_fs, font_color="white", ax=ax
+            )
             nx.draw_networkx_labels(
                 G,
                 pos,
                 labels={n: lbl for n, lbl in node_labels.items() if n != world_node},
-                font_size=10,
+                font_size=node_label_fs,
                 font_color="black",
                 ax=ax,
             )
         else:
-            nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=10, font_color="black", ax=ax)
+            nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=node_label_fs, font_color="black", ax=ax)
 
         # Edge labels with a small perpendicular offset so the underlying edge
         # stroke stays visible. Labels go to the opposite side from inline name
         # labels (which always flip "above") to avoid collisions when both
         # annotations are drawn together.
         if edge_label_map:
-            self._draw_offset_edge_labels(ax, pos, edge_label_map, font_size=8, offset_pts=edge_label_offset_pts)
+            self._draw_offset_edge_labels(ax, pos, edge_label_map, font_size=edge_label_fs, offset_pts=eff_edge_offset)
 
         # Optional inline name labels — drawn after the canonical index/type
         # labels so they sit on top of the heavier rendering and never mask it.
@@ -375,7 +397,8 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 node_name_map=node_name_map,
                 joint_name_map=joint_name_map,
                 world_node=world_node,
-                edge_offset_pts=edge_label_offset_pts,
+                font_size=inline_name_fs,
+                edge_offset_pts=eff_edge_offset,
                 full_paths=force_path_labels,
             )
 
@@ -393,7 +416,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             mlines.Line2D([], [], color="0.35", linewidth=1.8, linestyle="--", label="grounding edge")
         )
         legend_handles.append(mlines.Line2D([], [], color="0.55", linewidth=1.5, label="internal edge"))
-        ax.legend(handles=legend_handles, loc="best", fontsize=9, framealpha=0.9)
+        ax.legend(handles=legend_handles, loc="best", fontsize=legend_fs, framealpha=0.9)
 
         ax.set_axis_off()
 
@@ -406,6 +429,8 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 joint_name_map=joint_name_map,
                 node_name_map=node_name_map,
                 full_paths=force_path_labels,
+                title_fontsize=table_title_fs,
+                cell_fontsize=table_cell_fs,
             )
 
         fig.tight_layout()
@@ -513,12 +538,18 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         # axes-fraction coordinates.
         md_x, md_y, md_ha, md_va = self._pick_metadata_corner(pos)
 
-        # Per-cell size is fixed (so PDF page sizes stay manageable). When the
-        # component is large (``n_bodies > 10``), shrink node markers and font
-        # sizes so the layout fits each cell. The square-root falloff keeps the
-        # shrink gentle: ``n_bodies = 20 -> ~0.71``; ``n_bodies = 40 -> ~0.5``.
         n_bodies = len(component.nodes or [])
-        size_scale = 1.0 if n_bodies <= 10 else math.sqrt(10.0 / n_bodies)
+        n_comp_edges = len(component.edges or [])
+        size_scale, fig_scale = TopologyGraphVisualizer._topology_plot_scales(n_bodies, n_comp_edges)
+
+        eff_edge_offset = edge_label_offset_pts
+        if eff_edge_offset is None:
+            eff_edge_offset = self._EDGE_LABEL_OFFSET_PTS * max(0.6, float(size_scale))
+
+        legend_fs = max(7, int(round(9 * size_scale)))
+        suptitle_fs = max(10, int(round(12 * size_scale)))
+        table_title_fs = max(7, int(round(9 * size_scale)))
+        table_cell_fs = max(5, int(round(7 * size_scale)))
 
         # Font sizes shrink with the component but never below 6 / 7 / 8 pt so
         # labels stay legible at any size.
@@ -543,16 +574,16 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             cols = max(1, math.ceil(math.sqrt(n)))
             rows = max(1, math.ceil(n / cols))
 
-        # Per-cell sizing — fixed base values chosen to match `render_graph`'s
-        # default ``(12, 12)`` figure for a 4-candidate view. Independent of
-        # component complexity to keep saved PDFs from ballooning.
-        per_w = 4.0
-        per_h = 3.5
-        top_h = 5.0
-        tables_h = 2.5
+        # Per-cell sizing — bases match `render_graph`; ``fig_scale`` grows
+        # inches on large components so dense graphs are not squeezed into tiny
+        # panels while label_scale shrinks typography.
+        per_w = 4.0 * fig_scale
+        per_h = 3.5 * fig_scale
+        top_h = 5.0 * fig_scale
+        tables_h = 2.5 * fig_scale
         extra_h = tables_h if tables_visible else 0.0
         if figsize is None:
-            fig_w = max(8.0, cols * per_w)
+            fig_w = max(8.0 * fig_scale, cols * per_w)
             fig_h = top_h + rows * per_h + extra_h
             figsize = (fig_w, fig_h)
         elif tables_visible:
@@ -591,7 +622,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             node_name_map=node_name_map,
             joint_name_map=joint_name_map,
             force_path_labels=force_path_labels,
-            edge_label_offset_pts=edge_label_offset_pts,
+            edge_label_offset_pts=eff_edge_offset,
         )
         top_title = "Original Component"
         if n == 0:
@@ -622,7 +653,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 node_name_map=node_name_map,
                 joint_name_map=joint_name_map,
                 force_path_labels=force_path_labels,
-                edge_label_offset_pts=edge_label_offset_pts,
+                edge_label_offset_pts=eff_edge_offset,
             )
             # The metadata "table" is a monospace multiline text overlay
             # anchored to the corner with the most empty space (computed
@@ -675,6 +706,8 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 joint_name_map=joint_name_map,
                 node_name_map=node_name_map,
                 full_paths=force_path_labels,
+                title_fontsize=table_title_fs,
+                cell_fontsize=table_cell_fs,
             )
 
         # Figure-level legend — covers both the top-panel and candidate-panel
@@ -691,11 +724,11 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             handles=legend_handles,
             loc="lower center",
             ncol=3,
-            fontsize=9,
+            fontsize=legend_fs,
             framealpha=0.9,
         )
 
-        fig.suptitle(f"Spanning-tree candidates ({n} shown)", fontsize=12)
+        fig.suptitle(f"Spanning-tree candidates ({n} shown)", fontsize=suptitle_fs)
         # Reserve room at the top for the suptitle and at the bottom for the legend.
         fig.tight_layout(rect=[0, 0.05, 1, 0.96])
 
@@ -788,7 +821,17 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         md_x, md_y, md_ha, md_va = self._pick_metadata_corner(pos)
 
         n_bodies = len(component.nodes or [])
-        size_scale = 1.0 if n_bodies <= 10 else math.sqrt(10.0 / n_bodies)
+        n_comp_edges = len(component.edges or [])
+        size_scale, fig_scale = TopologyGraphVisualizer._topology_plot_scales(n_bodies, n_comp_edges)
+
+        eff_edge_offset = edge_label_offset_pts
+        if eff_edge_offset is None:
+            eff_edge_offset = self._EDGE_LABEL_OFFSET_PTS * max(0.6, float(size_scale))
+
+        legend_fs = max(7, int(round(9 * size_scale)))
+        suptitle_fs = max(10, int(round(12 * size_scale)))
+        table_title_fs = max(7, int(round(9 * size_scale)))
+        table_cell_fs = max(5, int(round(7 * size_scale)))
 
         edge_label_fs_top = max(6, int(round(8 * size_scale)))
         node_label_fs_top = max(7, int(round(10 * size_scale)))
@@ -798,12 +841,12 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         title_fs_tree = max(8, int(round(9 * size_scale)))
         title_fs_top = max(9, int(round(11 * size_scale)))
 
-        top_h = 5.0
-        bot_h = 5.0
-        tables_h = 2.5
+        top_h = 5.0 * fig_scale
+        bot_h = 5.0 * fig_scale
+        tables_h = 2.5 * fig_scale
         extra_h = tables_h if tables_visible else 0.0
         if figsize is None:
-            figsize = (8.0, top_h + bot_h + extra_h)
+            figsize = (8.0 * fig_scale, top_h + bot_h + extra_h)
         elif tables_visible:
             figsize = (figsize[0], figsize[1] + tables_h)
 
@@ -830,7 +873,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             node_name_map=node_name_map,
             joint_name_map=joint_name_map,
             force_path_labels=force_path_labels,
-            edge_label_offset_pts=edge_label_offset_pts,
+            edge_label_offset_pts=eff_edge_offset,
         )
         ax_top.set_title("Original Component", fontsize=title_fs_top)
         ax_top.set_axis_off()
@@ -854,7 +897,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             node_name_map=node_name_map,
             joint_name_map=joint_name_map,
             force_path_labels=force_path_labels,
-            edge_label_offset_pts=edge_label_offset_pts,
+            edge_label_offset_pts=eff_edge_offset,
         )
 
         md_text = "\n".join(
@@ -897,6 +940,8 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 joint_name_map=joint_name_map,
                 node_name_map=node_name_map,
                 full_paths=force_path_labels,
+                title_fontsize=table_title_fs,
+                cell_fontsize=table_cell_fs,
             )
 
         legend_handles: list = [
@@ -911,11 +956,11 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
             handles=legend_handles,
             loc="lower center",
             ncol=3,
-            fontsize=9,
+            fontsize=legend_fs,
             framealpha=0.9,
         )
 
-        fig.suptitle("Selected Spanning Tree", fontsize=12)
+        fig.suptitle("Selected Spanning Tree", fontsize=suptitle_fs)
         fig.tight_layout(rect=[0, 0.05, 1, 0.96])
 
         if path is not None:
@@ -927,6 +972,23 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
     ###
     # Internals
     ###
+
+    @staticmethod
+    def _topology_plot_scales(n_nodes: int, n_edges: int) -> tuple[float, float]:
+        """Return ``(label_scale, fig_scale)`` from topology size and edge density.
+
+        ``label_scale`` shrinks fonts and markers on large / edge-heavy graphs;
+        ``fig_scale`` grows default figure dimensions so layouts have more
+        physical canvas (capped to avoid enormous exports).
+        """
+        n_nodes = max(int(n_nodes), 1)
+        n_edges = max(int(n_edges), 0)
+        size_scale = 1.0 if n_nodes <= 10 else math.sqrt(10.0 / float(n_nodes))
+        tree_edges = max(n_nodes - 1, 1)
+        if n_edges > tree_edges:
+            size_scale *= math.sqrt(tree_edges / float(max(n_edges, 1)))
+        fig_scale = max(1.0, min(2.5, math.sqrt(float(n_nodes) / 14.0)))
+        return size_scale, fig_scale
 
     @staticmethod
     def _layout_component(
@@ -1325,6 +1387,7 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         joint_name_map: dict[int, str] | None = None,
         force_path_labels: bool = False,
         edge_label_offset_pts: float | None = None,
+        inline_name_font_size: int | None = None,
     ) -> None:
         """Draw a single component on a matplotlib axis using a shared ``pos`` dict.
 
@@ -1363,7 +1426,10 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 via :meth:`_format_name`.
             edge_label_offset_pts: Perpendicular distance, in display
                 points, between each edge and its labels. ``None``
-                (default) uses :attr:`_EDGE_LABEL_OFFSET_PTS`.
+                (default) uses :attr:`_EDGE_LABEL_OFFSET_PTS`, scaled by
+                ``node_size_scale`` for dense graphs.
+            inline_name_font_size: Optional font size for inline name
+                annotations; when omitted, scales from ``node_size_scale``.
 
         Raises:
             ImportError: If :mod:`networkx` or :mod:`matplotlib` are not installed.
@@ -1429,17 +1495,26 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                     tertiary_edges_uv.append(uv)
             edge_label_map[uv] = self._build_edge_label(e.joint_type, e.joint_index, joints)
 
+        ew_s = float(node_size_scale)
+        ew_int = max(0.9, 1.5 * ew_s)
+        ew_gr = max(1.0, 1.8 * ew_s)
+        ew_base = max(1.3, 2.5 * ew_s)
+
+        eff_edge_off = edge_label_offset_pts
+        if eff_edge_off is None:
+            eff_edge_off = TopologyGraphVisualizer._EDGE_LABEL_OFFSET_PTS * max(0.6, ew_s)
+
         # Edges first, behind the nodes. The ordering (tertiary → secondary →
         # base) puts the most prominent style on top, matching `render_graph`.
         if tertiary_edges_uv:
             if mode == "graph":
-                nx.draw_networkx_edges(G, pos, edgelist=tertiary_edges_uv, width=1.5, edge_color="0.55", ax=ax)
+                nx.draw_networkx_edges(G, pos, edgelist=tertiary_edges_uv, width=ew_int, edge_color="0.55", ax=ax)
             else:
                 nx.draw_networkx_edges(
                     G,
                     pos,
                     edgelist=tertiary_edges_uv,
-                    width=1.5,
+                    width=ew_int,
                     style="dashed",
                     edge_color="tab:red",
                     alpha=0.7,
@@ -1448,12 +1523,12 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
         if secondary_edges_uv:
             if mode == "graph":
                 nx.draw_networkx_edges(
-                    G, pos, edgelist=secondary_edges_uv, width=1.8, style="dashed", edge_color="0.35", ax=ax
+                    G, pos, edgelist=secondary_edges_uv, width=ew_gr, style="dashed", edge_color="0.35", ax=ax
                 )
             else:
-                nx.draw_networkx_edges(G, pos, edgelist=secondary_edges_uv, width=1.8, edge_color="0.35", ax=ax)
+                nx.draw_networkx_edges(G, pos, edgelist=secondary_edges_uv, width=ew_gr, edge_color="0.35", ax=ax)
         if base_edges_uv:
-            nx.draw_networkx_edges(G, pos, edgelist=base_edges_uv, width=2.5, edge_color="black", ax=ax)
+            nx.draw_networkx_edges(G, pos, edgelist=base_edges_uv, width=ew_base, edge_color="black", ax=ax)
 
         # Per-node styling — mirrors `render_graph`. Defaults are set first and
         # then overridden by component- and role-specific styling so the base
@@ -1529,12 +1604,17 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 pos,
                 edge_label_map,
                 font_size=edge_label_font_size,
-                offset_pts=edge_label_offset_pts,
+                offset_pts=eff_edge_off,
             )
 
         # Optional inline name labels — drawn after the canonical labels so they
         # sit on top of the heavier rendering and never mask it. Edge entries
         # iterate over the component's edges (which is what `pos` covers).
+        inline_fs = (
+            inline_name_font_size
+            if inline_name_font_size is not None
+            else max(4, int(round(5 * float(node_size_scale))))
+        )
         if show_inline_names and (node_name_map or joint_name_map):
             self._draw_inline_names(
                 ax,
@@ -1543,7 +1623,8 @@ class TopologyGraphVisualizer(TopologyGraphVisualizerBase):
                 node_name_map=node_name_map or {},
                 joint_name_map=joint_name_map or {},
                 world_node=world_node,
-                edge_offset_pts=edge_label_offset_pts,
+                font_size=inline_fs,
+                edge_offset_pts=eff_edge_off,
                 full_paths=force_path_labels,
             )
 

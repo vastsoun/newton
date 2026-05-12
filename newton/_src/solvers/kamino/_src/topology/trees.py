@@ -80,9 +80,14 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
 
     For a chosen root body, a *minimum-depth* spanning tree is a tree
     whose maximum root-to-leaf arc count equals the eccentricity of the
-    root in the component's body-only subgraph. The set of such trees is
-    enumerated by allowing each non-root body to pick any incoming
-    parent edge from a strictly preceding BFS layer.
+    root in the component's body-only subgraph.
+
+    By default, candidates are the **shortest-path** spanning trees from
+    the root: each non-root body picks a parent in the preceding BFS
+    layer (Cartesian product). That set always achieves minimum height
+    but can be a proper subset of all minimum-height trees; set
+    ``min_height_backtrack=True`` to enumerate the full minimum-height
+    set via backtracking.
 
     Root-selection priority cascade (overridable per call):
 
@@ -113,6 +118,24 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         prioritize_grounding_when_no_base: When ``True`` (default), use
             ``component.ground_nodes`` as roots in step ``3``; when
             ``False``, skip directly to the degree-based heuristic.
+        joint_chord_weight: Optional map ``joint_index ->`` non-negative chord
+            penalty. Higher values discourage leaving that joint as a chord
+            (prefer it as a spanning-tree arc). When set, parent-edge choices
+            are ordered by descending weight and, if ``max_candidates`` caps
+            enumeration, the kept trees minimize total chord penalty before
+            truncation.
+        min_height_backtrack: When ``False`` (default), per-root enumeration
+            uses the fast BFS-layer Cartesian product (shortest-path trees
+            from the root, which achieve minimum height). When ``True``,
+            enumerate every spanning tree whose rooted height equals the
+            root's eccentricity via backtracking (strict superset on some
+            graphs; potentially exponential in body count). Results are
+            stably reordered so **BFS-layer (shortest-path) trees appear
+            first**, matching the default enumerator's candidate set and
+            relative order among that set; remaining trees follow in
+            discovery order. With ``max_candidates`` and chord weights,
+            truncation keeps BFS-layer trees ahead of others at equal chord
+            penalty.
     """
 
     ###
@@ -128,6 +151,8 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         override_priorities: bool = False,
         prioritize_balanced: bool = False,
         prioritize_grounding_when_no_base: bool = True,
+        joint_chord_weight: dict[int, float] | None = None,
+        min_height_backtrack: bool = False,
     ) -> None:
         validate_traversal_mode(traversal_mode)
         validate_max_candidates(max_candidates)
@@ -137,6 +162,8 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         self._override_priorities: bool = override_priorities
         self._prioritize_balanced: bool = prioritize_balanced
         self._prioritize_grounding_when_no_base: bool = prioritize_grounding_when_no_base
+        self._joint_chord_weight: dict[int, float] | None = joint_chord_weight
+        self._min_height_backtrack: bool = min_height_backtrack
 
     ###
     # Operations
@@ -223,8 +250,26 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         # Optional balanced-tree ordering. Stable sort preserves the
         # original enumeration order on ties.
         if bal and len(candidates) > 1:
-            candidates.sort(key=lambda t: t.balanced_score())
+            if self._joint_chord_weight:
+                candidates.sort(key=lambda t: (self._tree_chord_penalty_sum(t), t.balanced_score()))
+            else:
+                candidates.sort(key=lambda t: t.balanced_score())
         return candidates
+
+    ###
+    # Internals - chord weights
+    ###
+
+    def _edge_chord_weight(self, joint_index: int) -> float:
+        if self._joint_chord_weight is None:
+            return 0.0
+        return float(self._joint_chord_weight.get(int(joint_index), 0.0))
+
+    def _tree_chord_penalty_sum(self, tree: TopologySpanningTree) -> float:
+        if self._joint_chord_weight is None:
+            return 0.0
+        w = self._joint_chord_weight
+        return sum(float(w.get(int(j), 0.0)) for j in tree.chords)
 
     ###
     # Internals - graph utilities
@@ -406,6 +451,24 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
         if len(dist) != len(body_nodes):
             return []
         depth = max(dist.values())
+        base_edge = self._select_base_edge_for_root(root, component, world, world_edges)
+
+        if self._min_height_backtrack:
+            return self._enumerate_min_height_trees_backtrack(
+                component=component,
+                root=root,
+                traversal=traversal,
+                max_count=max_count,
+                directed=directed,
+                body_nodes=body_nodes,
+                adj=adj,
+                dist=dist,
+                D=depth,
+                base_edge=base_edge,
+                world=world,
+                world_edges=world_edges,
+                internal_edges=internal_edges,
+            )
 
         # Bucket bodies by BFS distance so parent enumeration scans only the preceding
         # layer (not all bodies). Order within each bucket matches ``body_nodes``.
@@ -436,18 +499,21 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
                         else GraphEdge(joint_type=edge.joint_type, joint_index=edge.joint_index, nodes=(p, x))
                     )
                     choices.append(OrientedEdge(original=edge, oriented=oriented))
-            choices.sort(key=lambda c: (c.oriented.joint_index, c.oriented.nodes[0], c.oriented.nodes[1]))
+            choices.sort(
+                key=lambda c: (
+                    -self._edge_chord_weight(c.oriented.joint_index),
+                    c.oriented.joint_index,
+                    c.oriented.nodes[0],
+                    c.oriented.nodes[1],
+                )
+            )
             parent_choices[x] = choices
-
-        # Resolve the (provisional) base edge for this root: the first
-        # world edge whose body endpoint matches `root`. May be `None`
-        # for isolated islands; `_build_tree` handles that.
-        base_edge = self._select_base_edge_for_root(root, component, world, world_edges)
 
         # Cartesian product over per-body parent choices yields all min-depth trees
         choice_lists = [parent_choices[n] for n in non_root_nodes]
 
         trees: list[TopologySpanningTree] = []
+        full_enum_for_weights = self._joint_chord_weight is not None
         for choice_tuple in product(*choice_lists):
             chosen_arcs: dict[int, OrientedEdge] = dict(zip(non_root_nodes, choice_tuple, strict=True))
             tree = self._build_tree(
@@ -463,9 +529,231 @@ class TopologyMinimumDepthSpanningTreeGenerator(TopologySpanningTreeGeneratorBas
                 world=world,
             )
             trees.append(tree)
-            if max_count is not None and len(trees) >= max_count:
+            if not full_enum_for_weights and max_count is not None and len(trees) >= max_count:
                 break
+        if full_enum_for_weights and max_count is not None and len(trees) > max_count:
+            trees.sort(
+                key=lambda t: (
+                    self._tree_chord_penalty_sum(t),
+                    sum(t.chords),
+                )
+            )
+            trees = trees[:max_count]
         return trees
+
+    def _enumerate_min_height_trees_backtrack(
+        self,
+        component: TopologyComponent,
+        root: int,
+        traversal: SpanningTreeTraversal,
+        max_count: int | None,
+        directed: bool,
+        body_nodes: list[int],
+        adj: dict[int, list[tuple[int, GraphEdge]]],
+        dist: dict[int, int],
+        D: int,
+        base_edge: GraphEdge | None,
+        world: int,
+        world_edges: list[GraphEdge],
+        internal_edges: list[GraphEdge],
+    ) -> list[TopologySpanningTree]:
+        """Enumerate spanning trees of rooted height ``D`` via backtracking.
+
+        ``D`` must be the eccentricity of ``root`` (``max(dist)``). Every
+        returned tree spans all ``body_nodes`` and satisfies
+        ``dist[v] <= tree_depth(v) <= D`` for each body ``v``.
+        """
+        non_root = [n for n in body_nodes if n != root]
+        # High graph-distance bodies first tends to prune deeper branches earlier.
+        ordered = sorted(non_root, key=lambda v: (-dist[v], v))
+        choices_by_vertex: dict[int, list[OrientedEdge]] = {}
+        for x in non_root:
+            choices_by_vertex[x] = self._collect_parent_choices_all_neighbors(x=x, body_nodes=body_nodes, adj=adj)
+
+        trees: list[TopologySpanningTree] = []
+        bfs_layer_flags: list[bool] = []
+        full_enum_for_weights = self._joint_chord_weight is not None
+        chosen_arcs: dict[int, OrientedEdge] = {}
+        parent_body: dict[int, int] = {}
+
+        def depth_ok() -> bool:
+            mx = 0
+            for b in body_nodes:
+                steps = 0
+                cur = b
+                seen: set[int] = set()
+                while cur != root:
+                    if cur in seen:
+                        return False
+                    seen.add(cur)
+                    pb = parent_body.get(cur)
+                    if pb is None:
+                        return False
+                    cur = pb
+                    steps += 1
+                if steps > D:
+                    return False
+                mx = max(mx, steps)
+            return mx == D
+
+        def backtrack(i: int) -> None:
+            if i == len(ordered):
+                if not depth_ok():
+                    return
+                ca = dict(chosen_arcs)
+                tree = self._build_tree(
+                    component=component,
+                    root=root,
+                    base_edge=base_edge,
+                    chosen_arcs=ca,
+                    world_edges=world_edges,
+                    internal_edges=internal_edges,
+                    depth=D,
+                    traversal=traversal,
+                    directed=directed,
+                    world=world,
+                )
+                trees.append(tree)
+                bfs_layer_flags.append(self._chosen_arcs_are_bfs_shortest_path(ca, dist))
+                return
+            v = ordered[i]
+            for oedge in choices_by_vertex[v]:
+                p = oedge.oriented.nodes[0]
+                if p == v:
+                    continue
+                if self._adding_parent_creates_cycle(v, p, parent_body, root):
+                    continue
+                parent_body[v] = p
+                chosen_arcs[v] = oedge
+                backtrack(i + 1)
+                del parent_body[v]
+                del chosen_arcs[v]
+
+        backtrack(0)
+
+        order_idx = sorted(range(len(trees)), key=lambda j: (not bfs_layer_flags[j], j))
+        trees = [trees[j] for j in order_idx]
+
+        if max_count is not None and len(trees) > max_count:
+            if full_enum_for_weights:
+                trees.sort(
+                    key=lambda t: (
+                        not self._tree_is_bfs_shortest_path_from_root(t, component, dist),
+                        self._tree_chord_penalty_sum(t),
+                        sum(t.chords) if t.chords else 0,
+                    )
+                )
+            trees = trees[:max_count]
+
+        return trees
+
+    def _collect_parent_choices_all_neighbors(
+        self,
+        x: int,
+        body_nodes: list[int],
+        adj: dict[int, list[tuple[int, GraphEdge]]],
+    ) -> list[OrientedEdge]:
+        """All tree arcs ``(parent, child) = (p, x)`` from internal edges."""
+        choices: list[OrientedEdge] = []
+        for p in body_nodes:
+            if p == x:
+                continue
+            for nxt, edge in adj[p]:
+                if nxt != x:
+                    continue
+                oriented = (
+                    edge
+                    if edge.nodes == (p, x)
+                    else GraphEdge(joint_type=edge.joint_type, joint_index=edge.joint_index, nodes=(p, x))
+                )
+                choices.append(OrientedEdge(original=edge, oriented=oriented))
+        choices.sort(
+            key=lambda c: (
+                -self._edge_chord_weight(c.oriented.joint_index),
+                c.oriented.joint_index,
+                c.oriented.nodes[0],
+                c.oriented.nodes[1],
+            )
+        )
+        return choices
+
+    @staticmethod
+    def _adding_parent_creates_cycle(v: int, p: int, parent_body: dict[int, int], root: int) -> bool:
+        """Return True if setting ``parent_body[v] = p`` closes a directed cycle to ``v``."""
+        x = p
+        seen: set[int] = set()
+        while x != root:
+            if x == v:
+                return True
+            if x in seen:
+                return True
+            seen.add(x)
+            px = parent_body.get(x)
+            if px is None:
+                return False
+            x = px
+        return False
+
+    @staticmethod
+    def _chosen_arcs_are_bfs_shortest_path(
+        chosen_arcs: dict[int, OrientedEdge],
+        dist: dict[int, int],
+    ) -> bool:
+        """True when every tree arc goes from BFS layer ``d-1`` to layer ``d``."""
+        for child, oedge in chosen_arcs.items():
+            p = oedge.oriented.nodes[0]
+            if dist.get(p, -(10**9)) != dist[child] - 1:
+                return False
+        return True
+
+    def _local_to_global_bodies_from_tree(
+        self,
+        tree: TopologySpanningTree,
+        component: TopologyComponent,
+    ) -> list[int] | None:
+        """Map local body slots to global body indices using arc joints and ``parents``."""
+        if tree.root is None or tree.num_bodies < 1 or tree.arcs is None or tree.parents is None:
+            return None
+        joint_to_edge: dict[int, GraphEdge] = {int(e.joint_index): e for e in (component.edges or [])}
+        n = tree.num_bodies
+        lg = [-1] * n
+        lg[0] = int(tree.root)
+        for i in range(1, n):
+            edge = joint_to_edge.get(int(tree.arcs[i]))
+            if edge is None:
+                return None
+            u, v = int(edge.nodes[0]), int(edge.nodes[1])
+            pi = tree.parents[i]
+            if pi < 0 or pi >= n:
+                return None
+            pg = lg[pi]
+            if u == pg:
+                lg[i] = v
+            elif v == pg:
+                lg[i] = u
+            else:
+                return None
+        return lg
+
+    def _tree_is_bfs_shortest_path_from_root(
+        self,
+        tree: TopologySpanningTree,
+        component: TopologyComponent,
+        dist: dict[int, int],
+    ) -> bool:
+        """True when the tree is a shortest-path (BFS-layer) spanning tree from ``root``."""
+        if tree.num_bodies <= 1:
+            return True
+        lg = self._local_to_global_bodies_from_tree(tree, component)
+        if lg is None or tree.parents is None:
+            return False
+        for i in range(1, tree.num_bodies):
+            pi = tree.parents[i]
+            pg = lg[pi]
+            cg = lg[i]
+            if dist.get(pg, -(10**9)) != dist.get(cg, -(10**9)) - 1:
+                return False
+        return True
 
     @staticmethod
     def _select_base_edge_for_root(

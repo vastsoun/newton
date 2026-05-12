@@ -39,6 +39,7 @@ from .types import (
 __all__ = [
     "TopologyHeaviestBodyBaseSelector",
     "TopologyMinimumDepthSpanningTreeSelector",
+    "TopologyNamedBodyBaseSelector",
 ]
 
 
@@ -187,6 +188,117 @@ class TopologyHeaviestBodyBaseSelector(TopologyComponentBaseSelectorBase):
         return base_node, synthetic_edge
 
 
+class TopologyNamedBodyBaseSelector(TopologyComponentBaseSelectorBase):
+    """
+    Base-selector backend that picks the body with a specific name as the
+    component base.
+    """
+
+    ###
+    # Construction
+    ###
+
+    def __init__(
+        self,
+        body_name: str,
+        *,
+        world_node: int = DEFAULT_WORLD_NODE_INDEX,
+        prefer_free_when_available: bool = True,
+    ) -> None:
+        if not isinstance(world_node, int):
+            raise TypeError(f"`world_node` must be an integer; got {type(world_node).__name__}.")
+        if world_node >= 0:
+            raise ValueError(
+                f"`world_node` must be a negative integer (sentinel for the implicit world); got {world_node}."
+            )
+        self._body_name: int = body_name
+        self._world_node: int = world_node
+        self._prefer_free_when_available: bool = prefer_free_when_available
+
+    ###
+    # Public API
+    ###
+
+    @override
+    def select_base(
+        self,
+        component: TopologyComponent,
+        bodies: list[RigidBodyDescriptor] | None = None,
+        joints: list[JointDescriptor] | None = None,
+    ) -> tuple[GraphNode, GraphEdge]:
+        """
+        Pick the body with a specific index as the base node and a corresponding base edge.
+
+        Args:
+            component:
+                The component subgraph to select a base for; must have a non-empty ``nodes`` list.
+            bodies:
+                Per-world list of :class:`RigidBodyDescriptor`. The
+                selector reads :attr:`RigidBodyDescriptor.m_i` from
+                ``bodies[node]`` to score candidates.
+            joints:
+                Currently unused; accepted for interface compatibility.
+
+        Returns:
+            A ``(base_node, base_edge)`` pair where ``base_node`` is the
+            canonical :class:`GraphNode` for the body with a specific index in
+            ``component.nodes`` (preserving any optional metadata) and
+            ``base_edge`` is either an incident grounding edge of that
+            body or a synthesized 6-DoF FREE edge connecting it to the
+            world.
+
+        Raises:
+            ValueError:
+                If ``component`` is ``None`` or has no nodes, ``bodies``
+                is ``None``, or if any node is out of range of ``bodies``.
+        """
+        # Ensure component and bodies are provided and valid
+        if component is None:
+            raise ValueError("`component` must not be None.")
+        if not component.nodes:
+            raise ValueError("`component.nodes` must contain at least one body node.")
+        if bodies is None:
+            raise ValueError("`bodies` must be provided to select the base body.")
+
+        # Get index and node for body name
+        base_idx: int = -1
+        for b_id, b in enumerate(bodies):
+            if b.name == self._body_name:
+                base_idx = b_id
+                break
+        if base_idx < 0:
+            raise ValueError(f"Body name `{self._body_name}` not found in list of bodies.")
+        base_node: GraphNode | None = None
+        for n in component.nodes:
+            if int(n) == base_idx:
+                base_node = n
+        if base_node is None:
+            raise ValueError(f"Body index `{base_idx}` not found in list of nodes.")
+
+        # Collect grounding edges incident to the base body. Coerce defensively
+        # in case a caller mutated `ground_edges` post-construction with raw tuples.
+        found_base_edge: list[GraphEdge] = []
+        for e in component.ground_edges or []:
+            edge = GraphEdge.from_input(e)
+            u, v = edge.nodes
+            if u == base_idx or v == base_idx:
+                found_base_edge.append(edge)
+        if found_base_edge:
+            if self._prefer_free_when_available:
+                found_free_base_edge = [e for e in found_base_edge if e.joint_type == JointDoFType.FREE]
+                if found_free_base_edge:
+                    return base_node, found_free_base_edge[0]
+            return base_node, found_base_edge[0]
+
+        # If no grounding edge is incident to the base body, synthesize a 6-DoF FREE base edge to the world.
+        synthetic_edge = GraphEdge(
+            joint_type=int(JointDoFType.FREE),
+            joint_index=int(NO_BASE_JOINT_INDEX),
+            nodes=(self._world_node, base_idx),
+        )
+        return base_node, synthetic_edge
+
+
 ###
 # Spanning-Tree Selectors
 ###
@@ -210,8 +322,9 @@ class TopologyMinimumDepthSpanningTreeSelector(TopologySpanningTreeSelectorBase)
       eccentricity tie, minimize the imbalance score
       ``sum(len(c) * len(c) for c in tree.children)`` when
       ``prioritize_balanced=True`` (lower is more balanced); otherwise
-      keep eccentricity-only ordering. Remaining ties are broken by the
-      input list order (stable ``min`` semantics).
+      keep eccentricity-only ordering. When ``joint_chord_weight`` is set,
+      total chord penalty is minimized next. Remaining ties follow stable
+      ``min`` semantics.
 
     Selecting on the eccentricity from the base — rather than from each
     candidate's own root — matters whenever the spanning-tree generator
@@ -227,14 +340,25 @@ class TopologyMinimumDepthSpanningTreeSelector(TopologySpanningTreeSelectorBase)
         prioritize_balanced: When ``True`` (default), use imbalance
             score as a secondary ordering key; when ``False``, only
             the eccentricity-from-base is considered.
+        joint_chord_weight: Optional map ``joint_index ->`` non-negative
+            chord penalty. After eccentricity (and balance when enabled),
+            candidates with lower total chord penalty are preferred.
     """
 
     ###
     # Construction
     ###
 
-    def __init__(self, *, prioritize_balanced: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        prioritize_balanced: bool = True,
+        joint_chord_weight: dict[int, float] | None = None,
+        result_index: int = 0,
+    ) -> None:
         self._prioritize_balanced: bool = prioritize_balanced
+        self._joint_chord_weight: dict[int, float] | None = joint_chord_weight
+        self._result_index: int = result_index
 
     ###
     # Public API
@@ -277,13 +401,43 @@ class TopologyMinimumDepthSpanningTreeSelector(TopologySpanningTreeSelectorBase)
         # eccentricity helper falls back to `t.depth` when no base is
         # available, so candidates assembled outside the standard
         # pipeline still get the legacy depth-only ordering.
+        if self._result_index > 0:
+            if self._prioritize_balanced:
+                candidate_ids = [
+                    (idx, (self._chord_penalty_sum(t), self._eccentricity_from_base(t), t.balanced_score()))
+                    for idx, t in enumerate(candidates)
+                ]
+            else:
+                candidate_ids = [
+                    (idx, (self._chord_penalty_sum(t), self._eccentricity_from_base(t)))
+                    for idx, t in enumerate(candidates)
+                ]
+            candidate_ids.sort(key=lambda t: t[1])
+            min_weight = candidate_ids[0][1]
+            candidate_ids = [entry for entry in candidate_ids if entry[1] == min_weight]
+            result_id = candidate_ids[self._result_index % len(candidate_ids)][0]
+            return candidates[result_id]
+
         if self._prioritize_balanced:
-            return min(candidates, key=lambda t: (self._eccentricity_from_base(t), t.balanced_score()))
-        return min(candidates, key=self._eccentricity_from_base)
+            return min(
+                candidates,
+                key=lambda t: (
+                    self._chord_penalty_sum(t),
+                    self._eccentricity_from_base(t),
+                    t.balanced_score(),
+                ),
+            )
+        return min(candidates, key=lambda t: (self._chord_penalty_sum(t), self._eccentricity_from_base(t)))
 
     ###
     # Internals
     ###
+
+    def _chord_penalty_sum(self, tree: TopologySpanningTree) -> float:
+        if self._joint_chord_weight is None:
+            return 0.0
+        w = self._joint_chord_weight
+        return sum(float(w.get(int(j), 0.0)) for j in tree.chords)
 
     @staticmethod
     def _eccentricity_from_base(tree: TopologySpanningTree) -> int:

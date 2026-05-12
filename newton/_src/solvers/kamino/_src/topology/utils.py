@@ -5,8 +5,9 @@
 
 The public helpers in this module are:
 
-- :func:`extract_graph_inputs_from_builder`, :func:`bodies_from_builder`, and
-  :func:`joints_from_builder`: cheap extractors that derive the inputs of a
+- :func:`extract_graph_inputs_from_builder`, :func:`bodies_from_builder`,
+  :func:`joints_from_builder`, and :func:`joint_chord_weights_from_builder`:
+  cheap extractors that derive the inputs of a
   :class:`~kamino.topology.TopologyGraph` from a Newton :class:`ModelBuilder`.
 
 - :func:`discover_topology_for_builder`: convenience wrapper that returns an
@@ -56,6 +57,10 @@ TopologyGraph use-cases:
                 added to their prim defs.
                 - Chord joints have the ``uniform bool physics:excludeFromArticulation = 1``
                 attribute added.
+                - Reversed tree arcs additionally swap ``physics:body0`` /
+                ``physics:body1`` and matching local anchors on the joint prim,
+                and negate the Revolute / Prismatic DOF axis in joint space (see
+                :func:`export_usd_with_discovered_topology`).
                 - Synthesized base joints are NOT written to the USD asset in this PR
                 (the in-builder representation in 2a already covers that case for
                 downstream solvers).
@@ -97,6 +102,7 @@ __all__ = [
     "discover_topology_for_builder",
     "export_usd_with_discovered_topology",
     "extract_graph_inputs_from_builder",
+    "joint_chord_weights_from_builder",
     "joints_from_builder",
 ]
 
@@ -156,6 +162,51 @@ def extract_graph_inputs_from_builder(
     return nodes, edges
 
 
+def joint_chord_weights_from_builder(builder: ModelBuilder) -> dict[int, float]:
+    """Chord penalties per joint index for actuation-aware spanning-tree bias.
+
+    Each joint that has at least one DoF with :class:`~newton.JointTargetMode`
+    other than ``NONE`` receives penalty ``1.0``; passive joints receive ``0.0``.
+    Downstream topology code minimizes the sum of these penalties over **chord**
+    joints (joints not selected as spanning-tree arcs).
+
+    If ``builder.joint_target_mode`` is shorter than the implied DoF layout
+    (partial build), missing entries are treated as ``NONE``.
+
+    Note:
+        MuJoCo general actuators that do not set ``joint_target_mode`` are not
+        reflected here (see :class:`~newton.JointTargetMode`).
+
+    Args:
+        builder: The source Newton :class:`ModelBuilder`.
+
+    Returns:
+        Map ``joint_index -> chord_penalty`` for ``range(builder.joint_count)``.
+    """
+    none = int(newton.JointTargetMode.NONE)
+    modes = builder.joint_target_mode
+    n_j = builder.joint_count
+    weights: dict[int, float] = {}
+    if n_j == 0:
+        return weights
+    qd_starts = builder.joint_qd_start
+    n_qd = len(builder.joint_qd)
+    for j in range(n_j):
+        weights[j] = 0.0
+        if j >= len(qd_starts):
+            continue
+        qd_start = int(qd_starts[j])
+        if j < n_j - 1 and j + 1 < len(qd_starts):
+            qd_end = int(qd_starts[j + 1])
+        else:
+            qd_end = n_qd
+        for d in range(qd_start, min(qd_end, len(modes))):
+            if int(modes[d]) != none:
+                weights[j] = 1.0
+                break
+    return weights
+
+
 def bodies_from_builder(builder: ModelBuilder) -> list[RigidBodyDescriptor]:
     """Synthesize :class:`RigidBodyDescriptor` instances from a Newton builder.
 
@@ -212,9 +263,12 @@ def discover_topology_for_builder(
     builder: ModelBuilder,
     *,
     base_selector: topology.TopologyComponentBaseSelectorBase | None = None,
+    tree_selector: topology.TopologySpanningTreeSelectorBase | None = None,
     tree_traversal_mode: topology.SpanningTreeTraversal = "dfs",
     max_tree_candidates: int = 32,
     reassign_indices_inplace: bool = True,
+    joint_chord_weight: dict[int, float] | None = None,
+    use_actuation_chord_weights: bool = False,
 ) -> topology.TopologyGraph:
     """Build and autoparse a :class:`TopologyGraph` for a single-world builder.
 
@@ -236,6 +290,13 @@ def discover_topology_for_builder(
             permutation in place; pass ``False`` to keep the original indices
             on :attr:`TopologyGraph.trees` and access remapped copies via
             :attr:`TopologyGraph.trees_remapped`.
+        joint_chord_weight: Optional per-joint chord penalty map (non-negative
+            floats). When ``None`` and ``use_actuation_chord_weights`` is
+            ``True``, penalties are derived from :func:`joint_chord_weights_from_builder`.
+        use_actuation_chord_weights: When ``True`` (default) and
+            ``joint_chord_weight`` is ``None``, derive chord penalties from
+            ``builder.joint_target_mode``. Set ``False`` to disable actuation
+            biasing.
 
     Returns:
         An autoparsed :class:`~kamino.topology.TopologyGraph` instance.
@@ -256,15 +317,25 @@ def discover_topology_for_builder(
     if base_selector is None:
         base_selector = topology.TopologyHeaviestBodyBaseSelector()
 
+    jcw: dict[int, float] | None = joint_chord_weight
+    if jcw is None and use_actuation_chord_weights:
+        jcw = joint_chord_weights_from_builder(builder)
+        if tree_selector is not None:
+            tree_selector._joint_chord_weight = jcw
+    if not jcw:
+        jcw = None
+
     graph = topology.TopologyGraph(
         nodes=nodes,
         edges=edges,
         base_selector=base_selector,
+        tree_selector=tree_selector,
         bodies=bodies,
         joints=joints,
         tree_traversal_mode=tree_traversal_mode,
         max_tree_candidates=max_tree_candidates,
         reassign_indices_inplace=reassign_indices_inplace,
+        joint_chord_weight=jcw,
         autoparse=True,
     )
     msg.debug("Discovered topology graph with %d component(s)", len(graph.components))
@@ -641,6 +712,7 @@ def export_usd_with_discovered_topology(
     source: str | os.PathLike[str],
     output: str | os.PathLike[str],
     *,
+    topology_kwargs: dict[str, Any] | None = None,
     add_usd_kwargs: dict[str, Any] | None = None,
     plotfig: bool = False,
     savefig: bool = False,
@@ -673,12 +745,13 @@ def export_usd_with_discovered_topology(
         The reversed-joint swap reorients the ``body0`` / ``body1``
         relationships and their matching local-anchor attributes
         (``localPos0`` / ``localPos1``, ``localRot0`` / ``localRot1``).
-        Joint-local axis tokens (``physics:axis`` on Revolute /
-        Prismatic, the per-DOF schemas on D6, etc.) are left untouched:
-        for anchor frames that coincide at rest the same axis token
-        remains valid in the new ``body0`` anchor frame, but assets
-        with non-coincident anchor frames may need additional axis
-        rotation which callers must perform themselves.
+        For :class:`UsdPhysics.RevoluteJoint` and :class:`UsdPhysics.PrismaticJoint`
+        prims, ``physics:axis`` is negated in the joint frame by composing
+        both local joint orientations with the same 180° twist about an
+        axis perpendicular to the authored DOF direction, so signed joint
+        coordinates (angular or linear position) stay consistent with the
+        pre-swap asset. Other joint types are left unchanged beyond the
+        body/anchor swap.
 
     Args:
         source: Path to the source USD asset (``.usd`` / ``.usda`` / ``.usdc``).
@@ -727,7 +800,8 @@ def export_usd_with_discovered_topology(
     # the per-tree ``root`` and ``chords`` indices can be resolved directly
     # through ``path_body_map`` / ``path_joint_map`` (which use the import-
     # order indices from :func:`parse_usd`).
-    graph = discover_topology_for_builder(tmp_builder, reassign_indices_inplace=False)
+    topology_kwargs = dict(topology_kwargs) if topology_kwargs is not None else {}
+    graph = discover_topology_for_builder(tmp_builder, reassign_indices_inplace=False, **topology_kwargs)
 
     # 3. Optional rendering of the discovered topology graph and its trees.
     if plotfig or savefig:
@@ -847,7 +921,7 @@ def export_usd_with_discovered_topology(
                 joint_path,
             )
             continue
-        _swap_usd_joint_polarity(joint_prim)
+        _swap_usd_joint_polarity(joint_prim, flip_dof_axis=True)
 
     # 8. Save and return.
     output_stage.GetRootLayer().Save()
@@ -961,7 +1035,7 @@ def _load_pxr_modules() -> tuple[Any, Any, Any]:
     return Sdf, Usd, UsdPhysics
 
 
-def _swap_usd_joint_polarity(joint_prim: Any) -> None:
+def _swap_usd_joint_polarity(joint_prim: Any, *, flip_dof_axis: bool = False) -> None:
     """Swap ``body0`` ↔ ``body1`` and the matching local-anchor attributes on a USD joint prim.
 
     Operates on raw attribute / relationship names so the helper works
@@ -970,10 +1044,14 @@ def _swap_usd_joint_polarity(joint_prim: Any) -> None:
     swapped attributes (``physics:body0`` / ``physics:body1`` and the
     matching ``physics:localPos0`` / ``physics:localPos1`` /
     ``physics:localRot0`` / ``physics:localRot1``) are defined on the
-    base :class:`UsdPhysics.Joint` schema. Joint-local axis tokens
-    (``physics:axis``, D6 limit / drive APIs, etc.) are intentionally
-    left untouched; see :func:`export_usd_with_discovered_topology` for
-    the rationale.
+    base :class:`UsdPhysics.Joint` schema.
+
+    When ``flip_dof_axis`` is ``True`` (used by
+    :func:`export_usd_with_discovered_topology` for reversed tree arcs),
+    :class:`UsdPhysics.RevoluteJoint` and :class:`UsdPhysics.PrismaticJoint`
+    prims additionally receive a joint-frame 180° twist applied equally
+    to ``localRot0`` and ``localRot1`` so the DOF axis flips sign while
+    preserving the relative anchor assembly.
 
     Missing or unauthored anchor attributes are tolerated: only the
     sides that report :meth:`Usd.Attribute.IsValid` are read and written.
@@ -984,6 +1062,8 @@ def _swap_usd_joint_polarity(joint_prim: Any) -> None:
     Args:
         joint_prim: A :class:`Usd.Prim` referring to a USD physics joint
             whose ``body0`` / ``body1`` polarity should be swapped.
+        flip_dof_axis: When ``True``, negate the Revolute / Prismatic DOF
+            axis in joint space after the swap (see above).
     """
     body0_rel = joint_prim.GetRelationship("physics:body0")
     body1_rel = joint_prim.GetRelationship("physics:body1")
@@ -1013,3 +1093,74 @@ def _swap_usd_joint_polarity(joint_prim: Any) -> None:
         local_rot_1.Set(r0)
     if r1 is not None and local_rot_0 and local_rot_0.IsValid():
         local_rot_0.Set(r1)
+
+    if flip_dof_axis:
+        _flip_usd_revolute_prismatic_axis_after_body_swap(joint_prim)
+
+
+def _flip_usd_revolute_prismatic_axis_after_body_swap(joint_prim: Any) -> None:
+    """Negate the DOF axis for Revolute / Prismatic joints after a body0 ↔ body1 swap.
+
+    ``physics:axis`` is only a principal direction (``X`` / ``Y`` / ``Z``).
+    Negating the free axis is implemented by composing **both**
+    ``physics:localRot0`` and ``physics:localRot1`` with the same 180°
+    rotation about a canonical axis perpendicular to the DOF direction in
+    joint space, which maps the joint's +X/+Y/+Z basis vector to its
+    negative while preserving ``body0 * local0 == body1 * local1`` at rest.
+
+    No-ops when the prim is not a Revolute or Prismatic joint, when
+    ``physics:axis`` is missing or unrecognized, or when either local
+    rotation attribute is missing / invalid.
+    """
+    try:
+        from pxr import Gf, UsdPhysics
+    except ImportError:
+        return
+
+    type_name = joint_prim.GetTypeName()
+    if type_name not in ("PhysicsRevoluteJoint", "PhysicsPrismaticJoint"):
+        return
+
+    axis_attr = joint_prim.GetAttribute("physics:axis")
+    if not axis_attr or not axis_attr.IsValid():
+        return
+    axis_val = axis_attr.Get()
+    if axis_val is None:
+        axis_val = UsdPhysics.Tokens.x
+
+    q_delta = _usd_physics_axis_token_joint_frame_flip_quatf(axis_val, Gf)
+    if q_delta is None:
+        return
+
+    local_rot_0 = joint_prim.GetAttribute("physics:localRot0")
+    local_rot_1 = joint_prim.GetAttribute("physics:localRot1")
+    if not local_rot_0 or not local_rot_0.IsValid() or not local_rot_1 or not local_rot_1.IsValid():
+        return
+
+    r0 = local_rot_0.Get()
+    r1 = local_rot_1.Get()
+    if r0 is None or r1 is None:
+        return
+
+    r0f = Gf.Quatf(r0) * q_delta
+    r1f = Gf.Quatf(r1) * q_delta
+    r0f.Normalize()
+    r1f.Normalize()
+    local_rot_0.Set(r0f)
+    local_rot_1.Set(r1f)
+
+
+def _usd_physics_axis_token_joint_frame_flip_quatf(axis_val: Any, gf: Any) -> Any | None:
+    """Return a unit ``Gf.Quatf`` that rotates 180° about an axis ⊥ to the DOF in joint frame."""
+    Gf = gf
+    s = str(axis_val).lower()
+    if s in ("x", "physicsx"):
+        perp = Gf.Vec3d(0.0, 1.0, 0.0)
+    elif s in ("y", "physicsy"):
+        perp = Gf.Vec3d(0.0, 0.0, 1.0)
+    elif s in ("z", "physicsz"):
+        perp = Gf.Vec3d(1.0, 0.0, 0.0)
+    else:
+        return None
+    qd = Gf.Rotation(perp, 180.0).GetQuat()
+    return Gf.Quatf(qd)

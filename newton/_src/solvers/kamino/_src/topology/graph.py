@@ -256,6 +256,8 @@ class TopologyGraph:
         override_priorities: bool = False,
         prioritize_balanced: bool = False,
         reassign_indices_inplace: bool = False,
+        joint_chord_weight: dict[int, float] | None = None,
+        min_height_backtrack: bool = False,
         autoparse: bool = False,
     ):
         """Initialize the graph with nodes, edges, and optional pipeline modules.
@@ -289,6 +291,16 @@ class TopologyGraph:
                 ``"bfs"``) used by :meth:`generate_spanning_trees`.
             max_tree_candidates: Default upper bound on candidate spanning
                 trees per component.
+            joint_chord_weight: Optional per-joint chord penalty map forwarded
+                to the default shipped minimum-depth generator and selector
+                when those modules are not overridden. Custom
+                ``tree_generator`` / ``tree_selector`` instances are not
+                modified.
+            min_height_backtrack: When ``True``, forward
+                ``min_height_backtrack=True`` to the default shipped
+                :class:`TopologyMinimumDepthSpanningTreeGenerator` so it
+                enumerates all minimum-height trees via backtracking (ignored
+                when a custom ``tree_generator`` is supplied).
             autoparse: If ``True``, run the full :meth:`parse` pipeline
                 immediately after construction.
 
@@ -337,6 +349,10 @@ class TopologyGraph:
         self._reassign_indices_inplace: bool = reassign_indices_inplace
         """Whether to also perform index reassignment in-place (``True``)
         as well as return the necessary index mappings."""
+        self._joint_chord_weight: dict[int, float] | None = joint_chord_weight
+        """Optional per-joint chord penalty map for default tree modules."""
+        self._min_height_backtrack: bool = min_height_backtrack
+        """When ``True``, use backtracking minimum-height spanning-tree enumeration in the default generator."""
 
         # Validate the input graph attributes to ensure they are
         # consistent with the expected formats and conventions
@@ -362,9 +378,17 @@ class TopologyGraph:
         if self._base_selector is None:
             self._base_selector = TopologyHeaviestBodyBaseSelector()
         if self._tree_generator is None:
-            self._tree_generator = TopologyMinimumDepthSpanningTreeGenerator()
+            gen_kw: dict[str, object] = {}
+            if self._joint_chord_weight is not None:
+                gen_kw["joint_chord_weight"] = self._joint_chord_weight
+            if self._min_height_backtrack:
+                gen_kw["min_height_backtrack"] = True
+            self._tree_generator = TopologyMinimumDepthSpanningTreeGenerator(**gen_kw)
         if self._tree_selector is None:
-            self._tree_selector = TopologyMinimumDepthSpanningTreeSelector()
+            sel_kw: dict[str, object] = {}
+            if self._joint_chord_weight is not None:
+                sel_kw["joint_chord_weight"] = self._joint_chord_weight
+            self._tree_selector = TopologyMinimumDepthSpanningTreeSelector(**sel_kw)
         if self._index_reassigner is None:
             self._index_reassigner = TopologyIndexReassignment()
         if self._graph_visualizer is None:

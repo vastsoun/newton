@@ -887,7 +887,10 @@ def _convert_contacts_kamino_to_newton(
     kamino_position_A: wp.array[vec3f],
     kamino_position_B: wp.array[vec3f],
     kamino_gapfunc: wp.array[vec4f],
+    kamino_frame: wp.array[quatf],
+    kamino_reaction: wp.array[vec3f],
     shape_body: wp.array[int32],
+    body_com: wp.array[vec3f],
     body_q: wp.array[wp.transformf],
     # outputs
     rigid_contact_count: wp.array[int32],
@@ -896,6 +899,7 @@ def _convert_contacts_kamino_to_newton(
     rigid_contact_point0: wp.array[vec3f],
     rigid_contact_point1: wp.array[vec3f],
     rigid_contact_normal: wp.array[vec3f],
+    out_force: wp.array[wp.spatial_vector],
 ):
     """Converts Kamino's internal contact representation to Newton's Contacts format."""
     # Retrieve the contact index for this thread
@@ -912,6 +916,8 @@ def _convert_contacts_kamino_to_newton(
     # Skip conversion if this contact index exceeds the
     # number of active contacts or the output capacity
     if cid >= ncmax:
+        if out_force:
+            out_force[cid] = wp.spatial_vector()
         return
 
     # Retrieve contact-specific data
@@ -942,6 +948,20 @@ def _convert_contacts_kamino_to_newton(
     rigid_contact_normal[cid] = vec3f(gapfunc[0], gapfunc[1], gapfunc[2])
     rigid_contact_point0[cid] = wp.transform_point(X_inv_a, position_A)
     rigid_contact_point1[cid] = wp.transform_point(X_inv_b, position_B)
+
+    # Optional contact wrench in Newton convention (applied by B on A, at the CoM of A)
+    if out_force:
+        q = kamino_frame[cid]
+        f_world = -wp.quat_rotate(q, kamino_reaction[cid])  # Flip sign (Newton expects wrench on body A)
+        # Torque about body0's COM (zero pure contact torque, only moment arm).
+        if body_a >= 0:
+            X_a = body_q[body_a]
+            world_com_a = wp.transform_point(X_a, body_com[body_a])
+            r = position_A - world_com_a
+        else:
+            r = vec3f(0.0, 0.0, 0.0)
+        tau_world = wp.cross(r, f_world)
+        out_force[cid] = wp.spatial_vector(f_world, tau_world)
 
 
 ###
@@ -1070,7 +1090,10 @@ def convert_contacts_kamino_to_newton(
             contacts_in.data.position_A,
             contacts_in.data.position_B,
             contacts_in.data.gapfunc,
+            contacts_in.data.frame,
+            contacts_in.data.reaction,
             model.shape_body,
+            model.body_com,
             state.body_q,
         ],
         outputs=[
@@ -1080,6 +1103,7 @@ def convert_contacts_kamino_to_newton(
             contacts_out.rigid_contact_point0,
             contacts_out.rigid_contact_point1,
             contacts_out.rigid_contact_normal,
+            contacts_out.force,  # may be None — kernel skips the wrench write in that case
         ],
         device=model.device,
     )

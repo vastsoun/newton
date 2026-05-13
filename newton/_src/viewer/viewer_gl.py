@@ -2494,9 +2494,36 @@ class ViewerGL(ViewerBase):
                     changed, self.show_contacts = imgui.checkbox("Show Contacts", show_contacts)
 
                     if self.show_contacts:
-                        _, self.renderer.arrow_scale = imgui.slider_float(
-                            "Arrow Scale", self.renderer.arrow_scale, 0.25, 5.0
+                        imgui.indent()
+                        _, self.show_contact_normals = imgui.checkbox("Normal", bool(self.show_contact_normals))
+                        _, self.show_contact_disks = imgui.checkbox("Contact Mode", bool(self.show_contact_disks))
+                        _, self.show_contact_forces = imgui.checkbox("Force", bool(self.show_contact_forces))
+                        imgui.unindent()
+
+                        log_flag = imgui.SliderFlags_.logarithmic.value
+                        base = float(self._contact_viz_scale_default) or 1.0
+                        _, self.contact_viz_scale = imgui.slider_float(
+                            "Contact Scale",
+                            float(self.contact_viz_scale),
+                            base * 0.01,
+                            base * 100.0,
+                            "%.4g",
+                            log_flag,
                         )
+                        if self.show_contact_forces:
+                            base = float(self._contact_force_scale_default) or 0.5
+                            _, self.contact_force_scale = imgui.slider_float(
+                                "Force Relative Scale",
+                                float(self.contact_force_scale),
+                                base * 0.01,
+                                base * 100.0,
+                                "%.4g",
+                                log_flag,
+                            )
+                        if self.show_contact_normals or self.show_contact_forces:
+                            _, self.renderer.arrow_scale = imgui.slider_float(
+                                "Arrow Thickness", self.renderer.arrow_scale, 0.25, 5.0
+                            )
 
                     # Particle visualization
                     show_particles = self.show_particles

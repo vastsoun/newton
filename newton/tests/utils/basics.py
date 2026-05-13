@@ -94,6 +94,7 @@ def build_box_on_plane(
     z_offset: float = 0.0,
     ground: bool = True,
     new_world: bool = True,
+    use_custom_shape_cfg: bool = False,
 ) -> ModelBuilder:
     """
     Constructs a basic model of a free-floating 'box' body and a ground box geom.
@@ -140,6 +141,13 @@ def build_box_on_plane(
         lock_inertia=True,
     )
 
+    # Use custom shape config if requested
+    custom_shape_cfg = (
+        ModelBuilder.ShapeConfig(margin=1e-6, gap=0.01, mu=0.7, restitution=0.0)
+        if use_custom_shape_cfg
+        else _shape_cfg_basic()
+    )
+
     # Add collision geometries
     _builder.add_shape_box(
         label="box_geom",
@@ -147,12 +155,15 @@ def build_box_on_plane(
         hx=0.1,
         hy=0.1,
         hz=0.1,
-        cfg=_shape_cfg_basic(),
+        cfg=custom_shape_cfg,
     )
 
     # Add a static collision geometry for the plane
     if ground:
-        _add_ground_box(_builder)
+        _builder.add_ground_plane(
+            cfg=custom_shape_cfg,
+            label="ground",
+        )
 
     # Close the world context if we opened one
     if new_world or builder is None:

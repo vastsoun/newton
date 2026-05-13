@@ -30,6 +30,7 @@ from enum import IntEnum
 
 import warp as wp
 
+from .....math import spatial
 from .....sim.contacts import Contacts
 from .....sim.model import Model
 from .....sim.state import State
@@ -798,39 +799,39 @@ class ContactsKamino:
 
 @wp.kernel
 def _convert_contacts_newton_to_kamino(
-    kamino_num_worlds: int32,
-    kamino_max_contacts: int32,
-    # Newton contact inputs
-    newton_contact_count: wp.array[int32],
-    newton_shape0: wp.array[int32],
-    newton_shape1: wp.array[int32],
-    newton_point0: wp.array[vec3f],
-    newton_point1: wp.array[vec3f],
-    newton_normal: wp.array[vec3f],
-    newton_thickness0: wp.array[float32],
-    newton_thickness1: wp.array[float32],
-    newton_force: wp.array[wp.vec3f],
-    # Model lookups
-    shape_body: wp.array[int32],
-    shape_world: wp.array[int32],
-    shape_mu: wp.array[float32],
-    shape_restitution: wp.array[float32],
+    # Inputs:
+    kamino_num_worlds: wp.int32,
+    kamino_max_contacts: wp.int32,
+    kamino_world_max_contacts: wp.array[wp.int32],
+    newton_contact_count: wp.array[wp.int32],
+    newton_shape0: wp.array[wp.int32],
+    newton_shape1: wp.array[wp.int32],
+    newton_point0: wp.array[wp.vec3f],
+    newton_point1: wp.array[wp.vec3f],
+    newton_normal: wp.array[wp.vec3f],
+    newton_margin0: wp.array[wp.float32],
+    newton_margin1: wp.array[wp.float32],
+    newton_force: wp.array[wp.spatial_vectorf],
+    shape_body: wp.array[wp.int32],
+    shape_world: wp.array[wp.int32],
+    shape_mu: wp.array[wp.float32],
+    shape_restitution: wp.array[wp.float32],
+    body_com: wp.array[wp.vec3f],
     body_q: wp.array[wp.transformf],
-    kamino_world_max_contacts: wp.array[int32],
-    # Kamino contact outputs
-    kamino_model_active: wp.array[int32],
-    kamino_world_active: wp.array[int32],
-    kamino_wid: wp.array[int32],
-    kamino_cid: wp.array[int32],
-    kamino_gid_AB: wp.array[vec2i],
-    kamino_bid_AB: wp.array[vec2i],
-    kamino_position_A: wp.array[vec3f],
-    kamino_position_B: wp.array[vec3f],
-    kamino_gapfunc: wp.array[vec4f],
-    kamino_frame: wp.array[quatf],
-    kamino_material: wp.array[vec2f],
+    # Outputs:
+    kamino_model_active: wp.array[wp.int32],
+    kamino_world_active: wp.array[wp.int32],
+    kamino_wid: wp.array[wp.int32],
+    kamino_cid: wp.array[wp.int32],
+    kamino_gid_AB: wp.array[wp.vec2i],
+    kamino_bid_AB: wp.array[wp.vec2i],
+    kamino_position_A: wp.array[wp.vec3f],
+    kamino_position_B: wp.array[wp.vec3f],
+    kamino_gapfunc: wp.array[wp.vec4f],
+    kamino_frame: wp.array[wp.quatf],
+    kamino_material: wp.array[wp.vec2f],
     kamino_key: wp.array[wp.uint64],
-    kamino_reaction: wp.array[vec3f],
+    kamino_reaction: wp.array[wp.vec3f],
 ):
     """
     Convert Newton Contacts to Kamino's ContactsKamino format.
@@ -841,98 +842,123 @@ def _convert_contacts_newton_to_kamino(
 
     Newton's ``rigid_contact_normal`` points from shape0 toward shape1 (A -> B).
     """
-    tid = wp.tid()
+    # Retrieve the contact index for this thread
+    cid = wp.tid()
+
+    # Retrieve the total number of contacts to convert
     nc = newton_contact_count[0]
-    if tid >= nc or tid >= kamino_max_contacts:
+
+    # Skip conversion if this contact index exceeds the number
+    # of contacts to convert or the maximum output capacity.
+    if cid >= nc or cid >= kamino_max_contacts:
         return
 
-    s0 = newton_shape0[tid]
-    s1 = newton_shape1[tid]
-    b0 = shape_body[s0]
-    b1 = shape_body[s1]
+    # Retrieve the shape and body indices for this contact
+    sid_0 = newton_shape0[cid]
+    sid_1 = newton_shape1[cid]
+    bid_0 = shape_body[sid_0]
+    bid_1 = shape_body[sid_1]
+    wid_0 = shape_world[sid_0]
+    wid_1 = shape_world[sid_1]
 
     # Determine the world index.  Global shapes (shape_world == -1) can
     # collide with shapes from any world, so fall back to the other shape.
-    w0 = shape_world[s0]
-    w1 = shape_world[s1]
-    wid = w0
-    if w0 < 0:
-        wid = w1
+    wid = wid_0
+    if wid_0 < 0:
+        wid = wid_1
     if wid < 0 or wid >= kamino_num_worlds:
         return
 
     # Body-local → world-space
-    X0 = wp.transform_identity()
-    if b0 >= 0:
-        X0 = body_q[b0]
-    X1 = wp.transform_identity()
-    if b1 >= 0:
-        X1 = body_q[b1]
-
-    p0_world = wp.transform_point(X0, newton_point0[tid])
-    p1_world = wp.transform_point(X1, newton_point1[tid])
+    X_0 = wp.transform_identity()
+    if bid_0 >= 0:
+        X_0 = body_q[bid_0]
+    X_1 = wp.transform_identity()
+    if bid_1 >= 0:
+        X_1 = body_q[bid_1]
+    r_0 = wp.transform_point(X_0, newton_point0[cid])
+    r_1 = wp.transform_point(X_1, newton_point1[cid])
 
     # Newton normal points from shape0 → shape1 (A → B).
     # Kamino convention: normal points A → B, with bid_B >= 0.
-    n_newton = newton_normal[tid]
+    normal = newton_normal[cid]
 
     # Reconstruct Newton signed contact distance d from exported fields:
     # d = dot((p1 - p0), n_a_to_b) - (offset0 + offset1),
-    # with n_newton = n_a_to_b and offset* stored in rigid_contact_thickness*.
-    d_newton = wp.dot(p1_world - p0_world, n_newton) - (newton_thickness0[tid] + newton_thickness1[tid])
+    # with n_newton = n_a_to_b and offset* stored in newton_margin*.
+    margin = newton_margin0[cid] + newton_margin1[cid]
+    wp.printf("[cid: %d]: margin: %f\n", cid, margin)
+    distance = wp.dot(r_1 - r_0, normal) - margin
+    wp.printf("[cid: %d]: distance: %f\n", cid, distance)
 
-    # Newton force is in world coordinates
-    f_newton = newton_force[tid]
-
-    if b1 < 0:
+    # Ensure static body is always Kamino A, dynamic body is Kamino B
+    if bid_1 < 0:
         # shape1 is world-static → make it Kamino A, shape0 becomes Kamino B.
         # Kamino A→B = shape1→shape0, opposite of Newton's shape0→shape1, so negate.
-        gid_A = s1
-        gid_B = s0
-        bid_A = b1
-        bid_B = b0
-        pos_A = p1_world
-        pos_B = p0_world
-        normal = vec3f(-n_newton[0], -n_newton[1], -n_newton[2])
+        gid_A = sid_1
+        gid_B = sid_0
+        bid_A = bid_1
+        bid_B = bid_0
+        r_A = r_1
+        r_B = r_0
+        normal = -normal
     else:
         # Both dynamic or shape0 is static → keep A=shape0, B=shape1.
         # Newton normal already points A→B, matching Kamino convention.
-        gid_A = s0
-        gid_B = s1
-        bid_A = b0
-        bid_B = b1
-        pos_A = p0_world
-        pos_B = p1_world
-        normal = vec3f(n_newton[0], n_newton[1], n_newton[2])
+        gid_A = sid_0
+        gid_B = sid_1
+        bid_A = bid_0
+        bid_B = bid_1
+        r_A = r_0
+        r_B = r_1
 
-    distance = d_newton
+    # Skip conversion if the contact distance is positive
     if distance > 0.0:
         return
+
+    # Retrieve the material properties for this contact
+    mu = 0.5 * (shape_mu[sid_0] + shape_mu[sid_1])
+    rest = 0.5 * (shape_restitution[sid_0] + shape_restitution[sid_1])
+
+    # Store the contact data in the Kamino format
     gapfunc = vec4f(normal[0], normal[1], normal[2], float32(distance))
     q_frame = wp.quat_from_matrix(make_contact_frame_znorm(normal))
 
-    X_body = wp.transform_inverse(wp.transformf(vec3f(0.0), q_frame))
-    f_a = wp.transform_vector(X_body, f_newton)
-
-    mu = float32(0.5) * (shape_mu[s0] + shape_mu[s1])
-    rest = float32(0.5) * (shape_restitution[s0] + shape_restitution[s1])
-
+    # Increment the number of active contacts in the model and world
     mcid = wp.atomic_add(kamino_model_active, 0, 1)
     wcid = wp.atomic_add(kamino_world_active, wid, 1)
 
-    world_max = kamino_world_max_contacts[wid]
-    if mcid < kamino_max_contacts and wcid < world_max:
+    # Store the contact data in the Kamino format if the contact is valid
+    if mcid < kamino_max_contacts and wcid < kamino_world_max_contacts[wid]:
         kamino_wid[mcid] = wid
         kamino_cid[mcid] = wcid
         kamino_gid_AB[mcid] = vec2i(gid_A, gid_B)
         kamino_bid_AB[mcid] = vec2i(bid_A, bid_B)
-        kamino_position_A[mcid] = pos_A
-        kamino_position_B[mcid] = pos_B
+        kamino_position_A[mcid] = r_A
+        kamino_position_B[mcid] = r_B
         kamino_gapfunc[mcid] = gapfunc
         kamino_frame[mcid] = q_frame
         kamino_material[mcid] = vec2f(mu, rest)
         kamino_key[mcid] = build_pair_key2(uint32(gid_A), uint32(gid_B))
-        kamino_reaction[mcid] = f_a
+
+        # Optional contact wrench from Newton convention (applied by B on A, at the CoM of A)
+        if newton_force:
+            w_a_com_world = newton_force[cid]
+            if bid_A >= 0:
+                r_A_com = wp.transform_point(body_q[bid_A], body_com[bid_A])
+                dr_A_com = r_A_com - r_A
+            else:
+                dr_A_com = vec3f(0.0)
+
+            # Convert the contact wrench from world-space to local-space
+            # NOTE: Implements `f_c = R_c.T @ f_w, tau_c = R_c.T @ tau_w + p x f_c``
+            q_frame_inv = wp.quat_inverse(q_frame)
+            dr_A_com_local = wp.quat_rotate(q_frame_inv, dr_A_com)
+            X_a_com_inv = wp.transformf(dr_A_com_local, q_frame_inv)
+            w_a_local = spatial.transform_wrench(X_a_com_inv, w_a_com_world)
+            kamino_reaction[mcid] = -wp.spatial_top(w_a_local)
+
+    # If the contact is invalid, decrement the number of active contacts in the model and world
     else:
         wp.atomic_sub(kamino_model_active, 0, 1)
         wp.atomic_sub(kamino_world_active, wid, 1)
@@ -940,24 +966,26 @@ def _convert_contacts_newton_to_kamino(
 
 @wp.kernel
 def _convert_contacts_kamino_to_newton(
-    max_output: int32,
-    model_active_contacts: wp.array[int32],
-    kamino_gid_AB: wp.array[vec2i],
-    kamino_position_A: wp.array[vec3f],
-    kamino_position_B: wp.array[vec3f],
-    kamino_gapfunc: wp.array[vec4f],
-    kamino_frame: wp.array[quatf],
-    kamino_reaction: wp.array[vec3f],
-    shape_body: wp.array[int32],
+    # Inputs:
+    max_output: wp.int32,
+    model_active_contacts: wp.array[wp.int32],
+    kamino_gid_AB: wp.array[wp.vec2i],
+    kamino_position_A: wp.array[wp.vec3f],
+    kamino_position_B: wp.array[wp.vec3f],
+    kamino_gapfunc: wp.array[wp.vec4f],
+    kamino_frame: wp.array[wp.quatf],
+    kamino_reaction: wp.array[wp.vec3f],
+    shape_body: wp.array[wp.int32],
+    body_com: wp.array[wp.vec3f],
     body_q: wp.array[wp.transformf],
-    # outputs
-    rigid_contact_count: wp.array[int32],
-    rigid_contact_shape0: wp.array[int32],
-    rigid_contact_shape1: wp.array[int32],
-    rigid_contact_point0: wp.array[vec3f],
-    rigid_contact_point1: wp.array[vec3f],
-    rigid_contact_normal: wp.array[vec3f],
-    rigid_contact_force: wp.array[wp.vec3f],
+    # Outputs:
+    newton_count: wp.array[wp.int32],
+    newton_shape0: wp.array[wp.int32],
+    newton_shape1: wp.array[wp.int32],
+    newton_point0: wp.array[wp.vec3f],
+    newton_point1: wp.array[wp.vec3f],
+    newton_normal: wp.array[wp.vec3f],
+    newton_force: wp.array[wp.spatial_vectorf],
 ):
     """Converts Kamino's internal contact representation to Newton's Contacts format."""
     # Retrieve the contact index for this thread
@@ -969,60 +997,79 @@ def _convert_contacts_kamino_to_newton(
 
     # The first thread stores the model-wide number of active contacts
     if cid == 0:
-        rigid_contact_count[0] = ncmax
+        newton_count[0] = ncmax
 
     # Skip conversion if this contact index exceeds the
     # number of active contacts or the output capacity
     if cid >= ncmax:
+        if newton_force:
+            newton_force[cid] = wp.spatial_vectorf()
         return
 
     # Retrieve contact-specific data
     gid_AB = kamino_gid_AB[cid]
-    position_A = kamino_position_A[cid]
-    position_B = kamino_position_B[cid]
     gapfunc = kamino_gapfunc[cid]
-    frame = kamino_frame[cid]
-    reaction = kamino_reaction[cid]
+    r_0 = kamino_position_A[cid]
+    r_1 = kamino_position_B[cid]
 
     # Retrieve the geometry indices for this contact and use
     # them to look up the corresponding shapes and bodies.
-    shape0 = gid_AB[0]
-    shape1 = gid_AB[1]
-    body_a = shape_body[shape0]
-    body_b = shape_body[shape1]
+    shape_0 = gid_AB[0]
+    shape_1 = gid_AB[1]
+    body_0 = shape_body[shape_0]
+    body_1 = shape_body[shape_1]
 
     # Transform the world-space contact positions
     # back to body-local coordinates for Newton.
-    X_inv_a = wp.transform_identity()
-    if body_a >= 0:
-        X_inv_a = wp.transform_inverse(body_q[body_a])
-    X_inv_b = wp.transform_identity()
-    if body_b >= 0:
-        X_inv_b = wp.transform_inverse(body_q[body_b])
-
-    # Transform the contact reaction to world-space
-    # and convert to spatial vector format
-    zero3 = vec3f(0.0, 0.0, 0.0)
-    X_a = wp.transformf(zero3, frame)
-    force_a = wp.transform_vector(X_a, reaction)
+    X_inv_0 = wp.transform_identity()
+    if body_0 >= 0:
+        X_inv_0 = wp.transform_inverse(body_q[body_0])
+    X_inv_1 = wp.transform_identity()
+    if body_1 >= 0:
+        X_inv_1 = wp.transform_inverse(body_q[body_1])
 
     # Store the converted contact data in the Newton format
-    rigid_contact_shape0[cid] = shape0
-    rigid_contact_shape1[cid] = shape1
-    rigid_contact_normal[cid] = vec3f(gapfunc[0], gapfunc[1], gapfunc[2])
-    rigid_contact_point0[cid] = wp.transform_point(X_inv_a, position_A)
-    rigid_contact_point1[cid] = wp.transform_point(X_inv_b, position_B)
-    rigid_contact_force[cid] = force_a
+    newton_shape0[cid] = shape_0
+    newton_shape1[cid] = shape_1
+    newton_normal[cid] = vec3f(gapfunc[0], gapfunc[1], gapfunc[2])
+    newton_point0[cid] = wp.transform_point(X_inv_0, r_0)
+    newton_point1[cid] = wp.transform_point(X_inv_1, r_1)
+
+    # Optional contact wrench in Newton convention (applied by B on A, at the CoM of A)
+    if newton_force:
+        # Retrieve the relevant contact-specific data
+        frame = kamino_frame[cid]
+        reaction = kamino_reaction[cid]
+
+        # Express the contact reaction in world coordinates
+        # NOTE: Flip sign since Newton contacts apply a wrench on body A by body B
+        f_0_world = -wp.quat_rotate(frame, reaction)
+
+        # Torque about body0's COM (zero pure contact torque, only moment arm).
+        if body_0 >= 0:
+            r_0_com = wp.transform_point(body_q[body_0], body_com[body_0])
+            dr_0_com = r_0 - r_0_com
+        else:
+            dr_0_com = vec3f(0.0, 0.0, 0.0)
+        tau_0_world = wp.cross(dr_0_com, f_0_world)
+
+        # Store the converted contact data in the Newton format
+        newton_force[cid] = wp.spatial_vector(f_0_world, tau_0_world)
 
 
 @wp.kernel
 def _convert_contact_forces_kamino_to_newton(
-    max_output: int32,
-    model_active_contacts: wp.array[int32],
-    kamino_frame: wp.array[quatf],
-    kamino_reaction: wp.array[vec3f],
-    # outputs
-    rigid_contact_force: wp.array[wp.vec3f],
+    # Inputs:
+    max_output: wp.int32,
+    model_active_contacts: wp.array[wp.int32],
+    kamino_bid_AB: wp.array[wp.vec2i],
+    kamino_position_A: wp.array[wp.vec3f],
+    kamino_frame: wp.array[wp.quatf],
+    kamino_reaction: wp.array[wp.vec3f],
+    body_com: wp.array[wp.vec3f],
+    body_q: wp.array[wp.transformf],
+    # Outputs:
+    newton_force: wp.array[wp.spatial_vectorf],
 ):
     """Converts Kamino's internal contact representation to Newton's Contacts format."""
     # Retrieve the contact index for this thread
@@ -1035,20 +1082,32 @@ def _convert_contact_forces_kamino_to_newton(
     # Skip conversion if this contact index exceeds the
     # number of active contacts or the output capacity
     if cid >= ncmax:
+        if newton_force:
+            newton_force[cid] = wp.spatial_vector()
         return
 
-    # Retrieve contact-specific data
+    # Retrieve the relevant contact-specific data
+    r_0 = kamino_position_A[cid]
+    body_0 = kamino_bid_AB[cid][0]
+
+    # Retrieve the relevant contact-specific data
     frame = kamino_frame[cid]
     reaction = kamino_reaction[cid]
 
-    # Transform the contact reaction to world-space
-    # and convert to spatial vector format
-    zero3 = vec3f(0.0, 0.0, 0.0)
-    X_a = wp.transformf(zero3, frame)
-    force_a = wp.transform_vector(X_a, reaction)
+    # Express the contact reaction in world coordinates
+    # NOTE: Flip sign since Newton contacts apply a wrench on body A by body B
+    f_0_world = -wp.quat_rotate(frame, reaction)
+
+    # Torque about body0's COM (zero pure contact torque, only moment arm).
+    if body_0 >= 0:
+        r_0_com = wp.transform_point(body_q[body_0], body_com[body_0])
+        dr_0_com = r_0 - r_0_com
+    else:
+        dr_0_com = vec3f(0.0, 0.0, 0.0)
+    tau_0_world = wp.cross(dr_0_com, f_0_world)
 
     # Store the converted contact data in the Newton format
-    rigid_contact_force[cid] = force_a
+    newton_force[cid] = wp.spatial_vector(f_0_world, tau_0_world)
 
 
 ###
@@ -1061,6 +1120,7 @@ def convert_contacts_newton_to_kamino(
     state: State,
     contacts_in: Contacts,
     contacts_out: ContactsKamino,
+    convert_forces: bool = False,
 ):
     """
     Converts Newton's :class:`Contacts` to Kamino's :class:`ContactsKamino` format.
@@ -1092,15 +1152,19 @@ def convert_contacts_newton_to_kamino(
     # counts and optionally reset contact data to sentinel values.
     contacts_out.clear()
 
+    # Skip conversion of contact forces if not requested
+    contacts_in_force = contacts_in.force if convert_forces else None
+
     # Launch the conversion kernel to convert Newton contacts to Kamino's format
     # NOTE: To reduce overhead, the total thread count is set to the smallest of
     # the number of contacts detected and the maximum capacity of the output contacts.
     wp.launch(
-        _convert_contacts_newton_to_kamino,
+        kernel=_convert_contacts_newton_to_kamino,
         dim=min(contacts_in.rigid_contact_max, contacts_out.model_max_contacts_host),
         inputs=[
             int32(model.world_count),
             int32(contacts_out.model_max_contacts_host),
+            contacts_out.world_max_contacts,
             contacts_in.rigid_contact_count,
             contacts_in.rigid_contact_shape0,
             contacts_in.rigid_contact_shape1,
@@ -1109,13 +1173,13 @@ def convert_contacts_newton_to_kamino(
             contacts_in.rigid_contact_normal,
             contacts_in.rigid_contact_margin0,
             contacts_in.rigid_contact_margin1,
-            contacts_in.rigid_contact_force,
+            contacts_in_force,
             model.shape_body,
             model.shape_world,
             model.shape_material_mu,
             model.shape_material_restitution,
+            model.body_com,
             state.body_q,
-            contacts_out.world_max_contacts,
         ],
         outputs=[
             contacts_out.model_active_contacts,
@@ -1141,6 +1205,7 @@ def convert_contacts_kamino_to_newton(
     state: State,
     contacts_in: ContactsKamino,
     contacts_out: Contacts,
+    convert_forces: bool = False,
 ) -> None:
     """
     Converts Kamino :class:`ContactsKamino` to Newton's :class:`Contacts` format.
@@ -1172,11 +1237,14 @@ def convert_contacts_kamino_to_newton(
             contacts_out.rigid_contact_max,
         )
 
+    # Skip conversion of contact forces if not requested
+    contacts_out_force = contacts_out.force if convert_forces else None
+
     # Launch the conversion kernel to convert Kamino contacts to Newton's format.
     # NOTE: To reduce overhead, the total thread count is set to the smallest of the
     # number of contacts detected and the maximum capacity of the output contacts.
     wp.launch(
-        _convert_contacts_kamino_to_newton,
+        kernel=_convert_contacts_kamino_to_newton,
         dim=min(contacts_in.data.model_max_contacts_host, contacts_out.rigid_contact_max),
         inputs=[
             int32(contacts_out.rigid_contact_max),
@@ -1188,6 +1256,7 @@ def convert_contacts_kamino_to_newton(
             contacts_in.data.frame,
             contacts_in.data.reaction,
             model.shape_body,
+            model.body_com,
             state.body_q,
         ],
         outputs=[
@@ -1197,7 +1266,7 @@ def convert_contacts_kamino_to_newton(
             contacts_out.rigid_contact_point0,
             contacts_out.rigid_contact_point1,
             contacts_out.rigid_contact_normal,
-            contacts_out.rigid_contact_force,
+            contacts_out_force,
         ],
         device=model.device,
     )
@@ -1205,6 +1274,7 @@ def convert_contacts_kamino_to_newton(
 
 def convert_contact_forces_kamino_to_newton(
     model: Model,
+    state: State,
     contacts_in: ContactsKamino,
     contacts_out: Contacts,
 ) -> None:
@@ -1222,7 +1292,11 @@ def convert_contact_forces_kamino_to_newton(
             The :class:`newton.Contacts` object to populate with the converted contact forces.
     """
     # Skip conversion if there are no contacts to convert or no capacity to store them.
-    if contacts_in.data.model_max_contacts_host == 0 or contacts_out.rigid_contact_max == 0:
+    if (
+        contacts_in.data.model_max_contacts_host == 0
+        or contacts_out.rigid_contact_max == 0
+        or contacts_out.force is None
+    ):
         return
 
     # Issue warning to the user if the number of contacts to convert exceeds the capacity of the output contacts.
@@ -1242,9 +1316,15 @@ def convert_contact_forces_kamino_to_newton(
         inputs=[
             int32(contacts_out.rigid_contact_max),
             contacts_in.data.model_active_contacts,
+            contacts_in.data.bid_AB,
+            contacts_in.data.position_A,
             contacts_in.data.frame,
             contacts_in.data.reaction,
+            model.body_com,
+            state.body_q,
         ],
-        outputs=[contacts_out.rigid_contact_force],
+        outputs=[
+            contacts_out.force,
+        ],
         device=model.device,
     )

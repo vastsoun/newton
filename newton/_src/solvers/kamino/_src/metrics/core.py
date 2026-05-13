@@ -228,7 +228,13 @@ class SolutionMetricsNewton:
         self._state = StateKamino.from_newton(self._model.size, self._model._model, state)
         self._state_p = StateKamino.from_newton(self._model.size, self._model._model, state_p)
         self._control.from_newton(control, self._model)
-        convert_contacts_newton_to_kamino(self._model._model, state_p, contacts, self._contacts)
+        convert_contacts_newton_to_kamino(
+            model=self._model._model,
+            state=state_p,
+            contacts_in=contacts,
+            contacts_out=self._contacts,
+            convert_forces=True,
+        )
 
         # TODO: ENABLE THIS WHEN WE EXTEND TO SUPPORT JOINT LIMITS
         # # Run limit detection to generate active limits

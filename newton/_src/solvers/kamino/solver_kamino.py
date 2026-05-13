@@ -617,7 +617,7 @@ class SolverKamino(SolverBase):
 
         # Convert contact forces from Kamino to Newton format if contact forces were requested
         if contacts is not None:
-            self._kamino.convert_contact_forces_kamino_to_newton(self.model, self._contacts_kamino, contacts)
+            self._kamino.convert_contact_forces_kamino_to_newton(self.model, state_in, self._contacts_kamino, contacts)
 
     @override
     def notify_model_changed(self, flags: int) -> None:
@@ -700,7 +700,13 @@ class SolverKamino(SolverBase):
             )
 
         # If all checks pass, proceed to convert contacts from Kamino to Newton format
-        self._kamino.convert_contacts_kamino_to_newton(self.model, state, self._contacts_kamino, contacts)
+        self._kamino.convert_contacts_kamino_to_newton(
+            model=self.model,
+            state=state,
+            contacts_in=self._contacts_kamino,
+            contacts_out=contacts,
+            convert_forces=True,
+        )
 
     @override
     @staticmethod

@@ -12,7 +12,7 @@ import newton.examples
 from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino._src.core.types import float32, int32, vec6f
 from newton._src.solvers.kamino._src.models.builders.basics import build_box_on_plane
-from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
+from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder, set_uniform_body_pose_offset
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
 from newton._src.solvers.kamino._src.utils.sim import SimulationLogger, Simulator, ViewerKamino
@@ -58,7 +58,7 @@ def _control_callback(
     t = data_t[wid]
 
     # Apply a time-dependent external force
-    if t > t_start and t < t_end and wnc > 0:
+    if False and t > t_start and t < t_end and wnc > 0:
         m = float32(1.0)  # Mass of the box
         g = float32(9.8067)  # Gravitational acceleration
         mu = float32(0.9)  # Friction coefficient
@@ -143,6 +143,10 @@ class Example:
         # Set gravity
         for w in range(self.builder.num_worlds):
             self.builder.gravity[w].enabled = gravity
+
+        # Initialize the box above the plane, rotated so it falls in an interesting way
+        offset = wp.transformf(0.0, 0.0, 0.265, 0.14148533, 0.09281815, 0.48463726, 0.85819195)
+        set_uniform_body_pose_offset(builder=self.builder, offset=offset)
 
         # Set solver config
         config = Simulator.Config()

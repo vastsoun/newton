@@ -584,6 +584,7 @@ def _build_free_velocity_bias_contacts(
     contacts_cid: wp.array[int32],
     contacts_gapfunc: wp.array[vec4f],
     contacts_material: wp.array[vec2f],
+    contacts_margins: wp.array[vec2f],
     problem_config: wp.array[DualProblemConfigStruct],
     problem_vio: wp.array[int32],
     # Outputs:
@@ -605,7 +606,9 @@ def _build_free_velocity_bias_contacts(
     wid_k = contacts_wid[tid]
     cid_k = contacts_cid[tid]
     material_k = contacts_material[tid]
-    penetration_k = contacts_gapfunc[tid][3]
+    distance_k = contacts_gapfunc[tid][3]
+    margins_AB_k = contacts_margins[tid]
+    margin_k = margins_AB_k[0] + margins_AB_k[1]
 
     # Retrieve the world-specific data
     inv_dt = model_time_inv_dt[wid_k]
@@ -624,28 +627,28 @@ def _build_free_velocity_bias_contacts(
     mu_k = material_k.x  # Friction coefficient
     epsilon_k = material_k.y  # Restitution coefficient
 
-    # The gap-function value (penetration_k) is the margin-shifted signed
-    # distance: negative means penetration past the resting separation,
-    # zero means at rest, positive means within the detection gap.
-    # Pass the full value through so that one-sided Baumgarte stabilization
-    # (xi_relaxed) can generate a positive bias for gap contacts, guiding
-    # objects toward d = 0.  A dead-zone of config.delta filters out
-    # floating-point noise on nearly-touching contacts that would otherwise
-    # destabilize accelerated solvers (e.g. Nesterov momentum in PADMM).
-    distance_k = wp.where(wp.abs(penetration_k) < config.delta, 0.0, penetration_k)
+    # The gap-function value (penetration_k) is the margin-shifted
+    # signed distance: negative means penetration past the resting
+    # separation, zero means at rest, positive means within the
+    # detection gap. A dead-zone of config.delta filters out
+    # floating-point noise on nearly-touching contacts.
+    penetration_k = wp.min(0.0, margin_k + distance_k + config.delta)
 
     # Compute the per-contact penetration error reduction term
-    # NOTE#1: Penetrations are represented as xi < 0 (hence the sign inversion)
-    # NOTE#2: xi_p_relaxed corresponds to one-sided Baumgarte-like stabilization
-    xi = inv_dt * distance_k
-    xi_relaxed = config.gamma * wp.min(0.0, xi) + wp.max(0.0, xi)
+    # NOTE#1: Penetrations are represented as penetration_k < 0
+    # NOTE#2: xi corresponds to one-sided Baumgarte-like stabilization
+    xi = config.gamma * inv_dt * penetration_k
+
+    # Gate contact stabilization for restitutive impacts with
+    # critical restitution coefficients (i.e. epsilon_k >= 1.0)
+    # NOTE: Otherwise the bias would be too large and destabilize the solver
     if epsilon_k >= 1.0:
         alpha = 0.0
     else:
         alpha = 1.0
 
     # Compute the contact constraint stabilization bias
-    v_b_k = alpha * xi_relaxed * UNIT_Z
+    v_b_k = alpha * xi * UNIT_Z
 
     # Store the contact constraint stabilization bias in the output vector
     for i in range(3):
@@ -1612,6 +1615,7 @@ class DualProblem:
                     contacts.cid,
                     contacts.gapfunc,
                     contacts.material,
+                    contacts.margins,
                     self._data.config,
                     self._data.vio,
                     # Outputs:

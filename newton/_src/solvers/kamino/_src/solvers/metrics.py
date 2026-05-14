@@ -80,7 +80,7 @@ from ..core.data import DataKamino
 from ..core.math import screw, screw_angular, screw_linear
 from ..core.model import ModelKamino
 from ..core.state import StateKamino
-from ..core.types import float32, int32, int64, mat33f, uint32, vec3f, vec4f, vec6f
+from ..core.types import float32, int32, int64, mat33f, uint32, vec2f, vec3f, vec4f, vec6f
 from ..dynamics.dual import DualProblem
 from ..geometry.contacts import ContactsKamino
 from ..geometry.keying import build_pair_key2
@@ -832,6 +832,7 @@ def _compute_cts_contacts_residual(
     contact_wid: wp.array[int32],
     contact_cid: wp.array[int32],
     contact_gapfunc: wp.array[vec4f],
+    contact_margins: wp.array[vec2f],
     # Outputs:
     metric_r_cts_contacts: wp.array[float32],
     metric_r_cts_contacts_argmax: wp.array[int32],
@@ -850,9 +851,13 @@ def _compute_cts_contacts_residual(
     wid = contact_wid[cid]
     wcid = contact_cid[cid]
     gapfunc = contact_gapfunc[cid]
+    margins = contact_margins[cid]
+
+    # Compute the total margin for contact shape pair
+    margin_k = margins[0] + margins[1]
 
     # Compute the per-contact constraint residual (infinity-norm)
-    r_cts_contacts_k = wp.abs(gapfunc[3])
+    r_cts_contacts_k = wp.abs(gapfunc[3] + margin_k)
 
     # Update the per-world maximum residual and argmax index
     previous_max = wp.atomic_max(metric_r_cts_contacts, wid, r_cts_contacts_k)
@@ -1227,6 +1232,7 @@ class SolutionMetrics:
                     contacts.data.wid,
                     contacts.data.cid,
                     contacts.data.gapfunc,
+                    contacts.data.margins,
                     # Outputs:
                     self._metrics.r_cts_contacts,
                     self._metrics.r_cts_contacts_argmax,

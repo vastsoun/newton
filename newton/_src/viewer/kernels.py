@@ -333,7 +333,7 @@ def _quat_from_normal_z(normal: wp.vec3) -> wp.quat:
 @wp.kernel
 def compute_contact_disk_transforms(
     body_q: wp.array[wp.transform],
-    body_qd: wp.array[wp.spatial_vector],
+    body_qd: wp.array[wp.spatial_vectorf],
     body_com: wp.array[wp.vec3],
     shape_body: wp.array[int],
     shape_world: wp.array[int],
@@ -346,11 +346,12 @@ def compute_contact_disk_transforms(
     contact_point1: wp.array[wp.vec3],
     contact_offset0: wp.array[wp.vec3],
     contact_normal: wp.array[wp.vec3],
-    contact_force: wp.array[wp.spatial_vector],
+    contact_force: wp.array[wp.spatial_vectorf],
     disk_radius: float,
     disk_thickness: float,
     eps_force: float,
-    eps_velocity: float,
+    eps_velocity_normal: float,
+    eps_velocity_tangential: float,
     color_open: wp.vec3,
     color_stick: wp.vec3,
     color_slip: wp.vec3,
@@ -425,33 +426,34 @@ def compute_contact_disk_transforms(
     n = contact_normal[tid]
     q = _quat_from_normal_z(n)
 
+    # Relative tangential velocity at the contact point.
+    v_a = wp.vec3(0.0, 0.0, 0.0)
+    if body_a >= 0:
+        world_com_a = wp.transform_point(body_q[body_a], body_com[body_a])
+        r_a = world_pos0 - world_com_a
+        v_a = velocity_at_point(body_qd[body_a], r_a)
+    v_b = wp.vec3(0.0, 0.0, 0.0)
+    if body_b >= 0:
+        X_wb_b = body_q[body_b]
+        world_pos1 = wp.transform_point(X_wb_b, contact_point1[tid])
+        world_com_b = wp.transform_point(X_wb_b, body_com[body_b])
+        r_b = world_pos1 - world_com_b
+        v_b = velocity_at_point(body_qd[body_b], r_b)
+    v_rel = v_a - v_b
+
+    # Extract the magnitude of the contact force, if available.
+    f_mag = wp.float32(0.0)
+    if contact_force:
+        f_mag = wp.length(wp.spatial_top(contact_force[tid]))
+
     # Mode coloring (default to "color_open" when force is unavailable).
     color = color_open
-    if contact_force:
-        f_lin = wp.spatial_top(contact_force[tid])
-        f_mag = wp.length(f_lin)
-        if f_mag < eps_force:
-            color = color_open
-        else:
-            # Relative tangential velocity at the contact point.
-            v_a = wp.vec3(0.0, 0.0, 0.0)
-            if body_a >= 0:
-                world_com_a = wp.transform_point(body_q[body_a], body_com[body_a])
-                r_a = world_pos0 - world_com_a
-                v_a = velocity_at_point(body_qd[body_a], r_a)
-            v_b = wp.vec3(0.0, 0.0, 0.0)
-            if body_b >= 0:
-                X_wb_b = body_q[body_b]
-                world_pos1 = wp.transform_point(X_wb_b, contact_point1[tid])
-                world_com_b = wp.transform_point(X_wb_b, body_com[body_b])
-                r_b = world_pos1 - world_com_b
-                v_b = velocity_at_point(body_qd[body_b], r_b)
-            v_rel = v_a - v_b
-            v_t = v_rel - wp.dot(v_rel, n) * n
-            if wp.length(v_t) < eps_velocity:
-                color = color_stick
-            else:
-                color = color_slip
+    v_n = wp.dot(v_rel, n)
+    if v_n < eps_velocity_normal or f_mag > eps_force:
+        color = color_stick
+        v_t = wp.length(v_rel - wp.dot(v_rel, n) * n)
+        if v_t > eps_velocity_tangential:
+            color = color_slip
 
     transforms[tid] = wp.transform(contact_center, q)
     scales[tid] = wp.vec3(disk_radius, disk_radius, disk_thickness)

@@ -156,8 +156,9 @@ class ViewerBase(ABC):
         self.sdf_margin_mode: ViewerBase.SDFMarginMode = ViewerBase.SDFMarginMode.OFF
 
         # Thresholds for contact disk coloring (determining open/sticking/sliding contact modes)
-        self.contact_mode_eps_force = 1e-4
-        self.contact_mode_eps_velocity = 1e-3
+        self.contact_mode_eps_force: float = 1e-5
+        self.contact_mode_eps_velocity_normal: float = 1e-3
+        self.contact_mode_eps_velocity_tangential: float = 1e-3
 
         # Scaling parameters for the contact visualization
         # Note: these are auto-set in :meth:`set_model`, below are fallback defaults.
@@ -808,12 +809,13 @@ class ViewerBase(ABC):
                     contacts.rigid_contact_offset0,
                     contacts.rigid_contact_normal,
                     contacts.force,  # may be None — kernel falls back to default color
-                    float(self.contact_viz_scale * 0.2),
-                    float(self.contact_viz_scale * 0.004),  # cylinder half-height
-                    float(self.contact_mode_eps_force),
-                    float(self.contact_mode_eps_velocity),
-                    wp.vec3(0.1, 0.1, 0.1),  # open: black
-                    wp.vec3(0.6, 0.6, 0.6),  # stick: light gray
+                    wp.float32(self.contact_viz_scale * 0.2),
+                    wp.float32(self.contact_viz_scale * 0.004),  # cylinder half-height
+                    wp.float32(self.contact_mode_eps_force),
+                    wp.float32(self.contact_mode_eps_velocity_normal),
+                    wp.float32(self.contact_mode_eps_velocity_tangential),
+                    wp.vec3(0.8, 0.8, 0.8),  # open: white
+                    wp.vec3(0.1, 0.1, 0.1),  # stick: black
                     wp.vec3(0.2, 0.2, 0.9),  # slip: blue
                 ],
                 outputs=[self._contact_disk_xforms, self._contact_disk_scales, self._contact_disk_colors],

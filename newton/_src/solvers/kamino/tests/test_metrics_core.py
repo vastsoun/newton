@@ -793,15 +793,11 @@ def _run_test_side_metrics_evaluation(metrics: SolutionMetricsNewton, solver: ne
     del solver  # see docstring; reserved for future use.
 
     metrics._metrics.finalize(metrics._model, metrics._data)
-    sigma_zero = wp.zeros(
-        shape=(metrics._model.size.num_worlds,),
-        dtype=wp.vec2f,
-        device=metrics.device,
-    )
+    metrics._metrics.reset()
     metrics._metrics.evaluate(
-        sigma=sigma_zero,
         lambdas=metrics._lambdas,
         v_plus=metrics._v_plus,
+        state=metrics._state,
         state_p=metrics._state_p,
         jacobians=metrics._jacobians,
         problem=metrics._problem,
@@ -972,7 +968,6 @@ class TestSolverMetricsNewton(unittest.TestCase):
         self.assertIsNone(metrics._control)
         self.assertIsNone(metrics._v_plus)
         self.assertIsNone(metrics._lambdas)
-        self.assertIsNone(metrics._sigma)
         self.assertIsNone(metrics._metrics)
 
     def test_01_finalize_default(self):
@@ -997,7 +992,6 @@ class TestSolverMetricsNewton(unittest.TestCase):
         self.assertIsInstance(metrics._problem, DualProblem)
         self.assertIsNotNone(metrics._v_plus)
         self.assertIsNotNone(metrics._lambdas)
-        self.assertIsNotNone(metrics._sigma)
         self.assertIsNotNone(metrics._metrics)
         self.assertIsInstance(metrics._metrics, SolutionMetrics)
 
@@ -1423,6 +1417,100 @@ class TestSolutionMetricsLogger(unittest.TestCase):
         self.assertEqual(a, index_a)
         self.assertEqual(b, index_b)
 
+    def test_logger_graph_capture(self):
+        """`logger.log()` can be captured into a CUDA graph and replayed.
+
+        Verifies the device-side counter / decision pattern: the captured
+        graph references on-device counters and decision buffers, so
+        replaying it without re-launching from the host must still advance
+        ``num_total_writes`` and write deterministic per-world rows into
+        the log buffers.
+        """
+        if not self.default_device.is_cuda:
+            self.skipTest("Graph capture requires a CUDA device.")
+
+        _setup, metrics = _make_finalized_metrics(self.default_device)
+        logger = SolutionMetricsLogger(metrics=metrics, max_frames=16)
+
+        # Seed the metrics container with deterministic values so every
+        # captured-and-replayed row is bit-identical.
+        seed_value = 1.5
+        seed_argmax = 2
+        _seed_metrics_data(metrics, value=seed_value, argmax_value=seed_argmax)
+
+        # Force any pending allocations / kernel JITs onto the device with a
+        # warm-up launch outside the captured region.
+        logger.log()
+        logger.reset()
+
+        replay_count = 7
+        with wp.ScopedCapture(device=self.default_device) as capture:
+            logger.log()
+        graph = capture.graph
+
+        for _ in range(replay_count):
+            wp.capture_launch(graph)
+        wp.synchronize_device(self.default_device)
+
+        self.assertEqual(logger.num_logged_frames, replay_count)
+        self.assertEqual(logger.num_total_writes, replay_count)
+        self.assertEqual(logger.num_calls, replay_count)
+
+        np_data = logger.to_numpy()
+        nw = metrics._model.size.num_worlds
+        for offset, field in enumerate(_SCALAR_METRIC_FIELDS_FOR_TEST):
+            expected = np.full((replay_count, nw), seed_value + float(offset), dtype=np.float32)
+            np.testing.assert_array_equal(
+                np_data[field],
+                expected,
+                err_msg=f"Captured logger {field} row does not match the seeded value across replays.",
+            )
+        for offset, field in enumerate(_ARGMAX_METRIC_FIELDS_FOR_TEST):
+            expected = np.full((replay_count, nw), seed_argmax + offset)
+            np.testing.assert_array_equal(
+                np_data[field].astype(np.int64),
+                expected.astype(np.int64),
+                err_msg=f"Captured logger {field} row does not match the seeded argmax across replays.",
+            )
+
+    def test_logger_graph_capture_bounded_overflow(self):
+        """Bounded-mode overflow is enforced inside graph capture.
+
+        With ``Mode.BOUNDED`` the on-device decision kernel must early-exit
+        once ``max_frames`` writes have landed, even when the captured
+        graph is replayed more times than the buffer can hold.
+        """
+        if not self.default_device.is_cuda:
+            self.skipTest("Graph capture requires a CUDA device.")
+
+        _setup, metrics = _make_finalized_metrics(self.default_device)
+        max_frames = 4
+        replay_count = 10
+        logger = SolutionMetricsLogger(
+            metrics=metrics,
+            max_frames=max_frames,
+            mode=SolutionMetricsLogger.Mode.BOUNDED,
+        )
+
+        _seed_metrics_data(metrics, value=3.0)
+
+        # Warm up to materialize on-device state, then start fresh.
+        logger.log()
+        logger.reset()
+
+        with wp.ScopedCapture(device=self.default_device) as capture:
+            logger.log()
+        graph = capture.graph
+
+        for _ in range(replay_count):
+            wp.capture_launch(graph)
+        wp.synchronize_device(self.default_device)
+
+        self.assertEqual(logger.num_logged_frames, max_frames)
+        self.assertEqual(logger.num_total_writes, max_frames)
+        self.assertEqual(logger.num_calls, replay_count)
+        self.assertTrue(logger.is_full)
+
     @unittest.skipUnless(_matplotlib_available(), "matplotlib is required for plot generation")
     def test_logger_plot_writes_per_metric_files(self):
         """:meth:`plot` writes exactly one file per scalar metric.
@@ -1630,7 +1718,7 @@ def plot_logger_comparison(
         label_metrics: Legend label prefix for the wrapper-side data.
         label_solver: Legend label prefix for the solver-side data.
     """
-    SolutionMetricsLogger.initialize_plt()
+    SolutionMetricsLogger._initialize_plt()
     if SolutionMetricsLogger.plt is None:
         msg.warning("matplotlib is not available, skipping plotting.")
         return

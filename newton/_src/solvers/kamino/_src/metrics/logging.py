@@ -8,10 +8,14 @@ history on the same device as the wrapped metrics container.
 The :class:`SolutionMetricsLogger` class allocates per-frame log buffers for
 every field of :class:`SolutionMetricsData`, with an optional fixed-size
 rolling window or bounded early-exit overflow policy and a configurable
-sample-decimation rate. It also exposes utilities to extract the recorded
-data as numpy arrays in chronological order, and to render per-metric
-matplotlib plots that follow the equation-subtitled format used by
-:func:`render_physics_metrics_plots` in the benchmarks utilities.
+sample-decimation rate. The per-frame counters and rollover/bounding logic
+live on the target device, so a single :meth:`SolutionMetricsLogger.log`
+call expands to a fixed sequence of Warp kernel launches that can be safely
+captured into a CUDA graph alongside :meth:`SolverKamino.step`. It also
+exposes utilities to extract the recorded data as numpy arrays in
+chronological order, and to render per-metric matplotlib plots that follow
+the equation-subtitled format used by :func:`render_physics_metrics_plots`
+in the benchmarks utilities.
 
 Usage
 -----
@@ -162,36 +166,106 @@ _OVERLAY_COLORS: tuple[str, ...] = (
 
 
 @wp.kernel
+def _update_log_decision(
+    max_frames: int32,
+    decimation: int32,
+    mode: int32,
+    call_count: wp.array[int32],
+    frames_total: wp.array[int32],
+    decision: wp.array[int32],
+):
+    """Compute whether the current call should write a frame, and where.
+
+    Args:
+        max_frames: The maximum number of frames in the log buffers.
+        decimation: The sample-decimation rate.
+        mode: ``0`` for rolling, ``1`` for bounded.
+        call_count: Single-element array tracking total :meth:`log` invocations.
+        frames_total: Single-element array tracking total successful writes.
+        decision: Two-element output, ``[should_write, write_idx]``.
+    """
+    cc = call_count[0]
+    ft = frames_total[0]
+
+    should_write = int32(1)
+    if (cc % decimation) != int32(0):
+        should_write = int32(0)
+    if mode == int32(1) and ft >= max_frames:
+        should_write = int32(0)
+
+    decision[0] = should_write
+    if should_write == int32(1):
+        decision[1] = ft % max_frames
+    else:
+        decision[1] = int32(0)
+
+    call_count[0] = cc + int32(1)
+
+
+@wp.kernel
+def _finalize_log_decision(
+    decision: wp.array[int32],
+    frames_total: wp.array[int32],
+):
+    """Increment ``frames_total`` if the current call actually wrote a frame.
+
+    Args:
+        decision: Two-element decision buffer ``[should_write, write_idx]``.
+        frames_total: Single-element array tracking total successful writes.
+    """
+    if decision[0] == int32(1):
+        frames_total[0] = frames_total[0] + int32(1)
+
+
+@wp.kernel
 def _write_log_row_float32(
     src: wp.array[float32],
-    write_idx: int32,
+    decision: wp.array[int32],
     dest: wp.array2d[float32],
 ):
-    """Copies one ``(num_worlds,)`` source row into ``dest[write_idx, :]``."""
+    """Copies one ``(num_worlds,)`` source row into ``dest[decision[1], :]``.
+
+    Short-circuits when ``decision[0] == 0`` so the launch is a no-op on
+    decimation-skipped or bounded-mode-overflowed calls.
+    """
     wid = wp.tid()
-    dest[write_idx, wid] = src[wid]
+    if decision[0] == int32(0):
+        return
+    dest[decision[1], wid] = src[wid]
 
 
 @wp.kernel
 def _write_log_row_int64(
     src: wp.array[int64],
-    write_idx: int32,
+    decision: wp.array[int32],
     dest: wp.array2d[int64],
 ):
-    """Copies one ``(num_worlds,)`` source row into ``dest[write_idx, :]``."""
+    """Copies one ``(num_worlds,)`` source row into ``dest[decision[1], :]``.
+
+    Short-circuits when ``decision[0] == 0`` so the launch is a no-op on
+    decimation-skipped or bounded-mode-overflowed calls.
+    """
     wid = wp.tid()
-    dest[write_idx, wid] = src[wid]
+    if decision[0] == int32(0):
+        return
+    dest[decision[1], wid] = src[wid]
 
 
 @wp.kernel
 def _write_log_row_int32(
     src: wp.array[int32],
-    write_idx: int32,
+    decision: wp.array[int32],
     dest: wp.array2d[int32],
 ):
-    """Copies one ``(num_worlds,)`` source row into ``dest[write_idx, :]``."""
+    """Copies one ``(num_worlds,)`` source row into ``dest[decision[1], :]``.
+
+    Short-circuits when ``decision[0] == 0`` so the launch is a no-op on
+    decimation-skipped or bounded-mode-overflowed calls.
+    """
     wid = wp.tid()
-    dest[write_idx, wid] = src[wid]
+    if decision[0] == int32(0):
+        return
+    dest[decision[1], wid] = src[wid]
 
 
 ###
@@ -226,6 +300,14 @@ class SolutionMetricsLogger:
     every ``decimation``-th call actually writes a new frame; this is
     useful when :meth:`log` is invoked once per simulation step but a
     coarser sampling is sufficient for analysis.
+
+    Every host-side decision in :meth:`log` (decimation gate, overflow
+    check, write-index computation, counter increments) is performed
+    on-device through dedicated Warp kernels. This makes a single
+    :meth:`log` invocation a fixed sequence of kernel launches whose
+    data dependencies live entirely in device memory, and it can be
+    safely included inside :class:`wp.ScopedCapture` blocks alongside
+    :meth:`SolverKamino.step`.
 
     Numpy extraction via :meth:`to_numpy` always returns the recorded
     samples in chronological order (oldest first), and :meth:`plot`
@@ -333,16 +415,12 @@ class SolutionMetricsLogger:
         else:
             self._dt_override = None
 
-        # Internal counters: ``_call_count`` tracks every :meth:`log` invocation (used
-        # by the decimation gate); ``_frames_total`` tracks the number of writes that
-        # actually landed in the buffer (used by the overflow / chronological-ordering
-        # logic).
-        self._call_count: int = 0
-        self._frames_total: int = 0
-
         # Allocate every per-frame log buffer on the metrics' device. The 2-D layout
         # ``(max_frames, num_worlds)`` matches the per-world scalar fan-out of the
-        # underlying metrics fields.
+        # underlying metrics fields. The internal counters and per-call decision
+        # scratch buffer also live on the device so that :meth:`log` expands to a
+        # fixed sequence of kernel launches that can be safely captured into a
+        # CUDA graph alongside :meth:`SolverKamino.step`.
         with wp.ScopedDevice(self._device):
             self.log_r_eom: wp.array | None = None
             self.log_r_eom_argmax: wp.array | None = None
@@ -374,6 +452,17 @@ class SolutionMetricsLogger:
                 setattr(self, f"log_{field}", wp.full(shape=shape, value=-1, dtype=int64))
             for field in _ARGMAX_FIELDS_INT32:
                 setattr(self, f"log_{field}", wp.full(shape=shape, value=-1, dtype=int32))
+
+            # Device-side counters and per-call decision scratch buffer.
+            # ``_call_count`` tracks every :meth:`log` invocation (used by the
+            # decimation gate); ``_frames_total`` tracks the number of writes
+            # that actually landed in the buffer (used by the overflow /
+            # chronological-ordering logic); ``_decision`` carries the
+            # per-call ``[should_write, write_idx]`` pair from
+            # :func:`_update_log_decision` to the copy kernels.
+            self._call_count: wp.array = wp.zeros(shape=1, dtype=int32)
+            self._frames_total: wp.array = wp.zeros(shape=1, dtype=int32)
+            self._decision: wp.array = wp.zeros(shape=2, dtype=int32)
 
     ###
     # Properties
@@ -430,19 +519,24 @@ class SolutionMetricsLogger:
         return value if value > 0.0 else None
 
     @property
-    def num_logged_frames(self) -> int:
-        """Returns the number of valid frames currently stored in the buffer."""
-        return min(self._frames_total, self._max_frames)
-
-    @property
     def num_total_writes(self) -> int:
         """Returns the cumulative number of writes (including those overwritten in rolling mode)."""
-        return self._frames_total
+        return int(self._frames_total.numpy()[0])
+
+    @property
+    def num_logged_frames(self) -> int:
+        """Returns the number of valid frames currently stored in the buffer."""
+        return min(self.num_total_writes, self._max_frames)
+
+    @property
+    def num_calls(self) -> int:
+        """Returns the cumulative number of :meth:`log` invocations."""
+        return int(self._call_count.numpy()[0])
 
     @property
     def is_full(self) -> bool:
         """Returns whether the buffer has reached ``max_frames`` writes."""
-        return self._frames_total >= self._max_frames
+        return self.num_total_writes >= self._max_frames
 
     ###
     # Operations
@@ -450,8 +544,9 @@ class SolutionMetricsLogger:
 
     def reset(self):
         """Resets the logger counters and clears every log buffer."""
-        self._call_count = 0
-        self._frames_total = 0
+        self._call_count.zero_()
+        self._frames_total.zero_()
+        self._decision.zero_()
         for field in _SCALAR_METRIC_FIELDS:
             getattr(self, f"log_{field}").zero_()
         for field in _ARGMAX_FIELDS_INT64:
@@ -462,46 +557,59 @@ class SolutionMetricsLogger:
     def log(self):
         """Records the current :class:`SolutionMetricsData` values into the next buffer slot.
 
-        Calls that fall on a decimation-skipped phase, or that occur after the
-        buffer has filled in :attr:`Mode.BOUNDED`, are silently dropped.
+        Every invocation expands to the same fixed sequence of Warp kernel
+        launches, so the call can be safely captured into a CUDA graph along
+        with :meth:`SolverKamino.step`. Decimation skips and bounded-mode
+        overflow are enforced on-device by :func:`_update_log_decision`,
+        with the per-field copy kernels short-circuiting on the resulting
+        ``[should_write, write_idx]`` decision buffer.
         """
-        # Decimation gate: only every ``decimation``-th call writes a new frame.
-        if (self._call_count % self._decimation) != 0:
-            self._call_count += 1
-            return
+        # Compute the per-call write decision ``[should_write, write_idx]``
+        # and increment the call counter on the device.
+        wp.launch(
+            kernel=_update_log_decision,
+            dim=1,
+            inputs=[
+                int32(self._max_frames),
+                int32(self._decimation),
+                int32(int(self._mode)),
+                self._call_count,
+                self._frames_total,
+                self._decision,
+            ],
+            device=self._device,
+        )
 
-        # Bounded-mode early-exit once the buffer is full.
-        if self._mode == SolutionMetricsLogger.Mode.BOUNDED and self._frames_total >= self._max_frames:
-            self._call_count += 1
-            return
-
-        write_idx = int32(self._frames_total % self._max_frames)
         data = self._metrics.data
-
         for field in _SCALAR_METRIC_FIELDS:
             wp.launch(
                 kernel=_write_log_row_float32,
                 dim=self._num_worlds,
-                inputs=[getattr(data, field), write_idx, getattr(self, f"log_{field}")],
+                inputs=[getattr(data, field), self._decision, getattr(self, f"log_{field}")],
                 device=self._device,
             )
         for field in _ARGMAX_FIELDS_INT64:
             wp.launch(
                 kernel=_write_log_row_int64,
                 dim=self._num_worlds,
-                inputs=[getattr(data, field), write_idx, getattr(self, f"log_{field}")],
+                inputs=[getattr(data, field), self._decision, getattr(self, f"log_{field}")],
                 device=self._device,
             )
         for field in _ARGMAX_FIELDS_INT32:
             wp.launch(
                 kernel=_write_log_row_int32,
                 dim=self._num_worlds,
-                inputs=[getattr(data, field), write_idx, getattr(self, f"log_{field}")],
+                inputs=[getattr(data, field), self._decision, getattr(self, f"log_{field}")],
                 device=self._device,
             )
 
-        self._frames_total += 1
-        self._call_count += 1
+        # Increment ``frames_total`` on-device if a write actually landed.
+        wp.launch(
+            kernel=_finalize_log_decision,
+            dim=1,
+            inputs=[self._decision, self._frames_total],
+            device=self._device,
+        )
 
     ###
     # Numpy extraction
@@ -522,17 +630,18 @@ class SolutionMetricsLogger:
         Returns:
             A dictionary mapping field name to its recorded values.
         """
-        n = self.num_logged_frames
+        total = self.num_total_writes
+        n = min(total, self._max_frames)
         result: dict[str, np.ndarray] = {}
         for field in (*_SCALAR_METRIC_FIELDS, *_ARGMAX_FIELDS_INT64, *_ARGMAX_FIELDS_INT32):
             buf = getattr(self, f"log_{field}").numpy()
             if n == 0:
                 result[field] = buf[:0].copy()
                 continue
-            if self._mode == SolutionMetricsLogger.Mode.ROLLING and self._frames_total > self._max_frames:
+            if self._mode == SolutionMetricsLogger.Mode.ROLLING and total > self._max_frames:
                 # The buffer wrapped around at least once; rotate so that the oldest
                 # recorded frame is at index 0.
-                write_idx = self._frames_total % self._max_frames
+                write_idx = total % self._max_frames
                 result[field] = np.concatenate([buf[write_idx:], buf[:write_idx]], axis=0)
             else:
                 result[field] = buf[:n].copy()

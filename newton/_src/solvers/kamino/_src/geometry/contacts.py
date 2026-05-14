@@ -289,6 +289,12 @@ class ContactsKaminoData:
     Shape of ``(model_max_contacts_host,)`` and type :class:`vec2f`.
     """
 
+    margins: wp.array[wp.vec2f] | None = None
+    """
+    The shape-pair margins of each active contact.\n
+    Shape of ``(model_max_contacts_host,)`` and type :class:`vec2f`.
+    """
+
     key: wp.array[wp.uint64] | None = None
     """
     Integer key uniquely identifying each active contact.\n
@@ -626,6 +632,15 @@ class ContactsKamino:
         return self._data.material
 
     @property
+    def margins(self) -> wp.array[wp.float32]:
+        """
+        Returns the effective shape-pair margins of each active contact.\n
+        Shape of ``(model_max_contacts_host,)`` and type :class:`float32`.
+        """
+        self._assert_has_data()
+        return self._data.margins
+
+    @property
     def key(self) -> wp.array[wp.uint64]:
         """
         Returns the integer key uniquely identifying each active contact.\n
@@ -780,6 +795,7 @@ class ContactsKamino:
                 gapfunc=wp.zeros(shape=(model_max_contacts,), dtype=wp.vec4f),
                 frame=wp.zeros(shape=(model_max_contacts,), dtype=wp.quatf),
                 material=wp.zeros(shape=(model_max_contacts,), dtype=wp.vec2f),
+                margins=wp.zeros(shape=(model_max_contacts,), dtype=wp.vec2f),
                 key=wp.zeros(shape=(model_max_contacts,), dtype=wp.uint64),
                 reaction=wp.zeros(shape=(model_max_contacts,), dtype=wp.vec3f),
                 velocity=wp.zeros(shape=(model_max_contacts,), dtype=wp.vec3f),
@@ -835,7 +851,6 @@ def _convert_contacts_newton_to_kamino(
     shape_world: wp.array[wp.int32],
     shape_mu: wp.array[wp.float32],
     shape_restitution: wp.array[wp.float32],
-    body_com: wp.array[wp.vec3f],
     body_q: wp.array[wp.transformf],
     # Outputs:
     kamino_model_active: wp.array[wp.int32],
@@ -849,6 +864,7 @@ def _convert_contacts_newton_to_kamino(
     kamino_gapfunc: wp.array[wp.vec4f],
     kamino_frame: wp.array[wp.quatf],
     kamino_material: wp.array[wp.vec2f],
+    kamino_margins: wp.array[wp.vec2f],
     kamino_key: wp.array[wp.uint64],
     kamino_reaction: wp.array[wp.vec3f],
     kamino_remap: wp.array[wp.int32],
@@ -917,10 +933,10 @@ def _convert_contacts_newton_to_kamino(
     # Reconstruct Newton signed contact distance d from exported fields:
     # d = dot((p1 - p0), n_a_to_b) - (offset0 + offset1),
     # with n_newton = n_a_to_b and offset* stored in newton_margin*.
-    margin = newton_margin0[cid] + newton_margin1[cid]
-    wp.printf("[cid: %d]: margin: %f\n", cid, margin)
+    margin_0 = newton_margin0[cid]
+    margin_1 = newton_margin1[cid]
+    margin = margin_0 + margin_1
     distance = wp.dot(r_1 - r_0, normal) - margin
-    wp.printf("[cid: %d]: distance: %f\n", cid, distance)
 
     # Ensure static body is always Kamino A, dynamic body is Kamino B
     if bid_1 < 0:
@@ -932,6 +948,8 @@ def _convert_contacts_newton_to_kamino(
         bid_B = bid_0
         r_A = r_1
         r_B = r_0
+        margin_A = margin_1
+        margin_B = margin_0
         normal = -normal
     else:
         # Both dynamic or shape0 is static → keep A=shape0, B=shape1.
@@ -942,6 +960,8 @@ def _convert_contacts_newton_to_kamino(
         bid_B = bid_1
         r_A = r_0
         r_B = r_1
+        margin_A = margin_0
+        margin_B = margin_1
 
     # Skip conversion if the contact distance is positive
     if distance > 0.0:
@@ -950,7 +970,7 @@ def _convert_contacts_newton_to_kamino(
     # Retrieve the material properties for this contact
     # TODO: Integrate use of material manager to retrieve material properties
     mu = 0.5 * (shape_mu[sid_0] + shape_mu[sid_1])
-    rest = 0.5 * (shape_restitution[sid_0] + shape_restitution[sid_1])
+    epsilon = 0.5 * (shape_restitution[sid_0] + shape_restitution[sid_1])
 
     # Store the contact data in the Kamino format
     gapfunc = wp.vec4f(normal[0], normal[1], normal[2], distance)
@@ -970,7 +990,8 @@ def _convert_contacts_newton_to_kamino(
         kamino_position_B[mcid] = r_B
         kamino_gapfunc[mcid] = gapfunc
         kamino_frame[mcid] = q_frame
-        kamino_material[mcid] = wp.vec2f(mu, rest)
+        kamino_material[mcid] = wp.vec2f(mu, epsilon)
+        kamino_margins[mcid] = wp.vec2f(margin_A, margin_B)
         kamino_key[mcid] = build_pair_key2(wp.uint32(gid_A), wp.uint32(gid_B))
 
         # Store the contact source index in the remap array if provided
@@ -1010,6 +1031,7 @@ def _convert_active_contacts_kamino_to_newton(
     kamino_gapfunc: wp.array[wp.vec4f],
     kamino_frame: wp.array[wp.quatf],
     kamino_reaction: wp.array[wp.vec3f],
+    kamino_margins: wp.array[wp.vec2f],
     shape_body: wp.array[wp.int32],
     body_com: wp.array[wp.vec3f],
     body_q: wp.array[wp.transformf],
@@ -1017,6 +1039,8 @@ def _convert_active_contacts_kamino_to_newton(
     newton_count: wp.array[wp.int32],
     newton_shape0: wp.array[wp.int32],
     newton_shape1: wp.array[wp.int32],
+    newton_margin0: wp.array[wp.float32],
+    newton_margin1: wp.array[wp.float32],
     newton_point0: wp.array[wp.vec3f],
     newton_point1: wp.array[wp.vec3f],
     newton_normal: wp.array[wp.vec3f],
@@ -1046,17 +1070,20 @@ def _convert_active_contacts_kamino_to_newton(
         return
 
     # Retrieve contact-specific data
-    gid_AB = kamino_gid_AB[cid]
+    gid_01 = kamino_gid_AB[cid]
     r_0 = kamino_position_A[cid]
     r_1 = kamino_position_B[cid]
     gapfunc = kamino_gapfunc[cid]
+    margins_01 = kamino_margins[cid]
 
     # Retrieve the geometry indices for this contact and use
     # them to look up the corresponding shapes and bodies.
-    shape_0 = gid_AB[0]
-    shape_1 = gid_AB[1]
+    shape_0 = gid_01[0]
+    shape_1 = gid_01[1]
     body_0 = shape_body[shape_0]
     body_1 = shape_body[shape_1]
+    margin_0 = margins_01[0]
+    margin_1 = margins_01[1]
 
     # Transform the world-space contact positions
     # back to body-local coordinates for Newton.
@@ -1076,6 +1103,8 @@ def _convert_active_contacts_kamino_to_newton(
     newton_normal[cid_out] = wp.vec3f(gapfunc[0], gapfunc[1], gapfunc[2])
     newton_point0[cid_out] = wp.transform_point(X_inv_0, r_0)
     newton_point1[cid_out] = wp.transform_point(X_inv_1, r_1)
+    newton_margin0[cid_out] = margin_0
+    newton_margin1[cid_out] = margin_1
 
     # Optional contact wrench in Newton's convention: wrench on body0 by body1
     # at the CoM of body0 in world. The active path writes body0 = Kamino A,
@@ -1159,7 +1188,7 @@ def _convert_existing_contacts_kamino_to_newton(
         return
 
     # Retrieve contact-specific data
-    gid_AB = kamino_gid_AB[cid]
+    gid_01 = kamino_gid_AB[cid]
     frame = kamino_frame[cid]
     reaction = kamino_reaction[cid]
 
@@ -1167,7 +1196,7 @@ def _convert_existing_contacts_kamino_to_newton(
     # or Kamino B if a swap occurred during N->K conversion).
     shape_0_n = newton_shape0[cid_out]
     body_0_n = shape_body[shape_0_n]
-    swap = shape_0_n != gid_AB[0]
+    swap = shape_0_n != gid_01[0]
 
     # Express the contact reaction in world coordinates as the linear force
     # on Newton's body0 by Newton's body1.
@@ -1303,7 +1332,6 @@ def convert_contacts_newton_to_kamino(
             model.shape_world,
             model.shape_material_mu,
             model.shape_material_restitution,
-            model.body_com,
             state.body_q,
         ],
         outputs=[
@@ -1318,6 +1346,7 @@ def convert_contacts_newton_to_kamino(
             contacts_out.gapfunc,
             contacts_out.frame,
             contacts_out.material,
+            contacts_out.margins,
             contacts_out.key,
             contacts_out.reaction,
             contacts_out.remap,
@@ -1438,6 +1467,7 @@ def convert_contacts_kamino_to_newton(
                 contacts_in.gapfunc,
                 contacts_in.frame,
                 contacts_in.reaction,
+                contacts_in.margins,
                 model.shape_body,
                 model.body_com,
                 state.body_q,
@@ -1446,6 +1476,8 @@ def convert_contacts_kamino_to_newton(
                 contacts_out.rigid_contact_count,
                 contacts_out.rigid_contact_shape0,
                 contacts_out.rigid_contact_shape1,
+                contacts_out.rigid_contact_margin0,
+                contacts_out.rigid_contact_margin1,
                 contacts_out.rigid_contact_point0,
                 contacts_out.rigid_contact_point1,
                 contacts_out.rigid_contact_normal,

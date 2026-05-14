@@ -622,7 +622,7 @@ def _build_free_velocity_bias_contacts(
 
     # Retrieve the contact material properties
     mu_k = material_k.x  # Friction coefficient
-    epsilon_k = material_k.y  # Penetration reduction coefficient
+    epsilon_k = material_k.y  # Restitution coefficient
 
     # The gap-function value (penetration_k) is the margin-shifted signed
     # distance: negative means penetration past the resting separation,
@@ -639,7 +639,7 @@ def _build_free_velocity_bias_contacts(
     # NOTE#2: xi_p_relaxed corresponds to one-sided Baumgarte-like stabilization
     xi = inv_dt * distance_k
     xi_relaxed = config.gamma * wp.min(0.0, xi) + wp.max(0.0, xi)
-    if epsilon_k == 1.0:
+    if epsilon_k >= 1.0:
         alpha = 0.0
     else:
         alpha = 1.0

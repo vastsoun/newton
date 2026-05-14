@@ -240,6 +240,19 @@ class State:
             _copy_arrays(dst_ns, src_ns, prefix=f"{ns_name}.")
 
     @property
+    def device(self):
+        """
+        Returns the device on which the state arrays are allocated.
+        """
+        if self.particle_q is not None:
+            return self.particle_q.device
+        if self.body_q is not None:
+            return self.body_q.device
+        if self.joint_q is not None:
+            return self.joint_q.device
+        return None
+
+    @property
     def requires_grad(self) -> bool:
         """Indicates whether the state arrays have gradient computation enabled."""
         if self.particle_q:

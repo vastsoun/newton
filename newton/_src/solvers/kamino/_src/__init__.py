@@ -21,7 +21,6 @@ from .dynamics.wrenches import (
 )
 from .geometry.contacts import (
     ContactsKamino,
-    convert_contact_forces_kamino_to_newton,
     convert_contacts_kamino_to_newton,
     convert_contacts_newton_to_kamino,
 )
@@ -45,7 +44,6 @@ __all__ = [
     "convert_base_origin_to_com",
     "convert_body_com_to_origin",
     "convert_body_origin_to_com",
-    "convert_contact_forces_kamino_to_newton",
     "convert_contacts_kamino_to_newton",
     "convert_contacts_newton_to_kamino",
     "convert_model_gravity",

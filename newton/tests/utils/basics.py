@@ -92,6 +92,8 @@ def _add_ground_box(builder: ModelBuilder) -> None:
 def build_box_on_plane(
     builder: ModelBuilder | None = None,
     z_offset: float = 0.0,
+    friction: float | None = None,
+    restitution: float | None = None,
     ground: bool = True,
     new_world: bool = True,
     use_custom_shape_cfg: bool = False,
@@ -143,7 +145,12 @@ def build_box_on_plane(
 
     # Use custom shape config if requested
     custom_shape_cfg = (
-        ModelBuilder.ShapeConfig(margin=1e-6, gap=0.01, mu=0.7, restitution=0.0)
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
         if use_custom_shape_cfg
         else _shape_cfg_basic()
     )

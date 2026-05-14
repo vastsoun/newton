@@ -274,9 +274,11 @@ class SolutionMetricsData:
 
     where:
     - `v_plus_est` is the estimated post-event constraint-space velocity
-    - v_plus_true` is the true post-event constraint-space velocity computed as
-      `v_plus_true = v_f + D @ lambdas`, where `v_f` is the unconstrained constraint-space velocity,
-      `D` is the Delassus operator, and `lambdas` is the vector of all constraint reactions (i.e. Lagrange multipliers).
+    - `v_plus_true` is the true post-event constraint-space velocity, computed from the
+      post-event generalized velocity ``u^+`` and the constraint Jacobian as
+      `v_plus_true = J_cts @ u^+`. ``u^+`` is taken from the ``state.u_i`` argument passed
+      to :meth:`SolutionMetrics.evaluate`, which the caller is expected to keep in sync
+      with the post-event body twists produced by the time-stepping integrator.
 
     Shape of ``(num_worlds,)`` and type :class:`float32`.
     """
@@ -1106,17 +1108,17 @@ class SolutionMetrics:
         Evaluates all solution performance metrics.
 
         Args:
-            model: The model containing the time-invariant data of the simulation.
-            data: The model data containing the time-variant data of the simulation.
-            state: The current state of the simulation.
-            state_p: The previous state of the simulation.
-            limits: The joint-limits data describing active limit constraints.
-            contacts: The contact data describing active contact constraints.
-            problem: The dual forward dynamics problem of the current time-step.
-            jacobians: The system Jacobians of the current time-step.
-            sigma: The array diagonal regularization applied to the Delassus matrix of the current dual problem.
             lambdas: The array of constraint reactions (i.e. Lagrange multipliers) of the current dual problem solution.
             v_plus: The array of post-event constraint-space velocities of the current dual problem solution.
+            state: The post-event state of the simulation. ``state.u_i`` must hold the post-event
+                generalized velocity ``u^+`` produced by time-stepping the integrator, since it
+                is used to compute the reference ``v_plus_true = J_cts @ u^+`` against which
+                ``v_plus`` is validated.
+            state_p: The pre-event state of the simulation, used to compute the EoM residual.
+            jacobians: The system Jacobians of the current time-step.
+            problem: The dual forward dynamics problem of the current time-step.
+            limits: The joint-limits data describing active limit constraints.
+            contacts: The contact data describing active contact constraints.
         """
         # Ensure metrics data is available
         self._assert_finalized()

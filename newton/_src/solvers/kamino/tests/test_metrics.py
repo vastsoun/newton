@@ -97,10 +97,10 @@ class TestSetup:
         self.builder.request_contact_attributes("force")
         if request_state_attributes:
             self.builder.request_state_attributes(*request_state_attributes)
-        self.builder.num_rigid_contacts_per_world = max_world_contacts
 
         # Finalise the Newton-side runtime containers
         self.model: Model = self.builder.finalize(skip_validation_joints=True)
+        self.model.rigid_contact_max = max_world_contacts
         self.state: State = self.model.state()
         self.state_p: State = self.model.state()
         self.control: Control = self.model.control()
@@ -113,8 +113,10 @@ class TestSetup:
         self.solver = newton.solvers.SolverKamino(model=self.model, config=solver_config)
 
         # Metrics evaluator
+        metrics_model = self.builder.finalize(skip_validation_joints=True)
+        metrics_model.rigid_contact_max = max_world_contacts
         self.metrics = SolutionMetricsNewton(
-            model=self.builder.finalize(skip_validation_joints=True),
+            model=metrics_model,
             dt=self.dt,
             sparse=sparse_jacobian,
         )
@@ -142,6 +144,7 @@ class TestSetup:
             contacts=self.contacts,
             dt=self.dt,
         )
+        self.solver.update_contacts(self.contacts, self.state)
         self.metrics.evaluate(
             state=self.state,
             state_p=self.state_p,

@@ -132,13 +132,19 @@ def build_box_on_plane(
     if new_world or builder is None:
         _builder.begin_world(label="box_on_plane")
 
+    # Model constants
+    m_i = 1.0
+    hx = 0.1
+    hy = 0.1
+    hz = 0.1
+
     # Add first body
-    i_I = inertia.compute_inertia_box_from_mass(mass=1.0, hx=0.2, hy=0.2, hz=0.2)
-    xform = wp.transformf(0.0, 0.0, 0.1 + z_offset, 0.0, 0.0, 0.0, 1.0)
+    i_I_i = inertia.compute_inertia_box_from_mass(mass=m_i, hx=hx, hy=hy, hz=hz)
+    xform = wp.transformf(0.0, 0.0, hz + z_offset, 0.0, 0.0, 0.0, 1.0)
     bid0 = _builder.add_body(
         label="box",
-        mass=1.0,
-        inertia=i_I,
+        mass=m_i,
+        inertia=i_I_i,
         xform=xform,
         lock_inertia=True,
     )
@@ -159,9 +165,9 @@ def build_box_on_plane(
     _builder.add_shape_box(
         label="box_geom",
         body=bid0,
-        hx=0.1,
-        hy=0.1,
-        hz=0.1,
+        hx=hx,
+        hy=hy,
+        hz=hz,
         cfg=custom_shape_cfg,
     )
 
@@ -558,6 +564,131 @@ def build_cartpole(
             hz=0.5,
             xform=wp.transformf(0.0, 0.0, -1.0 + z_offset, 0.0, 0.0, 0.0, 1.0),
             cfg=_shape_cfg_basic(),
+        )
+
+    # Close the world context if we opened one
+    if new_world or builder is None:
+        _builder.end_world()
+
+    # Return the populated model builder
+    return _builder
+
+
+def build_boxes_stacked_on_plane(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    dz_offset: float = 0.0,
+    friction: float | None = None,
+    restitution: float | None = None,
+    mass_top: float | None = None,
+    mass_bottom: float | None = None,
+    ground: bool = True,
+    new_world: bool = True,
+    use_custom_shape_cfg: bool = False,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a free-floating 'box' body and a ground box geom.
+
+    Args:
+        builder (ModelBuilder | None):
+            An optional existing model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float):
+            A vertical offset to apply to the initial position of the box.
+        ground (bool):
+            Whether to add a static ground plane to the model.
+        new_world (bool):
+            Whether to begin a new world in the builder for this model.\n
+            If `True` (or `builder` is `None`), the model is wrapped in a new world context
+            opened via :meth:`ModelBuilder.begin_world` and closed via
+            :meth:`ModelBuilder.end_world`.\n
+            If `False`, the caller must already be inside an active world; the model is then
+            added to that currently active world.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    from newton._src.geometry import inertia  # noqa: PLC0415
+
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder()
+    else:
+        _builder = builder
+
+    # Begin a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        _builder.begin_world(label="box_on_plane")
+
+    # Model constants
+    m_t = mass_top if mass_top is not None else 1.0
+    m_b = mass_bottom if mass_bottom is not None else 1.0
+    hx_t = 0.1
+    hy_t = 0.1
+    hz_t = 0.1
+    hx_b = 0.1
+    hy_b = 0.1
+    hz_b = 0.1
+
+    # Body inertias
+    I_t = inertia.compute_inertia_box_from_mass(mass=m_t, hx=hx_t, hy=hy_t, hz=hz_t)
+    I_b = inertia.compute_inertia_box_from_mass(mass=m_b, hx=hx_b, hy=hy_b, hz=hz_b)
+
+    # Body poses
+    xform_b = wp.transformf(0.0, 0.0, hz_b + z_offset, 0.0, 0.0, 0.0, 1.0)
+    xform_t = wp.transformf(0.0, 0.0, 2 * hz_b + hz_t + dz_offset + z_offset, 0.0, 0.0, 0.0, 1.0)
+
+    # Use custom shape config if requested
+    custom_shape_cfg = (
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
+        if use_custom_shape_cfg
+        else _shape_cfg_basic()
+    )
+
+    # Add bottom body
+    bid_b = _builder.add_body(
+        label="bottom_box",
+        mass=m_b,
+        inertia=I_b,
+        xform=xform_b,
+        lock_inertia=True,
+    )
+    _builder.add_shape_box(
+        label="geom/bottom_box",
+        body=bid_b,
+        hx=hx_b,
+        hy=hy_b,
+        hz=hz_b,
+        cfg=custom_shape_cfg,
+    )
+
+    # Add top body
+    bid_t = _builder.add_body(
+        label="top_box",
+        mass=1.0,
+        inertia=I_t,
+        xform=xform_t,
+        lock_inertia=True,
+    )
+    _builder.add_shape_box(
+        label="geom/top_box",
+        body=bid_t,
+        hx=hx_t,
+        hy=hy_t,
+        hz=hz_t,
+        cfg=custom_shape_cfg,
+    )
+
+    # Add a static collision geometry for the plane
+    if ground:
+        _builder.add_ground_plane(
+            cfg=custom_shape_cfg,
+            label="ground",
         )
 
     # Close the world context if we opened one

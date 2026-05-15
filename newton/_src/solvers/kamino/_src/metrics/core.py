@@ -224,6 +224,15 @@ class SolutionMetricsNewton:
         self._limits.reset()
         self._contacts.reset()
 
+        # TODO:
+        # - Add an all-zeros q_j_p array
+        # - Add a convert_to_com_frame=True flag to the StateKamino.from_newton() constructor
+        # - We're silently modifying state_p and state to be in CoM frame, but this breaks
+        #   the data at the next step, so we need to operate on copies of the states
+        # - How is contacts forces data being populated?
+        # - Check contact forces and computed contact velocities manually using NumPy
+        # - Setup custom version of boxes-hined and boxes-nunhcaku with off-COM body frames and floating bases
+
         # Interface the input state containers to Kamino's equivalents
         self._state = StateKamino.from_newton(self._model.size, self._model._model, state)
         self._state_p = StateKamino.from_newton(self._model.size, self._model._model, state_p)

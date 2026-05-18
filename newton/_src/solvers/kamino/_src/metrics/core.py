@@ -155,6 +155,10 @@ class SolutionMetricsNewton:
         self._model.time.dt.fill_(wp.float32(dt))
         self._model.time.inv_dt.fill_(wp.float32(1.0 / dt))
 
+        # Allocate the state containers
+        self._state = self._model.state()
+        self._state_p = self._model.state()
+
         # Create the data, limits and contacts containers.
         self._data = self._model.data(joint_wrenches=True)
         self._limits = LimitsKamino(model=self._model)
@@ -201,6 +205,7 @@ class SolutionMetricsNewton:
 
         # Allocate metrics data on the target device
         with wp.ScopedDevice(self.device):
+            self._q_j_p = wp.zeros(self._model.size.sum_of_num_joint_coords, dtype=wp.float32)
             self._v_plus = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=wp.float32)
             self._lambdas = wp.zeros(self._model.size.sum_of_max_total_cts, dtype=wp.float32)
 
@@ -220,23 +225,26 @@ class SolutionMetricsNewton:
             control: The Newton control data containing the current control inputs of the simulation.
             contacts: The Newton contacts data containing the current contacts of the simulation.
         """
-        # Reset limits and contacts containers
-        self._limits.reset()
-        self._contacts.reset()
-
         # TODO:
-        # - Add an all-zeros q_j_p array
-        # - Add a convert_to_com_frame=True flag to the StateKamino.from_newton() constructor
-        # - We're silently modifying state_p and state to be in CoM frame, but this breaks
-        #   the data at the next step, so we need to operate on copies of the states
-        # - How is contacts forces data being populated?
         # - Check contact forces and computed contact velocities manually using NumPy
         # - Setup custom version of boxes-hined and boxes-nunhcaku with off-COM body frames and floating bases
 
         # Interface the input state containers to Kamino's equivalents
-        self._state = StateKamino.from_newton(self._model.size, self._model._model, state)
-        self._state_p = StateKamino.from_newton(self._model.size, self._model._model, state_p)
+        _state = StateKamino.from_newton(self._model.size, self._model._model, state)
+        _state_p = StateKamino.from_newton(self._model.size, self._model._model, state_p)
+
+        # Copy the relevant state arrays into the Kamino data container so that downstream
+        self._state.copy_from(_state)
+        self._state_p.copy_from(_state_p)
+
+        # Convert the state from body frame to CoM frame
+        self._state.convert_to_body_com_state(self._model._model)
+        self._state_p.convert_to_body_com_state(self._model._model)
+
+        # Convert the control container to Kamino's equivalent
         self._control.from_newton(control, self._model)
+
+        # Convert the contacts container to Kamino's equivalent
         convert_contacts_newton_to_kamino(
             model=self._model._model,
             state=state_p,
@@ -247,6 +255,7 @@ class SolutionMetricsNewton:
 
         # TODO: ENABLE THIS WHEN WE EXTEND TO SUPPORT JOINT LIMITS
         # # Run limit detection to generate active limits
+        # self._limits.reset()
         # self._limits.detect(q_j=self._state_p.q_j)
 
         ###
@@ -266,7 +275,7 @@ class SolutionMetricsNewton:
         # - joint frame poses, DoF velocities, coordinates, and constraint residuals
         update_constraints_info(model=self._model, data=self._data)
         update_body_inertias(model=self._model.bodies, data=self._data.bodies)
-        compute_joints_data(model=self._model, data=self._data, q_j_p=self._state_p.q_j)
+        compute_joints_data(model=self._model, data=self._data, q_j_p=self._q_j_p)
 
         # Update the forward kinematics and dynamics quantities
         self._update_jacobians()

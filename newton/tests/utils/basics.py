@@ -702,10 +702,13 @@ def build_boxes_stacked_on_plane(
 def build_boxes_hinged(
     builder: ModelBuilder | None = None,
     z_offset: float = 0.0,
-    ground: bool = True,
+    friction: float | None = None,
+    restitution: float | None = None,
     dynamic_joints: bool = False,
     implicit_pd: bool = False,
+    ground: bool = True,
     new_world: bool = True,
+    use_custom_shape_cfg: bool = False,
 ) -> ModelBuilder:
     """
     Constructs a basic model of a two floating boxes connected via revolute joint.
@@ -817,6 +820,18 @@ def build_boxes_hinged(
     )
     _builder.add_articulation([jf, jh])
 
+    # Use custom shape config if requested
+    custom_shape_cfg = (
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
+        if use_custom_shape_cfg
+        else _shape_cfg_basic()
+    )
+
     # Add collision geometries
     _builder.add_shape_box(
         label="base/box",
@@ -824,7 +839,7 @@ def build_boxes_hinged(
         hx=0.5 * d,
         hy=0.5 * w,
         hz=0.5 * h,
-        cfg=_shape_cfg_basic(),
+        cfg=custom_shape_cfg,
     )
     _builder.add_shape_box(
         label="follower/box",
@@ -832,12 +847,15 @@ def build_boxes_hinged(
         hx=0.5 * d,
         hy=0.5 * w,
         hz=0.5 * h,
-        cfg=_shape_cfg_basic(),
+        cfg=custom_shape_cfg,
     )
 
     # Add a static collision geometry for the plane
     if ground:
-        _add_ground_box(_builder)
+        _builder.add_ground_plane(
+            cfg=custom_shape_cfg,
+            label="ground",
+        )
 
     # Close the world context if we opened one
     if new_world or builder is None:
@@ -1171,6 +1189,9 @@ def build_boxes_fourbar(
     verbose: bool = False,
     new_world: bool = True,
     actuator_ids: list[int] | None = None,
+    friction: float | None = None,
+    restitution: float | None = None,
+    use_custom_shape_cfg: bool = False,
 ) -> ModelBuilder:
     """
     Constructs a basic model of a four-bar linkage.
@@ -1361,6 +1382,18 @@ def build_boxes_fourbar(
     # Geometries
     ###
 
+    # Use custom shape config if requested
+    custom_shape_cfg = (
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
+        if use_custom_shape_cfg
+        else _shape_cfg_basic()
+    )
+
     # Add collision geometries
     _builder.add_shape_box(
         label="box_1",
@@ -1368,7 +1401,7 @@ def build_boxes_fourbar(
         hx=0.5 * d_1,
         hy=0.5 * w_1,
         hz=0.5 * h_1,
-        cfg=_shape_cfg_basic(),
+        cfg=custom_shape_cfg,
     )
     _builder.add_shape_box(
         label="box_2",
@@ -1376,7 +1409,7 @@ def build_boxes_fourbar(
         hx=0.5 * d_2,
         hy=0.5 * w_2,
         hz=0.5 * h_2,
-        cfg=_shape_cfg_basic(),
+        cfg=custom_shape_cfg,
     )
     _builder.add_shape_box(
         label="box_3",
@@ -1384,7 +1417,7 @@ def build_boxes_fourbar(
         hx=0.5 * d_3,
         hy=0.5 * w_3,
         hz=0.5 * h_3,
-        cfg=_shape_cfg_basic(),
+        cfg=custom_shape_cfg,
     )
     _builder.add_shape_box(
         label="box_4",
@@ -1392,12 +1425,15 @@ def build_boxes_fourbar(
         hx=0.5 * d_4,
         hy=0.5 * w_4,
         hz=0.5 * h_4,
-        cfg=_shape_cfg_basic(),
+        cfg=custom_shape_cfg,
     )
 
     # Add a static collision geometry for the plane
     if ground:
-        _add_ground_box(_builder)
+        _builder.add_ground_plane(
+            cfg=custom_shape_cfg,
+            label="ground",
+        )
 
     ###
     # Joints

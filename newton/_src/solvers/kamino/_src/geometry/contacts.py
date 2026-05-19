@@ -1313,10 +1313,6 @@ def convert_contacts_newton_to_kamino(
     # counts and reset contact data to sentinel values.
     contacts_out.clear()
 
-    msg.notif("CONVERT: model.shape_body: %s", model.shape_body)
-    msg.notif("CONVERT: model.shape_world: %s", model.shape_world)
-    msg.notif("CONVERT: state.body_q:\n%s\n", state.body_q)
-
     # Launch the conversion kernel to convert Newton contacts to Kamino's format
     # NOTE: To reduce overhead, the total thread count is set to the smallest of
     # the number of contacts detected and the maximum capacity of the output contacts.

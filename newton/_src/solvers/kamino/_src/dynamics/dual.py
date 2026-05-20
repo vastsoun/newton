@@ -61,7 +61,7 @@ import warp as wp
 from .....core.types import override
 from ...config import ConfigBase, ConstrainedDynamicsConfig, ConstraintStabilizationConfig
 from ..core.data import DataKamino
-from ..core.math import FLOAT32_EPS, UNIT_Z, screw, screw_angular, screw_linear
+from ..core.math import FLOAT32_EPS, screw, screw_angular, screw_linear
 from ..core.model import ModelKamino
 from ..core.size import SizeKamino
 from ..core.types import float32, int32, mat33f, vec2f, vec3f, vec4f, vec6f
@@ -632,12 +632,13 @@ def _build_free_velocity_bias_contacts(
     # separation, zero means at rest, positive means within the
     # detection gap. A dead-zone of config.delta filters out
     # floating-point noise on nearly-touching contacts.
-    penetration_k = wp.min(0.0, margin_k + distance_k + config.delta)
+    penetration_k = wp.where(distance_k < 0.0 and distance_k > -config.delta, 0.0, distance_k)
 
     # Compute the per-contact penetration error reduction term
     # NOTE#1: Penetrations are represented as penetration_k < 0
     # NOTE#2: xi corresponds to one-sided Baumgarte-like stabilization
-    xi = config.gamma * inv_dt * penetration_k
+    xi = inv_dt * penetration_k
+    xi_relaxed = config.gamma * wp.min(0.0, xi) + wp.max(0.0, xi)
 
     # Gate contact stabilization for restitutive impacts with
     # critical restitution coefficients (i.e. epsilon_k >= 1.0)
@@ -647,14 +648,14 @@ def _build_free_velocity_bias_contacts(
     else:
         alpha = 1.0
 
-    # Compute the contact constraint stabilization bias
-    v_b_k = alpha * xi * UNIT_Z
-
     # Store the contact constraint stabilization bias in the output vector
-    for i in range(3):
-        problem_v_b[ccio_k + i] = v_b_k[i]
+    # NOTE: We still write zeros to overwrite previous values
+    problem_v_b[ccio_k] = 0.0
+    problem_v_b[ccio_k + 1] = 0.0
+    problem_v_b[ccio_k + 2] = alpha * xi_relaxed
 
     # Initialize the restitutive Newton-type impact model term
+    # NOTE: We still write zeros to overwrite previous values
     problem_v_i[ccio_k] = 0.0
     problem_v_i[ccio_k + 1] = 0.0
     problem_v_i[ccio_k + 2] = epsilon_k

@@ -609,6 +609,10 @@ def _build_free_velocity_bias_contacts(
     distance_k = contacts_gapfunc[tid][3]
     margins_AB_k = contacts_margins[tid]
     margin_k = margins_AB_k[0] + margins_AB_k[1]
+    wp.printf("VF BIAS: [%d]: margin_A_k: %f\n", tid, margins_AB_k[0])
+    wp.printf("VF BIAS: [%d]: margin_B_k: %f\n", tid, margins_AB_k[1])
+    wp.printf("VF BIAS: [%d]: margin_k: %f\n", tid, margin_k)
+    wp.printf("VF BIAS: [%d]: distance_k: %f\n", tid, distance_k)
 
     # Retrieve the world-specific data
     inv_dt = model_time_inv_dt[wid_k]
@@ -616,6 +620,7 @@ def _build_free_velocity_bias_contacts(
     ccio = data_info_contact_cts_group_offset[wid_k]
     vio = problem_vio[wid_k]
     config = problem_config[wid_k]
+    wp.printf("VF BIAS: [%d]: config.delta: %f\n", tid, config.delta)
 
     # Compute the total constraint index offset of the current contact
     ccio_k = vio + ccio + 3 * cid_k
@@ -626,27 +631,31 @@ def _build_free_velocity_bias_contacts(
     # Retrieve the contact material properties
     mu_k = material_k.x  # Friction coefficient
     epsilon_k = material_k.y  # Restitution coefficient
+    wp.printf("VF BIAS: [%d]: mu_k: %f, epsilon_k: %f\n", tid, mu_k, epsilon_k)
 
     # The gap-function value (penetration_k) is the margin-shifted
     # signed distance: negative means penetration past the resting
     # separation, zero means at rest, positive means within the
     # detection gap. A dead-zone of config.delta filters out
     # floating-point noise on nearly-touching contacts.
-    penetration_k = wp.where(distance_k < 0.0 and distance_k > -config.delta, 0.0, distance_k)
+    # penetration_k = wp.where(distance_k < 0.0 and distance_k > -config.delta, 0.0, distance_k)
+    penetration_k = wp.where(wp.abs(distance_k) < config.delta, 0.0, distance_k)
+    # penetration_k = wp.min(0.0, distance_k)
+    # penetration_k = distance_k
+    wp.printf("VF BIAS: [%d]: penetration_k: %f\n", tid, penetration_k)
 
     # Compute the per-contact penetration error reduction term
     # NOTE#1: Penetrations are represented as penetration_k < 0
     # NOTE#2: xi corresponds to one-sided Baumgarte-like stabilization
     xi = inv_dt * penetration_k
+    wp.printf("VF BIAS: [%d]: xi: %f\n", tid, xi)
     xi_relaxed = config.gamma * wp.min(0.0, xi) + wp.max(0.0, xi)
+    wp.printf("VF BIAS: [%d]: xi_relaxed: %f\n\n", tid, xi_relaxed)
 
     # Gate contact stabilization for restitutive impacts with
     # critical restitution coefficients (i.e. epsilon_k >= 1.0)
     # NOTE: Otherwise the bias would be too large and destabilize the solver
-    if epsilon_k >= 1.0:
-        alpha = 0.0
-    else:
-        alpha = 1.0
+    alpha = wp.where(epsilon_k >= 1.0, 0.0, 1.0)
 
     # Store the contact constraint stabilization bias in the output vector
     # NOTE: We still write zeros to overwrite previous values
@@ -734,7 +743,9 @@ def _build_free_velocity(
         v_f_j += wp.dot(J_i, u_f_i)
 
         # Accumulate the impact bias term
-        v_f_j += epsilon_j * wp.dot(J_i, u_i)
+        v_i_j = epsilon_j * wp.dot(J_i, u_i)
+        wp.printf("VF: [%d]: v_i_j: %f\n\n", tid, v_i_j)
+        v_f_j += v_i_j
 
     # Store sum of velocity bias terms
     problem_v_f[cts_offset] = v_f_j + v_b_j
@@ -1602,6 +1613,7 @@ class DualProblem:
             )
 
         if contacts is not None and contacts.model_max_contacts_host > 0:
+            print("building free-velocity bias contacts")
             wp.launch(
                 _build_free_velocity_bias_contacts,
                 dim=contacts.model_max_contacts_host,

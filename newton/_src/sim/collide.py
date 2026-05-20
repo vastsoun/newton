@@ -109,16 +109,16 @@ def write_contact(
     if index >= writer_data.contact_max:
         return
 
-    wp.printf("CD: [%d]: contact_data.radius_eff_a: %f\n", index, contact_data.radius_eff_a)
-    wp.printf("CD: [%d]: contact_data.radius_eff_b: %f\n", index, contact_data.radius_eff_b)
-    wp.printf("CD: [%d]: contact_data.margin_a: %f\n", index, contact_data.margin_a)
-    wp.printf("CD: [%d]: contact_data.margin_b: %f\n", index, contact_data.margin_b)
-    wp.printf("CD: [%d]: total_separation_needed: %f\n", index, total_separation_needed)
-    wp.printf("CD: [%d]: offset_mag_a: %f\n", index, offset_mag_a)
-    wp.printf("CD: [%d]: offset_mag_b: %f\n", index, offset_mag_b)
-    wp.printf("CD: [%d]: contact_gap: %f\n", index, contact_gap)
-    wp.printf("CD: [%d]: distance: %f\n", index, distance)
-    wp.printf("CD: [%d]: d: %f\n\n", index, d)
+    # wp.printf("CD: [%d]: contact_data.radius_eff_a: %f\n", index, contact_data.radius_eff_a)
+    # wp.printf("CD: [%d]: contact_data.radius_eff_b: %f\n", index, contact_data.radius_eff_b)
+    # wp.printf("CD: [%d]: contact_data.margin_a: %f\n", index, contact_data.margin_a)
+    # wp.printf("CD: [%d]: contact_data.margin_b: %f\n", index, contact_data.margin_b)
+    # wp.printf("CD: [%d]: total_separation_needed: %f\n", index, total_separation_needed)
+    # wp.printf("CD: [%d]: offset_mag_a: %f\n", index, offset_mag_a)
+    # wp.printf("CD: [%d]: offset_mag_b: %f\n", index, offset_mag_b)
+    # wp.printf("CD: [%d]: contact_gap: %f\n", index, contact_gap)
+    # wp.printf("CD: [%d]: distance: %f\n", index, distance)
+    # wp.printf("CD: [%d]: d: %f\n\n", index, d)
 
 
     writer_data.out_shape0[index] = contact_data.shape_a

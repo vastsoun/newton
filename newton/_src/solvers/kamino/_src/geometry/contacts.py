@@ -984,7 +984,7 @@ def make_convert_contacts_newton_to_kamino_kernel(allow_positive_distance: bool 
         # TODO: Integrate use of material manager to retrieve material properties
         mu = 0.5 * (shape_mu[sid_0] + shape_mu[sid_1])
         epsilon = 0.5 * (shape_restitution[sid_0] + shape_restitution[sid_1])
-        wp.printf("CONV: [%d]: mu: %f, epsilon: %f\n", cid, mu, epsilon)
+        # wp.printf("CONV: [%d]: mu: %f, epsilon: %f\n", cid, mu, epsilon)
 
         # Store the contact data in the Kamino format
         gapfunc = wp.vec4f(normal[0], normal[1], normal[2], distance)

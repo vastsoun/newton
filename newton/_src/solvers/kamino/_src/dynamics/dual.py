@@ -70,6 +70,7 @@ from ..geometry.contacts import ContactsKamino
 from ..kinematics.jacobians import DenseSystemJacobians, SparseSystemJacobians
 from ..kinematics.limits import LimitsKamino
 from ..linalg import LinearSolverType
+from ..utils import logger as msg
 
 ###
 # Module interface
@@ -587,6 +588,7 @@ def _build_free_velocity_bias_contacts(
     contacts_margins: wp.array[vec2f],
     problem_config: wp.array[DualProblemConfigStruct],
     problem_vio: wp.array[int32],
+    problem_v_f: wp.array[float32],
     # Outputs:
     problem_v_b: wp.array[float32],
     problem_v_i: wp.array[float32],
@@ -609,10 +611,10 @@ def _build_free_velocity_bias_contacts(
     distance_k = contacts_gapfunc[tid][3]
     margins_AB_k = contacts_margins[tid]
     margin_k = margins_AB_k[0] + margins_AB_k[1]
-    wp.printf("VF BIAS: [%d]: margin_A_k: %f\n", tid, margins_AB_k[0])
-    wp.printf("VF BIAS: [%d]: margin_B_k: %f\n", tid, margins_AB_k[1])
-    wp.printf("VF BIAS: [%d]: margin_k: %f\n", tid, margin_k)
-    wp.printf("VF BIAS: [%d]: distance_k: %f\n", tid, distance_k)
+    # wp.printf("VF BIAS: [%d]: margin_A_k: %f\n", tid, margins_AB_k[0])
+    # wp.printf("VF BIAS: [%d]: margin_B_k: %f\n", tid, margins_AB_k[1])
+    # wp.printf("VF BIAS: [%d]: margin_k: %f\n", tid, margin_k)
+    # wp.printf("VF BIAS: [%d]: distance_k: %f\n", tid, distance_k)
 
     # Retrieve the world-specific data
     inv_dt = model_time_inv_dt[wid_k]
@@ -620,7 +622,8 @@ def _build_free_velocity_bias_contacts(
     ccio = data_info_contact_cts_group_offset[wid_k]
     vio = problem_vio[wid_k]
     config = problem_config[wid_k]
-    wp.printf("VF BIAS: [%d]: config.delta: %f\n", tid, config.delta)
+    # wp.printf("VF BIAS: [%d]: config.gamma: %f\n", tid, config.gamma)
+    # wp.printf("VF BIAS: [%d]: config.delta: %f\n", tid, config.delta)
 
     # Compute the total constraint index offset of the current contact
     ccio_k = vio + ccio + 3 * cid_k
@@ -631,50 +634,62 @@ def _build_free_velocity_bias_contacts(
     # Retrieve the contact material properties
     mu_k = material_k.x  # Friction coefficient
     epsilon_k = material_k.y  # Restitution coefficient
-    wp.printf("VF BIAS: [%d]: mu_k: %f, epsilon_k: %f\n", tid, mu_k, epsilon_k)
+    # wp.printf("VF BIAS: [%d]: mu_k: %f, epsilon_k: %f\n", tid, mu_k, epsilon_k)
 
     # The gap-function value (penetration_k) is the margin-shifted
     # signed distance: negative means penetration past the resting
     # separation, zero means at rest, positive means within the
     # detection gap. A dead-zone of config.delta filters out
     # floating-point noise on nearly-touching contacts.
-    # penetration_k = wp.where(distance_k < 0.0 and distance_k > -config.delta, 0.0, distance_k)
-    penetration_k = wp.where(wp.abs(distance_k) < config.delta, 0.0, distance_k)
+    penetration_k = wp.where(distance_k < 0.0 and distance_k > -config.delta, 0.0, distance_k)
+    # penetration_k = wp.where(wp.abs(distance_k) < config.delta, 0.0, distance_k)
     # penetration_k = wp.min(0.0, distance_k)
     # penetration_k = distance_k
-    wp.printf("VF BIAS: [%d]: penetration_k: %f\n", tid, penetration_k)
+    # wp.printf("VF BIAS: [%d]: penetration_k: %f\n", tid, penetration_k)
 
     # Compute the per-contact penetration error reduction term
     # NOTE#1: Penetrations are represented as penetration_k < 0
     # NOTE#2: xi corresponds to one-sided Baumgarte-like stabilization
     xi = inv_dt * penetration_k
-    wp.printf("VF BIAS: [%d]: xi: %f\n", tid, xi)
+    # wp.printf("VF BIAS: [%d]: xi: %f\n", tid, xi)
     xi_relaxed = config.gamma * wp.min(0.0, xi) + wp.max(0.0, xi)
-    wp.printf("VF BIAS: [%d]: xi_relaxed: %f\n\n", tid, xi_relaxed)
+    # wp.printf("VF BIAS: [%d]: xi_relaxed: %f\n\n", tid, xi_relaxed)
 
     # Gate contact stabilization for restitutive impacts with
     # critical restitution coefficients (i.e. epsilon_k >= 1.0)
-    # NOTE: Otherwise the bias would be too large and destabilize the solver
+    # NOTE: Otherwise the bias would introduce energy int the system
     alpha = wp.where(epsilon_k >= 1.0, 0.0, 1.0)
+
+    # TODO
+    # beta = wp.where(penetration_k > 0.0, 0.0, 1.0)
+    beta = 1.0
+
+    # Retrieve the cached free-velocity vector for
+    # the current contact along the normal direction
+    v_f_n_k = problem_v_f[ccio_k + 2]
+
+    # TODO
+    v_b_n_k = wp.where(penetration_k > 0.0, 2.0 * wp.abs(v_f_n_k), alpha * xi_relaxed)
+    v_i_n_k = beta * epsilon_k
 
     # Store the contact constraint stabilization bias in the output vector
     # NOTE: We still write zeros to overwrite previous values
     problem_v_b[ccio_k] = 0.0
     problem_v_b[ccio_k + 1] = 0.0
-    problem_v_b[ccio_k + 2] = alpha * xi_relaxed
+    problem_v_b[ccio_k + 2] = v_b_n_k
 
     # Initialize the restitutive Newton-type impact model term
     # NOTE: We still write zeros to overwrite previous values
     problem_v_i[ccio_k] = 0.0
     problem_v_i[ccio_k + 1] = 0.0
-    problem_v_i[ccio_k + 2] = epsilon_k
+    problem_v_i[ccio_k + 2] = v_i_n_k
 
     # Store the contact friction coefficient in the output vector
     problem_mu[cio_k] = mu_k
 
 
 @wp.kernel
-def _build_free_velocity(
+def _build_free_velocity_dense(
     # Inputs:
     model_info_bodies_offset: wp.array[int32],
     data_bodies_u_i: wp.array[vec6f],
@@ -744,11 +759,145 @@ def _build_free_velocity(
 
         # Accumulate the impact bias term
         v_i_j = epsilon_j * wp.dot(J_i, u_i)
-        wp.printf("VF: [%d]: v_i_j: %f\n\n", tid, v_i_j)
+        # wp.printf("VF: [%d]: v_i_j: %f\n", tid, v_i_j)
         v_f_j += v_i_j
 
     # Store sum of velocity bias terms
     problem_v_f[cts_offset] = v_f_j + v_b_j
+
+
+@wp.kernel
+def _build_free_velocity_dense_0(
+    # Inputs:
+    model_info_bodies_offset: wp.array[int32],
+    jacobians_J_cts_offsets: wp.array[int32],
+    jacobians_J_cts_data: wp.array[float32],
+    problem_dim: wp.array[int32],
+    problem_vio: wp.array[int32],
+    problem_u_f: wp.array[vec6f],
+    # Outputs:
+    problem_v_f: wp.array[float32],
+):
+    # Retrieve the thread index
+    wid, tid = wp.tid()
+
+    # Retrieve the problem dimensions and matrix block index offset
+    ncts = problem_dim[wid]
+
+    # Skip if row index exceed the problem size
+    if tid >= ncts:
+        return
+
+    # Retrieve the world-specific data
+    bio = model_info_bodies_offset[wid]
+    nb = model_info_bodies_offset[wid + 1] - bio
+    cjmio = jacobians_J_cts_offsets[wid]
+    vio = problem_vio[wid]
+
+    # Compute the number of Jacobian rows, i.e. the number of body DoFs
+    nbd = 6 * nb
+
+    # Compute the thread-specific index offset
+    cts_offset = vio + tid
+
+    # Append the column offset to the Jacobian index
+    cjmio += nbd * tid
+
+    # Buffers
+    J_i = vec6f(0.0)
+    v_f_j = float32(0.0)
+
+    # Iterate over each body to accumulate velocity contributions
+    for i in range(nb):
+        # Compute the Jacobian block index
+        m_ji = cjmio + 6 * i
+
+        # Extract the twist and unconstrained velocity of the body
+        u_f_i = problem_u_f[bio + i]
+
+        # Extract the Jacobian block J_ji
+        # TODO: use slicing operation when available
+        for d in range(6):
+            J_i[d] = jacobians_J_cts_data[m_ji + d]
+
+        # Accumulate J_i @ u_i
+        v_f_j += wp.dot(J_i, u_f_i)
+
+    # Store sum of velocity bias terms
+    problem_v_f[cts_offset] = v_f_j
+
+
+@wp.kernel
+def _build_free_velocity_dense_1(
+    # Inputs:
+    model_info_bodies_offset: wp.array[int32],
+    data_bodies_u_i: wp.array[vec6f],
+    jacobians_J_cts_offsets: wp.array[int32],
+    jacobians_J_cts_data: wp.array[float32],
+    problem_dim: wp.array[int32],
+    problem_vio: wp.array[int32],
+    problem_v_b: wp.array[float32],
+    problem_v_i: wp.array[float32],
+    # Outputs:
+    problem_v_f: wp.array[float32],
+):
+    # Retrieve the thread index
+    wid, tid = wp.tid()
+
+    # Retrieve the problem dimensions and matrix block index offset
+    ncts = problem_dim[wid]
+
+    # Skip if row index exceed the problem size
+    if tid >= ncts:
+        return
+
+    # Retrieve the world-specific data
+    bio = model_info_bodies_offset[wid]
+    nb = model_info_bodies_offset[wid + 1] - bio
+    cjmio = jacobians_J_cts_offsets[wid]
+    vio = problem_vio[wid]
+
+    # Compute the number of Jacobian rows, i.e. the number of body DoFs
+    nbd = 6 * nb
+
+    # Compute the thread-specific index offset
+    cts_offset = vio + tid
+
+    # Append the column offset to the Jacobian index
+    cjmio += nbd * tid
+
+    # Extract the cached impact bias scaling (i.e. restitution coefficient)
+    # NOTE: This is a quick hack to avoid multiple kernels. The
+    # proper way would be to perform this op only for contacts
+    epsilon_j = problem_v_i[cts_offset]
+
+    # Retrieve the cached velocity bias term for the constraint
+    v_b_j = problem_v_b[cts_offset]
+
+    # Buffers
+    J_i = vec6f(0.0)
+    v_f_j = float32(0.0)
+
+    # Iterate over each body to accumulate velocity contributions
+    for i in range(nb):
+        # Compute the Jacobian block index
+        m_ji = cjmio + 6 * i
+
+        # Extract the twist and unconstrained velocity of the body
+        u_i = data_bodies_u_i[bio + i]
+
+        # Extract the Jacobian block J_ji
+        # TODO: use slicing operation when available
+        for d in range(6):
+            J_i[d] = jacobians_J_cts_data[m_ji + d]
+
+        # Accumulate the impact bias term
+        v_i_j = epsilon_j * wp.dot(J_i, u_i)
+        # wp.printf("VF: [%d]: v_i_j: %f\n", tid, v_i_j)
+        v_f_j += v_i_j
+
+    # Store sum of velocity bias terms
+    problem_v_f[cts_offset] += v_f_j + v_b_j
 
 
 @wp.kernel
@@ -1416,52 +1565,14 @@ class DualProblem:
         # Build the generalized free-velocity vector
         self._build_generalized_free_velocity(model, data)
 
-        # Build the free-velocity bias terms
-        self._build_free_velocity_bias(model, data, limits, contacts)
+        # # Build the free-velocity bias terms
+        # self._build_free_velocity_bias(model, data, limits, contacts)
 
         # Build the free-velocity vector
         if isinstance(jacobians, SparseSystemJacobians):
-            wp.copy(self._data.v_f, self._data.v_b)
-            J_cts = jacobians._J_cts.bsm
-            wp.launch(
-                _build_free_velocity_sparse,
-                dim=(self._size.num_worlds, J_cts.max_of_num_nzb),
-                inputs=[
-                    # Inputs:
-                    model.info.bodies_offset,
-                    data.bodies.u_i,
-                    J_cts.num_nzb,
-                    J_cts.nzb_start,
-                    J_cts.nzb_coords,
-                    J_cts.nzb_values,
-                    self._data.vio,
-                    self._data.u_f,
-                    self._data.v_i,
-                    # Outputs:
-                    self._data.v_f,
-                ],
-                device=self.device,
-            )
+            self._build_free_velocity_sparse(model, data, jacobians, limits, contacts)
         else:
-            wp.launch(
-                _build_free_velocity,
-                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
-                inputs=[
-                    # Inputs:
-                    model.info.bodies_offset,
-                    data.bodies.u_i,
-                    jacobians.data.J_cts_offsets,
-                    jacobians.data.J_cts_data,
-                    self._data.dim,
-                    self._data.vio,
-                    self._data.u_f,
-                    self._data.v_b,
-                    self._data.v_i,
-                    # Outputs:
-                    self._data.v_f,
-                ],
-                device=self.device,
-            )
+            self._build_free_velocity_dense(model, data, jacobians, limits, contacts)
 
         # Optionally build and apply the Delassus diagonal preconditioner
         if any(s.dynamics.preconditioning for s in self._config):
@@ -1613,7 +1724,6 @@ class DualProblem:
             )
 
         if contacts is not None and contacts.model_max_contacts_host > 0:
-            print("building free-velocity bias contacts")
             wp.launch(
                 _build_free_velocity_bias_contacts,
                 dim=contacts.model_max_contacts_host,
@@ -1631,6 +1741,7 @@ class DualProblem:
                     contacts.margins,
                     self._data.config,
                     self._data.vio,
+                    self._data.v_f,
                     # Outputs:
                     self._data.v_b,
                     self._data.v_i,
@@ -1639,12 +1750,62 @@ class DualProblem:
                 device=self.device,
             )
 
-    def _build_free_velocity(self, model: ModelKamino, data: DataKamino, jacobians: DenseSystemJacobians):
+    def _build_free_velocity_dense(
+        self,
+        model: ModelKamino,
+        data: DataKamino,
+        jacobians: DenseSystemJacobians,
+        limits: LimitsKamino | None = None,
+        contacts: ContactsKamino | None = None,
+    ):
         """
         Builds the free-velocity vector `v_f`.
         """
+        # wp.launch(
+        #     kernel=_build_free_velocity_dense,
+        #     dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+        #     inputs=[
+        #         # Inputs:
+        #         model.info.bodies_offset,
+        #         data.bodies.u_i,
+        #         jacobians.data.J_cts_offsets,
+        #         jacobians.data.J_cts_data,
+        #         self._data.dim,
+        #         self._data.vio,
+        #         self._data.u_f,
+        #         self._data.v_b,
+        #         self._data.v_i,
+        #         # Outputs:
+        #         self._data.v_f,
+        #     ],
+        #     device=self.device,
+        # )
         wp.launch(
-            _build_free_velocity,
+            kernel=_build_free_velocity_dense_0,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                # Inputs:
+                model.info.bodies_offset,
+                jacobians.data.J_cts_offsets,
+                jacobians.data.J_cts_data,
+                self._data.dim,
+                self._data.vio,
+                self._data.u_f,
+                # Outputs:
+                self._data.v_f,
+            ],
+            device=self.device,
+        )
+        ncts = self._data.dim.numpy()[0]
+        # msg.warning("v_f_0: %s", self._data.v_f.numpy()[:ncts])
+
+        # Build the free-velocity bias terms
+        self._build_free_velocity_bias(model, data, limits, contacts)
+        # msg.warning("v_b: %s", self._data.v_b.numpy()[:ncts])
+        # msg.warning("v_i: %s", self._data.v_i.numpy()[:ncts])
+
+        wp.launch(
+            kernel=_build_free_velocity_dense_1,
             dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
             inputs=[
                 # Inputs:
@@ -1654,8 +1815,41 @@ class DualProblem:
                 jacobians.data.J_cts_data,
                 self._data.dim,
                 self._data.vio,
-                self._data.u_f,
                 self._data.v_b,
+                self._data.v_i,
+                # Outputs:
+                self._data.v_f,
+            ],
+            device=self.device,
+        )
+        # msg.warning("v_f_1: %s\n", self._data.v_f.numpy()[:ncts])
+
+    def _build_free_velocity_sparse(
+        self,
+        model: ModelKamino,
+        data: DataKamino,
+        jacobians: SparseSystemJacobians,
+        limits: LimitsKamino | None = None,
+        contacts: ContactsKamino | None = None,
+    ):
+        """
+        Builds the free-velocity vector `v_f`.
+        """
+        wp.copy(self._data.v_f, self._data.v_b)
+        J_cts = jacobians._J_cts.bsm
+        wp.launch(
+            _build_free_velocity_sparse,
+            dim=(self._size.num_worlds, J_cts.max_of_num_nzb),
+            inputs=[
+                # Inputs:
+                model.info.bodies_offset,
+                data.bodies.u_i,
+                J_cts.num_nzb,
+                J_cts.nzb_start,
+                J_cts.nzb_coords,
+                J_cts.nzb_values,
+                self._data.vio,
+                self._data.u_f,
                 self._data.v_i,
                 # Outputs:
                 self._data.v_f,

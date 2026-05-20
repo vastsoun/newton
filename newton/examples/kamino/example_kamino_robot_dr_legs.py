@@ -32,8 +32,10 @@ class Example:
         # Create a single-robot model builder and register the Kamino-specific custom attributes
         robot_builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
         newton.solvers.SolverKamino.register_custom_attributes(robot_builder)
-        robot_builder.default_shape_cfg.margin = 1e-6
+        robot_builder.default_shape_cfg.margin = 1e-3
         robot_builder.default_shape_cfg.gap = 1e-2
+        robot_builder.default_shape_cfg.mu = 0.7
+        robot_builder.default_shape_cfg.restitution = 0.5
 
         # Load the DR Legs USD and add it to the builder
         asset_path = newton.utils.download_asset("disneyresearch")
@@ -52,8 +54,10 @@ class Example:
         # builder for the specified number of worlds
         builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
         builder.request_contact_attributes("force")
-        builder.default_shape_cfg.margin = 1e-6
+        builder.default_shape_cfg.margin = 1e-3
         builder.default_shape_cfg.gap = 1e-2
+        builder.default_shape_cfg.mu = 0.7
+        builder.default_shape_cfg.restitution = 0.5
         for _ in range(self.world_count):
             builder.add_world(robot_builder)
 
@@ -68,7 +72,8 @@ class Example:
         self.config = newton.solvers.SolverKamino.Config.from_model(self.model)
         self.config.use_fk_solver = True
         self.config.use_collision_detector = self.use_kamino_contacts
-        self.config.constraints.delta = 1e-3
+        self.config.constraints.gamma = 0.02
+        self.config.constraints.delta = 1e-4
         self.config.padmm.max_iterations = 200
         self.config.padmm.primal_tolerance = 1e-4
         self.config.padmm.dual_tolerance = 1e-4

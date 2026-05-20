@@ -217,7 +217,7 @@ def make_write_contact_unified_kamino(allow_positive_distance: bool = True):
             writer_data.material_pair_dynamic_friction,
         )
         material = vec2f(mu_ab, restitution_ab)
-        wp.printf("CD: [%d]: mu_ab: %f, restitution_ab: %f\n", mcid, mu_ab, restitution_ab)
+        # wp.printf("CD: [%d]: mu_ab: %f, restitution_ab: %f\n", mcid, mu_ab, restitution_ab)
 
         # Generate the gap-function (normal.x, normal.y, normal.z, distance),
         # contact frame (z-norm aligned with contact normal)

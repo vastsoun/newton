@@ -92,8 +92,11 @@ def _add_ground_box(builder: ModelBuilder) -> None:
 def build_sphere_on_plane(
     builder: ModelBuilder | None = None,
     z_offset: float = 0.0,
+    friction: float | None = None,
+    restitution: float | None = None,
     ground: bool = True,
     new_world: bool = True,
+    use_custom_shape_cfg: bool = False,
 ) -> ModelBuilder:
     """
     Constructs a basic model of a free-floating 'box' body and a ground box geom.
@@ -142,18 +145,30 @@ def build_sphere_on_plane(
         lock_inertia=True,
     )
 
+    # Use custom shape config if requested
+    custom_shape_cfg = (
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
+        if use_custom_shape_cfg
+        else _shape_cfg_basic()
+    )
+
     # Add collision geometries
     _builder.add_shape_sphere(
         label="sphere_geom",
         body=bid0,
         radius=r_i,
-        # cfg=ModelBuilder.ShapeConfig(margin=0.0, gap=0.0),
+        cfg=custom_shape_cfg,
     )
 
     # Add a static collision geometry for the plane
     if ground:
         _builder.add_ground_plane(
-            # cfg=ModelBuilder.ShapeConfig(margin=0.0, gap=0.0),
+            cfg=custom_shape_cfg,
             label="ground",
             height=0.0,
         )

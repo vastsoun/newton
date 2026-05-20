@@ -154,7 +154,7 @@ def build_sphere_on_plane(
             restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
         )
         if use_custom_shape_cfg
-        else _shape_cfg_basic()
+        else _builder.default_shape_cfg
     )
 
     # Add collision geometries
@@ -250,7 +250,7 @@ def build_box_on_plane(
             restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
         )
         if use_custom_shape_cfg
-        else _shape_cfg_basic()
+        else _builder.default_shape_cfg
     )
 
     # Add collision geometries

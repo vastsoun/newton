@@ -24,8 +24,8 @@ class Example:
         # Set simulation run-time configurations
         self.fps = 50
         self.frame_dt = 1.0 / self.fps
+        self.sim_dt = 0.001
         self.sim_substeps = 1  # max(1, round(self.frame_dt / 0.01))
-        self.sim_dt = self.frame_dt / self.sim_substeps
         self.sim_time = 0.0
         self.world_count = args.world_count if args else 1
         self.use_kamino_contacts = args.use_kamino_contacts if args else False
@@ -63,6 +63,8 @@ class Example:
         # Create the model from the builder
         self.model = builder.finalize(skip_validation_joints=True)
         self.model.rigid_contact_max = 4
+        msg.notif("model.shape_gap: %s", self.model.shape_gap)
+        msg.notif("model.shape_margin: %s", self.model.shape_margin)
 
         # Create the Kamino solver for the given model
         self.config = newton.solvers.SolverKamino.Config.from_model(self.model)
@@ -164,7 +166,7 @@ class Example:
         newton.examples.add_world_count_arg(parser)
         newton.examples.add_kamino_contacts_arg(parser)
         parser.set_defaults(world_count=1)
-        parser.set_defaults(use_kamino_contacts=True)
+        parser.set_defaults(use_kamino_contacts=False)
         return parser
 
 

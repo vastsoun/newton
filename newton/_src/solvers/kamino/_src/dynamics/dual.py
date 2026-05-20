@@ -606,6 +606,7 @@ def _build_free_velocity_bias_contacts(
     cid_k = contacts_cid[tid]
     material_k = contacts_material[tid]
     distance_k = contacts_gapfunc[tid][3]
+    wp.printf("VF BIAS: [%d]: distance_k: %f\n", tid, distance_k)
 
     # Retrieve the world-specific data
     inv_dt = model_time_inv_dt[wid_k]
@@ -613,6 +614,7 @@ def _build_free_velocity_bias_contacts(
     ccio = data_info_contact_cts_group_offset[wid_k]
     vio = problem_vio[wid_k]
     config = problem_config[wid_k]
+    wp.printf("VF BIAS: [%d]: config.delta: %f\n", tid, config.delta)
 
     # Compute the total constraint index offset of the current contact
     ccio_k = vio + ccio + 3 * cid_k
@@ -623,6 +625,8 @@ def _build_free_velocity_bias_contacts(
     # Retrieve the contact material properties
     mu_k = material_k.x  # Friction coefficient
     epsilon_k = material_k.y  # Restitution coefficient
+    wp.printf("VF BIAS: [%d]: mu_k: %f\n", tid, mu_k)
+    wp.printf("VF BIAS: [%d]: epsilon_k: %f\n", tid, epsilon_k)
 
     # The gap-function value (penetration_k) is the margin-shifted
     # signed distance: negative means penetration past the resting
@@ -630,12 +634,15 @@ def _build_free_velocity_bias_contacts(
     # detection gap. A dead-zone of config.delta filters out
     # floating-point noise on nearly-touching contacts.
     penetration_k = wp.where(distance_k < 0.0 and distance_k > -config.delta, 0.0, distance_k)
+    wp.printf("VF BIAS: [%d]: penetration_k: %f\n", tid, penetration_k)
 
     # Compute the per-contact penetration error reduction term
     # NOTE#1: Penetrations are represented as penetration_k < 0
     # NOTE#2: xi corresponds to one-sided Baumgarte-like stabilization
     xi = inv_dt * penetration_k
+    wp.printf("VF BIAS: [%d]: xi: %f\n", tid, xi)
     xi_relaxed = config.gamma * wp.min(0.0, xi) + wp.max(0.0, xi)
+    wp.printf("VF BIAS: [%d]: xi_relaxed: %f\n\n", tid, xi_relaxed)
 
     # Gate contact stabilization for restitutive impacts with
     # critical restitution coefficients (i.e. epsilon_k >= 1.0)

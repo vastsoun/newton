@@ -251,6 +251,7 @@ class SolutionMetricsNewton:
             contacts_in=contacts,
             contacts_out=self._contacts,
             convert_forces=True,
+            allow_positive_distance=False,
         )
 
         # TODO: ENABLE THIS WHEN WE EXTEND TO SUPPORT JOINT LIMITS

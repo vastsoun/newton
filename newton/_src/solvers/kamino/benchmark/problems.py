@@ -47,6 +47,7 @@ class ProblemRun(NamedTuple):
         camera: Optional ``(position, pitch, yaw)`` triple. ``None`` leaves the
             viewer's default camera in place.
     """
+
     setups: dict[str, SolverSetup]
     force_cb: Callable | None
     camera: tuple[wp.vec3, float, float] | None
@@ -168,6 +169,7 @@ def _make_fk_reset_cb(model, q_base: wp.transformf) -> Callable:
     :class:`SolverKamino` does — write the floating-base pose into ``joint_q``, copy
     ``joint_qd`` from the model, then evaluate FK to populate ``body_q``/``body_qd``.
     """
+
     def reset_cb(state_out):
         joint_q_np = model.joint_q.numpy().copy()
         joint_q_np[:3] = [q_base.p[0], q_base.p[1], q_base.p[2]]
@@ -262,7 +264,7 @@ def make_setup_box_on_plane_kamino(
     def reset_cb(state_out):
         solver.reset(state_out=state_out, base_q=base_q_arr)
 
-    return _make_setup(
+    setup = _make_setup(
         name="kamino",
         builder=builder,
         model=model,
@@ -273,6 +275,14 @@ def make_setup_box_on_plane_kamino(
         reset_cb=reset_cb,
         friction=friction,
     )
+    # Second logger over the solver-internal SolutionMetrics. Surfaces in
+    # SetupRunner.test_final as ``<problem>_kamino.pdf`` (internal vs front-end).
+    setup.solver_logger = SolutionMetricsLogger(
+        metrics=solver._solver_kamino.metrics,
+        max_frames=max_log_frames,
+        mode=SolutionMetricsLogger.Mode.ROLLING,
+    )
+    return setup
 
 
 def make_setup_box_on_plane_xpbd(
@@ -452,7 +462,7 @@ def make_setup_fourbar_kamino(
     def reset_cb(state_out):
         solver.reset(state_out=state_out, base_q=base_q_arr)
 
-    return _make_setup(
+    setup = _make_setup(
         name="kamino",
         builder=builder,
         model=model,
@@ -463,6 +473,14 @@ def make_setup_fourbar_kamino(
         reset_cb=reset_cb,
         friction=0.0,
     )
+    # Second logger over the solver-internal SolutionMetrics. Surfaces in
+    # SetupRunner.test_final as ``<problem>_kamino.pdf`` (internal vs front-end).
+    setup.solver_logger = SolutionMetricsLogger(
+        metrics=solver._solver_kamino.metrics,
+        max_frames=max_log_frames,
+        mode=SolutionMetricsLogger.Mode.ROLLING,
+    )
+    return setup
 
 
 def make_setup_fourbar_xpbd(

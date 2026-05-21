@@ -6,21 +6,21 @@ TODO
 """
 
 import os
-
 from collections.abc import Callable
 
 import warp as wp
 
-from ....viewer import ViewerBase
+from ....sim import Contacts, Control, Model, ModelBuilder, State
 from ....solvers import SolverBase
-from ....sim import Model, ModelBuilder, State, Control, Contacts
+from ....viewer import ViewerBase
 from .._src.metrics import SolutionMetricsLogger, SolutionMetricsNewton
+from .._src.utils import logger as msg
 
 ###
 # Module interface
 ###
 
-__all__ = ["SolverSetup", "SetupRunner"]
+__all__ = ["SetupRunner", "SolverSetup"]
 
 
 ###
@@ -60,9 +60,7 @@ def _copy_optional(dst: object, src: object, attr: str) -> None:
 def _copy_state(state_in: State, state_out: State) -> None:
     """Copy every field of ``state_in`` into ``state_out``."""
     if state_in.body_count != state_out.body_count:
-        raise ValueError(
-            f"states have different body_count: src={state_in.body_count}, dst={state_out.body_count}"
-        )
+        raise ValueError(f"states have different body_count: src={state_in.body_count}, dst={state_out.body_count}")
     if state_in.joint_coord_count != state_out.joint_coord_count:
         raise ValueError(
             f"states have different joint_coord_count: src={state_in.joint_coord_count}, dst={state_out.joint_coord_count}"
@@ -133,6 +131,7 @@ class SolverSetup:
         dt: float,
         rigid_contact_max: int = 32,
         standalone: bool = False,
+        verbose: bool = False,
         reset_cb: Callable | None = None,
         control_cb: Callable | None = None,
         kwargs_builder: dict | None = None,
@@ -153,6 +152,9 @@ class SolverSetup:
             dt: The time step size.
             rigid_contact_max: The maximum number of rigid contacts per world.
             standalone: Whether the setup is standalone or not.
+            verbose: When ``True``, ``step()`` logs the pre-step ``state_in``,
+                the post-step contact buffer, and the post-evaluate metrics
+                contact data via :mod:`logger` at ``info`` level.
             reset_cb: The callback to be called to reset the simulation.
             control_cb: The callback to be called to control the simulation.
             kwargs_builder: Additional keyword arguments to be passed to the builder.
@@ -167,19 +169,25 @@ class SolverSetup:
 
         # Optional input attributes
         self.standalone: bool = standalone
+        self.verbose: bool = verbose
         self.reset_cb: Callable | None = reset_cb
         self.control_cb: Callable | None = control_cb
 
         # Derived attributes
         self.metrics: SolutionMetricsNewton | None = None
         self.logger: SolutionMetricsLogger | None = None
+        # Optional second logger over a solver-internal metrics object (e.g.
+        # ``solver._solver_kamino.metrics`` for SolverKamino). Attached by
+        # the per-solver factories when the solver exposes such an object;
+        # logged in ``step()`` and surfaced by ``SetupRunner.test_final``.
+        self.solver_logger: SolutionMetricsLogger | None = None
         self.state_out: State | None = None
         self.state_in: State | None = None
         self.control: Control | None = None
         self.contacts: Contacts | None = None
         self._state_in_snapshot: State | None = None
 
-        # TODO Add check that the required extended attritubes are present in the builder
+        # TODO Add check that the required extended attributes are present in the builder
 
         # Ensure the model is configured for the expected rigid-contact capacity
         # and allocate the relevant state, control and contacts containers.
@@ -216,7 +224,6 @@ class SolverSetup:
             }
         self.logger = SolutionMetricsLogger(metrics=self.metrics, **kwargs_logger)
 
-
     ###
     # Operations
     ###
@@ -230,6 +237,45 @@ class SolverSetup:
         """TODO"""
         if self.control_cb is not None:
             self.control_cb(**kwargs)
+
+    def _log_verbose_state(self) -> None:
+        """Dump ``state_in`` body / joint arrays at ``info`` level. No-op unless ``verbose``."""
+        if not self.verbose:
+            return
+        msg.info("[%s] state_in.body_f:\n%s", self.name, self.state_in.body_f)
+        msg.info("[%s] state_in.body_q:\n%s", self.name, self.state_in.body_q)
+        msg.info("[%s] state_in.body_qd:\n%s", self.name, self.state_in.body_qd)
+        msg.info("[%s] state_in.joint_q: %s", self.name, self.state_in.joint_q)
+        msg.info("[%s] state_in.joint_qd: %s", self.name, self.state_in.joint_qd)
+
+    def _log_verbose_contacts(self) -> None:
+        """Dump the active rigid-contact slice of ``self.contacts``. No-op unless ``verbose``."""
+        if not self.verbose:
+            return
+        nc = int(self.contacts.rigid_contact_count.numpy()[0])
+        msg.info("[%s] contacts.count: %s", self.name, nc)
+        msg.info("[%s] contacts.margin0: %s", self.name, self.contacts.rigid_contact_margin0[:nc])
+        msg.info("[%s] contacts.margin1: %s", self.name, self.contacts.rigid_contact_margin1[:nc])
+        msg.info("[%s] contacts.point0:\n%s", self.name, self.contacts.rigid_contact_point0[:nc])
+        msg.info("[%s] contacts.point1:\n%s", self.name, self.contacts.rigid_contact_point1[:nc])
+        msg.info("[%s] contacts.normal:\n%s", self.name, self.contacts.rigid_contact_normal[:nc])
+        if self.contacts.force is not None:
+            msg.info("[%s] contacts.force:\n%s", self.name, self.contacts.force[:nc])
+
+    def _log_verbose_metrics(self) -> None:
+        """Dump the active slice of ``metrics._contacts`` (ContactsKamino). No-op unless ``verbose``."""
+        if not self.verbose:
+            return
+        # ``_contacts`` is private but stable enough for diagnostic logging;
+        # mirrors the sandbox comparison-example access path.
+        kcontacts = self.metrics._contacts
+        nc = int(kcontacts.model_active_contacts.numpy()[0])
+        msg.info("[%s] metrics.contacts.count: %s", self.name, nc)
+        msg.info("[%s] metrics.contacts.margins:\n%s", self.name, kcontacts.data.margins[:nc])
+        msg.info("[%s] metrics.contacts.position_A:\n%s", self.name, kcontacts.data.position_A[:nc])
+        msg.info("[%s] metrics.contacts.position_B:\n%s", self.name, kcontacts.data.position_B[:nc])
+        msg.info("[%s] metrics.contacts.gapfunc:\n%s", self.name, kcontacts.data.gapfunc[:nc])
+        msg.info("[%s] metrics.contacts.reaction:\n%s", self.name, kcontacts.data.reaction[:nc])
 
     def step(
         self,
@@ -263,6 +309,8 @@ class SolverSetup:
             _copy_contacts(contacts_in, self.contacts)
             state_p = self._state_in_snapshot
 
+        self._log_verbose_state()
+
         self.solver.step(
             state_in=self.state_in,
             state_out=self.state_out,
@@ -273,6 +321,8 @@ class SolverSetup:
 
         self.solver.update_contacts(contacts=self.contacts, state=self.state_in)
 
+        self._log_verbose_contacts()
+
         self.metrics.evaluate(
             state=self.state_out,
             state_p=state_p,
@@ -280,7 +330,11 @@ class SolverSetup:
             contacts=self.contacts,
         )
 
+        self._log_verbose_metrics()
+
         self.logger.log()
+        if self.solver_logger is not None:
+            self.solver_logger.log()
 
         # Standalone mode advances by swapping state_in/state_out so the next call
         # reads from the new post-step state. Non-standalone setups don't swap;
@@ -308,7 +362,6 @@ class SolverSetup:
         viewer.log_contacts(contacts_in, state_in)
 
 
-
 class SetupRunner:
     """Drives one or more :class:`SolverSetup` instances against a shared canonical state.
 
@@ -329,6 +382,7 @@ class SetupRunner:
         force_cb: Callable | None = None,
         fps: float = 50.0,
         sim_substeps: int = 20,
+        verbose: bool = False,
     ):
         """Construct a runner around a dict of solver setups.
 
@@ -348,6 +402,9 @@ class SetupRunner:
                 ``sim_dt = frame_dt / sim_substeps`` is the physical integration
                 step size. Each setup's solver should have been constructed with
                 this same ``sim_dt``.
+            verbose: When ``True``, sets ``setup.verbose = True`` on every setup so
+                every sub-step dumps state / contact / metrics diagnostics. Noisy;
+                pair with a low ``--num-frames`` value.
         """
         if leader not in setups:
             raise ValueError(f"leader {leader!r} not in setups: {list(setups)}")
@@ -359,6 +416,10 @@ class SetupRunner:
                 )
         if sim_substeps < 1:
             raise ValueError(f"sim_substeps must be >= 1, got {sim_substeps}")
+
+        if verbose:
+            for setup in setups.values():
+                setup.verbose = True
 
         self.setups: dict[str, SolverSetup] = setups
         self.leader_name: str = leader
@@ -443,7 +504,14 @@ class SetupRunner:
         self.viewer.end_frame()
 
     def test_final(self, problem_name: str = "comparison", output_path: str | None = None) -> None:
-        """Write a :meth:`SolutionMetricsLogger.plot_comparison` PDF for all setups.
+        """Write :meth:`SolutionMetricsLogger.plot_comparison` PDFs for the run.
+
+        Always emits ``<problem_name>_solvers.pdf`` comparing the front-end
+        :class:`SolutionMetricsNewton` of every setup. For any setup whose
+        ``solver_logger`` is populated (i.e. the solver exposes an internal
+        metrics object), also emits ``<problem_name>_<setup_name>.pdf``
+        comparing that solver's internal metrics against its own front-end
+        evaluator — a useful diagnostic for verifying the two paths agree.
 
         Args:
             problem_name: Used as both the filename stem and the default sub-directory
@@ -454,7 +522,20 @@ class SetupRunner:
         if output_path is None:
             output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output", problem_name)
         os.makedirs(output_path, exist_ok=True)
-        loggers = {name: setup.logger for name, setup in self.setups.items()}
+
+        front_end_loggers = {name: setup.logger for name, setup in self.setups.items()}
         SolutionMetricsLogger.plot_comparison(
-            loggers, filename=problem_name, path=output_path, ext="pdf", grid=True
+            front_end_loggers, filename=f"{problem_name}_solvers", path=output_path, ext="pdf", grid=True
         )
+
+        for name, setup in self.setups.items():
+            if setup.solver_logger is None:
+                continue
+            internal_vs_front_end = {"solver": setup.solver_logger, name: setup.logger}
+            SolutionMetricsLogger.plot_comparison(
+                internal_vs_front_end,
+                filename=f"{problem_name}_{name}",
+                path=output_path,
+                ext="pdf",
+                grid=True,
+            )

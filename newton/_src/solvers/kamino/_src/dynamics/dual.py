@@ -607,8 +607,6 @@ def _build_free_velocity_bias_contacts(
     cid_k = contacts_cid[tid]
     material_k = contacts_material[tid]
     distance_k = contacts_gapfunc[tid][3]
-    margins_AB_k = contacts_margins[tid]
-    margin_k = margins_AB_k[0] + margins_AB_k[1]
 
     # Retrieve the world-specific data
     inv_dt = model_time_inv_dt[wid_k]

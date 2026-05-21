@@ -11,7 +11,6 @@ Run with: python -m newton._src.solvers.kamino.benchmark [--problem box_on_plane
 import argparse
 
 import numpy as np
-import warp as wp
 
 import newton
 import newton.examples
@@ -36,6 +35,14 @@ def create_parser():
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Apply a time-dependent external force to the box. Only meaningful for --problem box_on_plane.",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help=(
+            "Log per-sub-step state, contact, and metrics diagnostics for every setup. "
+            "Very noisy with the default sim_substeps=20; pair with a small --num-frames."
+        ),
     )
     return parser
 
@@ -68,6 +75,7 @@ if __name__ == "__main__":
         force_cb=run.force_cb,
         fps=fps,
         sim_substeps=sim_substeps,
+        verbose=args.verbose,
     )
 
     # ``_paused`` only makes sense for ViewerGL; a headless/null run would freeze with no way to unpause.

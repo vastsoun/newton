@@ -91,6 +91,8 @@ def _add_ground_box(builder: ModelBuilder) -> None:
 
 def build_sphere_on_plane(
     builder: ModelBuilder | None = None,
+    radius: float = 0.1,
+    mass: float = 1.0,
     z_offset: float = 0.0,
     friction: float | None = None,
     restitution: float | None = None,
@@ -132,9 +134,9 @@ def build_sphere_on_plane(
     if new_world or builder is None:
         _builder.begin_world(label="box_on_plane")
 
-    # Add first body
-    r_i: float = 0.1
-    m_i: float = 1.0
+    # Add the sphere body
+    r_i: float = radius
+    m_i: float = mass
     i_I_i = inertia.compute_inertia_sphere_from_mass(mass=m_i, radius=r_i)
     xform = wp.transformf(0.0, 0.0, r_i + z_offset, 0.0, 0.0, 0.0, 1.0)
     bid0 = _builder.add_body(

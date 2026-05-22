@@ -504,14 +504,16 @@ def _compute_contact_velocities(
 
 @wp.kernel
 def _compute_contact_constraint_metrics(
-    # Inputs:
+    # Constants:
+    dt: wp.float32,
     rigid_contact_max: wp.int32,
+    # Inputs:
     shape_body: wp.array[wp.int32],
     shape_margin: wp.array[wp.float32],
     shape_material_mu: wp.array[wp.float32],
     body_com: wp.array[wp.vec3f],
-    body_q: wp.array[wp.transformf],
-    body_qd: wp.array[wp.spatial_vectorf],
+    body_q_minun: wp.array[wp.transformf],
+    body_qd_plus: wp.array[wp.spatial_vectorf],
     contact_count: wp.array[wp.int32],
     contact_shape0: wp.array[wp.int32],
     contact_shape1: wp.array[wp.int32],
@@ -578,15 +580,15 @@ def _compute_contact_constraint_metrics(
     X_body_0 = wp.transform_identity(dtype=wp.float32)
     if bid_0 >= 0:
         r_body_to_com_0 = body_com[bid_0]
-        u_body_0 = body_qd[bid_0]
-        X_body_0 = body_q[bid_0]
+        u_body_0 = body_qd_plus[bid_0]
+        X_body_0 = body_q_minun[bid_0]
     r_body_to_com_1 = wp.vec3f(0.0)
     u_body_1 = wp.spatial_vectorf(0.0)
     X_body_1 = wp.transform_identity(dtype=wp.float32)
     if bid_1 >= 0:
         r_body_to_com_1 = body_com[bid_1]
-        u_body_1 = body_qd[bid_1]
-        X_body_1 = body_q[bid_1]
+        u_body_1 = body_qd_plus[bid_1]
+        X_body_1 = body_q_minun[bid_1]
 
     # Retrieve the spatial contact force, i.e. wrench, applied by body1 onto
     # body0, referenced to the COM of body0, expressed in world frame
@@ -601,45 +603,70 @@ def _compute_contact_constraint_metrics(
     v_body_com_1 = wp.spatial_top(u_body_1)
     omega_body_0 = wp.spatial_bottom(u_body_0)
     omega_body_1 = wp.spatial_bottom(u_body_1)
+    wp.printf("[%d] v_body_com_0: [%.9f, %.9f, %.9f]\n", cid, v_body_com_0[0], v_body_com_0[1], v_body_com_0[2])
+    wp.printf("[%d] v_body_com_1: [%.9f, %.9f, %.9f]\n", cid, v_body_com_1[0], v_body_com_1[1], v_body_com_1[2])
+    wp.printf("[%d] omega_body_0: [%.9f, %.9f, %.9f]\n", cid, omega_body_0[0], omega_body_0[1], omega_body_0[2])
+    wp.printf("[%d] omega_body_1: [%.9f, %.9f, %.9f]\n", cid, omega_body_1[0], omega_body_1[1], omega_body_1[2])
 
     # Compute the contact points in world frame
     r_c_0 = wp.transform_point(X_body_0, r_bc_0_local + r_bc_0_offset)
     r_c_1 = wp.transform_point(X_body_1, r_bc_1_local + r_bc_1_offset)
+    wp.printf("[%d] r_c_0: [%.9f, %.9f, %.9f]\n", cid, r_c_0[0], r_c_0[1], r_c_0[2])
+    wp.printf("[%d] r_c_1: [%.9f, %.9f, %.9f]\n", cid, r_c_1[0], r_c_1[1], r_c_1[2])
+
+    dr_c_01 = r_c_1 - r_c_0
+    wp.printf("[%d] dr_c_01: [%.9f, %.9f, %.9f]\n", cid, dr_c_01[0], dr_c_01[1], dr_c_01[2])
 
     # Compute the world-frame body COM positions used below as the reference
     # points for the per-body twists stored in ``body_qd``.
     r_com_0_world = wp.transform_point(X_body_0, r_body_to_com_0)
     r_com_1_world = wp.transform_point(X_body_1, r_body_to_com_1)
+    wp.printf("[%d] r_com_0_world: [%.9f, %.9f, %.9f]\n", cid, r_com_0_world[0], r_com_0_world[1], r_com_0_world[2])
+    wp.printf("[%d] r_com_1_world: [%.9f, %.9f, %.9f]\n", cid, r_com_1_world[0], r_com_1_world[1], r_com_1_world[2])
 
     # Reconstruct signed contact distance
     d_01 = wp.dot(r_c_1 - r_c_0, n_01) - (margin_0 + margin_1)
+    wp.printf("[%d] d_01: %.9f\n", cid, d_01)
 
-    # Skip if the contact distance is positive, i.e. no penetration
-    if d_01 > 0.0:
-        return
+    # # Skip if the contact distance is positive, i.e. no penetration
+    # # TODO: FIX LOGIC WRT TO MARGINS AND GAP
+    # if d_01 > 0.0:
+    #     return
 
     # Compute the velocity of the contact on each body.
     v_c_0 = v_body_com_0 + wp.cross(omega_body_0, r_c_0 - r_com_0_world)
     v_c_1 = v_body_com_1 + wp.cross(omega_body_1, r_c_1 - r_com_1_world)
+    wp.printf("[%d] v_c_0: [%.9f, %.9f, %.9f]\n", cid, v_c_0[0], v_c_0[1], v_c_0[2])
+    wp.printf("[%d] v_c_1: [%.9f, %.9f, %.9f]\n", cid, v_c_1[0], v_c_1[1], v_c_1[2])
 
     # Compute the relative velocity of the contact on each body
     v_01 = v_c_1 - v_c_0
     # TODO (torsional friction): omega_01 = omega_body_1 - omega_body_0
+    wp.printf("[%d] v_01: [%.9f, %.9f, %.9f]\n", cid, v_01[0], v_01[1], v_01[2])
 
     # Invert the signs to represent the force applied by body0
     # onto body1 and decompose it into linear and angular parts
     f_01 = -wp.spatial_top(w_10_ref_to_0)
     # TODO (torsional friction): tau_01_ref_to_0 = -wp.spatial_bottom(w_10_ref_to_0)
+    wp.printf("[%d] f_01: [%.9f, %.9f, %.9f]\n", cid, f_01[0], f_01[1], f_01[2])
 
     # Rotate the linear velocity and force into the contact frame.
     v_c = wp.quat_rotate_inv(q_contact, v_01)
     f_c = wp.quat_rotate_inv(q_contact, f_01)
+    wp.printf("[%d] v_c: [%.9f, %.9f, %.9f]\n", cid, v_c[0], v_c[1], v_c[2])
+    wp.printf("[%d] f_c: [%.9f, %.9f, %.9f]\n", cid, f_c[0], f_c[1], f_c[2])
+
+    # Convert the contact force to an impulse
+    f_c *= dt
+    wp.printf("[%d] f_c (impulse): [%.9f, %.9f, %.9f]\n", cid, f_c[0], f_c[1], f_c[2])
 
     # Compute the De Saxce correction
     s = wp.vec3f(0.0, 0.0, mu_01 * wp.length(v_c[0:2]))
+    wp.printf("[%d] s: [%.9f, %.9f, %.9f]\n", cid, s[0], s[1], s[2])
 
     # Compute the augmented contact velocity
     v_c_aug = v_c + s
+    wp.printf("[%d] v_c_aug: [%.9f, %.9f, %.9f]\n", cid, v_c_aug[0], v_c_aug[1], v_c_aug[2])
 
     # ---------------------------------------------------------
     # Contact residuals
@@ -676,6 +703,7 @@ def _compute_contact_constraint_metrics(
     # where `lambda` is the vector of all constraint reactions (i.e. Lagrange multipliers),
     # and `v_hat^+` is the augmented constraint-space velocity defined above.
     r_ncp_compl = wp.abs(wp.dot(f_c, v_c_aug))
+    wp.printf("[%d] r_ncp_compl: %.9f\n\n", cid, r_ncp_compl)
 
     # Compute the contact VI natural-map
     # Computed as the maximum absolute value (i.e. infinity-norm) over the residual:
@@ -820,9 +848,11 @@ def compute_contact_velocities(
 
 def compute_contact_constraint_metrics(
     model: Model,
-    state: State,
+    state_minus: State,
+    state_plus: State,
     contacts: Contacts,
     metrics: PhysicsMetrics,
+    dt: float,
 ):
     """
     Computes the contact constraint residuals for the given model and state.
@@ -832,8 +862,14 @@ def compute_contact_constraint_metrics(
         raise ValueError(
             f"Model and contacts must be on the same device but are on {model.device} and {contacts.device}."
         )
-    if model.device != state.device:
-        raise ValueError(f"Model and state must be on the same device but are on {model.device} and {state.device}.")
+    if model.device != state_minus.device:
+        raise ValueError(
+            f"Model and state_minus must be on the same device but are on {model.device} and {state_minus.device}."
+        )
+    if model.device != state_plus.device:
+        raise ValueError(
+            f"Model and state_plus must be on the same device but are on {model.device} and {state_plus.device}."
+        )
 
     # Ensure the contacts force array is present
     if contacts.force is None:
@@ -854,13 +890,14 @@ def compute_contact_constraint_metrics(
         kernel=_compute_contact_constraint_metrics,
         dim=contacts.rigid_contact_max,
         inputs=[
+            wp.float32(dt),
             wp.int32(contacts.rigid_contact_max),
             model.shape_body,
             model.shape_margin,
             model.shape_material_mu,
             model.body_com,
-            state.body_q,
-            state.body_qd,
+            state_minus.body_q,
+            state_plus.body_qd,
             contacts.rigid_contact_count,
             contacts.rigid_contact_shape0,
             contacts.rigid_contact_shape1,

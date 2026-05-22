@@ -679,8 +679,8 @@ def _compute_contact_constraint_metrics(
 
     # Compute the contact VI natural-map
     # Computed as the maximum absolute value (i.e. infinity-norm) over the residual:
-    # `r_vi_natmapv_hat(lambda) = || lambda - P_K*(lambda - v_hat^+(lambda)) ||_inf`,
-    # where `P_K*()` is the Euclidean projection, i.e. proximal operator, onto K*,
+    # `r_vi_natmapv_hat(lambda) = || lambda - P_K(lambda - v_hat^+(lambda)) ||_inf`,
+    # where `P_K()` is the Euclidean projection, i.e. proximal operator, onto K,
     # `lambda` is the vector of all constraint reactions (i.e. Lagrange multipliers),
     # and `v_hat^+(lambda)` is the augmented constraint-space velocity defined above.
     r_vi_natmap = infnorm3(f_c - project_to_coulomb_cone(f_c - v_c_aug, mu_01))

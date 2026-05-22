@@ -122,7 +122,7 @@ _METRIC_EQUATIONS: dict[str, str] = {
     "r_ncp_primal": r"$\Vert \, \lambda - P_K(\lambda) \, \Vert_\infty $",
     "r_ncp_dual": r"$\Vert \, v_a^+ - P_{K^*}(v_a^+) \, \Vert_\infty $",
     "r_ncp_compl": r"$\Vert \, \lambda^T \, v_a^+ \, \Vert_\infty $",
-    "r_vi_natmap": r"$\Vert \, \lambda - P_{K^*}(\lambda - v_a^+(\lambda)) \, \Vert_\infty $",
+    "r_vi_natmap": r"$\Vert \, \lambda - P_{K}(\lambda - v_a^+(\lambda)) \, \Vert_\infty $",
 }
 
 # Color palette for cross-setup overlay plots, cycled if more than 8 setups.

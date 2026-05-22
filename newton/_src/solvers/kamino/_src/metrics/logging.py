@@ -143,7 +143,7 @@ _METRIC_EQUATIONS: dict[str, str] = {
     "r_ncp_primal": r"$\Vert \, \lambda - P_K(\lambda) \, \Vert_\infty $",
     "r_ncp_dual": r"$\Vert \, v_a^+ - P_{K^*}(v_a^+) \, \Vert_\infty $",
     "r_ncp_compl": r"$\Vert \, \lambda^T \, v_a^+ \, \Vert_\infty $",
-    "r_vi_natmap": r"$\Vert \, \lambda - P_{K^*}(\lambda - v_a^+(\lambda)) \, \Vert_\infty $",
+    "r_vi_natmap": r"$\Vert \, \lambda - P_{K}(\lambda - v_a^+(\lambda)) \, \Vert_\infty $",
     "f_ncp": r"$ 0.5 \, \lambda^T \, D \, \lambda + \lambda^T \, (v_f + s) $",
     "f_ccp": r"$ 0.5 \, \lambda^T \, D \, \lambda + v_f^T \, \lambda $",
 }

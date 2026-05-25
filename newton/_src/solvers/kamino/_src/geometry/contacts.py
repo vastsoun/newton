@@ -853,11 +853,13 @@ def make_convert_contacts_newton_to_kamino_kernel(allow_positive_distance: bool 
         newton_count: wp.array[wp.int32],
         newton_shape0: wp.array[wp.int32],
         newton_shape1: wp.array[wp.int32],
+        newton_margin0: wp.array[wp.float32],
+        newton_margin1: wp.array[wp.float32],
+        newton_offset0: wp.array[wp.vec3f],
+        newton_offset1: wp.array[wp.vec3f],
         newton_point0: wp.array[wp.vec3f],
         newton_point1: wp.array[wp.vec3f],
         newton_normal: wp.array[wp.vec3f],
-        newton_margin0: wp.array[wp.float32],
-        newton_margin1: wp.array[wp.float32],
         newton_force: wp.array[wp.spatial_vectorf],
         shape_body: wp.array[wp.int32],
         shape_world: wp.array[wp.int32],
@@ -935,8 +937,8 @@ def make_convert_contacts_newton_to_kamino_kernel(allow_positive_distance: bool 
         X_1 = wp.transform_identity()
         if bid_1 >= 0:
             X_1 = body_q[bid_1]
-        r_0 = wp.transform_point(X_0, newton_point0[cid])
-        r_1 = wp.transform_point(X_1, newton_point1[cid])
+        r_0 = wp.transform_point(X_0, newton_point0[cid] + newton_offset0[cid])
+        r_1 = wp.transform_point(X_1, newton_point1[cid] + newton_offset1[cid])
 
         # Newton normal points from shape0 → shape1 (A → B).
         # Kamino convention: normal points A → B, with bid_B >= 0.
@@ -1053,6 +1055,8 @@ def _convert_active_contacts_kamino_to_newton(
     newton_shape1: wp.array[wp.int32],
     newton_margin0: wp.array[wp.float32],
     newton_margin1: wp.array[wp.float32],
+    newton_offset0: wp.array[wp.vec3f],
+    newton_offset1: wp.array[wp.vec3f],
     newton_point0: wp.array[wp.vec3f],
     newton_point1: wp.array[wp.vec3f],
     newton_normal: wp.array[wp.vec3f],
@@ -1119,6 +1123,8 @@ def _convert_active_contacts_kamino_to_newton(
     newton_point1[cid_out] = wp.transform_point(X_inv_1, r_1)
     newton_margin0[cid_out] = margin_0
     newton_margin1[cid_out] = margin_1
+    newton_offset0[cid_out] = wp.vec3f(0.0)
+    newton_offset1[cid_out] = wp.vec3f(0.0)
 
     # Optional contact wrench in Newton's convention: wrench on body0 by body1
     # at the CoM of body0 in world. The active path writes body0 = Kamino A,
@@ -1341,11 +1347,13 @@ def convert_contacts_newton_to_kamino(
             contacts_in.rigid_contact_count,
             contacts_in.rigid_contact_shape0,
             contacts_in.rigid_contact_shape1,
+            contacts_in.rigid_contact_margin0,
+            contacts_in.rigid_contact_margin1,
+            contacts_in.rigid_contact_offset0,
+            contacts_in.rigid_contact_offset1,
             contacts_in.rigid_contact_point0,
             contacts_in.rigid_contact_point1,
             contacts_in.rigid_contact_normal,
-            contacts_in.rigid_contact_margin0,
-            contacts_in.rigid_contact_margin1,
             contacts_in_force,
             model.shape_body,
             model.shape_world,
@@ -1497,6 +1505,8 @@ def convert_contacts_kamino_to_newton(
                 contacts_out.rigid_contact_shape1,
                 contacts_out.rigid_contact_margin0,
                 contacts_out.rigid_contact_margin1,
+                contacts_out.rigid_contact_offset0,
+                contacts_out.rigid_contact_offset1,
                 contacts_out.rigid_contact_point0,
                 contacts_out.rigid_contact_point1,
                 contacts_out.rigid_contact_normal,

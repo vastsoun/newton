@@ -206,9 +206,14 @@ def make_setup_solver_kamino(asset_file: str, dt: float, max_frames: int) -> Sol
     builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
     builder.request_state_attributes("body_parent_f")
     builder.request_contact_attributes("force")
+    builder.default_shape_cfg.margin = 0.0
+    builder.default_shape_cfg.gap = 0.0
     builder.add_world(robot_builder)
     builder.add_ground_plane()
     model = builder.finalize(skip_validation_joints=True)
+    model.rigid_contact_max = 46
+    msg.warning("model.shape_gap: %s", model.shape_gap)
+    msg.warning("model.shape_margin: %s", model.shape_margin)
     solver_config = newton.solvers.SolverKamino.Config.from_model(model)
     solver_config.padmm.primal_tolerance = 1e-4
     solver_config.padmm.dual_tolerance = 1e-4
@@ -216,6 +221,9 @@ def make_setup_solver_kamino(asset_file: str, dt: float, max_frames: int) -> Sol
     solver_config.padmm.max_iterations = 200
     solver_config.padmm.rho_0 = 0.1
     solver_config.padmm.warmstart_mode = "none"
+    solver_config.constraints.gamma = 0.0
+    solver_config.constraints.delta = 1e-4
+    solver_config.dynamics.preconditioning = False
     solver = newton.solvers.SolverKamino(model=model, config=solver_config)
     # metrics = SolutionMetricsNewton(
     #    dt=dt,
@@ -245,6 +253,8 @@ def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int) -> Sol
     articulation_builder.default_joint_cfg = newton.ModelBuilder.JointDofConfig(
         limit_ke=1.0e3, limit_kd=1.0e1, friction=1e-5
     )
+    articulation_builder.default_shape_cfg.margin = 0.0
+    articulation_builder.default_shape_cfg.gap = 0.0
     articulation_builder.default_shape_cfg.ke = 6.0e3
     articulation_builder.default_shape_cfg.kd = 1.6e2
     articulation_builder.default_shape_cfg.kf = 1.0e3
@@ -260,6 +270,8 @@ def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int) -> Sol
     builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
     builder.request_state_attributes("body_parent_f")
     builder.request_contact_attributes("force")
+    builder.default_shape_cfg.margin = 0.0
+    builder.default_shape_cfg.gap = 0.0
     builder.add_world(articulation_builder)
     builder.default_shape_cfg.ke = 6.0e3
     builder.default_shape_cfg.kd = 1.6e2
@@ -267,6 +279,9 @@ def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int) -> Sol
     builder.default_shape_cfg.mu_torsional = 0.0
     builder.add_ground_plane()
     model = builder.finalize()
+    model.rigid_contact_max = 46
+    msg.warning("model.shape_gap: %s", model.shape_gap)
+    msg.warning("model.shape_margin: %s", model.shape_margin)
     solver = newton.solvers.SolverMuJoCo(
         model,
         cone="elliptic",
@@ -304,6 +319,8 @@ def make_setup_solver_xpbd(asset_file: str, dt: float, max_frames: int) -> Solve
     articulation_builder.default_joint_cfg = newton.ModelBuilder.JointDofConfig(
         limit_ke=1.0e3, limit_kd=1.0e1, friction=1e-5
     )
+    articulation_builder.default_shape_cfg.margin = 0.0
+    articulation_builder.default_shape_cfg.gap = 0.0
     articulation_builder.default_shape_cfg.ke = 2.0e3
     articulation_builder.default_shape_cfg.kd = 1.0e2
     articulation_builder.default_shape_cfg.kf = 1.0e3
@@ -320,8 +337,13 @@ def make_setup_solver_xpbd(asset_file: str, dt: float, max_frames: int) -> Solve
     builder.add_world(articulation_builder)
     builder.default_shape_cfg.ke = 1.0e3
     builder.default_shape_cfg.kd = 1.0e2
+    builder.default_shape_cfg.margin = 0.0
+    builder.default_shape_cfg.gap = 0.0
     builder.add_ground_plane()
     model = builder.finalize()
+    model.rigid_contact_max = 46
+    msg.warning("model.shape_gap: %s", model.shape_gap)
+    msg.warning("model.shape_margin: %s", model.shape_margin)
     solver = newton.solvers.SolverXPBD(
         model,
         iterations=20,

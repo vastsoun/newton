@@ -133,7 +133,7 @@ def build_sphere_on_plane(
 
     # Begin a new world in the builder if requested or if a new builder was created
     if new_world or builder is None:
-        _builder.begin_world(label="box_on_plane")
+        _builder.begin_world(label="sphere_on_plane")
 
     # Add the sphere body
     r_i: float = radius
@@ -228,7 +228,7 @@ def build_stack_spheres_on_plane(
 
     # Begin a new world in the builder if requested or if a new builder was created
     if new_world or builder is None:
-        _builder.begin_world(label="box_on_plane")
+        _builder.begin_world(label="stack_spheres_on_plane")
 
     # Ensure there is at least one sphere
     if num_spheres < 1:
@@ -332,7 +332,7 @@ def build_newtons_cradle_in_zero_g(
 
     # Begin a new world in the builder if requested or if a new builder was created
     if new_world or builder is None:
-        _builder.begin_world(label="box_on_plane")
+        _builder.begin_world(label="newtons_cradle_in_zero_g")
 
     # Disable gravity in the world
     _builder.gravity = 0.0

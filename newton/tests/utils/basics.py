@@ -184,6 +184,235 @@ def build_sphere_on_plane(
     return _builder
 
 
+def build_stack_spheres_on_plane(
+    builder: ModelBuilder | None = None,
+    num_spheres: int = 2,
+    radius: float = 0.1,
+    mass: float = 1.0,
+    z_offset: float = 0.0,
+    friction: float | None = None,
+    restitution: float | None = None,
+    ground: bool = True,
+    new_world: bool = True,
+    use_custom_shape_cfg: bool = False,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a free-floating 'box' body and a ground box geom.
+
+    Args:
+        builder (ModelBuilder | None):
+            An optional existing model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float):
+            A vertical offset to apply to the initial position of the box.
+        ground (bool):
+            Whether to add a static ground plane to the model.
+        new_world (bool):
+            Whether to begin a new world in the builder for this model.\n
+            If `True` (or `builder` is `None`), the model is wrapped in a new world context
+            opened via :meth:`ModelBuilder.begin_world` and closed via
+            :meth:`ModelBuilder.end_world`.\n
+            If `False`, the caller must already be inside an active world; the model is then
+            added to that currently active world.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    from newton._src.geometry import inertia  # noqa: PLC0415
+
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder()
+    else:
+        _builder = builder
+
+    # Begin a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        _builder.begin_world(label="box_on_plane")
+
+    # Ensure there is at least one sphere
+    if num_spheres < 1:
+        raise ValueError("num_spheres must be at least 1")
+
+    # Use custom shape config if requested
+    custom_shape_cfg = (
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
+        if use_custom_shape_cfg
+        else _builder.default_shape_cfg
+    )
+
+    # Add the sphere bodies
+    r_i: float = radius
+    m_i: float = mass
+    i_I_i = inertia.compute_inertia_sphere_from_mass(mass=m_i, radius=r_i)
+    for i in range(num_spheres):
+        # Calculate the position of the sphere
+        x = 0.0
+        y = 0.0
+        z = z_offset + r_i + i * (2 * r_i)
+        # Create the sphere body
+        xform = wp.transformf(x, y, z, 0.0, 0.0, 0.0, 1.0)
+        bid_i = _builder.add_body(
+            label=f"sphere_{i}",
+            mass=m_i,
+            inertia=i_I_i,
+            xform=xform,
+            lock_inertia=True,
+        )
+        # Add collision geometries
+        _builder.add_shape_sphere(
+            label=f"sphere_geom_{i}",
+            body=bid_i,
+            radius=r_i,
+            cfg=custom_shape_cfg,
+        )
+
+    # Add a static collision geometry for the plane
+    if ground:
+        _builder.add_ground_plane(
+            cfg=custom_shape_cfg,
+            label="ground",
+            height=0.0,
+        )
+
+    # Close the world context if we opened one
+    if new_world or builder is None:
+        _builder.end_world()
+
+    # Return the populated model builder
+    return _builder
+
+
+def build_newtons_cradle_in_zero_g(
+    builder: ModelBuilder | None = None,
+    num_spheres: int = 4,
+    radius: float = 0.1,
+    mass: float = 1.0,
+    z_offset: float = 0.0,
+    friction: float | None = None,
+    restitution: float | None = None,
+    ground: bool = False,
+    new_world: bool = True,
+    use_custom_shape_cfg: bool = False,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a free-floating 'box' body and a ground box geom.
+
+    Args:
+        builder (ModelBuilder | None):
+            An optional existing model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float):
+            A vertical offset to apply to the initial position of the box.
+        ground (bool):
+            Whether to add a static ground plane to the model.
+        new_world (bool):
+            Whether to begin a new world in the builder for this model.\n
+            If `True` (or `builder` is `None`), the model is wrapped in a new world context
+            opened via :meth:`ModelBuilder.begin_world` and closed via
+            :meth:`ModelBuilder.end_world`.\n
+            If `False`, the caller must already be inside an active world; the model is then
+            added to that currently active world.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    from newton._src.geometry import inertia  # noqa: PLC0415
+
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder()
+    else:
+        _builder = builder
+
+    # Begin a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        _builder.begin_world(label="box_on_plane")
+
+    # Disable gravity in the world
+    _builder.gravity = 0.0
+
+    # Ensure there is at least one sphere
+    if num_spheres < 1:
+        raise ValueError("num_spheres must be at least 1")
+
+    # Use custom shape config if requested
+    custom_shape_cfg = (
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
+        if use_custom_shape_cfg
+        else _builder.default_shape_cfg
+    )
+
+    # Model constants
+    r_i: float = radius
+    m_i: float = mass
+    i_I_i = inertia.compute_inertia_sphere_from_mass(mass=m_i, radius=r_i)
+
+    # Add the impacting sphere body
+    bid_impacting = _builder.add_body(
+        label="impacting_sphere",
+        mass=m_i,
+        inertia=i_I_i,
+        xform=wp.transformf(-0.5, 0.0, z_offset, 0.0, 0.0, 0.0, 1.0),
+        lock_inertia=True,
+    )
+    # Add collision geometries
+    _builder.add_shape_sphere(
+        label="impacting_sphere_geom",
+        body=bid_impacting,
+        radius=r_i,
+        cfg=custom_shape_cfg,
+    )
+
+    # Add the sphere stack bodies
+    for i in range(num_spheres):
+        # Calculate the position of the sphere
+        x = r_i + i * (2 * r_i)
+        z = z_offset
+        y = 0.0
+        # Create the sphere body
+        xform = wp.transformf(x, y, z, 0.0, 0.0, 0.0, 1.0)
+        bid_i = _builder.add_body(
+            label=f"sphere_{i + 1}",
+            mass=m_i,
+            inertia=i_I_i,
+            xform=xform,
+            lock_inertia=True,
+        )
+        # Add collision geometries
+        _builder.add_shape_sphere(
+            label=f"sphere_geom_{i + 1}",
+            body=bid_i,
+            radius=r_i,
+            cfg=custom_shape_cfg,
+        )
+
+    # Add a static collision geometry for the plane
+    if ground:
+        _builder.add_ground_plane(
+            cfg=custom_shape_cfg,
+            label="ground",
+            height=0.0,
+        )
+
+    # Close the world context if we opened one
+    if new_world or builder is None:
+        _builder.end_world()
+
+    # Return the populated model builder
+    return _builder
+
+
 def build_box_on_plane(
     builder: ModelBuilder | None = None,
     z_offset: float = 0.0,

@@ -25,6 +25,8 @@ Coverage:
 
 from __future__ import annotations
 
+import csv
+import importlib.util
 import unittest
 
 import numpy as np
@@ -42,6 +44,8 @@ from newton._src.solvers.kamino.benchmark.logging import (
 )
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton.tests.utils import basics
+
+_RICH_AVAILABLE = importlib.util.find_spec("rich") is not None
 
 ###
 # Constants
@@ -146,6 +150,13 @@ def _populate_uniform_floats(setup: _LoggerTestSetup, scalar: float) -> None:
     """Writes ``scalar`` into every per-world float summary field."""
     for field in _SCALAR_FIELDS:
         setup.assign_per_world(field, np.full(setup.num_worlds, scalar, dtype=np.float32))
+
+
+def _populate_per_world_floats(setup: _LoggerTestSetup, values: np.ndarray) -> None:
+    """Writes ``values`` (shape ``(num_worlds,)``) into every per-world float summary field."""
+    arr = values.astype(np.float32, copy=False)
+    for field in _SCALAR_FIELDS:
+        setup.assign_per_world(field, arr)
 
 
 ###
@@ -646,6 +657,296 @@ class TestPhysicsMetricsLogger(unittest.TestCase):
             setup.logger.log()
         ts = setup.logger.time_axis()
         np.testing.assert_allclose(ts, np.arange(ts.shape[0]) * 2, atol=0.0)
+
+    ###
+    # Tables
+    ###
+
+    def _drive_logger(
+        self,
+        setup: _LoggerTestSetup,
+        n_frames: int,
+        scale_world_0: float = 1.0,
+        offset_world_0: float = 0.0,
+        scale_world_1: float = 1.0,
+        offset_world_1: float = 0.0,
+    ) -> np.ndarray:
+        """Populates ``setup`` with per-frame per-world distinct floats.
+
+        Returns the ``(n_frames, num_worlds)`` ground-truth array so the
+        test can compute exact ``min/max/mean`` references against the CSV
+        output.
+        """
+        all_values = np.zeros((n_frames, setup.num_worlds), dtype=np.float32)
+        for k in range(n_frames):
+            if setup.num_worlds == 1:
+                vals = np.array([scale_world_0 * k + offset_world_0], dtype=np.float32)
+            else:
+                vals = np.array(
+                    [
+                        scale_world_0 * k + offset_world_0,
+                        scale_world_1 * k + offset_world_1,
+                    ],
+                    dtype=np.float32,
+                )
+            _populate_per_world_floats(setup, vals)
+            setup.logger.log()
+            all_values[k] = vals
+        return all_values
+
+    def test_table_csv_aggregate(self):
+        """``table(per_world=False)`` writes one CSV row per metric with global stats."""
+        setup = _LoggerTestSetup(max_frames=5, num_worlds=2, device=self.default_device)
+        all_values = self._drive_logger(
+            setup,
+            n_frames=5,
+            scale_world_0=1.0,
+            offset_world_0=0.0,
+            scale_world_1=1.0,
+            offset_world_1=10.0,
+        )
+
+        filename = "test_table_csv_aggregate"
+        csv_path = self.output_path / f"{filename}.csv"
+        if csv_path.exists():
+            csv_path.unlink()
+
+        setup.logger.table(filename=filename, path=str(self.output_path), per_world=False)
+
+        self.assertTrue(csv_path.is_file(), msg=f"Expected CSV at {csv_path}")
+        with open(csv_path, encoding="utf-8", newline="") as f:
+            reader = csv.reader(f)
+            header = next(reader)
+            rows = list(reader)
+
+        self.assertEqual(header, ["Metric", "max", "mean"])
+        self.assertEqual(len(rows), len(_SCALAR_FIELDS))
+
+        expected_max = float(all_values.max())
+        expected_mean = float(all_values.mean())
+        observed_fields = {row[0] for row in rows}
+        self.assertEqual(observed_fields, set(_SCALAR_FIELDS))
+        for row in rows:
+            self.assertAlmostEqual(float(row[1]), expected_max, places=5)
+            self.assertAlmostEqual(float(row[2]), expected_mean, places=5)
+
+    def test_table_csv_per_world(self):
+        """``table(per_world=True)`` writes one CSV row per ``(world, metric)`` with per-world stats."""
+        setup = _LoggerTestSetup(max_frames=4, num_worlds=2, device=self.default_device)
+        all_values = self._drive_logger(
+            setup,
+            n_frames=4,
+            scale_world_0=1.0,
+            offset_world_0=0.0,
+            scale_world_1=2.0,
+            offset_world_1=5.0,
+        )
+
+        filename = "test_table_csv_per_world"
+        csv_path = self.output_path / f"{filename}.csv"
+        if csv_path.exists():
+            csv_path.unlink()
+
+        setup.logger.table(filename=filename, path=str(self.output_path), per_world=True)
+
+        self.assertTrue(csv_path.is_file(), msg=f"Expected CSV at {csv_path}")
+        with open(csv_path, encoding="utf-8", newline="") as f:
+            reader = csv.reader(f)
+            header = next(reader)
+            rows = list(reader)
+
+        self.assertEqual(header, ["World", "Metric", "max", "mean"])
+        self.assertEqual(len(rows), len(_SCALAR_FIELDS) * setup.num_worlds)
+        for row in rows:
+            world_token, field, mx, mean = row
+            self.assertIn(field, _SCALAR_FIELDS)
+            self.assertTrue(world_token.startswith("world_"))
+            w = int(world_token.split("_")[1])
+            self.assertAlmostEqual(float(mx), float(all_values[:, w].max()), places=5)
+            self.assertAlmostEqual(float(mean), float(all_values[:, w].mean()), places=5)
+
+    def test_table_console_smoke(self):
+        """``table(to_console=True)`` renders a rich table to stdout without raising."""
+        if not _RICH_AVAILABLE:
+            self.skipTest("rich is not available")
+
+        setup = _LoggerTestSetup(max_frames=4, num_worlds=2, device=self.default_device)
+        self._drive_logger(setup, n_frames=3, scale_world_1=2.0)
+        setup.logger.table(to_console=True, per_world=False)
+        setup.logger.table(to_console=True, per_world=True)
+
+    def test_table_warns_with_no_frames(self):
+        """``table()`` on a brand-new logger warns and writes no CSV file."""
+        setup = _LoggerTestSetup(max_frames=4, num_worlds=2, device=self.default_device)
+        filename = "test_table_warns_with_no_frames"
+        csv_path = self.output_path / f"{filename}.csv"
+        if csv_path.exists():
+            csv_path.unlink()
+
+        setup.logger.table(filename=filename, path=str(self.output_path))
+
+        self.assertFalse(csv_path.exists(), msg=f"CSV should not exist for empty logger at {csv_path}")
+
+    def test_table_warns_when_no_output_target(self):
+        """``table()`` with neither ``path`` nor ``to_console`` set must warn and return."""
+        setup = _LoggerTestSetup(max_frames=4, num_worlds=2, device=self.default_device)
+        self._drive_logger(setup, n_frames=3)
+        # Should not raise; just warn and return.
+        setup.logger.table(path=None, to_console=False)
+
+    def test_table_invalid_path_raises(self):
+        """``table(path=<nonexistent>)`` must raise ``ValueError``."""
+        setup = _LoggerTestSetup(max_frames=4, num_worlds=2, device=self.default_device)
+        self._drive_logger(setup, n_frames=2)
+        missing = self.output_path / "this_subdir_does_not_exist"
+        if missing.exists():
+            self.skipTest("expected non-existent path actually exists; skipping")
+        with self.assertRaises(ValueError):
+            setup.logger.table(filename="anything", path=str(missing))
+
+    def test_table_comparison_csv_aggregate(self):
+        """``table_comparison(per_world=False)`` produces a two-row header CSV with both loggers' stats."""
+        setup_a = _LoggerTestSetup(max_frames=5, num_worlds=2, device=self.default_device)
+        setup_b = _LoggerTestSetup(max_frames=5, num_worlds=2, device=self.default_device)
+        all_a = self._drive_logger(setup_a, n_frames=4, scale_world_1=1.0, offset_world_1=1.0)
+        all_b = self._drive_logger(
+            setup_b,
+            n_frames=4,
+            scale_world_0=2.0,
+            offset_world_0=0.0,
+            scale_world_1=3.0,
+            offset_world_1=0.0,
+        )
+
+        filename = "test_table_comparison_csv_aggregate"
+        csv_path = self.output_path / f"{filename}.csv"
+        if csv_path.exists():
+            csv_path.unlink()
+
+        PhysicsMetricsLogger.table_comparison(
+            loggers={"setup_a": setup_a.logger, "setup_b": setup_b.logger},
+            filename=filename,
+            path=str(self.output_path),
+            per_world=False,
+        )
+
+        self.assertTrue(csv_path.is_file(), msg=f"Expected CSV at {csv_path}")
+        with open(csv_path, encoding="utf-8", newline="") as f:
+            reader = csv.reader(f)
+            top_header = next(reader)
+            sub_header = next(reader)
+            rows = list(reader)
+
+        self.assertEqual(top_header, ["", "setup_a", "", "setup_b", ""])
+        self.assertEqual(sub_header, ["Metric", "max", "mean", "max", "mean"])
+        self.assertEqual(len(rows), len(_SCALAR_FIELDS))
+        for row in rows:
+            self.assertIn(row[0], _SCALAR_FIELDS)
+            self.assertAlmostEqual(float(row[1]), float(all_a.max()), places=5)
+            self.assertAlmostEqual(float(row[2]), float(all_a.mean()), places=5)
+            self.assertAlmostEqual(float(row[3]), float(all_b.max()), places=5)
+            self.assertAlmostEqual(float(row[4]), float(all_b.mean()), places=5)
+
+    def test_table_comparison_csv_per_world(self):
+        """``table_comparison(per_world=True)`` produces per-``(world, metric)`` rows with per-world stats per logger."""
+        setup_a = _LoggerTestSetup(max_frames=4, num_worlds=2, device=self.default_device)
+        setup_b = _LoggerTestSetup(max_frames=4, num_worlds=2, device=self.default_device)
+        all_a = self._drive_logger(setup_a, n_frames=3, scale_world_1=2.0)
+        all_b = self._drive_logger(setup_b, n_frames=3, scale_world_0=2.0, scale_world_1=3.0)
+
+        filename = "test_table_comparison_csv_per_world"
+        csv_path = self.output_path / f"{filename}.csv"
+        if csv_path.exists():
+            csv_path.unlink()
+
+        PhysicsMetricsLogger.table_comparison(
+            loggers={"setup_a": setup_a.logger, "setup_b": setup_b.logger},
+            filename=filename,
+            path=str(self.output_path),
+            per_world=True,
+            to_console=True,
+        )
+
+        self.assertTrue(csv_path.is_file(), msg=f"Expected CSV at {csv_path}")
+        with open(csv_path, encoding="utf-8", newline="") as f:
+            reader = csv.reader(f)
+            top_header = next(reader)
+            sub_header = next(reader)
+            rows = list(reader)
+
+        self.assertEqual(top_header, ["", "", "setup_a", "", "setup_b", ""])
+        self.assertEqual(sub_header, ["World", "Metric", "max", "mean", "max", "mean"])
+        self.assertEqual(len(rows), len(_SCALAR_FIELDS) * setup_a.num_worlds)
+        for row in rows:
+            world_token = row[0]
+            field = row[1]
+            self.assertTrue(world_token.startswith("world_"))
+            self.assertIn(field, _SCALAR_FIELDS)
+            w = int(world_token.split("_")[1])
+            self.assertAlmostEqual(float(row[2]), float(all_a[:, w].max()), places=5)
+            self.assertAlmostEqual(float(row[3]), float(all_a[:, w].mean()), places=5)
+            self.assertAlmostEqual(float(row[4]), float(all_b[:, w].max()), places=5)
+            self.assertAlmostEqual(float(row[5]), float(all_b[:, w].mean()), places=5)
+
+    def test_table_comparison_color_rankings_smoke(self):
+        """``table_comparison(color_rankings=True)`` renders colored cells to stdout without raising."""
+        if not _RICH_AVAILABLE:
+            self.skipTest("rich is not available")
+        setup_a = _LoggerTestSetup(max_frames=4, num_worlds=2, device=self.default_device)
+        setup_b = _LoggerTestSetup(max_frames=4, num_worlds=2, device=self.default_device)
+        self._drive_logger(setup_a, n_frames=3, scale_world_0=1.0, scale_world_1=2.0)
+        self._drive_logger(setup_b, n_frames=3, scale_world_0=2.0, scale_world_1=3.0)
+
+        PhysicsMetricsLogger.table_comparison(
+            loggers={"setup_a": setup_a.logger, "setup_b": setup_b.logger},
+            to_console=True,
+            color_rankings=True,
+            per_world=False,
+        )
+        PhysicsMetricsLogger.table_comparison(
+            loggers={"setup_a": setup_a.logger, "setup_b": setup_b.logger},
+            to_console=True,
+            color_rankings=True,
+            per_world=True,
+        )
+
+    def test_table_comparison_color_rankings_csv_unchanged(self):
+        """``color_rankings=True`` must not change the CSV (numeric data only)."""
+        setup_a = _LoggerTestSetup(max_frames=4, num_worlds=1, device=self.default_device)
+        setup_b = _LoggerTestSetup(max_frames=4, num_worlds=1, device=self.default_device)
+        self._drive_logger(setup_a, n_frames=3, scale_world_0=1.0)
+        self._drive_logger(setup_b, n_frames=3, scale_world_0=2.0)
+
+        plain = self.output_path / "test_table_comparison_color_rankings_plain.csv"
+        colored = self.output_path / "test_table_comparison_color_rankings_colored.csv"
+        for p in (plain, colored):
+            if p.exists():
+                p.unlink()
+
+        PhysicsMetricsLogger.table_comparison(
+            loggers={"setup_a": setup_a.logger, "setup_b": setup_b.logger},
+            filename=plain.stem,
+            path=str(self.output_path),
+            color_rankings=False,
+        )
+        PhysicsMetricsLogger.table_comparison(
+            loggers={"setup_a": setup_a.logger, "setup_b": setup_b.logger},
+            filename=colored.stem,
+            path=str(self.output_path),
+            color_rankings=True,
+        )
+        self.assertEqual(plain.read_text(), colored.read_text())
+
+    def test_table_comparison_raises_on_mismatched_worlds(self):
+        """``table_comparison()`` rejects loggers with differing ``num_worlds``."""
+        setup_a = _LoggerTestSetup(max_frames=4, num_worlds=2, device=self.default_device)
+        setup_b = _LoggerTestSetup(max_frames=4, num_worlds=1, device=self.default_device)
+        with self.assertRaises(ValueError):
+            PhysicsMetricsLogger.table_comparison(
+                loggers={"a": setup_a.logger, "b": setup_b.logger},
+                filename="test_table_comparison_raises_on_mismatched_worlds",
+                path=str(self.output_path),
+            )
 
 
 ###

@@ -52,10 +52,12 @@ A typical example for using this module is::
 
     np_data = logger.to_numpy()
     logger.plot(path="/tmp/metrics", ext="pdf")
+    logger.table(path="/tmp/metrics", to_console=True)
 """
 
 from __future__ import annotations
 
+import csv
 import os
 from enum import IntEnum
 from typing import TYPE_CHECKING
@@ -162,6 +164,228 @@ _OVERLAY_MARKERS: tuple[str, ...] = (
     "X",
     "*",
 )
+
+
+###
+# Statistics helpers
+###
+
+
+def _format_stat_cell(value: float) -> str:
+    """Formats a single statistic value for table / CSV output.
+
+    Uses ``.6g`` formatting which naturally renders ``NaN`` / ``inf`` as
+    ``"nan"`` / ``"inf"``, and gives readable precision for both small and
+    large residual magnitudes.
+    """
+    return format(float(value), ".6g")
+
+
+# Statistic labels (in the column order they appear in the rendered tables).
+_STAT_LABELS: tuple[str, ...] = ("max", "mean")
+
+
+def _compute_summary_stats(
+    np_data: dict[str, np.ndarray],
+    per_world: bool,
+) -> dict[str, tuple[float, float] | np.ndarray]:
+    """Computes max/mean over the recorded scalar-residual history.
+
+    Args:
+        np_data: The dictionary returned by
+            :meth:`PhysicsMetricsLogger.to_numpy`, mapping per-world summary
+            field names to arrays of shape ``(num_frames, num_worlds)``.
+            Only the scalar fields in :data:`_SCALAR_FIELDS_FLOAT32` are
+            consumed; argmax companions are ignored.
+        per_world: If ``True``, reduce only along the frame axis so the result
+            is per-world. If ``False``, also flatten across worlds so the
+            result is a single ``(max, mean)`` pair per field.
+
+    Returns:
+        For ``per_world=False``: a dictionary mapping each scalar field name
+        to a ``(max, mean)`` pair of Python floats. The values are ``NaN``
+        when the recorded buffer is empty.
+
+        For ``per_world=True``: a dictionary mapping each scalar field name to
+        a ``float64`` array of shape ``(num_worlds, 2)`` whose last axis
+        carries ``(max, mean)`` per world. The array is filled with ``NaN``
+        when the recorded buffer is empty.
+    """
+    stats: dict[str, tuple[float, float] | np.ndarray] = {}
+    n_stats = len(_STAT_LABELS)
+    for field in _SCALAR_FIELDS_FLOAT32:
+        arr = np_data.get(field)
+        if arr is None or arr.size == 0:
+            if per_world:
+                # ``to_numpy()`` preserves the 2-D shape even when empty so the
+                # second axis tells us the number of worlds. Fall back to 0
+                # worlds otherwise (defensive only).
+                num_worlds = int(arr.shape[1]) if arr is not None and arr.ndim == 2 else 0
+                stats[field] = np.full((num_worlds, n_stats), np.nan, dtype=np.float64)
+            else:
+                stats[field] = tuple(float("nan") for _ in range(n_stats))  # type: ignore[assignment]
+            continue
+        if per_world:
+            stats[field] = np.stack([arr.max(axis=0), arr.mean(axis=0)], axis=-1).astype(np.float64)
+        else:
+            flat = arr.reshape(-1)
+            stats[field] = (float(flat.max()), float(flat.mean()))
+    return stats
+
+
+def _build_stats_rows(
+    stats_by_logger: list[tuple[str | None, dict[str, tuple[float, float] | np.ndarray]]],
+    per_world: bool,
+    num_worlds: int,
+) -> list[list[str]]:
+    """Assembles the formatted data rows shared by the rich and CSV outputs.
+
+    Args:
+        stats_by_logger: A list of ``(name, stats)`` pairs as returned by
+            :func:`_compute_summary_stats`. ``table()`` passes a singleton
+            list; ``table_comparison()`` passes one pair per logger.
+        per_world: If ``True``, emit ``6 * num_worlds`` rows ordered by world
+            then metric; otherwise emit one row per scalar field.
+        num_worlds: Number of worlds carried by each logger. Used only when
+            ``per_world`` is ``True`` to determine the row count.
+
+    Returns:
+        A list of rows. Every row is a list of pre-formatted string cells in
+        the order they appear in the rendered table (leading ``world`` /
+        ``metric`` cells followed by the per-logger stat pairs).
+    """
+    rows: list[list[str]] = []
+    n_outer = num_worlds if per_world else 1
+    n_stats = len(_STAT_LABELS)
+    for w in range(n_outer):
+        for field in _SCALAR_FIELDS_FLOAT32:
+            row: list[str] = []
+            if per_world:
+                row.append(f"world_{w}")
+            row.append(field)
+            for _name, stats in stats_by_logger:
+                if per_world:
+                    arr = stats[field]
+                    for s in range(n_stats):
+                        row.append(_format_stat_cell(arr[w, s]))
+                else:
+                    pair = stats[field]
+                    for s in range(n_stats):
+                        row.append(_format_stat_cell(pair[s]))
+            rows.append(row)
+    return rows
+
+
+def _gradient_color(t: float) -> str:
+    """Maps a normalized rank ``t`` in ``[0, 1]`` to a green->yellow->red hex color.
+
+    ``t = 0`` returns light green (best), ``t = 0.5`` returns light yellow,
+    ``t = 1`` returns light red (worst). Values outside ``[0, 1]`` are
+    clamped. Colors are intentionally pastel so the colored text remains
+    legible against both light and dark terminal backgrounds.
+    """
+    t = max(0.0, min(1.0, float(t)))
+    if t <= 0.5:
+        s = t * 2.0
+        r = round(144 + (255 - 144) * s)
+        g = round(238 + (255 - 238) * s)
+        b = round(144 + (153 - 144) * s)
+    else:
+        s = (t - 0.5) * 2.0
+        r = 255
+        g = round(255 - (255 - 153) * s)
+        b = 153
+    return f"#{int(r):02x}{int(g):02x}{int(b):02x}"
+
+
+def _rank_values_to_colors(values: list[float]) -> list[str | None]:
+    """Maps a list of per-logger values to gradient colors by rank.
+
+    Lower values are "better" (green) and higher values are "worse" (red);
+    intermediate values are linearly interpolated through yellow. Non-finite
+    (``NaN`` / ``inf``) entries map to ``None`` so they get no styling.
+
+    Args:
+        values: One value per logger, in column order.
+
+    Returns:
+        A list of the same length as ``values``. Each entry is a hex color
+        string ``"#RRGGBB"`` for finite entries, or ``None`` for non-finite
+        entries. If fewer than two distinct finite values are present the
+        ranking is ill-defined and every finite cell receives the neutral
+        mid-gradient color so the user still sees a visual marker.
+    """
+    finite_vals = [v for v in values if np.isfinite(v)]
+    if len(finite_vals) < 2:
+        return [None] * len(values)
+    vmin = min(finite_vals)
+    vmax = max(finite_vals)
+    if vmax == vmin:
+        neutral = _gradient_color(0.5)
+        return [neutral if np.isfinite(v) else None for v in values]
+    span = vmax - vmin
+    return [_gradient_color((v - vmin) / span) if np.isfinite(v) else None for v in values]
+
+
+def _compute_ranking_colors(
+    stats_by_logger: list[tuple[str | None, dict[str, tuple[float, float] | np.ndarray]]],
+    per_world: bool,
+    num_worlds: int,
+) -> list[list[str | None]]:
+    """Returns a per-cell color grid for the comparison table.
+
+    The returned grid has the same shape as the rows produced by
+    :func:`_build_stats_rows`: leading ``World`` / ``Metric`` cells get
+    ``None``, and each per-logger stat cell is colored by ranking that
+    logger's value against the other loggers' values for the same row and
+    stat. Lower values (better residuals) are pulled toward green; higher
+    values (worse residuals) are pulled toward red.
+    """
+    n_loggers = len(stats_by_logger)
+    n_stats = len(_STAT_LABELS)
+    leading = 2 if per_world else 1
+    n_outer = num_worlds if per_world else 1
+    grid: list[list[str | None]] = []
+    for w in range(n_outer):
+        for field in _SCALAR_FIELDS_FLOAT32:
+            cells: list[str | None] = [None] * leading
+            logger_cells: list[str | None] = [None] * (n_loggers * n_stats)
+            for s in range(n_stats):
+                values: list[float] = []
+                for _name, stats in stats_by_logger:
+                    if per_world:
+                        values.append(float(stats[field][w, s]))
+                    else:
+                        values.append(float(stats[field][s]))
+                colors = _rank_values_to_colors(values)
+                for li, c in enumerate(colors):
+                    logger_cells[li * n_stats + s] = c
+            cells.extend(logger_cells)
+            grid.append(cells)
+    return grid
+
+
+def _lazy_import_rich():
+    """Imports the ``rich`` symbols needed for table rendering.
+
+    Mirrors the pattern used in
+    :mod:`newton._src.solvers.kamino._src.utils.benchmark.render` so that
+    ``rich`` remains an opt-in dependency: callers that never request
+    console output never trigger this import.
+
+    Raises:
+        ImportError: If the ``rich`` package is not installed.
+    """
+    try:
+        from rich import box  # noqa: PLC0415
+        from rich.console import Console  # noqa: PLC0415
+        from rich.table import Table  # noqa: PLC0415
+        from rich.text import Text  # noqa: PLC0415
+    except ImportError as e:
+        raise ImportError(
+            "The `rich` package is required for console table output. Install it with: pip install rich"
+        ) from e
+    return box, Console, Table, Text
 
 
 ###
@@ -800,8 +1024,269 @@ class PhysicsMetricsLogger:
                 plt.close(fig)
 
     ###
+    # Tables
+    ###
+
+    def table(
+        self,
+        filename: str | None = None,
+        path: str | None = None,
+        to_console: bool = False,
+        per_world: bool = False,
+    ) -> None:
+        """Summarizes the recorded per-world residuals as a min/max/mean table.
+
+        Reduces the chronological history returned by :meth:`to_numpy` over
+        the frame axis (and optionally also the world axis) and emits the
+        resulting statistics as a CSV file and/or a :mod:`rich`-rendered
+        console table. Only the six scalar fields in
+        :data:`_SCALAR_FIELDS_FLOAT32` are summarized; argmax companion
+        fields are skipped, mirroring the convention used by :meth:`plot`.
+
+        Args:
+            filename: Optional CSV filename (without extension). Defaults to
+                ``"metrics_stats"``. Ignored when ``path`` is ``None``.
+            path: If provided, the table is written to
+                ``{path}/{filename}.csv``. The directory must already exist.
+            to_console: If ``True``, the table is also rendered to stdout
+                using :mod:`rich`. The ``rich`` package must be installed.
+            per_world: If ``True``, statistics are reported per world (one
+                row per ``(world, metric)`` pair). If ``False``, statistics
+                are aggregated across worlds (one row per metric).
+
+        Raises:
+            ValueError: If ``path`` is provided but does not refer to an
+                existing directory.
+            ImportError: If ``to_console=True`` and the ``rich`` package is
+                not installed.
+        """
+        if path is None and not to_console:
+            msg.warning("table() called with no output target (path=None, to_console=False); skipping.")
+            return
+        if path is not None and not os.path.isdir(path):
+            raise ValueError(f"Output directory '{path}' does not exist. Please create it before calling table().")
+        if self.num_logged_frames == 0:
+            msg.warning("No logged frames to summarize, skipping table generation.")
+            return
+        if filename is None:
+            filename = "metrics_stats"
+
+        np_data = self.to_numpy()
+        stats = _compute_summary_stats(np_data, per_world=per_world)
+        rows = _build_stats_rows(
+            stats_by_logger=[(None, stats)],
+            per_world=per_world,
+            num_worlds=self._num_worlds,
+        )
+
+        if path is not None:
+            csv_path = os.path.join(path, f"{filename}.csv")
+            with open(csv_path, "w", encoding="utf-8", newline="") as f:
+                writer = csv.writer(f)
+                header: list[str] = []
+                if per_world:
+                    header.append("World")
+                header.append("Metric")
+                header.extend(_STAT_LABELS)
+                writer.writerow(header)
+                writer.writerows(rows)
+
+        if to_console:
+            self._render_stats_table(
+                rows=rows,
+                logger_names=[],
+                per_world=per_world,
+                title=("Physics Metrics Statistics (per-world)" if per_world else "Physics Metrics Statistics"),
+            )
+
+    @classmethod
+    def table_comparison(
+        cls,
+        loggers: dict[str, PhysicsMetricsLogger],
+        filename: str | None = None,
+        path: str | None = None,
+        to_console: bool = False,
+        per_world: bool = False,
+        color_rankings: bool = False,
+    ) -> None:
+        """Summarizes multiple loggers' residuals side-by-side as a stats table.
+
+        For each scalar metric (and optionally each world), computes max and
+        mean over each logger's recorded history and renders the per-logger
+        pairs as nested sub-columns. The output formats and validation
+        mirror :meth:`table` and :meth:`plot_comparison`.
+
+        Args:
+            loggers: A dictionary of :class:`PhysicsMetricsLogger` instances
+                keyed by display name. All loggers must agree on
+                :attr:`num_worlds`.
+            filename: Optional CSV filename (without extension). Defaults to
+                ``"metrics_stats_comparison"``. Ignored when ``path`` is
+                ``None``.
+            path: If provided, the table is written to
+                ``{path}/{filename}.csv``. The directory must already exist.
+            to_console: If ``True``, the table is also rendered to stdout
+                using :mod:`rich`. The ``rich`` package must be installed.
+            per_world: If ``True``, statistics are reported per world (one
+                row per ``(world, metric)`` pair). If ``False``, statistics
+                are aggregated across worlds (one row per metric).
+            color_rankings: If ``True``, the console-rendered stat cells are
+                colored by ranking against the peer loggers for the same
+                ``(metric, stat)`` (and ``world`` when ``per_world=True``).
+                Lower values (better residuals) are pulled toward light
+                green; higher values (worse residuals) toward light red,
+                with a yellow midpoint for intermediate ranks. Has no
+                effect on the CSV output, which always carries the raw
+                numeric values.
+
+        Raises:
+            ValueError: If ``loggers`` is empty, any value is not a
+                :class:`PhysicsMetricsLogger`, the loggers disagree on
+                :attr:`num_worlds`, or ``path`` does not refer to an
+                existing directory.
+            ImportError: If ``to_console=True`` and the ``rich`` package is
+                not installed.
+        """
+        if not loggers:
+            raise ValueError("At least one logger must be provided.")
+        if not all(isinstance(logger, PhysicsMetricsLogger) for logger in loggers.values()):
+            raise ValueError("All loggers must be instances of PhysicsMetricsLogger.")
+        first_logger = next(iter(loggers.values()))
+        if not all(logger.num_worlds == first_logger.num_worlds for logger in loggers.values()):
+            raise ValueError("All loggers must have the same number of worlds.")
+        if path is None and not to_console:
+            msg.warning("table_comparison() called with no output target (path=None, to_console=False); skipping.")
+            return
+        if path is not None and not os.path.isdir(path):
+            raise ValueError(
+                f"Output directory '{path}' does not exist. Please create it before calling table_comparison()."
+            )
+        if not any(logger.num_logged_frames > 0 for logger in loggers.values()):
+            msg.warning("No logged frames to summarize, skipping table generation.")
+            return
+        if filename is None:
+            filename = "metrics_stats_comparison"
+
+        num_worlds = first_logger.num_worlds
+        stats_by_logger: list[tuple[str | None, dict[str, tuple[float, float] | np.ndarray]]] = [
+            (name, _compute_summary_stats(logger.to_numpy(), per_world=per_world)) for name, logger in loggers.items()
+        ]
+        rows = _build_stats_rows(stats_by_logger, per_world=per_world, num_worlds=num_worlds)
+
+        if path is not None:
+            csv_path = os.path.join(path, f"{filename}.csv")
+            with open(csv_path, "w", encoding="utf-8", newline="") as f:
+                writer = csv.writer(f)
+                # Two-row header: top row carries logger names spanning their
+                # (max, mean) sub-columns; the bottom row carries the
+                # sub-column labels under each logger group. The leading
+                # ``World`` / ``Metric`` cells are placed on the bottom row.
+                top_header: list[str] = []
+                sub_header: list[str] = []
+                if per_world:
+                    top_header.append("")
+                    sub_header.append("World")
+                top_header.append("")
+                sub_header.append("Metric")
+                for name in loggers.keys():
+                    top_header.append(name)
+                    top_header.extend("" for _ in range(len(_STAT_LABELS) - 1))
+                    sub_header.extend(_STAT_LABELS)
+                writer.writerow(top_header)
+                writer.writerow(sub_header)
+                writer.writerows(rows)
+
+        if to_console:
+            cell_styles: list[list[str | None]] | None = None
+            if color_rankings:
+                cell_styles = _compute_ranking_colors(
+                    stats_by_logger=stats_by_logger,
+                    per_world=per_world,
+                    num_worlds=num_worlds,
+                )
+            cls._render_stats_table(
+                rows=rows,
+                logger_names=list(loggers.keys()),
+                per_world=per_world,
+                title=(
+                    "Physics Metrics Statistics Comparison (per-world)"
+                    if per_world
+                    else "Physics Metrics Statistics Comparison"
+                ),
+                cell_styles=cell_styles,
+            )
+
+    ###
     # Internals
     ###
+
+    @staticmethod
+    def _render_stats_table(
+        rows: list[list[str]],
+        logger_names: list[str],
+        per_world: bool,
+        title: str,
+        cell_styles: list[list[str | None]] | None = None,
+    ) -> None:
+        """Renders a stats table to stdout via :mod:`rich`.
+
+        When ``logger_names`` is empty the table uses flat ``max/mean``
+        columns (the :meth:`table` case). When ``logger_names`` is non-empty
+        each logger gets its own ``max/mean`` sub-column group cycling
+        through :data:`_OVERLAY_COLORS` so the comparison table stays
+        visually aligned with :meth:`plot_comparison`'s color scheme.
+
+        Args:
+            rows: Pre-formatted row strings as produced by
+                :func:`_build_stats_rows`.
+            logger_names: Per-logger display names. Empty for :meth:`table`.
+            per_world: Whether the rows include a leading ``World`` cell.
+            title: Plain-text title to display above the table.
+            cell_styles: Optional matching grid of rich style strings (or
+                ``None``) used to color individual cells. When ``None`` (or
+                an entry is ``None``) the cell renders unstyled.
+        """
+        box, Console, Table, Text = _lazy_import_rich()
+        table = Table(
+            title=title,
+            show_header=True,
+            box=box.SIMPLE_HEAVY,
+            show_lines=True,
+            pad_edge=True,
+        )
+        if per_world:
+            table.add_column("World", justify="left", no_wrap=True, style="bold")
+        table.add_column("Metric", justify="left", no_wrap=True, style="bold")
+        if logger_names:
+            for i, name in enumerate(logger_names):
+                color = _OVERLAY_COLORS[i % len(_OVERLAY_COLORS)]
+                for j, sub in enumerate(_STAT_LABELS):
+                    header = Text(justify="left")
+                    if j == 0:
+                        header.append(name, style=f"bold {color}")
+                    header.append("\n")
+                    header.append(sub, style=f"dim {color}")
+                    table.add_column(header=header, justify="right", no_wrap=True)
+        else:
+            for sub in _STAT_LABELS:
+                table.add_column(sub, justify="right", no_wrap=True)
+        for r_idx, row in enumerate(rows):
+            row_styles = cell_styles[r_idx] if cell_styles is not None else None
+            if row_styles is None:
+                table.add_row(*row)
+            else:
+                cells: list[str | Text] = []
+                for c_idx, cell in enumerate(row):
+                    style = row_styles[c_idx] if c_idx < len(row_styles) else None
+                    if style is None:
+                        cells.append(cell)
+                    else:
+                        cells.append(Text(cell, style=style))
+                table.add_row(*cells)
+        console = Console()
+        console.rule()
+        console.print(table, crop=False)
+        console.rule()
 
     @staticmethod
     def _plot_overlay_metric(

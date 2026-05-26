@@ -35,6 +35,12 @@ import warp as wp
 from newton import Contacts, Model, ModelBuilder, State
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.benchmark import metrics
+from newton._src.solvers.kamino.benchmark.logging import (
+    _compute_ranking_colors,
+    _compute_summary_stats,
+    _gradient_color,
+    _rank_values_to_colors,
+)
 from newton._src.solvers.kamino.tests import setup_tests, test_context
 from newton.tests.utils import basics
 
@@ -1194,6 +1200,166 @@ class TestPerWorldContactMetricsSummary(_BenchmarkMetricsTestBase):
         # The global-only contact must not have updated any world.
         np.testing.assert_array_equal(per_world, np.zeros_like(per_world))
         np.testing.assert_array_equal(per_world_argmax, -np.ones_like(per_world_argmax))
+
+
+###
+# Summary-statistics helper tests
+###
+
+
+class TestComputeSummaryStats(unittest.TestCase):
+    """Unit tests for the pure ``_compute_summary_stats`` helper in ``logging``.
+
+    The helper is exercised here (rather than in ``test_benchmark_logging``)
+    so the kernel-free arithmetic path stays isolated from any logger /
+    model fixture.
+    """
+
+    SCALAR_FIELDS: tuple[str, ...] = (
+        "r_cts_penetration",
+        "r_cts_velocity",
+        "r_ncp_primal",
+        "r_ncp_dual",
+        "r_ncp_compl",
+        "r_vi_natmap",
+    )
+
+    def _make_inputs(self, num_frames: int, num_worlds: int, seed: int = 2026) -> dict[str, np.ndarray]:
+        """Builds a synthetic ``to_numpy()``-style dictionary with random floats."""
+        rng = np.random.default_rng(seed=seed)
+        return {field: rng.random(size=(num_frames, num_worlds), dtype=np.float32) for field in self.SCALAR_FIELDS}
+
+    def test_aggregate_stats_match_numpy(self):
+        """``per_world=False`` collapses both axes and matches plain numpy reductions."""
+        np_data = self._make_inputs(num_frames=7, num_worlds=3)
+        stats = _compute_summary_stats(np_data, per_world=False)
+        for field in self.SCALAR_FIELDS:
+            mx, mean = stats[field]
+            arr = np_data[field]
+            self.assertAlmostEqual(mx, float(arr.max()), places=5)
+            self.assertAlmostEqual(mean, float(arr.mean()), places=5)
+
+    def test_per_world_stats_match_numpy(self):
+        """``per_world=True`` reduces along the frame axis only and matches per-world numpy reductions."""
+        num_worlds = 4
+        np_data = self._make_inputs(num_frames=11, num_worlds=num_worlds, seed=42)
+        stats = _compute_summary_stats(np_data, per_world=True)
+        for field in self.SCALAR_FIELDS:
+            arr = np_data[field]
+            per_world = stats[field]
+            self.assertEqual(per_world.shape, (num_worlds, 2))
+            np.testing.assert_allclose(per_world[:, 0], arr.max(axis=0), atol=1e-6)
+            np.testing.assert_allclose(per_world[:, 1], arr.mean(axis=0), atol=1e-6)
+
+    def test_empty_input_returns_nan(self):
+        """Zero-frame inputs yield ``NaN`` stats and don't emit numpy warnings."""
+        num_worlds = 2
+        np_data = {field: np.empty((0, num_worlds), dtype=np.float32) for field in self.SCALAR_FIELDS}
+
+        with np.errstate(all="raise"):
+            agg_stats = _compute_summary_stats(np_data, per_world=False)
+            pw_stats = _compute_summary_stats(np_data, per_world=True)
+
+        for field in self.SCALAR_FIELDS:
+            mx, mean = agg_stats[field]
+            self.assertTrue(np.isnan(mx))
+            self.assertTrue(np.isnan(mean))
+            arr = pw_stats[field]
+            self.assertEqual(arr.shape, (num_worlds, 2))
+            self.assertTrue(np.all(np.isnan(arr)))
+
+
+###
+# Ranking color helpers
+###
+
+
+class TestRankingColors(unittest.TestCase):
+    """Unit tests for the gradient / ranking helpers in ``logging``."""
+
+    SCALAR_FIELDS: tuple[str, ...] = TestComputeSummaryStats.SCALAR_FIELDS
+
+    def test_gradient_color_endpoints_and_midpoint(self):
+        """``t = 0`` -> light green, ``t = 0.5`` -> light yellow, ``t = 1`` -> light red."""
+        self.assertEqual(_gradient_color(0.0).lower(), "#90ee90")
+        self.assertEqual(_gradient_color(0.5).lower(), "#ffff99")
+        self.assertEqual(_gradient_color(1.0).lower(), "#ff9999")
+        # Out-of-range inputs are clamped to the endpoints.
+        self.assertEqual(_gradient_color(-1.0).lower(), "#90ee90")
+        self.assertEqual(_gradient_color(2.0).lower(), "#ff9999")
+
+    def test_rank_values_to_colors_orders_green_to_red(self):
+        """Strictly increasing values yield green -> yellow -> red in order."""
+        colors = _rank_values_to_colors([1.0, 2.0, 3.0])
+        self.assertEqual(colors[0].lower(), "#90ee90")
+        self.assertEqual(colors[1].lower(), "#ffff99")
+        self.assertEqual(colors[2].lower(), "#ff9999")
+
+    def test_rank_values_to_colors_equal_values_neutral(self):
+        """Equal-valued cells receive the neutral mid-gradient color."""
+        colors = _rank_values_to_colors([2.5, 2.5, 2.5])
+        neutral = _gradient_color(0.5)
+        for c in colors:
+            self.assertEqual(c, neutral)
+
+    def test_rank_values_to_colors_skips_nan(self):
+        """Non-finite entries map to ``None`` while finite peers still rank."""
+        colors = _rank_values_to_colors([1.0, float("nan"), 3.0])
+        self.assertEqual(colors[0].lower(), "#90ee90")
+        self.assertIsNone(colors[1])
+        self.assertEqual(colors[2].lower(), "#ff9999")
+
+    def test_rank_values_to_colors_single_finite_value(self):
+        """A single finite value has no peer and is left uncolored."""
+        colors = _rank_values_to_colors([float("nan"), 5.0])
+        self.assertEqual(colors, [None, None])
+
+    def test_compute_ranking_colors_layout(self):
+        """Compute-ranking-colors returns a row-aligned grid matching the row layout."""
+        # Build two synthetic per-logger stat dictionaries, one world per field.
+        stats_a = dict.fromkeys(self.SCALAR_FIELDS, (1.0, 2.0))
+        stats_b = dict.fromkeys(self.SCALAR_FIELDS, (3.0, 4.0))
+        grid = _compute_ranking_colors(
+            stats_by_logger=[("a", stats_a), ("b", stats_b)],
+            per_world=False,
+            num_worlds=1,
+        )
+        self.assertEqual(len(grid), len(self.SCALAR_FIELDS))
+        for row in grid:
+            # Leading "Metric" cell uncolored, then [a_max, a_mean, b_max, b_mean].
+            self.assertIsNone(row[0])
+            self.assertEqual(row[1].lower(), "#90ee90")  # a has the lower max
+            self.assertEqual(row[2].lower(), "#90ee90")  # a has the lower mean
+            self.assertEqual(row[3].lower(), "#ff9999")  # b has the higher max
+            self.assertEqual(row[4].lower(), "#ff9999")  # b has the higher mean
+
+    def test_compute_ranking_colors_per_world_layout(self):
+        """Per-world ranking colors leave the leading World/Metric cells uncolored."""
+        num_worlds = 2
+        # Make logger A better in world 0, logger B better in world 1.
+        stats_a = {field: np.array([[1.0, 1.0], [10.0, 10.0]], dtype=np.float64) for field in self.SCALAR_FIELDS}
+        stats_b = {field: np.array([[5.0, 5.0], [2.0, 2.0]], dtype=np.float64) for field in self.SCALAR_FIELDS}
+        grid = _compute_ranking_colors(
+            stats_by_logger=[("a", stats_a), ("b", stats_b)],
+            per_world=True,
+            num_worlds=num_worlds,
+        )
+        # Rows are ordered (world_0, metric_0..5), then (world_1, metric_0..5).
+        self.assertEqual(len(grid), num_worlds * len(self.SCALAR_FIELDS))
+        for row in grid[: len(self.SCALAR_FIELDS)]:
+            self.assertIsNone(row[0])  # World
+            self.assertIsNone(row[1])  # Metric
+            # In world 0, A < B for both max and mean: A is green, B is red.
+            self.assertEqual(row[2].lower(), "#90ee90")
+            self.assertEqual(row[3].lower(), "#90ee90")
+            self.assertEqual(row[4].lower(), "#ff9999")
+            self.assertEqual(row[5].lower(), "#ff9999")
+        for row in grid[len(self.SCALAR_FIELDS) :]:
+            # In world 1, B < A: B is green, A is red.
+            self.assertEqual(row[2].lower(), "#ff9999")
+            self.assertEqual(row[3].lower(), "#ff9999")
+            self.assertEqual(row[4].lower(), "#90ee90")
+            self.assertEqual(row[5].lower(), "#90ee90")
 
 
 ###

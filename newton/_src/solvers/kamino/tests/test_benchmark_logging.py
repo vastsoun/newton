@@ -476,6 +476,113 @@ class TestPhysicsMetricsLogger(unittest.TestCase):
         self.assertTrue(out_path.is_file(), msg=f"Expected grid plot at {out_path}")
         self.assertGreater(out_path.stat().st_size, 0)
 
+    def test_plot_log_scale_smoke(self):
+        """``plot(log_scale=True)`` renders on a log y-axis and tolerates zero samples."""
+        if PhysicsMetricsLogger.plt is None:
+            PhysicsMetricsLogger._initialize_plt()
+        if PhysicsMetricsLogger.plt is None:
+            self.skipTest("matplotlib is not available.")
+
+        setup = _LoggerTestSetup(max_frames=8, device=self.default_device, dt=0.005)
+        # Include at least one all-zero frame to exercise the safe-clamp path.
+        _populate_uniform_floats(setup, scalar=0.0)
+        setup.logger.log()
+        for k in range(1, 5):
+            _populate_uniform_floats(setup, scalar=float(k) * 0.1)
+            setup.logger.log()
+
+        filename = "test_plot_log_scale_smoke"
+        ext = "pdf"
+        for field in _SCALAR_FIELDS:
+            out_path = self.output_path / f"{filename}_{field}.{ext}"
+            if out_path.exists():
+                out_path.unlink()
+
+        setup.logger.plot(
+            filename=filename,
+            path=str(self.output_path),
+            show=False,
+            ext=ext,
+            log_scale=True,
+            log_floor=1e-10,
+        )
+
+        for field in _SCALAR_FIELDS:
+            out_path = self.output_path / f"{filename}_{field}.{ext}"
+            self.assertTrue(out_path.is_file(), msg=f"Expected log-scale plot at {out_path}")
+            self.assertGreater(out_path.stat().st_size, 0)
+
+    def test_plot_comparison_log_scale_smoke(self):
+        """``plot_comparison(log_scale=True)`` overlays loggers on a base-10 log y-axis."""
+        if PhysicsMetricsLogger.plt is None:
+            PhysicsMetricsLogger._initialize_plt()
+        if PhysicsMetricsLogger.plt is None:
+            self.skipTest("matplotlib is not available.")
+
+        setup_a = _LoggerTestSetup(max_frames=6, device=self.default_device, dt=0.005)
+        setup_b = _LoggerTestSetup(max_frames=6, device=self.default_device, dt=0.005)
+        # Mix zero and positive samples across the two setups.
+        for k in range(4):
+            _populate_uniform_floats(setup_a, scalar=0.0 if k == 0 else float(k))
+            _populate_uniform_floats(setup_b, scalar=float(k) * 2.0)
+            setup_a.logger.log()
+            setup_b.logger.log()
+
+        filename = "test_plot_comparison_log_scale_smoke"
+        ext = "pdf"
+        out_path = self.output_path / f"{filename}.{ext}"
+        if out_path.exists():
+            out_path.unlink()
+
+        PhysicsMetricsLogger.plot_comparison(
+            loggers={"setup_a": setup_a.logger, "setup_b": setup_b.logger},
+            filename=filename,
+            path=str(self.output_path),
+            grid=True,
+            show=False,
+            ext=ext,
+            log_scale=True,
+            log_floor=1e-10,
+        )
+
+        self.assertTrue(out_path.is_file(), msg=f"Expected log-scale grid plot at {out_path}")
+        self.assertGreater(out_path.stat().st_size, 0)
+
+    def test_plot_log_scale_validation(self):
+        """``log_scale=True`` requires a strictly positive ``log_floor``."""
+        if PhysicsMetricsLogger.plt is None:
+            PhysicsMetricsLogger._initialize_plt()
+        if PhysicsMetricsLogger.plt is None:
+            self.skipTest("matplotlib is not available.")
+
+        setup = _LoggerTestSetup(max_frames=4, device=self.default_device, dt=0.005)
+        _populate_uniform_floats(setup, scalar=0.0)
+        setup.logger.log()
+
+        with self.assertRaises(ValueError):
+            setup.logger.plot(
+                filename="test_plot_log_scale_invalid",
+                path=str(self.output_path),
+                show=False,
+                log_scale=True,
+                log_floor=0.0,
+            )
+
+        setup_b = _LoggerTestSetup(max_frames=4, device=self.default_device, dt=0.005)
+        _populate_uniform_floats(setup_b, scalar=1.0)
+        setup_b.logger.log()
+
+        with self.assertRaises(ValueError):
+            PhysicsMetricsLogger.plot_comparison(
+                loggers={"a": setup.logger, "b": setup_b.logger},
+                filename="test_plot_comparison_log_scale_invalid",
+                path=str(self.output_path),
+                grid=True,
+                show=False,
+                log_scale=True,
+                log_floor=-1.0,
+            )
+
     ###
     # Argmax-companion semantics
     ###

@@ -573,6 +573,8 @@ class PhysicsMetricsLogger:
         path: str | None = None,
         show: bool = False,
         ext: str = "pdf",
+        log_scale: bool = False,
+        log_floor: float = 1e-12,
     ):
         """
         Renders one matplotlib figure per scalar per-world summary metric.
@@ -594,6 +596,19 @@ class PhysicsMetricsLogger:
             show: If ``True`` the figures are also displayed (blocking).
             ext: The file extension / matplotlib format to save with.
                 Defaults to ``"pdf"`` to match the benchmarks output.
+            log_scale: If ``True``, the y-axis of each figure is rendered
+                with a base-10 logarithmic scale. Residual samples are
+                clamped to ``log_floor`` before plotting so that values
+                that are exactly zero do not break the log scale or
+                trigger matplotlib's ``nonpositive`` warnings.
+            log_floor: Strictly positive floor used to clamp samples when
+                ``log_scale`` is enabled. Unused otherwise. Defaults to
+                ``1e-12``.
+
+        Raises:
+            ValueError: If the output directory does not exist, or if
+                ``log_scale`` is ``True`` and ``log_floor`` is not a
+                strictly positive number.
         """
         if self.plt is None:
             msg.warning("matplotlib is not available, skipping plotting.")
@@ -603,12 +618,17 @@ class PhysicsMetricsLogger:
             return
         if path is not None and not os.path.isdir(path):
             raise ValueError(f"Plot output directory '{path}' does not exist. Please create it before calling plot().")
+        if log_scale and (not isinstance(log_floor, (int, float)) or float(log_floor) <= 0.0):
+            raise ValueError(
+                f"Expected 'log_floor' to be a strictly positive number when 'log_scale' is True, got {log_floor!r}."
+            )
         if filename is None:
             filename = ""
             separator = ""
         else:
             separator = "_"
 
+        floor = float(log_floor)
         time = self.time_axis()
         np_data = self.to_numpy()
         x_label = "Time (s)" if self._dt is not None else "Step"
@@ -619,9 +639,12 @@ class PhysicsMetricsLogger:
             fig, ax = self.plt.subplots(1, 1, figsize=(10, 6))
             data = np_data[field]
             for w in range(self._num_worlds):
+                y = data[:, w]
+                if log_scale:
+                    y = np.maximum(y, floor)
                 ax.plot(
                     time,
-                    data[:, w],
+                    y,
                     label=f"world_{w}",
                     marker="o",
                     markersize=4,
@@ -629,6 +652,8 @@ class PhysicsMetricsLogger:
             ax.set_title(title)
             ax.set_xlabel(x_label)
             ax.set_ylabel(field)
+            if log_scale:
+                ax.set_yscale("log")
             ax.grid()
             if self._num_worlds > 1:
                 ax.legend(loc="best", frameon=False)
@@ -649,6 +674,8 @@ class PhysicsMetricsLogger:
         show: bool = False,
         grid: bool = False,
         ext: str = "pdf",
+        log_scale: bool = False,
+        log_floor: float = 1e-12,
     ):
         """
         Renders overlaid :class:`PhysicsMetricsLogger` plots across multiple logger instances.
@@ -673,11 +700,20 @@ class PhysicsMetricsLogger:
                 instead of one figure per metric.
             ext: The file extension / matplotlib format to save with.
                 Defaults to ``"pdf"`` to match the benchmarks output.
+            log_scale: If ``True``, the y-axis is rendered with a base-10
+                logarithmic scale. Samples are clamped to ``log_floor``
+                before plotting so that residuals that are exactly zero do
+                not break the log scale or trigger matplotlib's
+                ``nonpositive`` warnings.
+            log_floor: Strictly positive floor used to clamp samples when
+                ``log_scale`` is enabled. Unused otherwise. Defaults to
+                ``1e-12``.
 
         Raises:
             ValueError: If any logger is not a :class:`PhysicsMetricsLogger`,
-                if the loggers do not share ``num_worlds``, or if the output
-                directory does not exist.
+                if the loggers do not share ``num_worlds``, if the output
+                directory does not exist, or if ``log_scale`` is ``True``
+                and ``log_floor`` is not a strictly positive number.
         """
         if cls.plt is None:
             cls._initialize_plt()
@@ -701,6 +737,11 @@ class PhysicsMetricsLogger:
                 f"Plot output directory '{path}' does not exist. Please create it before calling plot_comparison()."
             )
 
+        if log_scale and (not isinstance(log_floor, (int, float)) or float(log_floor) <= 0.0):
+            raise ValueError(
+                f"Expected 'log_floor' to be a strictly positive number when 'log_scale' is True, got {log_floor!r}."
+            )
+
         plt = cls.plt
         x_label = "Time (s)" if first_logger.dt is not None else "Step"
         logged_data = [
@@ -714,7 +755,14 @@ class PhysicsMetricsLogger:
             fig, axes = plt.subplots(n_rows, n_cols, figsize=(18, 10))
             axes = axes.flatten()
             for i, field in enumerate(_SCALAR_FIELDS_FLOAT32):
-                cls._plot_overlay_metric(logged_data, field, x_label, axes[i])
+                cls._plot_overlay_metric(
+                    logged_data,
+                    field,
+                    x_label,
+                    axes[i],
+                    log_scale=log_scale,
+                    log_floor=float(log_floor),
+                )
             for j in range(len(_SCALAR_FIELDS_FLOAT32), len(axes)):
                 axes[j].set_visible(False)
             fig.tight_layout()
@@ -731,7 +779,14 @@ class PhysicsMetricsLogger:
                 separator = "_"
             for field in _SCALAR_FIELDS_FLOAT32:
                 fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-                cls._plot_overlay_metric(logged_data, field, x_label, ax)
+                cls._plot_overlay_metric(
+                    logged_data,
+                    field,
+                    x_label,
+                    ax,
+                    log_scale=log_scale,
+                    log_floor=float(log_floor),
+                )
                 fig.tight_layout()
                 if path is not None:
                     fig.savefig(
@@ -754,6 +809,8 @@ class PhysicsMetricsLogger:
         field: str,
         x_label: str,
         ax: plt.Axes,
+        log_scale: bool = False,
+        log_floor: float = 1e-12,
     ):
         """
         Draws one overlaid metric panel onto ``ax`` for the given scalar ``field``.
@@ -769,6 +826,20 @@ class PhysicsMetricsLogger:
         state and contact geometry, so two leader/follower solvers will
         produce bit-identical curves that would otherwise be hidden by the
         last-drawn solid line.
+
+        Args:
+            data: Pre-computed ``(name, num_worlds, time, np_data)`` tuples,
+                one per logger.
+            field: Scalar residual field to plot.
+            x_label: Label for the x-axis.
+            ax: Matplotlib axes to draw on.
+            log_scale: If ``True``, the y-axis is rendered with a base-10
+                logarithmic scale and samples are clamped to ``log_floor``
+                prior to plotting so that zero residuals do not produce
+                ``nonpositive`` matplotlib warnings.
+            log_floor: Strictly positive floor used to clamp samples when
+                ``log_scale`` is enabled. Unused when ``log_scale`` is
+                ``False``.
         """
         for i, (name, nw, time, np_data) in enumerate(data):
             color = _OVERLAY_COLORS[i % len(_OVERLAY_COLORS)]
@@ -776,9 +847,12 @@ class PhysicsMetricsLogger:
             marker = _OVERLAY_MARKERS[i % len(_OVERLAY_MARKERS)]
             for w in range(nw):
                 world_label = f" (world_{w})" if nw > 1 else ""
+                y = np_data[field][:, w]
+                if log_scale:
+                    y = np.maximum(y, log_floor)
                 ax.plot(
                     time,
-                    np_data[field][:, w],
+                    y,
                     color=color,
                     marker=marker,
                     markersize=3,
@@ -791,5 +865,7 @@ class PhysicsMetricsLogger:
         ax.set_title(f"{base_title} \n ({equation})")
         ax.set_xlabel(x_label)
         ax.set_ylabel(field)
+        if log_scale:
+            ax.set_yscale("log")
         ax.grid()
         ax.legend(loc="best", frameon=False)

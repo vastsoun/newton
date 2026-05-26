@@ -119,8 +119,8 @@ _METRIC_TITLES: dict[str, str] = {
 # Aligned with `SolutionMetricsLogger._METRIC_EQUATIONS` for the four shared
 # NCP/VI metrics so cross-tool plots are visually consistent.
 _METRIC_EQUATIONS: dict[str, str] = {
-    "r_cts_penetration": r"$\max_c \, | \, d_{01}(c) \, |$",
-    "r_cts_velocity": r"$\max_c \, \max(0, -v_{01}(c) \cdot n_{01}(c))$",
+    "r_cts_penetration": r"$\max_k \, | \, d_k \, |$",
+    "r_cts_velocity": r"$\max_k \, \max(0, -v_k^T \, n_k)$",
     "r_ncp_primal": r"$\Vert \, \lambda - P_K(\lambda) \, \Vert_\infty $",
     "r_ncp_dual": r"$\Vert \, v_a^+ - P_{K^*}(v_a^+) \, \Vert_\infty $",
     "r_ncp_compl": r"$\Vert \, \lambda^T \, v_a^+ \, \Vert_\infty $",

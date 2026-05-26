@@ -94,24 +94,35 @@ def _copy_contacts(contacts_in: Contacts, contacts_out: Contacts) -> None:
         raise ValueError(
             f"contacts have different soft_contact_max: src={contacts_in.soft_contact_max}, dst={contacts_out.soft_contact_max}"
         )
-    # ``contact_counters`` is the packed counter array; ``rigid_contact_count`` and
-    # ``soft_contact_count`` are 1-element slice views into it and update implicitly.
-    _copy_array(contacts_out.contact_counters, contacts_in.contact_counters, "contact_counters")
     for attr in (
+        "contact_counters",
+        "contact_generation",
         "rigid_contact_tids",
         "rigid_contact_point_id",
         "rigid_contact_shape0",
         "rigid_contact_shape1",
         "rigid_contact_margin0",
         "rigid_contact_margin1",
-        "rigid_contact_point0",
-        "rigid_contact_point1",
         "rigid_contact_offset0",
         "rigid_contact_offset1",
+        "rigid_contact_point0",
+        "rigid_contact_point1",
         "rigid_contact_normal",
     ):
         _copy_array(getattr(contacts_out, attr), getattr(contacts_in, attr), attr)
-    _copy_optional(contacts_out, contacts_in, "force")
+    for attr in (
+        "rigid_contact_match_index",
+        "rigid_contact_stiffness",
+        "rigid_contact_damping",
+        "rigid_contact_friction",
+        "rigid_contact_match_index",
+        "rigid_contact_new_indices",
+        "rigid_contact_new_count",
+        "rigid_contact_broken_indices",
+        "rigid_contact_broken_count",
+        "force",
+    ):
+        _copy_optional(contacts_out, contacts_in, attr)
 
 
 ###

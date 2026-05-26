@@ -137,6 +137,32 @@ _OVERLAY_COLORS: tuple[str, ...] = (
     "brown",
 )
 
+# Line-style palette cycled alongside ``_OVERLAY_COLORS`` so overlapping curves
+# (identical residuals across solvers, common in the contact-penetration plots
+# where the metric depends only on the shared pre-step state and contact
+# geometry) remain visually distinguishable. Without this, the last-drawn
+# solver's solid line completely obscures earlier solvers' identical curves.
+_OVERLAY_LINESTYLES: tuple[str, ...] = (
+    "-",
+    "--",
+    ":",
+    "-.",
+)
+
+# Marker palette cycled alongside ``_OVERLAY_COLORS`` so identical curves
+# remain distinguishable at zoom levels where the line styles are too dense
+# to be resolved.
+_OVERLAY_MARKERS: tuple[str, ...] = (
+    "o",
+    "s",
+    "^",
+    "D",
+    "v",
+    "P",
+    "X",
+    "*",
+)
+
 
 ###
 # Kernels
@@ -735,19 +761,29 @@ class PhysicsMetricsLogger:
         Each entry of ``data`` is a ``(name, nw, time, np_data)`` tuple where
         ``time`` and ``np_data`` are pre-computed via the logger's
         :meth:`time_axis` and :meth:`to_numpy` methods. One curve is drawn per
-        world per logger, cycling through :data:`_OVERLAY_COLORS`.
+        world per logger, cycling through :data:`_OVERLAY_COLORS`,
+        :data:`_OVERLAY_LINESTYLES`, and :data:`_OVERLAY_MARKERS`. Cycling
+        line styles and markers (combined with sub-unit ``alpha``) keeps
+        identical curves from different setups distinguishable: contact-
+        penetration residuals in particular depend only on the shared pre-step
+        state and contact geometry, so two leader/follower solvers will
+        produce bit-identical curves that would otherwise be hidden by the
+        last-drawn solid line.
         """
         for i, (name, nw, time, np_data) in enumerate(data):
             color = _OVERLAY_COLORS[i % len(_OVERLAY_COLORS)]
+            linestyle = _OVERLAY_LINESTYLES[i % len(_OVERLAY_LINESTYLES)]
+            marker = _OVERLAY_MARKERS[i % len(_OVERLAY_MARKERS)]
             for w in range(nw):
                 world_label = f" (world_{w})" if nw > 1 else ""
                 ax.plot(
                     time,
                     np_data[field][:, w],
                     color=color,
-                    marker="o",
+                    marker=marker,
                     markersize=3,
-                    linestyle="-",
+                    linestyle=linestyle,
+                    alpha=0.7,
                     label=f"{name}{world_label}",
                 )
         equation = _METRIC_EQUATIONS[field]

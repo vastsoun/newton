@@ -23,6 +23,7 @@ World context:
 
 from __future__ import annotations
 
+import copy
 import math
 
 import warp as wp
@@ -89,11 +90,337 @@ def _add_ground_box(builder: ModelBuilder) -> None:
 ###
 
 
+def build_sphere_on_plane(
+    builder: ModelBuilder | None = None,
+    radius: float = 0.1,
+    mass: float = 1.0,
+    z_offset: float = 0.0,
+    friction: float | None = None,
+    restitution: float | None = None,
+    ground: bool = True,
+    new_world: bool = True,
+    use_custom_shape_cfg: bool = False,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a free-floating 'box' body and a ground box geom.
+
+    Args:
+        builder (ModelBuilder | None):
+            An optional existing model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float):
+            A vertical offset to apply to the initial position of the box.
+        ground (bool):
+            Whether to add a static ground plane to the model.
+        new_world (bool):
+            Whether to begin a new world in the builder for this model.\n
+            If `True` (or `builder` is `None`), the model is wrapped in a new world context
+            opened via :meth:`ModelBuilder.begin_world` and closed via
+            :meth:`ModelBuilder.end_world`.\n
+            If `False`, the caller must already be inside an active world; the model is then
+            added to that currently active world.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    from newton._src.geometry import inertia  # noqa: PLC0415
+
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder()
+    else:
+        _builder = builder
+
+    # Begin a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        _builder.begin_world(label="sphere_on_plane")
+
+    # Add the sphere body
+    r_i: float = radius
+    m_i: float = mass
+    i_I_i = inertia.compute_inertia_sphere_from_mass(mass=m_i, radius=r_i)
+    xform = wp.transformf(0.0, 0.0, r_i + z_offset, 0.0, 0.0, 0.0, 1.0)
+    bid0 = _builder.add_body(
+        label="sphere",
+        mass=m_i,
+        inertia=i_I_i,
+        xform=xform,
+        lock_inertia=True,
+    )
+
+    # Use custom shape config if requested
+    custom_shape_cfg = (
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
+        if use_custom_shape_cfg
+        else _builder.default_shape_cfg
+    )
+
+    # Add collision geometries
+    _builder.add_shape_sphere(
+        label="sphere_geom",
+        body=bid0,
+        radius=r_i,
+        cfg=custom_shape_cfg,
+    )
+
+    # Add a static collision geometry for the plane
+    if ground:
+        _builder.add_ground_plane(
+            cfg=custom_shape_cfg,
+            label="ground",
+            height=0.0,
+        )
+
+    # Close the world context if we opened one
+    if new_world or builder is None:
+        _builder.end_world()
+
+    # Return the populated model builder
+    return _builder
+
+
+def build_stack_spheres_on_plane(
+    builder: ModelBuilder | None = None,
+    num_spheres: int = 2,
+    radius: float = 0.1,
+    mass: float = 1.0,
+    z_offset: float = 0.0,
+    friction: float | None = None,
+    restitution: float | None = None,
+    ground: bool = True,
+    new_world: bool = True,
+    use_custom_shape_cfg: bool = False,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a free-floating 'box' body and a ground box geom.
+
+    Args:
+        builder (ModelBuilder | None):
+            An optional existing model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float):
+            A vertical offset to apply to the initial position of the box.
+        ground (bool):
+            Whether to add a static ground plane to the model.
+        new_world (bool):
+            Whether to begin a new world in the builder for this model.\n
+            If `True` (or `builder` is `None`), the model is wrapped in a new world context
+            opened via :meth:`ModelBuilder.begin_world` and closed via
+            :meth:`ModelBuilder.end_world`.\n
+            If `False`, the caller must already be inside an active world; the model is then
+            added to that currently active world.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    from newton._src.geometry import inertia  # noqa: PLC0415
+
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder()
+    else:
+        _builder = builder
+
+    # Begin a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        _builder.begin_world(label="stack_spheres_on_plane")
+
+    # Ensure there is at least one sphere
+    if num_spheres < 1:
+        raise ValueError("num_spheres must be at least 1")
+
+    # Use custom shape config if requested
+    custom_shape_cfg = (
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
+        if use_custom_shape_cfg
+        else _builder.default_shape_cfg
+    )
+
+    # Add the sphere bodies
+    r_i: float = radius
+    m_i: float = mass
+    i_I_i = inertia.compute_inertia_sphere_from_mass(mass=m_i, radius=r_i)
+    for i in range(num_spheres):
+        # Calculate the position of the sphere
+        x = 0.0
+        y = 0.0
+        z = z_offset + r_i + i * (2 * r_i)
+        # Create the sphere body
+        xform = wp.transformf(x, y, z, 0.0, 0.0, 0.0, 1.0)
+        bid_i = _builder.add_body(
+            label=f"sphere_{i}",
+            mass=m_i,
+            inertia=i_I_i,
+            xform=xform,
+            lock_inertia=True,
+        )
+        # Add collision geometries
+        _builder.add_shape_sphere(
+            label=f"sphere_geom_{i}",
+            body=bid_i,
+            radius=r_i,
+            cfg=custom_shape_cfg,
+        )
+
+    # Add a static collision geometry for the plane
+    if ground:
+        _builder.add_ground_plane(
+            cfg=custom_shape_cfg,
+            label="ground",
+            height=0.0,
+        )
+
+    # Close the world context if we opened one
+    if new_world or builder is None:
+        _builder.end_world()
+
+    # Return the populated model builder
+    return _builder
+
+
+def build_newtons_cradle_in_zero_g(
+    builder: ModelBuilder | None = None,
+    num_spheres: int = 4,
+    radius: float = 0.1,
+    mass: float = 1.0,
+    z_offset: float = 0.0,
+    friction: float | None = None,
+    restitution: float | None = None,
+    ground: bool = False,
+    new_world: bool = True,
+    use_custom_shape_cfg: bool = False,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a free-floating 'box' body and a ground box geom.
+
+    Args:
+        builder (ModelBuilder | None):
+            An optional existing model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float):
+            A vertical offset to apply to the initial position of the box.
+        ground (bool):
+            Whether to add a static ground plane to the model.
+        new_world (bool):
+            Whether to begin a new world in the builder for this model.\n
+            If `True` (or `builder` is `None`), the model is wrapped in a new world context
+            opened via :meth:`ModelBuilder.begin_world` and closed via
+            :meth:`ModelBuilder.end_world`.\n
+            If `False`, the caller must already be inside an active world; the model is then
+            added to that currently active world.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    from newton._src.geometry import inertia  # noqa: PLC0415
+
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder()
+    else:
+        _builder = builder
+
+    # Begin a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        _builder.begin_world(label="newtons_cradle_in_zero_g")
+
+    # Disable gravity in the world
+    _builder.gravity = 0.0
+
+    # Ensure there is at least one sphere
+    if num_spheres < 1:
+        raise ValueError("num_spheres must be at least 1")
+
+    # Use custom shape config if requested
+    custom_shape_cfg = (
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
+        if use_custom_shape_cfg
+        else _builder.default_shape_cfg
+    )
+
+    # Model constants
+    r_i: float = radius
+    m_i: float = mass
+    i_I_i = inertia.compute_inertia_sphere_from_mass(mass=m_i, radius=r_i)
+
+    # Add the impacting sphere body
+    bid_impacting = _builder.add_body(
+        label="impacting_sphere",
+        mass=m_i,
+        inertia=i_I_i,
+        xform=wp.transformf(-0.5, 0.0, z_offset, 0.0, 0.0, 0.0, 1.0),
+        lock_inertia=True,
+    )
+    # Add collision geometries
+    _builder.add_shape_sphere(
+        label="impacting_sphere_geom",
+        body=bid_impacting,
+        radius=r_i,
+        cfg=custom_shape_cfg,
+    )
+
+    # Add the sphere stack bodies
+    for i in range(num_spheres):
+        # Calculate the position of the sphere
+        x = r_i + i * (2 * r_i)
+        z = z_offset
+        y = 0.0
+        # Create the sphere body
+        xform = wp.transformf(x, y, z, 0.0, 0.0, 0.0, 1.0)
+        bid_i = _builder.add_body(
+            label=f"sphere_{i + 1}",
+            mass=m_i,
+            inertia=i_I_i,
+            xform=xform,
+            lock_inertia=True,
+        )
+        # Add collision geometries
+        _builder.add_shape_sphere(
+            label=f"sphere_geom_{i + 1}",
+            body=bid_i,
+            radius=r_i,
+            cfg=custom_shape_cfg,
+        )
+
+    # Add a static collision geometry for the plane
+    if ground:
+        _builder.add_ground_plane(
+            cfg=custom_shape_cfg,
+            label="ground",
+            height=0.0,
+        )
+
+    # Close the world context if we opened one
+    if new_world or builder is None:
+        _builder.end_world()
+
+    # Return the populated model builder
+    return _builder
+
+
 def build_box_on_plane(
     builder: ModelBuilder | None = None,
     z_offset: float = 0.0,
+    friction: float | None = None,
+    restitution: float | None = None,
     ground: bool = True,
     new_world: bool = True,
+    use_custom_shape_cfg: bool = False,
 ) -> ModelBuilder:
     """
     Constructs a basic model of a free-floating 'box' body and a ground box geom.
@@ -129,30 +456,51 @@ def build_box_on_plane(
     if new_world or builder is None:
         _builder.begin_world(label="box_on_plane")
 
+    # Model constants
+    m_i = 1.0
+    hx = 0.1
+    hy = 0.1
+    hz = 0.1
+
     # Add first body
-    i_I = inertia.compute_inertia_box_from_mass(mass=1.0, hx=0.2, hy=0.2, hz=0.2)
-    xform = wp.transformf(0.0, 0.0, 0.1 + z_offset, 0.0, 0.0, 0.0, 1.0)
+    i_I_i = inertia.compute_inertia_box_from_mass(mass=m_i, hx=hx, hy=hy, hz=hz)
+    xform = wp.transformf(0.0, 0.0, hz + z_offset, 0.0, 0.0, 0.0, 1.0)
     bid0 = _builder.add_body(
         label="box",
-        mass=1.0,
-        inertia=i_I,
+        mass=m_i,
+        inertia=i_I_i,
         xform=xform,
         lock_inertia=True,
+    )
+
+    # Use custom shape config if requested
+    custom_shape_cfg = (
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
+        if use_custom_shape_cfg
+        else _builder.default_shape_cfg
     )
 
     # Add collision geometries
     _builder.add_shape_box(
         label="box_geom",
         body=bid0,
-        hx=0.1,
-        hy=0.1,
-        hz=0.1,
-        cfg=_shape_cfg_basic(),
+        hx=hx,
+        hy=hy,
+        hz=hz,
+        cfg=custom_shape_cfg,
     )
 
     # Add a static collision geometry for the plane
     if ground:
-        _add_ground_box(_builder)
+        _builder.add_ground_plane(
+            cfg=custom_shape_cfg,
+            label="ground",
+        )
 
     # Close the world context if we opened one
     if new_world or builder is None:
@@ -550,13 +898,141 @@ def build_cartpole(
     return _builder
 
 
+def build_boxes_stacked_on_plane(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    dz_offset: float = 0.0,
+    friction: float | None = None,
+    restitution: float | None = None,
+    mass_top: float | None = None,
+    mass_bottom: float | None = None,
+    ground: bool = True,
+    new_world: bool = True,
+    use_custom_shape_cfg: bool = False,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a free-floating 'box' body and a ground box geom.
+
+    Args:
+        builder (ModelBuilder | None):
+            An optional existing model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float):
+            A vertical offset to apply to the initial position of the box.
+        ground (bool):
+            Whether to add a static ground plane to the model.
+        new_world (bool):
+            Whether to begin a new world in the builder for this model.\n
+            If `True` (or `builder` is `None`), the model is wrapped in a new world context
+            opened via :meth:`ModelBuilder.begin_world` and closed via
+            :meth:`ModelBuilder.end_world`.\n
+            If `False`, the caller must already be inside an active world; the model is then
+            added to that currently active world.
+
+    Returns:
+        ModelBuilder: The populated model builder.
+    """
+    from newton._src.geometry import inertia  # noqa: PLC0415
+
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder()
+    else:
+        _builder = builder
+
+    # Begin a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        _builder.begin_world(label="box_on_plane")
+
+    # Model constants
+    m_t = mass_top if mass_top is not None else 1.0
+    m_b = mass_bottom if mass_bottom is not None else 1.0
+    hx_t = 0.1
+    hy_t = 0.1
+    hz_t = 0.1
+    hx_b = 0.1
+    hy_b = 0.1
+    hz_b = 0.1
+
+    # Body inertias
+    I_t = inertia.compute_inertia_box_from_mass(mass=m_t, hx=hx_t, hy=hy_t, hz=hz_t)
+    I_b = inertia.compute_inertia_box_from_mass(mass=m_b, hx=hx_b, hy=hy_b, hz=hz_b)
+
+    # Body poses
+    xform_b = wp.transformf(0.0, 0.0, hz_b + z_offset, 0.0, 0.0, 0.0, 1.0)
+    xform_t = wp.transformf(0.0, 0.0, 2 * hz_b + hz_t + dz_offset + z_offset, 0.0, 0.0, 0.0, 1.0)
+
+    # Use custom shape config if requested
+    custom_shape_cfg = (
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
+        if use_custom_shape_cfg
+        else _shape_cfg_basic()
+    )
+
+    # Add bottom body
+    bid_b = _builder.add_body(
+        label="bottom_box",
+        mass=m_b,
+        inertia=I_b,
+        xform=xform_b,
+        lock_inertia=True,
+    )
+    _builder.add_shape_box(
+        label="geom/bottom_box",
+        body=bid_b,
+        hx=hx_b,
+        hy=hy_b,
+        hz=hz_b,
+        cfg=custom_shape_cfg,
+    )
+
+    # Add top body
+    bid_t = _builder.add_body(
+        label="top_box",
+        mass=1.0,
+        inertia=I_t,
+        xform=xform_t,
+        lock_inertia=True,
+    )
+    _builder.add_shape_box(
+        label="geom/top_box",
+        body=bid_t,
+        hx=hx_t,
+        hy=hy_t,
+        hz=hz_t,
+        cfg=custom_shape_cfg,
+    )
+
+    # Add a static collision geometry for the plane
+    if ground:
+        _builder.add_ground_plane(
+            cfg=custom_shape_cfg,
+            label="ground",
+        )
+
+    # Close the world context if we opened one
+    if new_world or builder is None:
+        _builder.end_world()
+
+    # Return the populated model builder
+    return _builder
+
+
 def build_boxes_hinged(
     builder: ModelBuilder | None = None,
     z_offset: float = 0.0,
-    ground: bool = True,
+    friction: float | None = None,
+    restitution: float | None = None,
     dynamic_joints: bool = False,
     implicit_pd: bool = False,
+    ground: bool = True,
     new_world: bool = True,
+    use_custom_shape_cfg: bool = False,
 ) -> ModelBuilder:
     """
     Constructs a basic model of a two floating boxes connected via revolute joint.
@@ -668,6 +1144,18 @@ def build_boxes_hinged(
     )
     _builder.add_articulation([jf, jh])
 
+    # Use custom shape config if requested
+    custom_shape_cfg = (
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
+        if use_custom_shape_cfg
+        else _shape_cfg_basic()
+    )
+
     # Add collision geometries
     _builder.add_shape_box(
         label="base/box",
@@ -675,7 +1163,7 @@ def build_boxes_hinged(
         hx=0.5 * d,
         hy=0.5 * w,
         hz=0.5 * h,
-        cfg=_shape_cfg_basic(),
+        cfg=custom_shape_cfg,
     )
     _builder.add_shape_box(
         label="follower/box",
@@ -683,12 +1171,15 @@ def build_boxes_hinged(
         hx=0.5 * d,
         hy=0.5 * w,
         hz=0.5 * h,
-        cfg=_shape_cfg_basic(),
+        cfg=custom_shape_cfg,
     )
 
     # Add a static collision geometry for the plane
     if ground:
-        _add_ground_box(_builder)
+        _builder.add_ground_plane(
+            cfg=custom_shape_cfg,
+            label="ground",
+        )
 
     # Close the world context if we opened one
     if new_world or builder is None:
@@ -1022,6 +1513,9 @@ def build_boxes_fourbar(
     verbose: bool = False,
     new_world: bool = True,
     actuator_ids: list[int] | None = None,
+    friction: float | None = None,
+    restitution: float | None = None,
+    use_custom_shape_cfg: bool = False,
 ) -> ModelBuilder:
     """
     Constructs a basic model of a four-bar linkage.
@@ -1086,7 +1580,7 @@ def build_boxes_fourbar(
 
     # Set default actuator IDs if none are provided
     if actuator_ids is None:
-        actuator_ids = [1, 3]
+        actuator_ids = [1]
     elif not isinstance(actuator_ids, list):
         raise TypeError("actuator_ids, if specified, must be provided as a list of integers.")
 
@@ -1212,6 +1706,18 @@ def build_boxes_fourbar(
     # Geometries
     ###
 
+    # Use custom shape config if requested
+    custom_shape_cfg = (
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
+        if use_custom_shape_cfg
+        else _shape_cfg_basic()
+    )
+
     # Add collision geometries
     _builder.add_shape_box(
         label="box_1",
@@ -1219,7 +1725,7 @@ def build_boxes_fourbar(
         hx=0.5 * d_1,
         hy=0.5 * w_1,
         hz=0.5 * h_1,
-        cfg=_shape_cfg_basic(),
+        cfg=custom_shape_cfg,
     )
     _builder.add_shape_box(
         label="box_2",
@@ -1227,7 +1733,7 @@ def build_boxes_fourbar(
         hx=0.5 * d_2,
         hy=0.5 * w_2,
         hz=0.5 * h_2,
-        cfg=_shape_cfg_basic(),
+        cfg=custom_shape_cfg,
     )
     _builder.add_shape_box(
         label="box_3",
@@ -1235,7 +1741,7 @@ def build_boxes_fourbar(
         hx=0.5 * d_3,
         hy=0.5 * w_3,
         hz=0.5 * h_3,
-        cfg=_shape_cfg_basic(),
+        cfg=custom_shape_cfg,
     )
     _builder.add_shape_box(
         label="box_4",
@@ -1243,12 +1749,15 @@ def build_boxes_fourbar(
         hx=0.5 * d_4,
         hy=0.5 * w_4,
         hz=0.5 * h_4,
-        cfg=_shape_cfg_basic(),
+        cfg=custom_shape_cfg,
     )
 
     # Add a static collision geometry for the plane
     if ground:
-        _add_ground_box(_builder)
+        _builder.add_ground_plane(
+            cfg=custom_shape_cfg,
+            label="ground",
+        )
 
     ###
     # Joints
@@ -1262,6 +1771,9 @@ def build_boxes_fourbar(
         qmin = float(-MAXVAL)
         qmax = float(MAXVAL)
 
+    # List of articulation joints
+    articulation_joints = []
+
     # Optional fixed base: attach link_1 rigidly to the world
     if fixedbase:
         _builder.add_joint_fixed(
@@ -1274,13 +1786,14 @@ def build_boxes_fourbar(
 
     # Optional floating base: attach link_1 to the world with a 6-DoF free joint
     if floatingbase:
-        _builder.add_joint_free(
+        jf = _builder.add_joint_free(
             label="world_to_link1",
             parent=-1,
             child=bid1,
             parent_xform=wp.transform_identity(dtype=wp.float32),
             child_xform=wp.transform_identity(dtype=wp.float32),
         )
+        articulation_joints.append(jf)
 
     # Per-DoF configurations reused across the revolute joints
     passive_joint_dof_config = ModelBuilder.JointDofConfig(
@@ -1289,64 +1802,58 @@ def build_boxes_fourbar(
         limit_lower=qmin,
         limit_upper=qmax,
     )
-    effort_joint_1 = ModelBuilder.JointDofConfig(
+    effort_joint_dof_config = ModelBuilder.JointDofConfig(
         axis=Axis.Y,
         actuator_mode=JointTargetMode.EFFORT,
-        limit_lower=qmin,
-        limit_upper=qmax,
-        armature=0.1 if dynamic_joints else 0.0,
-        friction=0.001 if dynamic_joints else 0.0,
-    )
-    effort_joint_other = ModelBuilder.JointDofConfig(
-        axis=Axis.Y,
-        actuator_mode=JointTargetMode.EFFORT,
-        limit_lower=qmin,
-        limit_upper=qmax,
-    )
-    pd_joint_dof_config = ModelBuilder.JointDofConfig(
-        axis=Axis.Y,
-        actuator_mode=JointTargetMode.POSITION_VELOCITY,
-        armature=0.1 if dynamic_joints else 0.0,
-        friction=0.001 if dynamic_joints else 0.0,
-        target_ke=1000.0,
-        target_kd=20.0,
         limit_lower=qmin,
         limit_upper=qmax,
     )
 
+    # # TODO
+    # pd_joint_dof_config = ModelBuilder.JointDofConfig(
+    #     axis=Axis.Y,
+    #     actuator_mode=JointTargetMode.POSITION_VELOCITY,
+    #     armature=0.1 if dynamic_joints else 0.0,
+    #     friction=0.001 if dynamic_joints else 0.0,
+    #     target_ke=1000.0,
+    #     target_kd=20.0,
+    #     limit_lower=qmin,
+    #     limit_upper=qmax,
+    # )
+    # joint_1_axis = (
+    #     pd_joint_dof_config
+    #     if implicit_pd and 1 in actuator_ids
+    #     else effort_joint_1
+    #     if 1 in actuator_ids
+    #     else passive_joint_dof_config
+    # )
+
     # Add a revolute joint between link 1 and link 2
-    joint_1_axis = (
-        pd_joint_dof_config
-        if implicit_pd and 1 in actuator_ids
-        else effort_joint_1
-        if 1 in actuator_ids
-        else passive_joint_dof_config
-    )
-    _builder.add_joint_revolute(
+    j1 = _builder.add_joint_revolute(
         label="link1_to_link2",
         parent=bid1,
         child=bid2,
-        axis=joint_1_axis,
+        axis=effort_joint_dof_config if 1 in actuator_ids else passive_joint_dof_config,
         parent_xform=wp.transformf(r_j1 - r_b1, wp.quat_identity(dtype=wp.float32)),
         child_xform=wp.transformf(r_j1 - r_b2, wp.quat_identity(dtype=wp.float32)),
     )
 
     # Add a revolute joint between link 2 and link 3
-    _builder.add_joint_revolute(
+    j2 = _builder.add_joint_revolute(
         label="link2_to_link3",
         parent=bid2,
         child=bid3,
-        axis=effort_joint_other if 2 in actuator_ids else passive_joint_dof_config,
+        axis=effort_joint_dof_config if 2 in actuator_ids else passive_joint_dof_config,
         parent_xform=wp.transformf(r_j2 - r_b2, wp.quat_identity(dtype=wp.float32)),
         child_xform=wp.transformf(r_j2 - r_b3, wp.quat_identity(dtype=wp.float32)),
     )
 
     # Add a revolute joint between link 3 and link 4
-    _builder.add_joint_revolute(
+    j3 = _builder.add_joint_revolute(
         label="link3_to_link4",
         parent=bid3,
         child=bid4,
-        axis=effort_joint_other if 3 in actuator_ids else passive_joint_dof_config,
+        axis=effort_joint_dof_config if 3 in actuator_ids else passive_joint_dof_config,
         parent_xform=wp.transformf(r_j3 - r_b3, wp.quat_identity(dtype=wp.float32)),
         child_xform=wp.transformf(r_j3 - r_b4, wp.quat_identity(dtype=wp.float32)),
     )
@@ -1356,10 +1863,425 @@ def build_boxes_fourbar(
         label="link4_to_link1",
         parent=bid4,
         child=bid1,
-        axis=effort_joint_other if 4 in actuator_ids else passive_joint_dof_config,
+        axis=effort_joint_dof_config if 4 in actuator_ids else passive_joint_dof_config,
         parent_xform=wp.transformf(r_j4 - r_b4, wp.quat_identity(dtype=wp.float32)),
         child_xform=wp.transformf(r_j4 - r_b1, wp.quat_identity(dtype=wp.float32)),
     )
+
+    # Add the joints to the articulation
+    articulation_joints.extend([j1, j2, j3])
+    _builder.add_articulation(articulation_joints)
+
+    # Close the world context if we opened one
+    if new_world or builder is None:
+        _builder.end_world()
+
+    # Return the populated model builder
+    return _builder
+
+
+def build_boxes_fourbar_cartpole(
+    builder: ModelBuilder | None = None,
+    z_offset: float = 0.0,
+    fixedbase: bool = True,
+    floatingbase: bool = False,
+    limits: bool = True,
+    ground: bool = True,
+    dynamic_joints: bool = False,
+    implicit_pd: bool = False,
+    verbose: bool = False,
+    new_world: bool = True,
+    actuator_ids: list[int] | None = None,
+    friction: float | None = None,
+    restitution: float | None = None,
+    use_custom_shape_cfg: bool = False,
+) -> ModelBuilder:
+    """
+    Constructs a basic model of a four-bar linkage.
+
+    Args:
+        builder (ModelBuilder | None):
+            An optional existing model builder to populate.\n
+            If `None`, a new builder is created.
+        z_offset (float):
+            A vertical offset to apply to the initial position of the box.
+        fixedbase (bool):
+            Whether to attach ``link_1`` to the world with a fixed joint.
+        floatingbase (bool):
+            Whether to attach ``link_1`` to the world with a free (6-DoF) joint.
+        limits (bool):
+            Whether to apply finite position limits on every revolute joint.\n
+            If `True`, each hinge is restricted to `[-pi/4, pi/4]`.\n
+            If `False`, the joint limits are set to the largest representable float32 range.
+        ground (bool):
+            Whether to add a static ground plane to the model.
+        dynamic_joints (bool):
+            Whether to attach non-zero armature and friction terms to the first
+            actuated revolute joint so that its dynamics are better conditioned
+            for stiff integrators.
+        implicit_pd (bool):
+            Whether to configure the first actuated revolute joint with a
+            position/velocity target mode (implicit PD) instead of the default
+            effort-based actuation.
+        verbose (bool):
+            If `True`, prints the computed body inertias and the initial body and
+            joint positions during construction.
+        new_world (bool):
+            Whether to begin a new world in the builder for this model.\n
+            If `True` (or `builder` is `None`), the model is wrapped in a new world context
+            opened via :meth:`ModelBuilder.begin_world` and closed via
+            :meth:`ModelBuilder.end_world`.\n
+            If `False`, the caller must already be inside an active world; the model is then
+            added to that currently active world.
+        actuator_ids (list[int] | None):
+            1-based indices of the revolute joints (``1`` through ``4``) that should be
+            driven by an actuator. Any joint whose index is not listed is treated as a
+            passive revolute joint.\n
+            In the original Kamino factory the special index ``0`` selected actuation of
+            the free-base joint; Newton's free joint does not expose an analogous flag
+            and the value is currently ignored for the base joint.\n
+            If `None`, defaults to `[1, 3]`.
+
+    Returns:
+        ModelBuilder: A model builder containing the four-bar linkage.
+    """
+    from newton._src.geometry import inertia  # noqa: PLC0415
+
+    # Create a new builder if none is provided
+    if builder is None:
+        _builder = ModelBuilder()
+    else:
+        _builder = builder
+
+    # Begin a new world in the builder if requested or if a new builder was created
+    if new_world or builder is None:
+        _builder.begin_world(label="boxes_fourbar_cartpole")
+
+    # Set default actuator IDs if none are provided
+    if actuator_ids is None:
+        actuator_ids = [1]
+    elif not isinstance(actuator_ids, list):
+        raise TypeError("actuator_ids, if specified, must be provided as a list of integers.")
+
+    # Ensure fixedbase and floatingbase are not both True
+    if fixedbase and floatingbase:
+        raise ValueError("`fixedbase` and `floatingbase` cannot both be set to `True`.")
+
+    ###
+    # Base Parameters
+    ###
+
+    # Constant to set an initial z offset for the bodies
+    # NOTE: for testing purposes, recommend values are {0.0, -0.001}
+    z_0 = z_offset
+
+    # Box dimensions
+    d = 0.01
+    w = 0.01
+    h = 0.1
+
+    # Margins
+    mj = 0.001
+    dj = 0.5 * d + mj
+
+    ###
+    # Body parameters
+    ###
+
+    # Box dimensions
+    d_1 = h
+    w_1 = w
+    h_1 = d
+    d_2 = d
+    w_2 = w
+    h_2 = h
+    d_3 = h
+    w_3 = w
+    h_3 = d
+    d_4 = d
+    w_4 = w
+    h_4 = h
+    d_5 = d
+    w_5 = w
+    h_5 = h
+    # Inertial properties
+    m_i = 1.0
+    i_I_i_1 = inertia.compute_inertia_box_from_mass(mass=m_i, hx=0.5 * d_1, hy=0.5 * w_1, hz=0.5 * h_1)
+    i_I_i_2 = inertia.compute_inertia_box_from_mass(mass=m_i, hx=0.5 * d_2, hy=0.5 * w_2, hz=0.5 * h_2)
+    i_I_i_3 = inertia.compute_inertia_box_from_mass(mass=m_i, hx=0.5 * d_3, hy=0.5 * w_3, hz=0.5 * h_3)
+    i_I_i_4 = inertia.compute_inertia_box_from_mass(mass=m_i, hx=0.5 * d_4, hy=0.5 * w_4, hz=0.5 * h_4)
+    i_I_i_5 = inertia.compute_inertia_box_from_mass(mass=m_i, hx=0.5 * d_5, hy=0.5 * w_5, hz=0.5 * h_5)
+
+    if verbose:
+        print(f"i_I_i_1:\n{i_I_i_1}")
+        print(f"i_I_i_2:\n{i_I_i_2}")
+        print(f"i_I_i_3:\n{i_I_i_3}")
+        print(f"i_I_i_4:\n{i_I_i_4}")
+        print(f"i_I_i_5:\n{i_I_i_5}")
+
+    # Initial body positions
+    r_0 = wp.vec3f(0.0, 0.0, z_0)
+    dr_b1 = wp.vec3f(0.0, 0.0, 0.5 * d)
+    dr_b2 = wp.vec3f(0.5 * h + dj, 0.0, 0.5 * h + dj)
+    dr_b3 = wp.vec3f(0.0, 0.0, 0.5 * d + h + dj + mj)
+    dr_b4 = wp.vec3f(-0.5 * h - dj, 0.0, 0.5 * h + dj)
+    dr_b5 = wp.vec3f(0.0, 0.5 * w_3 + 0.5 * w_5, 0.5 * h_5 - 0.5 * h_3)
+
+    # Initial positions of the bodies
+    r_b1 = r_0 + dr_b1
+    r_b2 = r_b1 + dr_b2
+    r_b3 = r_b1 + dr_b3
+    r_b4 = r_b1 + dr_b4
+    r_b5 = r_b3 + dr_b5
+    if verbose:
+        print(f"r_b1: {r_b1}")
+        print(f"r_b2: {r_b2}")
+        print(f"r_b3: {r_b3}")
+        print(f"r_b4: {r_b4}")
+        print(f"r_b5: {r_b5}")
+
+    # Initial body poses
+    q_i_1 = wp.transformf(r_b1, wp.quat_identity(dtype=wp.float32))
+    q_i_2 = wp.transformf(r_b2, wp.quat_identity(dtype=wp.float32))
+    q_i_3 = wp.transformf(r_b3, wp.quat_identity(dtype=wp.float32))
+    q_i_4 = wp.transformf(r_b4, wp.quat_identity(dtype=wp.float32))
+    q_i_5 = wp.transformf(r_b5, wp.quat_identity(dtype=wp.float32))
+
+    # Initial joint positions
+    r_j1 = wp.vec3f(r_b2.x, 0.0, r_b1.z)
+    r_j2 = wp.vec3f(r_b2.x, 0.0, r_b3.z)
+    r_j3 = wp.vec3f(r_b4.x, 0.0, r_b3.z)
+    r_j4 = wp.vec3f(r_b4.x, 0.0, r_b1.z)
+    r_j5 = wp.vec3f(r_b5.x, 0.5 * w_3, r_b3.z)
+    if verbose:
+        print(f"r_j1: {r_j1}")
+        print(f"r_j2: {r_j2}")
+        print(f"r_j3: {r_j3}")
+        print(f"r_j4: {r_j4}")
+        print(f"r_j5: {r_j5}")
+
+    ###
+    # Bodies
+    ###
+
+    bid1 = _builder.add_link(
+        label="link_1",
+        mass=m_i,
+        inertia=i_I_i_1,
+        xform=q_i_1,
+        lock_inertia=True,
+    )
+
+    bid2 = _builder.add_link(
+        label="link_2",
+        mass=m_i,
+        inertia=i_I_i_2,
+        xform=q_i_2,
+        lock_inertia=True,
+    )
+
+    bid3 = _builder.add_link(
+        label="link_3",
+        mass=m_i,
+        inertia=i_I_i_3,
+        xform=q_i_3,
+        lock_inertia=True,
+    )
+
+    bid4 = _builder.add_link(
+        label="link_4",
+        mass=m_i,
+        inertia=i_I_i_4,
+        xform=q_i_4,
+        lock_inertia=True,
+    )
+
+    bid5 = _builder.add_link(
+        label="link_5",
+        mass=m_i,
+        inertia=i_I_i_5,
+        xform=q_i_5,
+        lock_inertia=True,
+    )
+
+    ###
+    # Geometries
+    ###
+
+    # Use custom shape config if requested
+    bar_shape_cfg = (
+        ModelBuilder.ShapeConfig(
+            gap=0.01,
+            margin=1e-6,
+            mu=friction if friction is not None else _builder.default_shape_cfg.mu,
+            restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
+        )
+        if use_custom_shape_cfg
+        else _shape_cfg_basic()
+    )
+
+    # Modify the shape config for the pole so it doesnt collide with any fourbar links
+    pole_shape_cfg = copy.deepcopy(bar_shape_cfg)
+    pole_shape_cfg.collision_group = 2
+
+    # Add collision geometries
+    _builder.add_shape_box(
+        label="box_1",
+        body=bid1,
+        hx=0.5 * d_1,
+        hy=0.5 * w_1,
+        hz=0.5 * h_1,
+        cfg=bar_shape_cfg,
+    )
+    _builder.add_shape_box(
+        label="box_2",
+        body=bid2,
+        hx=0.5 * d_2,
+        hy=0.5 * w_2,
+        hz=0.5 * h_2,
+        cfg=bar_shape_cfg,
+    )
+    _builder.add_shape_box(
+        label="box_3",
+        body=bid3,
+        hx=0.5 * d_3,
+        hy=0.5 * w_3,
+        hz=0.5 * h_3,
+        cfg=bar_shape_cfg,
+    )
+    _builder.add_shape_box(
+        label="box_4",
+        body=bid4,
+        hx=0.5 * d_4,
+        hy=0.5 * w_4,
+        hz=0.5 * h_4,
+        cfg=bar_shape_cfg,
+    )
+    _builder.add_shape_box(
+        label="box_5",
+        body=bid5,
+        hx=0.5 * d_5,
+        hy=0.5 * w_5,
+        hz=0.5 * h_5,
+        cfg=pole_shape_cfg,
+    )
+
+    # Add a static collision geometry for the plane
+    if ground:
+        ground_shape_cfg = copy.deepcopy(bar_shape_cfg)
+        ground_shape_cfg.collision_group = -1
+        _builder.add_ground_plane(
+            cfg=ground_shape_cfg,
+            label="ground",
+        )
+
+    ###
+    # Joints
+    ###
+
+    # Revolute joint position limits
+    if limits:
+        qmin = -0.4 * math.pi
+        qmax = 0.4 * math.pi
+    else:
+        qmin = float(-MAXVAL)
+        qmax = float(MAXVAL)
+
+    # List of articulation joints
+    articulation_joints = []
+
+    # Optional fixed base: attach link_1 rigidly to the world
+    if fixedbase:
+        _builder.add_joint_fixed(
+            label="world_to_link1",
+            parent=-1,
+            child=bid1,
+            parent_xform=wp.transform_identity(dtype=wp.float32),
+            child_xform=wp.transformf(-r_b1, wp.quat_identity(dtype=wp.float32)),
+        )
+
+    # Optional floating base: attach link_1 to the world with a 6-DoF free joint
+    if floatingbase:
+        jf = _builder.add_joint_free(
+            label="world_to_link1",
+            parent=-1,
+            child=bid1,
+            parent_xform=wp.transform_identity(dtype=wp.float32),
+            child_xform=wp.transform_identity(dtype=wp.float32),
+        )
+        articulation_joints.append(jf)
+
+    # Per-DoF configurations reused across the revolute joints
+    passive_joint_dof_config = ModelBuilder.JointDofConfig(
+        axis=Axis.Y,
+        actuator_mode=JointTargetMode.NONE,
+        limit_lower=qmin,
+        limit_upper=qmax,
+    )
+    effort_joint_dof_config = ModelBuilder.JointDofConfig(
+        axis=Axis.Y,
+        actuator_mode=JointTargetMode.EFFORT,
+        limit_lower=qmin,
+        limit_upper=qmax,
+    )
+    pole_joint_dof_config = ModelBuilder.JointDofConfig(
+        axis=Axis.Y,
+        actuator_mode=JointTargetMode.NONE,
+    )
+
+    # Add a revolute joint between link 1 and link 2
+    j1 = _builder.add_joint_revolute(
+        label="link1_to_link2",
+        parent=bid1,
+        child=bid2,
+        axis=effort_joint_dof_config if 1 in actuator_ids else passive_joint_dof_config,
+        parent_xform=wp.transformf(r_j1 - r_b1, wp.quat_identity(dtype=wp.float32)),
+        child_xform=wp.transformf(r_j1 - r_b2, wp.quat_identity(dtype=wp.float32)),
+    )
+
+    # Add a revolute joint between link 2 and link 3
+    j2 = _builder.add_joint_revolute(
+        label="link2_to_link3",
+        parent=bid2,
+        child=bid3,
+        axis=effort_joint_dof_config if 2 in actuator_ids else passive_joint_dof_config,
+        parent_xform=wp.transformf(r_j2 - r_b2, wp.quat_identity(dtype=wp.float32)),
+        child_xform=wp.transformf(r_j2 - r_b3, wp.quat_identity(dtype=wp.float32)),
+    )
+
+    # Add a revolute joint between link 3 and link 5
+    j3 = _builder.add_joint_revolute(
+        label="link3_to_link5",
+        parent=bid3,
+        child=bid5,
+        axis=pole_joint_dof_config,
+        parent_xform=wp.transformf(r_j5 - r_b3, wp.quat_identity(dtype=wp.float32)),
+        child_xform=wp.transformf(r_j5 - r_b5, wp.quat_identity(dtype=wp.float32)),
+    )
+
+    # Add a revolute joint between link 3 and link 4
+    j4 = _builder.add_joint_revolute(
+        label="link3_to_link4",
+        parent=bid3,
+        child=bid4,
+        axis=effort_joint_dof_config if 3 in actuator_ids else passive_joint_dof_config,
+        parent_xform=wp.transformf(r_j3 - r_b3, wp.quat_identity(dtype=wp.float32)),
+        child_xform=wp.transformf(r_j3 - r_b4, wp.quat_identity(dtype=wp.float32)),
+    )
+
+    # Add a revolute joint between link 4 and link 1 (closes the loop)
+    _builder.add_joint_revolute(
+        label="link4_to_link1",
+        parent=bid4,
+        child=bid1,
+        axis=effort_joint_dof_config if 4 in actuator_ids else passive_joint_dof_config,
+        parent_xform=wp.transformf(r_j4 - r_b4, wp.quat_identity(dtype=wp.float32)),
+        child_xform=wp.transformf(r_j4 - r_b1, wp.quat_identity(dtype=wp.float32)),
+    )
+
+    # Add the joints to the articulation
+    articulation_joints.extend([j1, j2, j3, j4])
+    _builder.add_articulation(articulation_joints)
 
     # Close the world context if we opened one
     if new_world or builder is None:

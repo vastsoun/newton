@@ -11,6 +11,7 @@ import newton
 import newton.examples
 from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino._src.core.types import float32
+from newton._src.solvers.kamino._src.metrics import SolutionMetricsLogger
 from newton._src.solvers.kamino._src.models.builders.basics import build_boxes_fourbar
 from newton._src.solvers.kamino._src.models.builders.utils import (
     make_homogeneous_builder,
@@ -265,6 +266,16 @@ class Example:
             msg.notif("Creating the sim data logger...")
             self.logger = SimulationLogger(self.max_steps, self.sim, self.builder)
 
+        self.solver_metrics_logger: SolutionMetricsLogger | None = None
+        if self.logging:
+            msg.notif("Creating the metrics logger...")
+            self.metlog = SolutionMetricsLogger(
+                metrics=self.sim.solver.metrics,
+                max_frames=self.max_steps,
+                mode=SolutionMetricsLogger.Mode.BOUNDED,
+                dt=self.sim_dt,
+            )
+
         # Initialize the 3D viewer
         self.viewer: ViewerKamino | None = None
         if not headless:
@@ -323,6 +334,7 @@ class Example:
             self.sim.step()
             if not self.use_cuda_graph and self.logging:
                 self.logger.log()
+                self.metlog.log()
 
     def reset(self):
         """Reset the simulation."""
@@ -342,6 +354,7 @@ class Example:
             self.sim.step()
         if not self.use_cuda_graph and self.logging:
             self.logger.log()
+            self.metlog.log()
 
     def step(self):
         """Step the simulation."""
@@ -373,6 +386,7 @@ class Example:
             self.logger.plot_solver_info(path=path, show=show)
             self.logger.plot_joint_tracking(path=path, show=show)
             self.logger.plot_solution_metrics(path=path, show=show)
+            self.metlog.plot_comparison(loggers={"solver": self.metlog}, path=path, show=show, grid=True)
 
         # Optionally generate video from recorded frames
         if self.viewer is not None and self.viewer._record_video:
@@ -398,7 +412,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--implicit-pd",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
         help="Enables implicit PD control of joints",
     )
     parser.add_argument(
@@ -407,7 +421,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ground", action=argparse.BooleanOptionalAction, default=True, help="Adds a ground plane to the simulation"
     )
-    parser.add_argument("--cuda-graph", action=argparse.BooleanOptionalAction, default=True, help="Use CUDA graphs")
+    parser.add_argument("--cuda-graph", action=argparse.BooleanOptionalAction, default=False, help="Use CUDA graphs")
     parser.add_argument("--clear-cache", action=argparse.BooleanOptionalAction, default=False, help="Clear warp cache")
     parser.add_argument(
         "--logging", action=argparse.BooleanOptionalAction, default=True, help="Enable logging of simulation data"

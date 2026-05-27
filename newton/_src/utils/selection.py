@@ -515,7 +515,7 @@ class ArticulationView:
         self.device = model.device
 
         if verbose is None:
-            verbose = wp.config.log_level <= wp.LOG_DEBUG
+            verbose = wp.config.verbose
 
         # FIXME: avoid/reduce this readback?
         model_articulation_start = model.articulation_start.numpy()

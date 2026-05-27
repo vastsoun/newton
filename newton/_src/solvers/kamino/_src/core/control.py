@@ -39,6 +39,16 @@ class ControlKamino:
     """
 
     ###
+    # Meta-data
+    ###
+
+    src: Control | None = None
+    """
+    A source :class:`newton.State` object that this :class:`StateKamino` object is wrapping.
+    If ``None``, the :class:`StateKamino` object is not associated with a :class:`newton.State` object.
+    """
+
+    ###
     # Attributes
     ###
 
@@ -153,6 +163,7 @@ class ControlKamino:
             control: The source :class:`newton.Control` object to be interfaced.
             model: The source Kamino model holding the time-invariant description of the system.
         """
+        self.src = control
         self.tau_j = control.joint_f
         self.tau_j_ref = control.joint_act
         self.dq_j_ref = control.joint_target_vel

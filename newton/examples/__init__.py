@@ -16,8 +16,6 @@ import warp as wp
 import newton
 from newton.tests.unittest_utils import find_nan_members
 
-_DEPRECATED_WARP_CONFIG_KEYS = {"quiet", "verbose"}
-
 
 def get_source_directory() -> str:
     return os.path.realpath(os.path.dirname(__file__))
@@ -633,9 +631,6 @@ def _apply_warp_config(parser, args):
 
         key, value_str = entry.split("=", 1)
 
-        if key in _DEPRECATED_WARP_CONFIG_KEYS:
-            parser.error(f"invalid --warp-config key '{key}': use 'log_level' instead")
-
         if not hasattr(wp.config, key):
             parser.error(f"invalid --warp-config key '{key}': not a recognized warp.config setting")
 
@@ -721,7 +716,7 @@ def init(parser=None):
 
     # Suppress Warp compilation messages if requested
     if args.quiet:
-        wp.config.log_level = max(wp.config.log_level, wp.LOG_WARNING)
+        wp.config.quiet = True
 
     # Set device if specified
     if args.device:

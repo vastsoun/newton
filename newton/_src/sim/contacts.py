@@ -52,7 +52,7 @@ class Contacts:
         This class is a temporary solution and its interface may change in the future.
     """
 
-    EXTENDED_ATTRIBUTES: frozenset[str] = frozenset(("force",))
+    EXTENDED_ATTRIBUTES: frozenset[str] = frozenset(("force", "velocity"))
     """
     Names of optional extended contact attributes that are not allocated by default.
 
@@ -281,9 +281,21 @@ class Contacts:
 
             This is an extended contact attribute; see :ref:`extended_contact_attributes` for more information.
             """
+            self.velocity: wp.array | None = None
+            """Contact velocity (spatial) [m/s, rad/s], shape (rigid_contact_max + soft_contact_max,), dtype :class:`spatial_vector`.
+            Relative linear and angular velocity of the contact, defined as the relative twist of body1 w.r.t the twist of body0, referenced
+            to the center of mass (COM) of body0, and in the world frame, where body0 and body1 are the bodies of shape0 and shape1.
+            First three entries: linear velocity [m/s]; last three entries: angular velocity [rad/s].
+            When both rigid and soft contacts are present, soft contact velocities follow rigid contact velocities.
+
+            This is an extended contact attribute; see :ref:`extended_contact_attributes` for more information.
+            """
             if requested_attributes and "force" in requested_attributes:
                 total_contacts = rigid_contact_max + soft_contact_max
-                self.force = wp.zeros(total_contacts, dtype=wp.spatial_vector, requires_grad=requires_grad)
+                self.force = wp.zeros(total_contacts, dtype=wp.spatial_vectorf, requires_grad=requires_grad)
+            if requested_attributes and "velocity" in requested_attributes:
+                total_contacts = rigid_contact_max + soft_contact_max
+                self.velocity = wp.zeros(total_contacts, dtype=wp.spatial_vectorf, requires_grad=requires_grad)
 
         self.requires_grad = requires_grad
 
@@ -328,6 +340,9 @@ class Contacts:
 
             if self.force is not None:
                 self.force.zero_()
+
+            if self.velocity is not None:
+                self.velocity.zero_()
 
             if self.rigid_contact_diff_distance is not None:
                 self.rigid_contact_diff_distance.zero_()

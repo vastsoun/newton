@@ -14,7 +14,7 @@ import warp as wp
 from .....sim import Model
 
 # Kamino imports
-from .bodies import RigidBodiesData, RigidBodiesModel, convert_geom_offset_origin_to_com
+from .bodies import RigidBodiesData, RigidBodiesModel
 from .control import ControlKamino
 from .conversions import (
     convert_entity_local_transforms,
@@ -587,10 +587,12 @@ class ModelKamino:
                 q_j_ref=wp.clone(self.joints.q_j_0, requires_grad=requires_grad),
                 dq_j_ref=wp.clone(self.joints.dq_j_0, requires_grad=requires_grad),
                 tau_j_ref=wp.zeros(shape=njdofs, dtype=float32, requires_grad=requires_grad),
+                w_j_F_com=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
                 j_w_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
-                j_w_c_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
-                j_w_a_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
-                j_w_l_j=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
+                j_w_j_dof_act=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
+                j_w_j_cts_dyn=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
+                j_w_j_cts_kin=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
+                j_w_j_cts_lim=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
             )
 
             # Construct the geometries data from the model's initial state
@@ -608,7 +610,12 @@ class ModelKamino:
             geoms=geoms,
         )
 
-    def state(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> StateKamino:
+    def state(
+        self,
+        requires_grad: bool = False,
+        device: wp.DeviceLike = None,
+        joint_wrenches: bool = False,
+    ) -> StateKamino:
         """
         Creates state container initialized to the initial body state defined in the model.
 
@@ -624,6 +631,10 @@ class ModelKamino:
 
         # Create a new state container with the initial state of the model entities on the specified device
         with wp.ScopedDevice(device=device):
+            njdof = self.size.sum_of_num_joint_dofs
+            njcts = self.size.sum_of_num_joint_cts
+            nb = self.size.sum_of_num_bodies
+            nj = self.size.sum_of_num_joints
             state = StateKamino(
                 q_i=wp.clone(self.bodies.q_i_0, requires_grad=requires_grad),
                 u_i=wp.clone(self.bodies.u_i_0, requires_grad=requires_grad),
@@ -631,8 +642,10 @@ class ModelKamino:
                 w_i_e=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
                 q_j=wp.clone(self.joints.q_j_0, requires_grad=requires_grad),
                 q_j_p=wp.clone(self.joints.q_j_0, requires_grad=requires_grad),
-                dq_j=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=float32, requires_grad=requires_grad),
-                lambda_j=wp.zeros(shape=self.size.sum_of_num_joint_cts, dtype=float32, requires_grad=requires_grad),
+                dq_j=wp.zeros(shape=njdof, dtype=float32, requires_grad=requires_grad),
+                lambda_j=wp.zeros(shape=njcts, dtype=float32, requires_grad=requires_grad),
+                w_i_F_com=wp.zeros(shape=nb, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
+                w_j_F_com=wp.zeros(shape=nj, dtype=vec6f, requires_grad=requires_grad) if joint_wrenches else None,
             )
 
         # Return the constructed state container
@@ -671,9 +684,16 @@ class ModelKamino:
         return control
 
     @staticmethod
-    def from_newton(model: Model) -> ModelKamino:
+    def from_newton(model: Model, overwrite_source_model: bool = True) -> ModelKamino:
         """
         Finalizes the :class:`ModelKamino` from an existing instance of :class:`newton.Model`.
+
+        Args:
+            model:
+                The source :class:`newton.Model` instance to be converted.
+            overwrite_source_model:
+                Whether to overwrite the source model with
+                the converted model. Defaults to `True`.
         """
 
         # Ensure the base model is valid
@@ -771,7 +791,13 @@ class ModelKamino:
             model_joints = convert_joints(model, model_size, model_info, body_com, joint_X_p, joint_X_c)
 
             # Geometries
-            model_geoms = convert_geometries(model, model_size, materials_manager, shape_transform)
+            model_geoms = convert_geometries(
+                model=model,
+                model_size=model_size,
+                model_bodies=model_bodies,
+                materials_manager=materials_manager,
+                shape_transform=shape_transform,
+            )
 
             # Materials
             model_materials = materials_manager.make_materials_model()
@@ -784,19 +810,12 @@ class ModelKamino:
         # Modify the model's body COM and shape transform properties in-place to convert from body-frame-relative
         # NOTE: These are modified only so that the visualizer correctly
         # shows the shape poses, joints frames and body inertial properties
-        wp.copy(model.body_com, body_com)
-        wp.copy(model.body_inertia, body_inertia)
-        wp.copy(model.shape_transform, shape_transform)
-        wp.copy(model.joint_X_p, joint_X_p)
-        wp.copy(model.joint_X_c, joint_X_c)
-
-        # Convert shape offsets from body-frame-relative to COM-relative
-        convert_geom_offset_origin_to_com(
-            model_bodies.i_r_com_i,
-            model.shape_body,
-            shape_transform,
-            model_geoms.offset,
-        )
+        if overwrite_source_model:
+            wp.copy(model.body_com, body_com)
+            wp.copy(model.body_inertia, body_inertia)
+            wp.copy(model.shape_transform, shape_transform)
+            wp.copy(model.joint_X_p, joint_X_p)
+            wp.copy(model.joint_X_c, joint_X_c)
 
         # Construct and return the new ModelKamino instance
         return ModelKamino(

@@ -127,7 +127,7 @@ def make_containers(
     model.time.inv_dt.fill_(wp.float32(1.0 / dt))
 
     # Create a data and state container
-    data = model.data()
+    data = model.data(joint_wrenches=True)
     state = model.state()
 
     # Create the limits container
@@ -168,7 +168,7 @@ def update_containers(
 
     # Run joint-limit detection to generate active limits
     if limits is not None:
-        limits.detect(model=model, data=data)
+        limits.detect(q_j=data.joints.q_j)
         wp.synchronize()
 
     # Run collision detection to generate active contacts
@@ -206,8 +206,8 @@ def make_test_problem(
     model.time.inv_dt.fill_(wp.float32(1.0 / dt))
 
     # Create a model state container
-    data = model.data(device=device)
-    state = model.state(device=device)
+    data = model.data(joint_wrenches=True)
+    state = model.state()
 
     # Construct and allocate the limits container
     limits = None
@@ -256,7 +256,7 @@ def make_test_problem(
 
     # Run limit detection to generate active limits
     if with_limits:
-        limits.detect(model, data)
+        limits.detect(q_j=data.joints.q_j)
         wp.synchronize()
         if verbose:
             print(f"limits.world_active_limits: {limits.world_active_limits}")

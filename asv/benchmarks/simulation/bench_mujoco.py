@@ -7,7 +7,7 @@ import sys
 import warp as wp
 
 wp.config.enable_backward = False
-wp.config.log_level = wp.LOG_WARNING
+wp.config.quiet = True
 
 from asv_runner.benchmarks.mark import SkipNotImplemented, skip_benchmark_if
 

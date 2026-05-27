@@ -502,9 +502,19 @@ class ViewerBase(ABC):
         # Geometry mesh cache (geometry hash -> mesh path)
         self._geometry_cache: dict[int, str] = {}
 
-        # Contact line vertices
+        # Contact normal vertices
         self._contact_points0 = None
         self._contact_points1 = None
+
+        # Contact disks (for contact mode color-coding)
+        self._contact_disk_mesh: str | None = None
+        self._contact_disk_xforms: wp.array | None = None
+        self._contact_disk_scales: wp.array | None = None
+        self._contact_disk_colors: wp.array | None = None
+
+        # Contact force vertices
+        self._contact_force_starts: wp.array | None = None
+        self._contact_force_ends: wp.array | None = None
 
         # Joint basis line vertices (3 lines per joint)
         self._joint_points0 = None
@@ -514,18 +524,13 @@ class ViewerBase(ABC):
         # Center-of-mass visualization
         self._com_positions = None
         self._com_colors = None
+        self._com_radii = None
 
         # World offset support
         self.world_offsets = None
         self._user_spacing: tuple[float, float, float] | None = None
         self._visible_worlds: set[int] | None = None
         self._visible_worlds_mask: wp.array | None = None
-
-        # Characteristic body size in world units, used to auto-scale
-        # visualization helpers (contact arrows, joint axes, COM markers).
-        # Set in :meth:`set_model` from :meth:`_estimate_scene_scale`; falls
-        # back to 1.0 when no dynamic shapes are present.
-        self.scene_scale: float = 1.0
 
         # Picking
         self.picking_enabled = True
@@ -535,6 +540,9 @@ class ViewerBase(ABC):
         self.show_com = False
         self.show_particles = False
         self.show_contacts = False
+        self.show_contact_normals = True
+        self.show_contact_disks = True  # Note: requires the ``"force"`` extended contact attribute.
+        self.show_contact_forces = True  # Note: requires the ``"force"`` extended contact attribute.
         self.show_springs = False
         self.show_triangles = True
         self.show_gaussians = False
@@ -544,6 +552,18 @@ class ViewerBase(ABC):
         self.show_inertia_boxes = False
         self.show_hydro_contact_surface = False
         self.sdf_margin_mode: ViewerBase.SDFMarginMode = ViewerBase.SDFMarginMode.OFF
+
+        # Thresholds for contact disk coloring (determining open/sticking/sliding contact modes)
+        self.contact_mode_eps_force: float = 1e-5
+        self.contact_mode_eps_velocity_normal: float = 1e-3
+        self.contact_mode_eps_velocity_tangential: float = 1e-3
+
+        # Scaling parameters for the contact visualization
+        # Note: these are auto-set in :meth:`set_model`, below are fallback defaults.
+        self.contact_viz_scale = 1.0  # Length of contact normal arrows (contact disks/forces scale relatively)
+        self.contact_force_scale = 0.5  # Length of contact force arrows, w.r.t. contact normal arrows
+        self._contact_viz_scale_default = self.contact_viz_scale
+        self._contact_force_scale_default = self.contact_force_scale
 
         self.gaussians_max_points = 100_000  # Max number of points to visualize per gaussian
 
@@ -613,11 +633,12 @@ class ViewerBase(ABC):
             self._build_visible_worlds_mask()
             self._populate_shapes()
 
-            self.scene_scale = self._estimate_scene_scale() or 1.0
-
             # Auto-compute world offsets if not already set
             if self.world_offsets is None:
                 self._auto_compute_world_offsets()
+
+            # Adapt contact-visualization scales to the model.
+            self._auto_compute_contact_scales()
 
     def _should_render_world(self, world_idx: int) -> bool:
         """Check if a world should be rendered based on visible worlds."""
@@ -786,40 +807,6 @@ class ViewerBase(ABC):
         # Convert to warp array
         self.world_offsets = wp.array(full_offsets, dtype=wp.vec3, device=self.device)
 
-    def _estimate_scene_scale(self) -> float:
-        """Estimate a characteristic body size in world units.
-
-        Returns ``median(collision_radius)`` over shapes attached to a body
-        (``shape_body >= 0``). Static, world-attached shapes (heightfields,
-        ground planes, fixtures) carry ``shape_body == -1`` and are excluded,
-        so the scale tracks the bodies that actually move in the scene, not
-        the world they move in.
-
-        Returns:
-            float: Characteristic body size, or 0.0 if no body-attached shapes.
-        """
-        if self.model is None or self.model.shape_count == 0:
-            return 0.0
-
-        radii = self.model.shape_collision_radius.numpy()
-        shape_body = self.model.shape_body.numpy()
-        keep = (shape_body >= 0) & (radii > 0.0) & (radii < 1.0e5)
-        if not keep.any():
-            return 0.0
-        return float(np.median(radii[keep]))
-
-    def _arrow_scale(self) -> float:
-        """User multiplier on contact-arrow length and pixel width. Default 1.0."""
-        return 1.0
-
-    def _joint_scale(self) -> float:
-        """User multiplier on joint-axis line length. Default 1.0."""
-        return 1.0
-
-    def _com_scale(self) -> float:
-        """User multiplier on COM sphere radius. Default 1.0."""
-        return 1.0
-
     def _get_world_extents(self) -> tuple[float, float, float] | None:
         """Get the maximum extents of all worlds in the model."""
         if self.model is None:
@@ -885,6 +872,62 @@ class ViewerBase(ABC):
 
         # Set world offsets with computed spacing
         self.set_world_offsets(tuple(spacing))
+
+    def _auto_compute_contact_scales(self):
+        """Adapt contact-visualization scales to the current model.
+
+        Sets ``contact_viz_scale`` and ``contact_force_scale``, based on
+        aggregate model dimensions.
+
+        Falls back to the literal defaults if the relevant model data is
+        unavailable (e.g. no shapes / no dynamic bodies / zero gravity).
+        """
+        # Save the previous defaults so we can detect user overrides set
+        # before the model was attached (rare but possible).
+        prev_default_scale = self._contact_viz_scale_default
+        prev_default_force_scale = self._contact_force_scale_default
+
+        # Characteristic length L_char: 10% of the maximal extent.
+        L_char = 0.0
+        max_extents = self._get_world_extents()
+        if max_extents is not None:
+            L_char = float(0.1 * np.linalg.norm(max_extents))
+        if not np.isfinite(L_char) or L_char <= 0.0:
+            L_char = 1.0
+
+        # Characteristic force F_char = sum(dynamic body mass) * |gravity|.
+        F_char = 0.0
+        if (
+            self.model is not None
+            and self.model.body_mass is not None
+            and self.model.body_inv_mass is not None
+            and self.model.body_count > 0
+        ):
+            mass_np = self.model.body_mass.numpy()
+            inv_mass_np = self.model.body_inv_mass.numpy()
+            dyn_mask = np.isfinite(mass_np) & (inv_mass_np > 0.0)
+            total_mass = float(mass_np[dyn_mask].sum()) if dyn_mask.any() else 0.0
+            g_mag = 9.81
+            if self.model.gravity is not None:
+                g_np = self.model.gravity.numpy()
+                if g_np.size > 0:
+                    g0 = np.asarray(g_np[0], dtype=np.float64).reshape(-1)
+                    g_mag = float(np.linalg.norm(g0))
+                    if not np.isfinite(g_mag) or g_mag <= 0.0:
+                        g_mag = 9.81
+            F_char = total_mass * g_mag
+        if not np.isfinite(F_char) or F_char <= 0.0:
+            F_char = 1.0
+
+        # Set contact scales based on L_char and F_char
+        self._contact_viz_scale_default = 1.0 * L_char
+        self._contact_force_scale_default = 5.0 / F_char if F_char > 0.0 else 0.5
+
+        # Reset live attributes to new defaults, if values were still default
+        if self.contact_viz_scale == prev_default_scale:
+            self.contact_viz_scale = self._contact_viz_scale_default
+        if self.contact_force_scale == prev_default_force_scale:
+            self.contact_force_scale = self._contact_force_scale_default
 
     def begin_frame(self, time: float):
         """Begin a new frame.
@@ -1052,32 +1095,58 @@ class ViewerBase(ABC):
         self._log_com(state)
 
     def log_contacts(self, contacts: newton.Contacts, state: newton.State):
-        """Render contact normals as arrows.
+        """Render contact visualizations.
 
-        Each active rigid contact is drawn as an arrow from the contact point
-        along the contact normal.  When ``show_contacts`` is ``False`` the
-        arrow batch is cleared.
+        The visualization is split into three layers, each of which can be
+        toggled independently:
+
+        * ``"/contacts/normals"`` — arrows along ``rigid_contact_normal``
+          (gated on :attr:`show_contact_normals`).
+        * ``"/contacts/modes"`` — thin oriented disks at each contact, color
+          coded by inferred contact mode (open / stick / slip) when
+          ``contacts.force`` is allocated, else by a uniform default color
+          (gated on :attr:`show_contact_disks`).
+        * ``"/contacts/forces"`` — arrows along the linear part of
+          ``contacts.force`` (gated on :attr:`show_contact_forces`; hidden if
+          ``contacts.force is None``).
+
+        Sub-toggles are themselves gated by the master :attr:`show_contacts`
+        flag; setting it to ``False`` hides everything.  When sub-toggles are
+        all enabled (default) the master flag behaves exactly like the
+        previous single-layer ``"Show Contacts"`` checkbox.
 
         Args:
             contacts: The contacts to render.
-            state: The current state of the simulation.
+            state: The current state of the simulation.  Required to compute
+                world-space contact positions and (for mode coloring) body
+                velocities at the contact points.
         """
 
         if not self.show_contacts or self._layer_force_hidden():
-            self.log_arrows(self._qualify("/contacts"), None, None, None)
+            self.log_arrows(self._qualify("/contacts/normals"), None, None, None)
+            if self._contact_disk_mesh is not None:
+                self.log_instances(
+                    self._qualify("/contacts/modes"), self._contact_disk_mesh, None, None, None, None, hidden=True
+                )
+            self.log_arrows(self._qualify("/contacts/forces"), None, None, None)
             return
 
-        # Get contact count, clamped to buffer size (counter may exceed max on overflow)
         max_contacts = contacts.rigid_contact_max
         num_contacts = min(int(contacts.rigid_contact_count.numpy()[0]), max_contacts)
 
-        # Ensure we have buffers for line endpoints
-        if self._contact_points0 is None or len(self._contact_points0) < max_contacts:
-            self._contact_points0 = wp.array(np.zeros((max_contacts, 3)), dtype=wp.vec3, device=self.device)
-            self._contact_points1 = wp.array(np.zeros((max_contacts, 3)), dtype=wp.vec3, device=self.device)
+        if max_contacts == 0:
+            self.log_arrows("/contacts/normals", None, None, None)
+            if self._contact_disk_mesh is not None:
+                self.log_instances("/contacts/modes", self._contact_disk_mesh, None, None, None, None, hidden=True)
+            self.log_arrows("/contacts/forces", None, None, None)
+            return
 
-        # Always run the kernel to ensure buffers are properly cleared/updated
-        if max_contacts > 0:
+        # ---- Contact-normal arrows -------------------------------
+        if self.show_contact_normals:
+            if self._contact_points0 is None or len(self._contact_points0) < max_contacts:
+                self._contact_points0 = wp.zeros(max_contacts, dtype=wp.vec3, device=self.device)
+                self._contact_points1 = wp.zeros(max_contacts, dtype=wp.vec3, device=self.device)
+
             from .kernels import compute_contact_lines  # noqa: PLC0415
 
             wp.launch(
@@ -1096,28 +1165,124 @@ class ViewerBase(ABC):
                     contacts.rigid_contact_point0,
                     contacts.rigid_contact_offset0,
                     contacts.rigid_contact_normal,
-                    self.scene_scale * self._arrow_scale(),
+                    float(self.contact_viz_scale),
                 ],
-                outputs=[
-                    self._contact_points0,  # line start points
-                    self._contact_points1,  # line end points
-                ],
+                outputs=[self._contact_points0, self._contact_points1],
                 device=self.device,
             )
 
-        # Always call log_arrows to update the renderer (handles zero contacts gracefully)
-        if num_contacts > 0:
-            # Slice arrays to only include active contacts
-            starts = self._contact_points0[:num_contacts]
-            ends = self._contact_points1[:num_contacts]
+            if num_contacts > 0:
+                self.log_arrows(
+                    "/contacts/normals",
+                    self._contact_points0[:num_contacts],
+                    self._contact_points1[:num_contacts],
+                    (0.0, 1.0, 0.0),  # green
+                )
+            else:
+                self.log_arrows("/contacts/normals", None, None, None)
         else:
-            # Create empty arrays for zero contacts case
-            starts = wp.array([], dtype=wp.vec3, device=self.device)
-            ends = wp.array([], dtype=wp.vec3, device=self.device)
+            self.log_arrows("/contacts/normals", None, None, None)
 
-        colors = (0.0, 1.0, 0.0)
+        # ---- Contact mode disks ----------------------------------
+        if self.show_contact_disks:
+            if self._contact_disk_mesh is None:
+                # Unit cylinder (radius=1, half_height=1); per-instance scaling
+                # produces the actual disk dimensions.
+                self._contact_disk_mesh = self._populate_geometry(
+                    int(newton.GeoType.CYLINDER), (1.0, 1.0), 0.0, True, geo_src=None
+                )
 
-        self.log_arrows(self._qualify("/contacts"), starts, ends, colors)
+            if self._contact_disk_xforms is None or len(self._contact_disk_xforms) < max_contacts:
+                self._contact_disk_xforms = wp.zeros(max_contacts, dtype=wp.transform, device=self.device)
+                self._contact_disk_scales = wp.zeros(max_contacts, dtype=wp.vec3, device=self.device)
+                self._contact_disk_colors = wp.zeros(max_contacts, dtype=wp.vec3, device=self.device)
+
+            from .kernels import compute_contact_disk_transforms  # noqa: PLC0415
+
+            wp.launch(
+                kernel=compute_contact_disk_transforms,
+                dim=max_contacts,
+                inputs=[
+                    state.body_q,
+                    state.body_qd,
+                    self.model.body_com,
+                    self.model.shape_body,
+                    self.model.shape_world,
+                    self.world_offsets,
+                    self._visible_worlds_mask,
+                    contacts.rigid_contact_count,
+                    contacts.rigid_contact_shape0,
+                    contacts.rigid_contact_shape1,
+                    contacts.rigid_contact_point0,
+                    contacts.rigid_contact_point1,
+                    contacts.rigid_contact_offset0,
+                    contacts.rigid_contact_normal,
+                    contacts.force,  # may be None — kernel falls back to default color
+                    wp.float32(self.contact_viz_scale * 0.2),
+                    wp.float32(self.contact_viz_scale * 0.004),  # cylinder half-height
+                    wp.float32(self.contact_mode_eps_force),
+                    wp.float32(self.contact_mode_eps_velocity_normal),
+                    wp.float32(self.contact_mode_eps_velocity_tangential),
+                    wp.vec3(0.8, 0.8, 0.8),  # open: white
+                    wp.vec3(0.1, 0.1, 0.1),  # stick: black
+                    wp.vec3(0.2, 0.2, 0.9),  # slip: blue
+                ],
+                outputs=[self._contact_disk_xforms, self._contact_disk_scales, self._contact_disk_colors],
+                device=self.device,
+            )
+
+            self.log_instances(
+                "/contacts/modes",
+                self._contact_disk_mesh,
+                self._contact_disk_xforms[:max_contacts],
+                self._contact_disk_scales[:max_contacts],
+                self._contact_disk_colors[:max_contacts],
+                None,
+                hidden=False,
+            )
+        elif self._contact_disk_mesh is not None:
+            self.log_instances("/contacts/modes", self._contact_disk_mesh, None, None, None, None, hidden=True)
+
+        # ---- Layer C: contact force arrows --------------------------------
+        if self.show_contact_forces and contacts.force is not None:
+            if self._contact_force_starts is None or len(self._contact_force_starts) < max_contacts:
+                self._contact_force_starts = wp.zeros(max_contacts, dtype=wp.vec3, device=self.device)
+                self._contact_force_ends = wp.zeros(max_contacts, dtype=wp.vec3, device=self.device)
+
+            from .kernels import compute_contact_force_arrows  # noqa: PLC0415
+
+            wp.launch(
+                kernel=compute_contact_force_arrows,
+                dim=max_contacts,
+                inputs=[
+                    state.body_q,
+                    self.model.shape_body,
+                    self.model.shape_world,
+                    self.world_offsets,
+                    self._visible_worlds_mask,
+                    contacts.rigid_contact_count,
+                    contacts.rigid_contact_shape0,
+                    contacts.rigid_contact_shape1,
+                    contacts.rigid_contact_point0,
+                    contacts.rigid_contact_offset0,
+                    contacts.force,
+                    float(self.contact_viz_scale * self.contact_force_scale),
+                ],
+                outputs=[self._contact_force_starts, self._contact_force_ends],
+                device=self.device,
+            )
+
+            if num_contacts > 0:
+                self.log_arrows(
+                    "/contacts/forces",
+                    self._contact_force_starts[:num_contacts],
+                    self._contact_force_ends[:num_contacts],
+                    (1.0, 0.0, 1.0),  # magenta
+                )
+            else:
+                self.log_arrows("/contacts/forces", None, None, None)
+        else:
+            self.log_arrows("/contacts/forces", None, None, None)
 
     def log_hydro_contact_surface(
         self,
@@ -2663,7 +2828,7 @@ class ViewerBase(ABC):
                 self._visible_worlds_mask,
                 self.model.shape_collision_radius,
                 self.model.shape_body,
-                self.scene_scale * self._joint_scale(),
+                0.1,  # line scale factor
             ],
             outputs=[
                 self._joint_points0,
@@ -2684,8 +2849,7 @@ class ViewerBase(ABC):
         if self._com_positions is None or len(self._com_positions) < num_bodies:
             self._com_positions = wp.zeros(num_bodies, dtype=wp.vec3, device=self.device)
             self._com_colors = wp.full(num_bodies, wp.vec3(1.0, 0.8, 0.0), device=self.device)
-
-        com_radius = 0.5 * self.scene_scale * self._com_scale()
+            self._com_radii = wp.full(num_bodies, 0.05, dtype=float, device=self.device)
 
         from .kernels import compute_com_positions  # noqa: PLC0415
 
@@ -2707,7 +2871,7 @@ class ViewerBase(ABC):
         self.log_points(
             self._qualify("/model/com"),
             self._com_positions,
-            com_radius,
+            self._com_radii,
             self._com_colors,
             hidden=not self.show_com or self._layer_force_hidden(),
         )

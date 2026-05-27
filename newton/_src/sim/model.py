@@ -408,7 +408,7 @@ class Model:
 
         self.body_q: wp.array[wp.transform] | None = None
         """Rigid body poses [m, unitless quaternion] for state initialization, shape [body_count, 7], float."""
-        self.body_qd: wp.array[wp.spatial_vector] | None = None
+        self.body_qd: wp.array[wp.spatial_vectorf] | None = None
         """Rigid body velocities [m/s, rad/s] for state initialization, shape [body_count, 6], float.
         The linear component is the body COM velocity in world frame."""
         self.body_com: wp.array[wp.vec3] | None = None
@@ -776,6 +776,9 @@ class Model:
         self.attribute_frequency["joint_enabled"] = Model.AttributeFrequency.JOINT
         self.attribute_frequency["joint_twist_lower"] = Model.AttributeFrequency.JOINT
         self.attribute_frequency["joint_twist_upper"] = Model.AttributeFrequency.JOINT
+        # Extended state attributes — these live on State (not Model) and are only
+        # allocated when explicitly requested via request_state_attributes().
+        self.attribute_frequency["joint_parent_f"] = Model.AttributeFrequency.JOINT
 
         # attributes per joint coord
         self.attribute_frequency["joint_q"] = Model.AttributeFrequency.JOINT_COORD
@@ -861,11 +864,17 @@ class Model:
             s.joint_q = wp.clone(self.joint_q, requires_grad=requires_grad)
             s.joint_qd = wp.clone(self.joint_qd, requires_grad=requires_grad)
 
+        # attach extended state attributes with assignment==STATE
         if "body_qdd" in requested:
             s.body_qdd = wp.zeros_like(self.body_qd, requires_grad=requires_grad)
 
         if "body_parent_f" in requested:
             s.body_parent_f = wp.zeros_like(self.body_qd, requires_grad=requires_grad)
+
+        if "joint_parent_f" in requested:
+            s.joint_parent_f = wp.zeros(
+                shape=(self.joint_count,), dtype=wp.spatial_vectorf, device=self.device, requires_grad=requires_grad
+            )
 
         if "mujoco:qfrc_actuator" in requested:
             if not hasattr(s, "mujoco"):

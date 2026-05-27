@@ -5,7 +5,7 @@ import warp as wp
 from asv_runner.benchmarks.mark import SkipNotImplemented, skip_benchmark_if
 
 wp.config.enable_backward = False
-wp.config.log_level = wp.LOG_WARNING
+wp.config.quiet = True
 
 import numpy as np
 

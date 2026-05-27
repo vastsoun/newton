@@ -59,6 +59,7 @@ class State:
         (
             "body_qdd",
             "body_parent_f",
+            "joint_parent_f",
             "mujoco:qfrc_actuator",
         )
     )
@@ -153,6 +154,16 @@ class State:
         """Generalized joint velocity coordinates [m/s or rad/s, depending on joint type], shape (joint_dof_count,), dtype float.
         For FREE and DISTANCE joints, the linear entries are child-COM velocity in the joint parent frame and the angular entries are angular velocity in that same frame."""
 
+        self.joint_parent_f: wp.array | None = None
+        """Parent interaction forces [N, N·m], shape (joint_count,), dtype :class:`spatial_vector`.
+        First three entries: linear force [N]; last three: torque [N·m].
+
+        This is an extended state attribute; see :ref:`extended_state_attributes` for more information.
+
+        .. note::
+            :attr:`joint_parent_f` represents incoming joint wrenches in world frame, referenced to the body's center of mass (COM).
+        """
+
     def clear_forces(self) -> None:
         """
         Clear all force arrays (for particles and bodies) in the state object.
@@ -227,6 +238,19 @@ class State:
                 continue
 
             _copy_arrays(dst_ns, src_ns, prefix=f"{ns_name}.")
+
+    @property
+    def device(self):
+        """
+        Returns the device on which the state arrays are allocated.
+        """
+        if self.particle_q is not None:
+            return self.particle_q.device
+        if self.body_q is not None:
+            return self.body_q.device
+        if self.joint_q is not None:
+            return self.joint_q.device
+        return None
 
     @property
     def requires_grad(self) -> bool:

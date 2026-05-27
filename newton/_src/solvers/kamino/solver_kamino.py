@@ -424,7 +424,20 @@ class SolverKamino(SolverBase):
                 world_max_contacts = self._model_kamino.geoms.world_minimum_contacts
             else:
                 world_max_contacts = [model.rigid_contact_max // self.model.world_count] * self.model.world_count
-            self._contacts_kamino = self._kamino.ContactsKamino(capacity=world_max_contacts, device=self.model.device)
+            self._contacts_kamino = self._kamino.ContactsKamino(
+                # TODO: model=self._model_kamino,
+                capacity=world_max_contacts,
+                device=self.model.device,
+                remappable=True,
+            )
+
+        # Declare an internal reference cache to be able to detect if
+        # a Kamino-internal collision detector was used at runtime.
+        # NOTE: This is used to determine whether to clear the output
+        # contacts and populate them with only active contacts or fill
+        # in solver-specific contact attributes for existing contacts.
+        # TODO: Do we need this additional indirection or is there a better way to do this?
+        self._detector = None
 
         # Initialize the internal Kamino solver
         self._solver_kamino = self._kamino.SolverKaminoImpl(
@@ -545,11 +558,17 @@ class SolverKamino(SolverBase):
 
         # If contacts are provided, use them directly, bypassing Kamino's collision detector
         if contacts is not None:
-            self._kamino.convert_contacts_newton_to_kamino(self.model, state_in, contacts, self._contacts_kamino)
-            _detector = None
+            self._detector = None
+            self._kamino.convert_contacts_newton_to_kamino(
+                model=self.model,
+                state=state_in,
+                contacts_in=contacts,
+                contacts_out=self._contacts_kamino,
+                convert_forces=False,
+            )
         # Otherwise, use Kamino's internal collision detector to generate contacts
         else:
-            _detector = self._collision_detector_kamino
+            self._detector = self._collision_detector_kamino
 
         # Convert Newton body-frame poses to Kamino CoM-frame poses using
         # Kamino's corrected body-com offsets (can differ from Newton model data).
@@ -565,9 +584,42 @@ class SolverKamino(SolverBase):
             state_out=state_out_kamino,
             control=self._control_kamino,
             contacts=self._contacts_kamino,
-            detector=_detector,
+            detector=self._detector,
             dt=dt,
         )
+
+        # If `body_parent_f` and/or `joint_parent_f` are requested, compute the per-joint
+        # parent wrenches first and (optionally) accumulate them into the per-body parent
+        # wrenches. `compute_body_parent_wrenches` derives body-parent wrenches from the
+        # per-joint ones so we must always have a populated `joint_parent_f` first.
+        if (state_out.body_parent_f is not None or state_out.joint_parent_f is not None) and self.model.joint_count > 0:
+            # First ensure that the joint wrench buffers are allocated
+            if not self._solver_kamino._data.joints.has_wrenches():
+                self._solver_kamino._data.joints.finalize_wrenches()
+
+            # Use the requested output slot if available, otherwise use the internal buffer
+            joint_parent_f = (
+                state_out.joint_parent_f
+                if state_out.joint_parent_f is not None
+                else self._solver_kamino._data.joints.w_j_F_com
+            )
+
+            self._kamino.compute_joint_parent_wrenches(
+                joint_parent_f=joint_parent_f,
+                model=self._model_kamino,
+                data=self._solver_kamino._data,
+                jacobians=self._solver_kamino._jacobians,
+                lambdas_offsets=self._solver_kamino._problem_fd.data.vio,
+                lambdas_data=self._solver_kamino._solver_fd.data.solution.lambdas,
+                limits=self._solver_kamino._limits,
+            )
+
+            if state_out.body_parent_f is not None:
+                self._kamino.compute_body_parent_wrenches(
+                    body_parent_f=state_out.body_parent_f,
+                    joint_parent_f=joint_parent_f,
+                    model=self._model_kamino,
+                )
 
         # Convert back from Kamino CoM-frame to Newton body-frame poses using
         # the same corrected body-com offsets as the forward conversion.
@@ -651,19 +703,26 @@ class SolverKamino(SolverBase):
             raise TypeError(f"state must be of type State, got {type(state)}")
 
         # Skip the conversion if contacts have not been allocated
-        if self._contacts_kamino is None or self._contacts_kamino._data.model_max_contacts_host == 0:
+        if self._contacts_kamino is None or self._contacts_kamino.model_max_contacts_host == 0:
             return
 
         # Ensure the output contacts containers has sufficient size to hold the contact data from Kamino
-        if self._contacts_kamino._data.model_max_contacts_host > contacts.rigid_contact_max:
-            raise ValueError(
+        if self._contacts_kamino.model_max_contacts_host > contacts.rigid_contact_max:
+            raise RuntimeError(
                 f"Contacts container has insufficient capacity for Kamino contacts: "
-                f"model_max_contacts={self._contacts_kamino._data.model_max_contacts_host} > "
+                f"model_max_contacts={self._contacts_kamino.model_max_contacts_host} > "
                 f"contacts.rigid_contact_max={contacts.rigid_contact_max}"
             )
 
         # If all checks pass, proceed to convert contacts from Kamino to Newton format
-        self._kamino.convert_contacts_kamino_to_newton(self.model, state, self._contacts_kamino, contacts)
+        self._kamino.convert_contacts_kamino_to_newton(
+            model=self.model,
+            state=state,
+            contacts_in=self._contacts_kamino,
+            contacts_out=contacts,
+            clear_output=self._detector is not None,
+            convert_forces=True,
+        )
 
     @override
     @staticmethod

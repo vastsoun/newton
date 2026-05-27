@@ -16,6 +16,7 @@ import newton.examples
 
 # from newton._src.solvers.kamino._src.metrics import SolutionMetricsNewton, SolutionMetricsLogger
 from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino.examples import get_examples_output_path
 from newton.tests import get_kamino_assets_directory
 
 np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)
@@ -23,6 +24,7 @@ np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True
 FORCE_START_TIME = 1.0
 FORCE_END_TIME = 5.0
 MAX_FORCE = 1.5
+RECORD_END_TIME = 1.0
 
 
 ###
@@ -241,6 +243,8 @@ def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int) -> Sol
     articulation_builder.default_shape_cfg.mu = 0.75
     articulation_builder.default_shape_cfg.mu_rolling = 0.0
     articulation_builder.default_shape_cfg.mu_torsional = 0.0
+    articulation_builder.default_shape_cfg.gap = 0.0
+    articulation_builder.default_shape_cfg.margin = 0.0
     articulation_builder.add_usd(
         asset_file,
         collapse_fixed_joints=False,
@@ -255,6 +259,8 @@ def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int) -> Sol
     builder.default_shape_cfg.kd = 1.6e2
     builder.default_shape_cfg.mu_rolling = 0.0
     builder.default_shape_cfg.mu_torsional = 0.0
+    builder.default_shape_cfg.gap = 0.0
+    builder.default_shape_cfg.margin = 0.0
     builder.add_ground_plane()
     model = builder.finalize()
     solver = newton.solvers.SolverMuJoCo(
@@ -288,7 +294,7 @@ def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int) -> Sol
     return setup
 
 
-def make_setup_solver_xpbd(asset_file: str, dt: float, max_frames: int) -> SolverSetup:
+def make_setup_solver_xpbd(asset_file: str, dt: float, max_frames: int, iterations: int = 20) -> SolverSetup:
     articulation_builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
     newton.solvers.SolverXPBD.register_custom_attributes(articulation_builder)
     articulation_builder.default_joint_cfg = newton.ModelBuilder.JointDofConfig(
@@ -298,6 +304,8 @@ def make_setup_solver_xpbd(asset_file: str, dt: float, max_frames: int) -> Solve
     articulation_builder.default_shape_cfg.kd = 1.0e2
     articulation_builder.default_shape_cfg.kf = 1.0e3
     articulation_builder.default_shape_cfg.mu = 0.75
+    articulation_builder.default_shape_cfg.gap = 0.0
+    articulation_builder.default_shape_cfg.margin = 0.0
     articulation_builder.add_usd(
         asset_file,
         collapse_fixed_joints=False,
@@ -310,11 +318,13 @@ def make_setup_solver_xpbd(asset_file: str, dt: float, max_frames: int) -> Solve
     builder.add_world(articulation_builder)
     builder.default_shape_cfg.ke = 1.0e3
     builder.default_shape_cfg.kd = 1.0e2
+    builder.default_shape_cfg.gap = 0.0
+    builder.default_shape_cfg.margin = 0.0
     builder.add_ground_plane()
     model = builder.finalize()
     solver = newton.solvers.SolverXPBD(
         model,
-        iterations=200,
+        iterations=iterations,
         soft_body_relaxation=0.9,
         soft_contact_relaxation=0.9,
         joint_linear_relaxation=0.7,
@@ -324,7 +334,7 @@ def make_setup_solver_xpbd(asset_file: str, dt: float, max_frames: int) -> Solve
         rigid_contact_relaxation=0.8,
         rigid_contact_con_weighting=True,
         angular_damping=0.0,
-        enable_restitution=False,
+        enable_restitution=True,
     )
     # metrics = SolutionMetricsNewton(
     #    dt=dt,
@@ -355,7 +365,7 @@ def make_setup_solver_xpbd(asset_file: str, dt: float, max_frames: int) -> Solve
 class Example:
     def __init__(self, viewer: newton.viewer.ViewerBase, args, use_graph=True, start_paused=False):
         # Set simulation run-time configurations
-        self.viewer_fps = 50
+        self.viewer_fps = 100
         self.viewer_dt = 1.0 / self.viewer_fps
         target_sim_dt = 0.0025  # 400 fps
         self.sim_substeps = max(1, round(self.viewer_dt / target_sim_dt))
@@ -367,18 +377,33 @@ class Example:
         self.use_graph = use_graph
         self.start_paused = start_paused
 
+        # Choice of scenario (mass distribution between boxes)
+        scenarios = ["heavy_bottom", "heavy_top", "equal_mass"]
+        which_scenario = 0
+        scenario = scenarios[which_scenario]
+
         # External forces: applied in viewer vs automatically (force ramp up)
-        self.viewer_forces = False
+        self.viewer_forces = True
 
         # Define the asset file
         assets_dir = os.path.join(get_kamino_assets_directory(), "validation")
-        # asset_file = os.path.join(assets_dir, "boxes_stacked_on_plane_articulated_heavy_bottom.usda")
-        asset_file = os.path.join(assets_dir, "boxes_stacked_on_plane_articulated_heavy_top.usda")
+        file_suffix = "_" + scenario if which_scenario != 2 else ""
+        asset_file = os.path.join(assets_dir, f"boxes_stacked_on_plane_articulated{file_suffix}.usda")
+
+        # Set up recording of trajectory
+        self.record_traj = False
+        if self.record_traj:
+            self.frame_id = 0
+            self.num_recording_frames = int(np.floor(RECORD_END_TIME / self.viewer_dt)) + 1
+            self.traj_body_q = np.zeros((self.num_recording_frames, 2, 7))
+            self.recording_folder = os.path.join(get_examples_output_path(), f"boxes_stacked_{scenario}")
+            os.makedirs(self.recording_folder, exist_ok=True)
 
         # Create the solver setups
         self.setup_kamino = make_setup_solver_kamino(asset_file, self.sim_dt, 5000)
         self.setup_mujoco = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000)
-        self.setup_xpbd = make_setup_solver_xpbd(asset_file, self.sim_dt, 5000)
+        self.setup_xpbd_20 = make_setup_solver_xpbd(asset_file, self.sim_dt, 5000, iterations=20)
+        self.setup_xpbd_200 = make_setup_solver_xpbd(asset_file, self.sim_dt, 5000, iterations=200)
 
         # Extract total mass, and box-ground friction coefficient
         self.total_mass = self.setup_kamino.model.body_mass.numpy().sum()
@@ -390,8 +415,8 @@ class Example:
         msg.notif(f"Total mass = {self.total_mass}, friction coefficient = {self.mu}")
 
         # Solver setup choice
-        self.setup_names = ["Kamino", "MuJoCo", "XPBD"]
-        self.setups = [self.setup_kamino, self.setup_mujoco, self.setup_xpbd]
+        self.setup_names = ["Kamino", "MuJoCo", "XPBD_20_it", "XPBD_200_it"]
+        self.setups = [self.setup_kamino, self.setup_mujoco, self.setup_xpbd_20, self.setup_xpbd_200]
         self.current_setup_id = 0
         self.init_setup(reset_viewer=True, first=True)
 
@@ -407,6 +432,8 @@ class Example:
             self.graph = capture.graph
 
     def reset(self):
+        if self.record_traj:
+            self.frame_id = 0
         self.setup.reset()
 
     def init_setup(self, reset_viewer=True, first=False):
@@ -458,6 +485,14 @@ class Example:
             self.setup.state_0, self.setup.state_1 = self.setup.state_1, self.setup.state_0
 
     def step(self):
+        if self.record_traj:
+            if self.frame_id < self.num_recording_frames:
+                self.traj_body_q[self.frame_id] = self.setup.state_0.body_q.numpy()
+                self.frame_id += 1
+                if self.frame_id == self.num_recording_frames:
+                    solver_name = self.setup_names[self.current_setup_id]
+                    np.save(os.path.join(self.recording_folder, f"traj_body_q_{solver_name}.npy"), self.traj_body_q)
+                    msg.notif("Trajectory recorded")
         if self.graph:
             wp.capture_launch(self.graph)
         else:

@@ -17,7 +17,6 @@ import newton.examples
 # from newton._src.solvers.kamino._src.metrics import SolutionMetricsNewton, SolutionMetricsLogger
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.examples import get_examples_output_path
-from newton.tests import get_kamino_assets_directory
 
 np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)
 
@@ -141,6 +140,7 @@ def build_sphere_on_plane(
     ground: bool = True,
     new_world: bool = True,
     use_custom_shape_cfg: bool = False,
+    use_box: bool = False,
 ) -> newton.ModelBuilder:
     """
     Constructs a basic model of a free-floating 'box' body and a ground box geom.
@@ -176,13 +176,16 @@ def build_sphere_on_plane(
     if new_world or builder is None:
         _builder.begin_world(label="bouncing_ball")
 
-    # Add the sphere body
+    # Add the sphere/box body
     r_i: float = radius
     m_i: float = mass
-    i_I_i = inertia.compute_inertia_sphere_from_mass(mass=m_i, radius=r_i)
+    if not use_box:
+        i_I_i = inertia.compute_inertia_sphere_from_mass(mass=m_i, radius=r_i)
+    else:
+        i_I_i = inertia.compute_inertia_box_from_mass(mass=m_i, hx=r_i, hy=r_i, hz=r_i)
     xform = wp.transformf(0.0, 0.0, r_i + z_offset, 0.0, 0.0, 0.0, 1.0)
     bid0 = _builder.add_body(
-        label="sphere",
+        label="sphere" if not use_box else "box",
         mass=m_i,
         inertia=i_I_i,
         xform=xform,
@@ -202,12 +205,22 @@ def build_sphere_on_plane(
     )
 
     # Add collision geometries
-    _builder.add_shape_sphere(
-        label="sphere_geom",
-        body=bid0,
-        radius=r_i,
-        cfg=custom_shape_cfg,
-    )
+    if not use_box:
+        _builder.add_shape_sphere(
+            label="sphere_geom",
+            body=bid0,
+            radius=r_i,
+            cfg=custom_shape_cfg,
+        )
+    else:
+        _builder.add_shape_box(
+            label="sphere_geom",
+            body=bid0,
+            hx=r_i,
+            hy=r_i,
+            hz=r_i,
+            cfg=custom_shape_cfg,
+        )
 
     # Add a static collision geometry for the plane
     if ground:
@@ -225,7 +238,7 @@ def build_sphere_on_plane(
     return _builder
 
 
-def make_setup_solver_kamino(asset_file: str, dt: float, max_frames: int) -> SolverSetup:
+def make_setup_solver_kamino(dt: float, max_frames: int, use_box: bool = False) -> SolverSetup:
     builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
     newton.solvers.SolverKamino.register_custom_attributes(builder)
     builder.request_contact_attributes("force")
@@ -238,6 +251,7 @@ def make_setup_solver_kamino(asset_file: str, dt: float, max_frames: int) -> Sol
         restitution=RESTITUTION,
         ground=True,
         use_custom_shape_cfg=True,
+        use_box=use_box,
     )
     model = builder.finalize(skip_validation_joints=True)
     model.rigid_contact_max = 4
@@ -271,7 +285,7 @@ def make_setup_solver_kamino(asset_file: str, dt: float, max_frames: int) -> Sol
     return setup
 
 
-def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int) -> SolverSetup:
+def make_setup_solver_mujoco(dt: float, max_frames: int, use_box: bool = False) -> SolverSetup:
     builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
     newton.solvers.SolverMuJoCo.register_custom_attributes(builder)
     builder.default_joint_cfg = newton.ModelBuilder.JointDofConfig(limit_ke=1.0e3, limit_kd=1.0e1, friction=1e-5)
@@ -291,7 +305,8 @@ def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int) -> Sol
         friction=FRICTION,
         restitution=RESTITUTION,
         ground=True,
-        use_custom_shape_cfg=False,
+        use_custom_shape_cfg=False,  # Emulated restitution for MuJoCo will come from the default config above
+        use_box=use_box,
     )
     model = builder.finalize()
     solver = newton.solvers.SolverMuJoCo(
@@ -325,7 +340,7 @@ def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int) -> Sol
     return setup
 
 
-def make_setup_solver_xpbd(asset_file: str, dt: float, max_frames: int) -> SolverSetup:
+def make_setup_solver_xpbd(dt: float, max_frames: int, use_box: bool = False) -> SolverSetup:
     builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
     newton.solvers.SolverXPBD.register_custom_attributes(builder)
     builder.default_joint_cfg = newton.ModelBuilder.JointDofConfig(limit_ke=1.0e3, limit_kd=1.0e1, friction=1e-5)
@@ -344,7 +359,8 @@ def make_setup_solver_xpbd(asset_file: str, dt: float, max_frames: int) -> Solve
         friction=FRICTION,
         restitution=RESTITUTION,
         ground=True,
-        use_custom_shape_cfg=False,
+        use_custom_shape_cfg=True,
+        use_box=use_box,
     )
     model = builder.finalize()
     model.rigid_contact_max = 4
@@ -360,7 +376,7 @@ def make_setup_solver_xpbd(asset_file: str, dt: float, max_frames: int) -> Solve
         rigid_contact_relaxation=0.8,
         rigid_contact_con_weighting=True,
         angular_damping=0.0,
-        enable_restitution=False,
+        enable_restitution=True,
     )
     # metrics = SolutionMetricsNewton(
     #    dt=dt,
@@ -403,25 +419,26 @@ class Example:
         self.use_graph = use_graph
         self.start_paused = start_paused
 
-        self.record_traj = True
+        # Whether to switch the geometry to a box
+        use_box = False
+
+        self.record_traj = False
         if self.record_traj:
             self.frame_id = 0
             self.num_recording_frames = int(np.floor(RECORD_END_TIME / self.viewer_dt)) + 1
             self.traj = np.zeros((self.num_recording_frames, 3))
-            self.recording_folder = os.path.join(get_examples_output_path(), "bouncing_ball")
+            self.recording_folder = os.path.join(
+                get_examples_output_path(), "bouncing_ball" if not use_box else "bouncing_box"
+            )
             os.makedirs(self.recording_folder, exist_ok=True)
 
         # External forces: applied in viewer vs automatically (currently none)
         self.viewer_forces = True
 
-        # Define the asset file
-        assets_dir = os.path.join(get_kamino_assets_directory(), "validation")
-        asset_file = os.path.join(assets_dir, "four_bar_articulated.usda")
-
         # Create the solver setups
-        self.setup_kamino = make_setup_solver_kamino(asset_file, self.sim_dt, 5000)
-        self.setup_mujoco = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000)
-        self.setup_xpbd = make_setup_solver_xpbd(asset_file, self.sim_dt, 5000)
+        self.setup_kamino = make_setup_solver_kamino(self.sim_dt, 5000, use_box=use_box)
+        self.setup_mujoco = make_setup_solver_mujoco(self.sim_dt, 5000, use_box=use_box)
+        self.setup_xpbd = make_setup_solver_xpbd(self.sim_dt, 5000, use_box=use_box)
 
         # Solver setup choice
         self.setup_names = ["Kamino", "MuJoCo", "XPBD"]

@@ -482,6 +482,7 @@ class Example:
                     if solver_name == "MuJoCo":
                         solver_name = f"{solver_name}_{MUJOCO_KE}_{MUJOCO_IMPRATIO}"
                     np.save(os.path.join(self.recording_folder, f"traj_{solver_name}.npy"), self.traj)
+                    msg.notif("Trajectory recorded")
         if self.graph:
             wp.capture_launch(self.graph)
         else:

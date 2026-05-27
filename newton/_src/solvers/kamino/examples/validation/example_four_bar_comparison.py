@@ -117,7 +117,7 @@ def _step_time(
 ###
 
 
-def make_setup_solver_kamino(asset_file: str, dt: float, max_frames: int) -> SolverSetup:
+def make_setup_solver_kamino(asset_file: str, dt: float, max_frames: int, alpha: float) -> SolverSetup:
     robot_builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
     newton.solvers.SolverKamino.register_custom_attributes(robot_builder)
     robot_builder.default_shape_cfg.margin = 0.0
@@ -142,6 +142,7 @@ def make_setup_solver_kamino(asset_file: str, dt: float, max_frames: int) -> Sol
     solver_config.padmm.max_iterations = 200
     solver_config.padmm.rho_0 = 0.1
     solver_config.padmm.warmstart_mode = "none"
+    solver_config.constraints.alpha = alpha
     solver = newton.solvers.SolverKamino(model=model, config=solver_config)
     # metrics = SolutionMetricsNewton(
     #    dt=dt,
@@ -165,11 +166,11 @@ def make_setup_solver_kamino(asset_file: str, dt: float, max_frames: int) -> Sol
     return setup
 
 
-def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int) -> SolverSetup:
+def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int, T: float) -> SolverSetup:
     articulation_builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
     newton.solvers.SolverMuJoCo.register_custom_attributes(articulation_builder)
     articulation_builder.default_joint_cfg = newton.ModelBuilder.JointDofConfig(
-        limit_ke=1.0e3, limit_kd=1.0e1, friction=1e-5
+        limit_ke=1.0e3, limit_kd=1.0e1, friction=0.0
     )
     articulation_builder.default_shape_cfg.margin = 0.0
     articulation_builder.default_shape_cfg.gap = 0.0
@@ -206,6 +207,13 @@ def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int) -> Sol
         njmax=100,
         use_mujoco_contacts=False,
     )
+
+    # Set equality constraint stiffness
+    eq_solref_np = np.array([[T, 1.0]])
+    eq_solimp_np = np.array([[0.99, 0.999, 0.001, 0.5, 2.0]])
+    solver.mjw_model.eq_solref.assign(eq_solref_np)
+    solver.mjw_model.eq_solimp.assign(eq_solimp_np)
+
     # metrics = SolutionMetricsNewton(
     #    dt=dt,
     #    model=model,
@@ -231,7 +239,7 @@ def make_setup_solver_xpbd(asset_file: str, dt: float, max_frames: int) -> Solve
     articulation_builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
     newton.solvers.SolverXPBD.register_custom_attributes(articulation_builder)
     articulation_builder.default_joint_cfg = newton.ModelBuilder.JointDofConfig(
-        limit_ke=1.0e3, limit_kd=1.0e1, friction=1e-5
+        limit_ke=1.0e3, limit_kd=1.0e1, friction=0.0
     )
     articulation_builder.default_shape_cfg.margin = 0.0
     articulation_builder.default_shape_cfg.gap = 0.0
@@ -301,6 +309,7 @@ class Example:
         self.viewer_fps = 50
         self.viewer_dt = 1.0 / self.viewer_fps
         target_sim_dt = 0.0025  # 400 fps
+        # target_sim_dt = 0.001 # 1000 fps
         self.sim_substeps = max(1, round(self.viewer_dt / target_sim_dt))
         self.sim_dt = self.viewer_dt / self.sim_substeps
         msg.notif(f"Using sim_dt = {self.sim_dt} ({self.sim_substeps} substeps per frame)")
@@ -314,8 +323,10 @@ class Example:
         if self.record_traj:
             self.frame_id = 0
             self.num_recording_frames = int(np.floor(RECORD_END_TIME / self.viewer_dt)) + 1
-            self.traj = np.zeros((self.num_recording_frames, 3))
-            self.recording_folder = os.path.join(get_examples_output_path(), "box_on_plane")
+            self.traj_body_q = np.zeros((self.num_recording_frames, 4, 7))
+            self.traj_body_dq = np.zeros((self.num_recording_frames, 4, 6))
+            fps = int(round(1 / target_sim_dt))
+            self.recording_folder = os.path.join(get_examples_output_path(), "four_bar", f"{fps} fps")
             os.makedirs(self.recording_folder, exist_ok=True)
 
         # External forces: applied in viewer vs automatically (currently none)
@@ -326,13 +337,23 @@ class Example:
         asset_file = os.path.join(assets_dir, "four_bar_articulated.usda")
 
         # Create the solver setups
-        self.setup_kamino = make_setup_solver_kamino(asset_file, self.sim_dt, 5000)
-        self.setup_mujoco = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000)
+        self.setup_kamino_soft = make_setup_solver_kamino(asset_file, self.sim_dt, 5000, 0.01)
+        self.setup_kamino_stiff = make_setup_solver_kamino(asset_file, self.sim_dt, 5000, 0.1)
+        self.setup_mujoco_soft = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000, 0.1)
+        self.setup_mujoco_medium = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000, 0.01)
+        self.setup_mujoco_stiff = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000, 0.001)
         self.setup_xpbd = make_setup_solver_xpbd(asset_file, self.sim_dt, 5000)
 
         # Solver setup choice
-        self.setup_names = ["Kamino", "MuJoCo", "XPBD"]
-        self.setups = [self.setup_kamino, self.setup_mujoco, self.setup_xpbd]
+        self.setup_names = ["Kamino_soft", "Kamino_stiff", "MuJoCo_soft", "MuJoCo_medium", "MuJoCo_stiff", "XPBD"]
+        self.setups = [
+            self.setup_kamino_soft,
+            self.setup_kamino_stiff,
+            self.setup_mujoco_soft,
+            self.setup_mujoco_medium,
+            self.setup_mujoco_stiff,
+            self.setup_xpbd,
+        ]
         self.current_setup_id = 0
         self.init_setup(reset_viewer=True, first=True)
 
@@ -401,13 +422,22 @@ class Example:
     def step(self):
         if self.record_traj:
             if self.frame_id < self.num_recording_frames:
-                self.traj[self.frame_id] = self.setup.state_0.body_q.numpy()[0, :3]
+                self.traj_body_q[self.frame_id] = self.setup.state_0.body_q.numpy()
+                self.traj_body_dq[self.frame_id] = self.setup.state_0.body_qd.numpy()
                 self.frame_id += 1
                 if self.frame_id == self.num_recording_frames:
                     solver_name = self.setup_names[self.current_setup_id]
-                    if solver_name == "MuJoCo":
-                        solver_name = f"{solver_name}_{MUJOCO_KE}_{MUJOCO_IMPRATIO}"
-                    np.save(os.path.join(self.recording_folder, f"traj_{solver_name}.npy"), self.traj)
+                    model = self.setup.model
+                    np.save(os.path.join(self.recording_folder, "body_mass.npy"), model.body_mass.numpy())
+                    np.save(os.path.join(self.recording_folder, "body_CoM.npy"), model.body_com.numpy())
+                    np.save(os.path.join(self.recording_folder, "body_inertia.npy"), model.body_inertia.numpy())
+                    np.save(os.path.join(self.recording_folder, "joint_X_p.npy"), model.joint_X_p.numpy())
+                    np.save(os.path.join(self.recording_folder, "joint_X_c.npy"), model.joint_X_c.numpy())
+                    np.save(os.path.join(self.recording_folder, "joint_id_p.npy"), model.joint_parent.numpy())
+                    np.save(os.path.join(self.recording_folder, "joint_id_c.npy"), model.joint_child.numpy())
+                    np.save(os.path.join(self.recording_folder, f"traj_body_q_{solver_name}.npy"), self.traj_body_q)
+                    np.save(os.path.join(self.recording_folder, f"traj_body_dq_{solver_name}.npy"), self.traj_body_dq)
+                    msg.notif("Trajectory recorded")
         if self.graph:
             wp.capture_launch(self.graph)
         else:

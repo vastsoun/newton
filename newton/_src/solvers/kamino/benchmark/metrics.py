@@ -762,14 +762,15 @@ def _compute_contact_constraint_metrics(
     # wp.printf("[%d] contact_is_stable: %d\n", cid, contact_is_stable)
 
     contact_restitution = restitution_01 * v_c_minus.z + v_c_plus.z  # * dt
-    # wp.printf("[%d] contact_restitution: %.18f\n", cid, contact_restitution)
+    wp.printf("[%d] contact_restitution: %.18f\n", cid, contact_restitution)
 
-    contact_is_restitutive = wp.abs(contact_restitution) < 1e-4 and wp.abs(v_c_plus.z) > 1e-4
-    # wp.printf("[%d] contact_is_restitutive: %d\n", cid, contact_is_restitutive)
+    contact_is_restitutive = wp.abs(contact_restitution) < 1e-4 and wp.abs(v_c_plus.z) > 1e-3
+    wp.printf("[%d] v_c_plus.z: %d\n", cid, v_c_plus.z)
+    wp.printf("[%d] contact_is_restitutive: %d\n", cid, contact_is_restitutive)
 
     # compute_metrics = True
     compute_metrics = not contact_is_restitutive
-    # wp.printf("[%d] compute_metrics: %d\n", cid, compute_metrics)
+    wp.printf("[%d] compute_metrics: %d\n", cid, compute_metrics)
 
     # Compute the contact penetration
     r_cts_penetration = wp.abs(wp.min(0.0, d_01_minus))
@@ -780,7 +781,7 @@ def _compute_contact_constraint_metrics(
     # is admissible). The violation magnitude is ``max(0, -v_n)`` so
     # that admissible separation does not get reported as a residual.
     r_cts_velocity = wp.max(0.0, -wp.dot(v_01_plus, n_01))
-    # wp.printf("[%d] r_cts_velocity: %.12f\n", cid, r_cts_velocity)
+    wp.printf("[%d] r_cts_velocity: %.12f\n", cid, r_cts_velocity)
 
     # Compute the contact NCP primal
     # Computed as the maximum absolute value (i.e. infinity-norm) over the residual:
@@ -788,7 +789,7 @@ def _compute_contact_constraint_metrics(
     # Euclidean projection, i.e. proximal operator, onto K, and `lambda` is the
     # vector of all constraint reactions (i.e. Lagrange multipliers).
     r_ncp_primal = infnorm3(f_c - project_to_coulomb_cone(f_c, mu_01))
-    # wp.printf("[%d] r_ncp_primal: %.12f\n", cid, r_ncp_primal)
+    wp.printf("[%d] r_ncp_primal: %.12f\n", cid, r_ncp_primal)
 
     # Compute the contact NCP dual
     # Computed as the maximum absolute value (i.e. infinity-norm) over the residual:
@@ -798,7 +799,7 @@ def _compute_contact_constraint_metrics(
     # `v_hat^+ = v^+ + Gamma(v^+)`, where `v^+ := v_f D @ lambda` is the post-event
     # constraint-space velocity, and `Gamma(v^+)` is the De Saxce correction term.
     r_ncp_dual = infnorm3(v_c_plus_aug - project_to_coulomb_dual_cone(v_c_plus_aug, mu_01))
-    # wp.printf("[%d] r_ncp_dual: %.12f\n", cid, r_ncp_dual)
+    wp.printf("[%d] r_ncp_dual: %.12f\n", cid, r_ncp_dual)
 
     # Compute the contact NCP complementarity
     # Computed as the maximum absolute value (i.e. infinity-norm) over the residual:
@@ -807,7 +808,7 @@ def _compute_contact_constraint_metrics(
     # and `v_hat^+` is the augmented constraint-space velocity defined above.
     # r_ncp_compl = wp.abs(wp.dot(f_c, v_c_plus_aug))
     r_ncp_compl = wp.where(compute_metrics, wp.abs(wp.dot(f_c, v_c_plus_aug)), 0.0)
-    # wp.printf("[%d] r_ncp_compl: %.12f\n", cid, r_ncp_compl)
+    wp.printf("[%d] r_ncp_compl: %.12f\n", cid, r_ncp_compl)
 
     # Compute the contact VI natural-map
     # Computed as the maximum absolute value (i.e. infinity-norm) over the residual:
@@ -817,7 +818,7 @@ def _compute_contact_constraint_metrics(
     # and `v_hat^+(lambda)` is the augmented constraint-space velocity defined above.
     # r_vi_natmap = infnorm3(f_c - project_to_coulomb_cone(f_c - v_c_plus_aug, mu_01))
     r_vi_natmap = wp.where(compute_metrics, infnorm3(f_c - project_to_coulomb_cone(f_c - v_c_plus_aug, mu_01)), 0.0)
-    # wp.printf("[%d] r_vi_natmap: %.12f\n\n", cid, r_vi_natmap)
+    wp.printf("[%d] r_vi_natmap: %.12f\n\n", cid, r_vi_natmap)
 
     # Store the contact residuals
     r_contact_cts_penetration[cid] = r_cts_penetration

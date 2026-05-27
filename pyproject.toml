@@ -89,6 +89,7 @@ examples = [
     "pyyaml>=6.0.2",
     "cbor2>=5.7.0",         # for binary recording format (.bin files) - more efficient than JSON
     "Pillow>=11.3.0",
+    "imageio-ffmpeg>=0.5.1", # optional: bundled ffmpeg for ViewerGL live MP4 recording
 ]
 
 # PyTorch is no longer required to run RL policies (examples and actuators

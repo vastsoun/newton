@@ -3,6 +3,7 @@
 
 # Import all viewer classes (they handle missing dependencies at instantiation time)
 from ._src.viewer import (
+    Layer,
     ViewerBase,
     ViewerFile,
     ViewerGL,
@@ -13,6 +14,7 @@ from ._src.viewer import (
 )
 
 __all__ = [
+    "Layer",
     "ViewerBase",
     "ViewerFile",
     "ViewerGL",

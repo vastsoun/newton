@@ -774,7 +774,7 @@ def _compute_contact_constraint_metrics(
 
     # Compute the contact penetration
     r_cts_penetration = wp.abs(wp.min(0.0, d_01_minus))
-    # wp.printf("[%d] r_cts_penetration: %.12f\n", cid, r_cts_penetration)
+    wp.printf("[%d] r_cts_penetration: %.12f\n", cid, r_cts_penetration)
 
     # Compute the velocity-level constraint violation.
     # The unilateral velocity constraint is ``v_n >= 0`` (separating

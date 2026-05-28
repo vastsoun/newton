@@ -530,7 +530,6 @@ def convert_mj_coords_to_warp_kernel(
     joint_qd_start: wp.array[wp.int32],
     joint_dof_dim: wp.array2d[wp.int32],
     joint_child: wp.array[wp.int32],
-    joint_X_c: wp.array[wp.transform],
     body_com: wp.array[wp.vec3],
     dof_ref: wp.array[wp.float32],
     body_flags: wp.array[wp.int32],
@@ -616,12 +615,8 @@ def convert_mj_coords_to_warp_kernel(
         joint_qd[wqd_i + 4] = w_world[1]
         joint_qd[wqd_i + 5] = w_world[2]
     elif type == JointType.BALL:
-        # MuJoCo qpos is the body-local rotation right-applied to body_quat;
-        # Newton's joint_q is the rotation in the parent joint anchor frame
-        # (see eval_articulation_fk). The two are related by conjugation with
-        # X_cj.rot, since body_quat = X_pj.rot * X_cj.rot^{-1} (see
-        # _convert_to_mjc): r = X_cj.rot^{-1} * qpos * X_cj.rot.
-        q_mj = quat_wxyz_to_xyzw(
+        # change quaternion order from wxyz to xyzw
+        rot = quat_wxyz_to_xyzw(
             wp.quat(
                 qpos[worldid, q_i],
                 qpos[worldid, q_i + 1],
@@ -629,8 +624,6 @@ def convert_mj_coords_to_warp_kernel(
                 qpos[worldid, q_i + 3],
             )
         )
-        q_cj = wp.transform_get_rotation(joint_X_c[joint_id])
-        rot = wp.quat_inverse(q_cj) * q_mj * q_cj
         joint_q[wq_i] = rot[0]
         joint_q[wq_i + 1] = rot[1]
         joint_q[wq_i + 2] = rot[2]
@@ -660,7 +653,6 @@ def convert_warp_coords_to_mj_kernel(
     joint_qd_start: wp.array[wp.int32],
     joint_dof_dim: wp.array2d[wp.int32],
     joint_child: wp.array[wp.int32],
-    joint_X_c: wp.array[wp.transform],
     body_com: wp.array[wp.vec3],
     dof_ref: wp.array[wp.float32],
     mj_q_start: wp.array[wp.int32],
@@ -732,12 +724,9 @@ def convert_warp_coords_to_mj_kernel(
         qvel[worldid, qd_i + 5] = w_body[2]
 
     elif jtype == JointType.BALL:
-        # Inverse of the mj->warp BALL conversion: qpos = X_cj.rot * r * X_cj.rot^{-1}.
-        # See convert_mj_coords_to_warp_kernel for the derivation.
-        r = wp.quat(joint_q[wq_i], joint_q[wq_i + 1], joint_q[wq_i + 2], joint_q[wq_i + 3])
-        q_cj = wp.transform_get_rotation(joint_X_c[joint_id])
-        q_mj = q_cj * r * wp.quat_inverse(q_cj)
-        ball_q_wxyz = quat_xyzw_to_wxyz(q_mj)
+        # change quaternion order from xyzw to wxyz
+        ball_q = wp.quat(joint_q[wq_i], joint_q[wq_i + 1], joint_q[wq_i + 2], joint_q[wq_i + 3])
+        ball_q_wxyz = quat_xyzw_to_wxyz(ball_q)
         qpos[worldid, q_i + 0] = ball_q_wxyz[0]
         qpos[worldid, q_i + 1] = ball_q_wxyz[1]
         qpos[worldid, q_i + 2] = ball_q_wxyz[2]

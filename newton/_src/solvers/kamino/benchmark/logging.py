@@ -99,6 +99,7 @@ _SCALAR_FIELDS_FLOAT32: tuple[str, ...] = (
     "r_ncp_dual",
     "r_ncp_compl",
     "r_vi_natmap",
+    "frictional_dissipation",
 )
 
 # Companion argmax fields (one per scalar) storing the contact index that
@@ -113,6 +114,7 @@ _METRIC_TITLES: dict[str, str] = {
     "r_ncp_dual": "NCP Dual Residual",
     "r_ncp_compl": "NCP Complementary Residual",
     "r_vi_natmap": "VI Natural-Map Residual",
+    "frictional_dissipation": "Frictional Dissipation Power",
 }
 
 # LaTeX equations rendered as the second line of each metric's plot title.
@@ -123,8 +125,10 @@ _METRIC_EQUATIONS: dict[str, str] = {
     "r_cts_velocity": r"$\max_k \, \max(0, -v_k^T \, n_k)$",
     "r_ncp_primal": r"$\Vert \, \lambda - P_K(\lambda) \, \Vert_\infty $",
     "r_ncp_dual": r"$\Vert \, v_a^+ - P_{K^*}(v_a^+) \, \Vert_\infty $",
-    "r_ncp_compl": r"$\Vert \, \lambda^T \, v_a^+ \, \Vert_\infty $",
+    # "r_ncp_compl": r"$\Vert \, \lambda^T \, v_a^+ \, \Vert_\infty $",
+    "r_ncp_compl": r"$\Vert \, \lambda^T \, (d_k \, n_k) \, \Vert_\infty $",
     "r_vi_natmap": r"$\Vert \, \lambda - P_{K}(\lambda - v_a^+(\lambda)) \, \Vert_\infty $",
+    "frictional_dissipation": r"$\max_k \, | \, {f_{T,k}}^T \, v_{T,k}^+ \, |$",
 }
 
 # Color palette for cross-setup overlay plots, cycled if more than 8 setups.
@@ -975,7 +979,7 @@ class PhysicsMetricsLogger:
         if grid:
             if filename is None:
                 filename = "metrics"
-            n_rows, n_cols = 2, 3
+            n_rows, n_cols = 3, 3
             fig, axes = plt.subplots(n_rows, n_cols, figsize=(18, 10))
             axes = axes.flatten()
             for i, field in enumerate(_SCALAR_FIELDS_FLOAT32):

@@ -108,6 +108,9 @@ class ConstraintMetrics:
         self.r_vi_natmap = wp.array(shape=(size,), dtype=wp.float32)
         """The Variational Inequality (VI) natural-map residual."""
 
+        self.frictional_dissipation = wp.array(shape=(size,), dtype=wp.float32)
+        """The friction dissipation power (W)."""
+
         self.r_cts_penetration_argmax = wp.full(shape=(size,), value=-1, dtype=wp.int32)
         """Argmax companion for :attr:`r_cts_penetration` (entity index achieving the max)."""
 
@@ -126,6 +129,9 @@ class ConstraintMetrics:
         self.r_vi_natmap_argmax = wp.full(shape=(size,), value=-1, dtype=wp.int32)
         """Argmax companion for :attr:`r_vi_natmap` (entity index achieving the max)."""
 
+        self.frictional_dissipation_argmax = wp.full(shape=(size,), value=-1, dtype=wp.int32)
+        """Argmax companion for :attr:`friction_dissipation` (entity index achieving the max)."""
+
     def clear(self):
         """
         Clears the metrics container.
@@ -138,12 +144,14 @@ class ConstraintMetrics:
         self.r_ncp_dual.zero_()
         self.r_ncp_compl.zero_()
         self.r_vi_natmap.zero_()
+        self.frictional_dissipation.zero_()
         self.r_cts_penetration_argmax.fill_(-1)
         self.r_cts_velocity_argmax.fill_(-1)
         self.r_ncp_primal_argmax.fill_(-1)
         self.r_ncp_dual_argmax.fill_(-1)
         self.r_ncp_compl_argmax.fill_(-1)
         self.r_vi_natmap_argmax.fill_(-1)
+        self.frictional_dissipation_argmax.fill_(-1)
 
 
 class PhysicsMetrics:
@@ -534,6 +542,7 @@ def _compute_contact_constraint_metrics(
     r_contact_ncp_dual: wp.array[wp.float32],
     r_contact_ncp_compl: wp.array[wp.float32],
     r_contact_vi_natmap: wp.array[wp.float32],
+    r_contact_frictional_dissipation: wp.array[wp.float32],
 ):
     # Retrieve the contact index from the thread grid
     cid = wp.tid()
@@ -718,9 +727,9 @@ def _compute_contact_constraint_metrics(
     # ---------------------------------------------------------
 
     # Predict the contact distance after the step
-    # d_01_correction = dt * v_c_plus.z
+    d_01_correction = dt * v_c_plus.z
     # wp.printf("[%d] d_01_correction: %.18f\n", cid, d_01_correction)
-    # d_01_plus_predicted = d_01_minus + d_01_correction
+    d_01_plus_predicted = d_01_minus + d_01_correction
     # wp.printf("[%d] d_01_plus_predicted: %.18f\n", cid, d_01_plus_predicted)
 
     # Compute contact status over the state transition of the step
@@ -755,10 +764,10 @@ def _compute_contact_constraint_metrics(
 
     # 1. If sum is negative, then the contact is deepening -> check metrics
     # 2. If sum is positive, then the contact is opening -> no metrics
-    # contact_traversal = v_c_minus.z + v_c_plus.z  # * dt
+    contact_traversal = v_c_minus.z + v_c_plus.z  # * dt
     # wp.printf("[%d] contact_traversal: %.18f\n", cid, contact_traversal)
 
-    # contact_is_stable = wp.abs(contact_traversal) < 1e-4
+    contact_is_stable = wp.abs(contact_traversal) < 1e-4
     # wp.printf("[%d] contact_is_stable: %d\n", cid, contact_is_stable)
 
     contact_restitution = restitution_01 * v_c_minus.z + v_c_plus.z  # * dt
@@ -769,7 +778,8 @@ def _compute_contact_constraint_metrics(
     # wp.printf("[%d] contact_is_restitutive: %d\n", cid, contact_is_restitutive)
 
     # compute_metrics = True
-    compute_metrics = not contact_is_restitutive
+    compute_ncp_compl = (not contact_is_restitutive) and contact_is_stable
+    compute_vi_natmap = (not contact_is_restitutive) and contact_is_stable
     # wp.printf("[%d] compute_metrics: %d\n", cid, compute_metrics)
 
     # Compute the contact penetration
@@ -816,7 +826,8 @@ def _compute_contact_constraint_metrics(
     # where `lambda` is the vector of all constraint reactions (i.e. Lagrange multipliers),
     # and `v_hat^+` is the augmented constraint-space velocity defined above.
     # r_ncp_compl = wp.abs(wp.dot(f_c, v_c_plus_aug))
-    r_ncp_compl = wp.where(compute_metrics, wp.abs(wp.dot(f_c, v_c_plus_aug)), 0.0)
+    r_ncp_compl = wp.abs(wp.dot(f_c, d_01_minus * n_01))
+    # r_ncp_compl = wp.where(compute_metrics, wp.abs(wp.dot(f_c, v_c_plus_aug)), 0.0)
     # wp.printf("[%d] r_ncp_compl: %.12f\n", cid, r_ncp_compl)
 
     # Compute the contact VI natural-map
@@ -826,8 +837,13 @@ def _compute_contact_constraint_metrics(
     # `lambda` is the vector of all constraint reactions (i.e. Lagrange multipliers),
     # and `v_hat^+(lambda)` is the augmented constraint-space velocity defined above.
     # r_vi_natmap = infnorm3(f_c - project_to_coulomb_cone(f_c - v_c_plus_aug, mu_01))
-    r_vi_natmap = wp.where(compute_metrics, infnorm3(f_c - project_to_coulomb_cone(f_c - v_c_plus_aug, mu_01)), 0.0)
+    # r_vi_natmap = wp.where(compute_vi_natmap, infnorm3(f_c - project_to_coulomb_cone(f_c - v_c_plus_aug, mu_01)), 0.0)
+    r_vi_natmap = infnorm3(f_c - project_to_coulomb_cone(f_c - v_c_plus_aug, mu_01))
     # wp.printf("[%d] r_vi_natmap: %.12f\n\n", cid, r_vi_natmap)
+
+    # Compute the friction dissipation power
+    friction_dissipation = (1.0 / dt) * wp.abs(f_c.x * v_c_plus.x + f_c.y * v_c_plus.y)
+    # wp.printf("[%d] friction_dissipation: %.12f\n", cid, friction_dissipation)
 
     # Store the contact residuals
     r_contact_cts_penetration[cid] = r_cts_penetration
@@ -836,6 +852,7 @@ def _compute_contact_constraint_metrics(
     r_contact_ncp_dual[cid] = r_ncp_dual
     r_contact_ncp_compl[cid] = r_ncp_compl
     r_contact_vi_natmap[cid] = r_vi_natmap
+    r_contact_frictional_dissipation[cid] = friction_dissipation
 
 
 @wp.kernel
@@ -853,6 +870,7 @@ def _compute_per_world_contact_metrics_summary(
     contact_r_ncp_dual: wp.array[wp.float32],
     contact_r_ncp_compl: wp.array[wp.float32],
     contact_r_vi_natmap: wp.array[wp.float32],
+    contact_frictional_dissipation: wp.array[wp.float32],
     # Outputs:
     world_r_cts_penetration: wp.array[wp.float32],
     world_r_cts_penetration_argmax: wp.array[wp.int32],
@@ -866,6 +884,8 @@ def _compute_per_world_contact_metrics_summary(
     world_r_ncp_compl_argmax: wp.array[wp.int32],
     world_r_vi_natmap: wp.array[wp.float32],
     world_r_vi_natmap_argmax: wp.array[wp.int32],
+    world_frictional_dissipation: wp.array[wp.float32],
+    world_frictional_dissipation_argmax: wp.array[wp.int32],
 ):
     """
     Performs a per-world max+argmax reduction over the per-contact residual arrays.
@@ -908,6 +928,7 @@ def _compute_per_world_contact_metrics_summary(
     r_ncp_dual = contact_r_ncp_dual[cid]
     r_ncp_compl = contact_r_ncp_compl[cid]
     r_vi_natmap = contact_r_vi_natmap[cid]
+    frictional_dissipation = contact_frictional_dissipation[cid]
 
     # Update the per-world max and argmax for the contact residuals
     atomic_max_with_argmax(world_r_cts_penetration, world_r_cts_penetration_argmax, wid, r_cts_penetration, cid)
@@ -916,6 +937,7 @@ def _compute_per_world_contact_metrics_summary(
     atomic_max_with_argmax(world_r_ncp_dual, world_r_ncp_dual_argmax, wid, r_ncp_dual, cid)
     atomic_max_with_argmax(world_r_ncp_compl, world_r_ncp_compl_argmax, wid, r_ncp_compl, cid)
     atomic_max_with_argmax(world_r_vi_natmap, world_r_vi_natmap_argmax, wid, r_vi_natmap, cid)
+    atomic_max_with_argmax(world_frictional_dissipation, world_frictional_dissipation_argmax, wid, frictional_dissipation, cid)
 
 
 ###
@@ -1034,6 +1056,7 @@ def compute_contact_constraint_metrics(
             metrics.contacts.r_ncp_dual,
             metrics.contacts.r_ncp_compl,
             metrics.contacts.r_vi_natmap,
+            metrics.contacts.frictional_dissipation,
         ],
         device=model.device,
     )
@@ -1104,6 +1127,7 @@ def compute_per_world_contact_constraint_summary(
             metrics.contacts.r_ncp_dual,
             metrics.contacts.r_ncp_compl,
             metrics.contacts.r_vi_natmap,
+            metrics.contacts.frictional_dissipation,
         ],
         outputs=[
             summary.r_cts_penetration,
@@ -1118,6 +1142,8 @@ def compute_per_world_contact_constraint_summary(
             summary.r_ncp_compl_argmax,
             summary.r_vi_natmap,
             summary.r_vi_natmap_argmax,
+            summary.frictional_dissipation,
+            summary.frictional_dissipation_argmax,
         ],
         device=model.device,
     )

@@ -575,7 +575,7 @@ class Example:
             builder.default_shape_cfg.kf = 1.0e3
             builder.default_shape_cfg.mu = FRICTION
             builder.default_shape_cfg.restitution = RESTITUTION
-            asset_file = "/home/tsounisv/Projects/Newton/assets/disney-assets/usda/iron_man_fixed_hands_no_shell/iron_man_fixed_hands_no_shell_articulation.usda"
+            asset_file = "D:/gmaloisel/Documents/Quick access shortcuts/Kamino - Data/kamino-assets-disney/usda/iron_man_fixed_hands_no_shell/iron_man_fixed_hands_no_shell_articulation.usda"
             builder.add_usd(
                 asset_file,
                 xform=wp.transform(wp.vec3(0, 0, START_Z_OFFSET), wp.quatf(0.0, 0.0, 0.0, 1.0)),

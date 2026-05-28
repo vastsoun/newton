@@ -27,6 +27,9 @@ FORCE_END_TIME = 5.0
 MAX_FORCE = 1.5
 RECORD_END_TIME = 1.0
 
+SCENARIOS = ["heavy_bottom", "heavy_top", "equal_mass"]
+WHICH_SCENARIO = 0
+
 
 ###
 # Classes
@@ -374,21 +377,20 @@ class Example:
         msg.notif(f"Using sim_dt = {self.sim_dt} ({self.sim_substeps} substeps per frame)")
         self.sim_time = 0.0
         self.viewer = viewer
+        self.args = args
         self.device = wp.get_device()
         self.use_graph = use_graph
         self.start_paused = start_paused
 
         # Choice of scenario (mass distribution between boxes)
-        scenarios = ["heavy_bottom", "heavy_top", "equal_mass"]
-        which_scenario = 0
-        scenario = scenarios[which_scenario]
+        scenario = SCENARIOS[WHICH_SCENARIO]
 
         # External forces: applied in viewer vs automatically (force ramp up)
         self.viewer_forces = True
 
         # Define the asset file
         assets_dir = os.path.join(get_kamino_assets_directory(), "validation")
-        file_suffix = "_" + scenario if which_scenario != 2 else ""
+        file_suffix = "_" + scenario if WHICH_SCENARIO != 2 else ""
         asset_file = os.path.join(assets_dir, f"boxes_stacked_on_plane_articulated{file_suffix}.usda")
 
         # Set up recording of trajectory
@@ -399,6 +401,11 @@ class Example:
             self.traj_body_q = np.zeros((self.num_recording_frames, 2, 7))
             self.recording_folder = os.path.join(get_examples_output_path(), f"boxes_stacked_{scenario}")
             os.makedirs(self.recording_folder, exist_ok=True)
+
+        # Clip recording state
+        self.record_clips = bool(getattr(args, "record", None))
+        if getattr(args, "record", None):
+            self.video_target_frames = int(np.floor(RECORD_END_TIME / self.viewer_dt)) + 1
 
         # Create the solver setups
         self.setup_kamino = make_setup_solver_kamino(asset_file, self.sim_dt, 5000)
@@ -437,6 +444,20 @@ class Example:
             self.frame_id = 0
         self.setup.reset()
 
+    def start_recording_clip(self):
+        """Start a new video clip for the currently active solver."""
+        if not hasattr(self.viewer, "start_clip"):
+            msg.warning("Recording is not enabled (pass --record sync|async at launch).")
+            return
+        solver_name = self.setup_names[self.current_setup_id]
+        self.viewer.start_clip(
+            output_path=os.path.join(self.args.video_base_dir, f"recording_{solver_name}.mp4"),
+            max_frames=self.video_target_frames,
+            video_folder=os.path.join(self.args.video_base_dir, f"frames_{solver_name}"),
+            fps=self.viewer_fps,
+            keep_frames=self.args.keep_frames,
+        )
+
     def init_setup(self, reset_viewer=True, first=False):
         msg.notif(f"Initializing {self.setup_names[self.current_setup_id]} solver")
         # Reset state
@@ -447,9 +468,14 @@ class Example:
             self.viewer.set_model(self.setup.model)
             self.viewer._paused = self.start_paused  # Start paused to inspect the initial configuration
             if hasattr(self.viewer, "set_camera"):  # Set initial camera on viewer
-                camera_pos = wp.vec3(0.5, -2.0, 0.6)
-                pitch = -15.0
-                yaw = 90.0
+                if self.viewer_forces:
+                    camera_pos = wp.vec3(0.27, -1.1, 0.5)
+                    pitch = -15.0
+                    yaw = 105.0
+                else:  # Shift camera for automatic forces (to see space where boxes will slide)
+                    camera_pos = wp.vec3(0.5, -2.0, 0.6)
+                    pitch = -15.0
+                    yaw = 90.0
                 self.viewer.set_camera(camera_pos, pitch, yaw)
             self.viewer.contact_viz_scale = 2.0 * self.viewer._contact_viz_scale_default
             self.viewer.show_contacts = True
@@ -528,25 +554,33 @@ class Example:
                     imgui.set_item_default_focus()
             imgui.end_combo()
 
+        # Checkbox to record a clip on the next Reset press
+        if getattr(self.args, "record", None) and hasattr(self.viewer, "start_clip"):
+            _, self.record_clips = imgui.checkbox("Record clip on Reset", self.record_clips)
+
         # Reset button (using the solver-internal reset, rather than fully reloading the example and GUI)
         if imgui.button("Reset##custom_reset"):
             self.reset()
+            if self.record_clips and hasattr(self.viewer, "start_clip"):
+                self.start_recording_clip()
 
 
 if __name__ == "__main__":
+    scenario = SCENARIOS[WHICH_SCENARIO]
+
     parser = Example.create_parser()
     parser.add_argument(
         "--record",
         type=str,
         choices=["sync", "async"],
-        default=None,
+        default="async",
         help="Enable frame recording: 'sync' for synchronous, 'async' for non-blocking",
     )
     parser.add_argument(
         "--video-output",
         type=str,
         default=None,
-        help="Output MP4 path (defaults to <examples_output>/boxes_stacked/recording.mp4)",
+        help=f"Output MP4 path (defaults to <examples_output>/boxes_stacked_{scenario}/recording.mp4)",
     )
     parser.add_argument(
         "--keep-frames",
@@ -556,7 +590,8 @@ if __name__ == "__main__":
     )
     viewer, args = newton.examples.init(parser)
 
-    recording_dir = os.path.join(get_examples_output_path(), "boxes_stacked")
+    recording_dir = os.path.join(get_examples_output_path(), f"boxes_stacked_{scenario}")
+    args.video_base_dir = recording_dir
     if args.record:
         viewer = enable_recording(
             viewer,
@@ -568,12 +603,3 @@ if __name__ == "__main__":
     example = Example(viewer, args, use_graph=True, start_paused=False)
 
     newton.examples.run(example, args)
-
-    if args.record and hasattr(viewer, "generate_video"):
-        output_path = args.video_output or os.path.join(recording_dir, "recording.mp4")
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        viewer.generate_video(
-            output_filename=output_path,
-            fps=example.viewer_fps,
-            keep_frames=args.keep_frames,
-        )

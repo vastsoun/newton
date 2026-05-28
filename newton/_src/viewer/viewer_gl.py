@@ -448,6 +448,21 @@ class ViewerGL(ViewerBase):
         self._point_mesh.update(points, indices, normals, uvs)
 
     @override
+    def _arrow_scale(self) -> float:
+        """Contact-arrow length multiplier, sourced from the GL renderer."""
+        return self.renderer.arrow_length_scale
+
+    @override
+    def _joint_scale(self) -> float:
+        """Joint-axis length multiplier, sourced from the GL renderer."""
+        return self.renderer.joint_scale
+
+    @override
+    def _com_scale(self) -> float:
+        """COM sphere radius multiplier, sourced from the GL renderer."""
+        return self.renderer.com_scale
+
+    @override
     def log_gizmo(
         self,
         name: str,
@@ -1260,6 +1275,8 @@ class ViewerGL(ViewerBase):
 
         if radii is None:
             radii = wp.full(num_points, 0.1, dtype=wp.float32, device=self.device)
+        elif isinstance(radii, (int, float, np.integer, np.floating)):
+            radii = wp.full(num_points, float(radii), dtype=wp.float32, device=self.device)
 
         # If a point object is first created/recreated and no colors are provided,
         # initialize to white to avoid uninitialized instance color buffers.
@@ -2766,41 +2783,22 @@ class ViewerGL(ViewerBase):
                     show_joints = self.show_joints
                     changed, self.show_joints = imgui.checkbox("Show Joints", show_joints)
 
+                    if self.show_joints:
+                        _, self.renderer.joint_scale = imgui.slider_float(
+                            "Joint Scale", self.renderer.joint_scale, 0.25, 5.0
+                        )
+
                     # Contact visualization
                     show_contacts = self.show_contacts
                     changed, self.show_contacts = imgui.checkbox("Show Contacts", show_contacts)
 
                     if self.show_contacts:
-                        imgui.indent()
-                        _, self.show_contact_normals = imgui.checkbox("Normal", bool(self.show_contact_normals))
-                        _, self.show_contact_disks = imgui.checkbox("Contact Mode", bool(self.show_contact_disks))
-                        _, self.show_contact_forces = imgui.checkbox("Force", bool(self.show_contact_forces))
-                        imgui.unindent()
-
-                        log_flag = imgui.SliderFlags_.logarithmic.value
-                        base = float(self._contact_viz_scale_default) or 1.0
-                        _, self.contact_viz_scale = imgui.slider_float(
-                            "Contact Scale",
-                            float(self.contact_viz_scale),
-                            base * 0.01,
-                            base * 100.0,
-                            "%.4g",
-                            log_flag,
+                        _, self.renderer.arrow_length_scale = imgui.slider_float(
+                            "Contact Length", self.renderer.arrow_length_scale, 0.25, 5.0
                         )
-                        if self.show_contact_forces:
-                            base = float(self._contact_force_scale_default) or 0.5
-                            _, self.contact_force_scale = imgui.slider_float(
-                                "Force Relative Scale",
-                                float(self.contact_force_scale),
-                                base * 0.01,
-                                base * 100.0,
-                                "%.4g",
-                                log_flag,
-                            )
-                        if self.show_contact_normals or self.show_contact_forces:
-                            _, self.renderer.arrow_scale = imgui.slider_float(
-                                "Arrow Thickness", self.renderer.arrow_scale, 0.25, 5.0
-                            )
+                        _, self.renderer.arrow_scale = imgui.slider_float(
+                            "Contact Width", self.renderer.arrow_scale, 0.25, 5.0
+                        )
 
                     # Particle visualization
                     show_particles = self.show_particles
@@ -2813,6 +2811,9 @@ class ViewerGL(ViewerBase):
                     # Center of mass visualization
                     show_com = self.show_com
                     changed, self.show_com = imgui.checkbox("Show Center of Mass", show_com)
+
+                    if self.show_com:
+                        _, self.renderer.com_scale = imgui.slider_float("COM Scale", self.renderer.com_scale, 0.25, 5.0)
 
                     # Triangle mesh visualization
                     show_triangles = self.show_triangles

@@ -502,19 +502,9 @@ class ViewerBase(ABC):
         # Geometry mesh cache (geometry hash -> mesh path)
         self._geometry_cache: dict[int, str] = {}
 
-        # Contact normal vertices
+        # Contact line vertices
         self._contact_points0 = None
         self._contact_points1 = None
-
-        # Contact disks (for contact mode color-coding)
-        self._contact_disk_mesh: str | None = None
-        self._contact_disk_xforms: wp.array | None = None
-        self._contact_disk_scales: wp.array | None = None
-        self._contact_disk_colors: wp.array | None = None
-
-        # Contact force vertices
-        self._contact_force_starts: wp.array | None = None
-        self._contact_force_ends: wp.array | None = None
 
         # Joint basis line vertices (3 lines per joint)
         self._joint_points0 = None
@@ -524,7 +514,6 @@ class ViewerBase(ABC):
         # Center-of-mass visualization
         self._com_positions = None
         self._com_colors = None
-        self._com_radii = None
 
         # World offset support
         self.world_offsets = None
@@ -546,9 +535,6 @@ class ViewerBase(ABC):
         self.show_com = False
         self.show_particles = False
         self.show_contacts = False
-        self.show_contact_normals = True
-        self.show_contact_disks = True  # Note: requires the ``"force"`` extended contact attribute.
-        self.show_contact_forces = True  # Note: requires the ``"force"`` extended contact attribute.
         self.show_springs = False
         self.show_triangles = True
         self.show_gaussians = False
@@ -558,18 +544,6 @@ class ViewerBase(ABC):
         self.show_inertia_boxes = False
         self.show_hydro_contact_surface = False
         self.sdf_margin_mode: ViewerBase.SDFMarginMode = ViewerBase.SDFMarginMode.OFF
-
-        # Thresholds for contact disk coloring (determining open/sticking/sliding contact modes)
-        self.contact_mode_eps_force: float = 1e-5
-        self.contact_mode_eps_velocity_normal: float = 1e-3
-        self.contact_mode_eps_velocity_tangential: float = 1e-3
-
-        # Scaling parameters for the contact visualization
-        # Note: these are auto-set in :meth:`set_model`, below are fallback defaults.
-        self.contact_viz_scale = 1.0  # Length of contact normal arrows (contact disks/forces scale relatively)
-        self.contact_force_scale = 0.5  # Length of contact force arrows, w.r.t. contact normal arrows
-        self._contact_viz_scale_default = self.contact_viz_scale
-        self._contact_force_scale_default = self.contact_force_scale
 
         self.gaussians_max_points = 100_000  # Max number of points to visualize per gaussian
 

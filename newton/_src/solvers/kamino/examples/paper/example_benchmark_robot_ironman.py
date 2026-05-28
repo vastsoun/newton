@@ -30,7 +30,9 @@ from newton._src.solvers.kamino.benchmark import (
     PhysicsMetrics,
     PhysicsMetricsLogger,
     compute_contact_constraint_metrics,
+    compute_joint_constraint_metrics,
     compute_per_world_contact_constraint_summary,
+    compute_per_world_joint_constraint_summary,
 )
 from newton._src.solvers.kamino.examples import print_progress_bar
 from newton._src.solvers.kamino.utils import SolverKaminoLogger
@@ -208,11 +210,16 @@ class SolverSetup:
         #     contacts=self.contacts,
         # )
 
-        # TODO
+        # Joint constraint metrics
+        compute_joint_constraint_metrics(self.model, self.state_0_m, self.state_1, self.physics_metrics)
+        compute_per_world_joint_constraint_summary(self.model, self.physics_metrics)
+
+        # Contact constraint metrics
         compute_contact_constraint_metrics(
             self.model, self.state_0_m, self.state_1, self.contacts, self.physics_metrics, self.dt
         )
         compute_per_world_contact_constraint_summary(self.model, self.contacts, self.physics_metrics)
+
         self.physics_metrics_logger.log()
 
         # TODO

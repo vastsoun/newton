@@ -17,6 +17,7 @@ import newton.examples
 # from newton._src.solvers.kamino._src.metrics import SolutionMetricsNewton, SolutionMetricsLogger
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.examples import get_examples_output_path
+from newton._src.solvers.kamino.examples.validation.viewer_recording import enable_recording
 
 np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)
 
@@ -557,7 +558,45 @@ class Example:
 
 if __name__ == "__main__":
     parser = Example.create_parser()
+    parser.add_argument(
+        "--record",
+        type=str,
+        choices=["sync", "async"],
+        default=None,
+        help="Enable frame recording: 'sync' for synchronous, 'async' for non-blocking",
+    )
+    parser.add_argument(
+        "--video-output",
+        type=str,
+        default=None,
+        help="Output MP4 path (defaults to <examples_output>/bouncing_ball/recording.mp4)",
+    )
+    parser.add_argument(
+        "--keep-frames",
+        type=bool,
+        default=True,
+        help="Keep recorded PNG frames after the MP4 has been generated",
+    )
     viewer, args = newton.examples.init(parser)
+
+    recording_dir = os.path.join(get_examples_output_path(), "bouncing_ball")
+    if args.record:
+        viewer = enable_recording(
+            viewer,
+            record_video=True,
+            video_folder=os.path.join(recording_dir, "frames"),
+            async_save=(args.record == "async"),
+        )
+
     example = Example(viewer, args, use_graph=True, start_paused=False)
 
     newton.examples.run(example, args)
+
+    if args.record and hasattr(viewer, "generate_video"):
+        output_path = args.video_output or os.path.join(recording_dir, "recording.mp4")
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        viewer.generate_video(
+            output_filename=output_path,
+            fps=example.viewer_fps,
+            keep_frames=args.keep_frames,
+        )

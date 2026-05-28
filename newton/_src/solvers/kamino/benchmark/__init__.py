@@ -13,7 +13,8 @@ This subpackage exposes:
   Newton :class:`Contacts` container.
 * :class:`PhysicsMetricsLogger` — on-device rolling/bounded history logger
   for the per-world summary fields produced by
-  :func:`compute_per_world_contact_constraint_summary`.
+  :func:`compute_per_world_contact_constraint_summary` and
+  :func:`compute_per_world_joint_constraint_summary`.
 """
 
 from .logging import PhysicsMetricsLogger
@@ -22,7 +23,9 @@ from .metrics import (
     PhysicsMetrics,
     compute_contact_constraint_metrics,
     compute_contact_velocities,
+    compute_joint_constraint_metrics,
     compute_per_world_contact_constraint_summary,
+    compute_per_world_joint_constraint_summary,
 )
 from .setup import SolverSetup
 
@@ -37,5 +40,7 @@ __all__ = [
     "SolverSetup",
     "compute_contact_constraint_metrics",
     "compute_contact_velocities",
+    "compute_joint_constraint_metrics",
     "compute_per_world_contact_constraint_summary",
+    "compute_per_world_joint_constraint_summary",
 ]

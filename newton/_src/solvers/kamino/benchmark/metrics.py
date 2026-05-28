@@ -37,6 +37,7 @@ __all__ = [
     "compute_contact_velocities",
     "compute_joint_constraint_metrics",
     "compute_per_world_contact_constraint_summary",
+    "compute_per_world_joint_constraint_summary",
 ]
 
 
@@ -996,6 +997,48 @@ def _compute_per_world_contact_metrics_summary(
     atomic_max_with_argmax(world_r_vi_natmap, world_r_vi_natmap_argmax, wid, r_vi_natmap, cid)
 
 
+@wp.kernel
+def _compute_per_world_joint_metrics_summary(
+    joint_world: wp.array[int32],
+    joint_kinematic_cts_offset: wp.array[int32],
+    joint_r_cts_penetration: wp.array[float32],
+    joint_r_cts_velocity: wp.array[float32],
+    world_r_cts_penetration: wp.array[float32],
+    world_r_cts_penetration_argmax: wp.array[int32],
+    world_r_cts_velocity: wp.array[float32],
+    world_r_cts_velocity_argmax: wp.array[int32],
+):
+    """
+    Performs a per-world max+argmax reduction over joint kinematic constraint residuals.
+
+    One thread per joint. Each joint contributes the maximum absolute position-
+    and velocity-level residual among its kinematic constraint dimensions
+    (indexed via ``kinematic_cts_offset``). The argmax stores the joint index.
+    """
+    jid = wp.tid()
+
+    wid = joint_world[jid]
+    offset = joint_kinematic_cts_offset[jid]
+    num_cts = joint_kinematic_cts_offset[jid + 1] - offset
+
+    if num_cts <= 0:
+        return
+
+    max_pen = joint_r_cts_penetration[offset]
+    max_vel = joint_r_cts_velocity[offset]
+    for k in range(1, num_cts):
+        idx = offset + k
+        val_pen = joint_r_cts_penetration[idx]
+        if val_pen > max_pen:
+            max_pen = val_pen
+        val_vel = joint_r_cts_velocity[idx]
+        if val_vel > max_vel:
+            max_vel = val_vel
+
+    atomic_max_with_argmax(world_r_cts_penetration, world_r_cts_penetration_argmax, wid, max_pen, jid)
+    atomic_max_with_argmax(world_r_cts_velocity, world_r_cts_velocity_argmax, wid, max_vel, jid)
+
+
 @cache
 def make_typed_write_joint_residuals_abs(dof_type: JointDoFType):
     """
@@ -1356,6 +1399,71 @@ def compute_per_world_contact_constraint_summary(
             summary.r_ncp_compl_argmax,
             summary.r_vi_natmap,
             summary.r_vi_natmap_argmax,
+        ],
+        device=model.device,
+    )
+
+
+def compute_per_world_joint_constraint_summary(
+    model: Model,
+    metrics: PhysicsMetrics,
+) -> None:
+    """
+    Reduces the per-constraint joint kinematic residuals in ``metrics.joints``
+    into per-world max and argmax values stored in
+    ``metrics.per_world_joints_summary``.
+
+    One thread is launched per joint. For each joint, the maximum position-
+    and velocity-level residual over that joint's kinematic constraint block is
+    atomically merged into the corresponding world. The argmax companion
+    records the joint index that achieved the per-world maximum.
+
+    Args:
+        model: The Newton model providing ``joint_world``.
+        metrics: The :class:`PhysicsMetrics` container providing the flat
+            joint residual arrays (in ``metrics.joints``), the Kamino joint
+            context cached at init, and the per-world summary output arrays
+            (in ``metrics.per_world_joints_summary``).
+
+    Raises:
+        ValueError: If ``metrics.joints``, ``metrics.per_world_joints_summary``,
+            or the Kamino joint context was not initialized, or if any supplied
+            container lives on a different device than ``model``.
+    """
+    if metrics.joints is None:
+        raise ValueError(
+            "Metrics container does not contain a `joints` attribute. Ensure the model has joints "
+            "(model.joint_count > 0) when constructing PhysicsMetrics."
+        )
+    if metrics.per_world_joints_summary is None:
+        raise ValueError(
+            "Metrics container does not contain a `per_world_joints_summary` attribute. "
+            "Ensure `model.world_count > 0` and `model.joint_count > 0`."
+        )
+    if metrics._kamino_joints_model is None:
+        raise ValueError(
+            "PhysicsMetrics was not initialized with a Kamino joint context. "
+            "Reconstruct PhysicsMetrics from a model with joints."
+        )
+
+    joints_model = metrics._kamino_joints_model
+    summary = metrics.per_world_joints_summary
+    summary.clear()
+
+    wp.launch(
+        kernel=_compute_per_world_joint_metrics_summary,
+        dim=model.joint_count,
+        inputs=[
+            model.joint_world,
+            joints_model.kinematic_cts_offset,
+            metrics.joints.r_cts_penetration,
+            metrics.joints.r_cts_velocity,
+        ],
+        outputs=[
+            summary.r_cts_penetration,
+            summary.r_cts_penetration_argmax,
+            summary.r_cts_velocity,
+            summary.r_cts_velocity_argmax,
         ],
         device=model.device,
     )

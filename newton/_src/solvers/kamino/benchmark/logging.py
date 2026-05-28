@@ -8,7 +8,10 @@ summary history on the same device as the wrapped metrics container.
 The :class:`PhysicsMetricsLogger` class allocates per-frame log buffers for
 every per-world summary field exposed by
 ``PhysicsMetrics.per_world_contacts_summary`` (six float32 residuals and six
-companion int32 argmax indices). It supports an optional fixed-size rolling
+companion int32 argmax indices) and, when joints are present,
+``PhysicsMetrics.per_world_joints_summary`` (position- and velocity-level
+kinematic constraint residuals and their argmax joint indices). It supports
+an optional fixed-size rolling
 window or bounded early-exit overflow policy, a configurable sample-decimation
 rate, and an optional pinned simulation time step ``dt``. The per-frame
 counters and rollover / bounding logic live on the target device, so a single
@@ -32,6 +35,7 @@ A typical example for using this module is::
         compute_contact_constraint_metrics,
         compute_contact_velocities,
         compute_per_world_contact_constraint_summary,
+        compute_per_world_joint_constraint_summary,
     )
 
     metrics = PhysicsMetrics(model=model)
@@ -48,6 +52,7 @@ A typical example for using this module is::
         compute_contact_velocities(model, state, contacts)
         compute_contact_constraint_metrics(model, state, contacts, metrics)
         compute_per_world_contact_constraint_summary(model, contacts, metrics)
+        compute_per_world_joint_constraint_summary(model, metrics)
         logger.log()
 
     np_data = logger.to_numpy()
@@ -89,10 +94,8 @@ wp.set_module_options({"enable_backward": False})
 # Constants
 ###
 
-# Names of the scalar (float32) per-world summary fields recorded by the logger.
-# Order matches `PhysicsMetrics.per_world_contacts_summary` and the entries are
-# used both for buffer allocation and for plotting.
-_SCALAR_FIELDS_FLOAT32: tuple[str, ...] = (
+# Contact per-world summary fields (``ConstraintMetrics`` attribute names).
+_CONTACT_SCALAR_FIELDS_FLOAT32: tuple[str, ...] = (
     "r_cts_penetration",
     "r_cts_velocity",
     "r_ncp_primal",
@@ -101,9 +104,25 @@ _SCALAR_FIELDS_FLOAT32: tuple[str, ...] = (
     "r_vi_natmap",
 )
 
-# Companion argmax fields (one per scalar) storing the contact index that
-# attained the per-world maximum for that residual.
-_ARGMAX_FIELDS_INT32: tuple[str, ...] = tuple(f + "_argmax" for f in _SCALAR_FIELDS_FLOAT32)
+# Backward-compatible alias: contact-only scalar fields.
+_SCALAR_FIELDS_FLOAT32: tuple[str, ...] = _CONTACT_SCALAR_FIELDS_FLOAT32
+
+# Companion argmax fields (one per contact scalar) storing the contact index.
+_CONTACT_ARGMAX_FIELDS_INT32: tuple[str, ...] = tuple(f + "_argmax" for f in _CONTACT_SCALAR_FIELDS_FLOAT32)
+_ARGMAX_FIELDS_INT32: tuple[str, ...] = _CONTACT_ARGMAX_FIELDS_INT32
+
+# Per-world joint summary fields logged under distinct keys (the underlying
+# ``ConstraintMetrics`` attributes share names with the contact fields).
+_JOINT_SCALAR_FIELDS_FLOAT32: tuple[str, ...] = (
+    "joints_r_cts_penetration",
+    "joints_r_cts_velocity",
+)
+_JOINT_ARGMAX_FIELDS_INT32: tuple[str, ...] = tuple(f + "_argmax" for f in _JOINT_SCALAR_FIELDS_FLOAT32)
+# ``ConstraintMetrics`` attribute names on ``per_world_joints_summary``.
+_JOINT_SUMMARY_SCALAR_FIELDS: tuple[str, ...] = (
+    "r_cts_penetration",
+    "r_cts_velocity",
+)
 
 # Human-readable plot titles per scalar metric (without the equation suffix).
 _METRIC_TITLES: dict[str, str] = {
@@ -126,6 +145,19 @@ _METRIC_EQUATIONS: dict[str, str] = {
     "r_ncp_compl": r"$\Vert \, \lambda^T \, v_a^+ \, \Vert_\infty $",
     "r_vi_natmap": r"$\Vert \, \lambda - P_{K}(\lambda - v_a^+(\lambda)) \, \Vert_\infty $",
 }
+
+_JOINT_METRIC_TITLES: dict[str, str] = {
+    "joints_r_cts_penetration": "Joint Position Constraint Residual",
+    "joints_r_cts_velocity": "Joint Velocity Constraint Residual",
+}
+
+_JOINT_METRIC_EQUATIONS: dict[str, str] = {
+    "joints_r_cts_penetration": r"$\max_j \, \max_k \, | \, r_{j,k,\mathrm{pos}} \, |$",
+    "joints_r_cts_velocity": r"$\max_j \, \max_k \, | \, r_{j,k,\mathrm{vel}} \, |$",
+}
+
+_ALL_METRIC_TITLES: dict[str, str] = {**_METRIC_TITLES, **_JOINT_METRIC_TITLES}
+_ALL_METRIC_EQUATIONS: dict[str, str] = {**_METRIC_EQUATIONS, **_JOINT_METRIC_EQUATIONS}
 
 # Color palette for cross-setup overlay plots, cycled if more than 8 setups.
 _OVERLAY_COLORS: tuple[str, ...] = (
@@ -185,6 +217,19 @@ def _format_stat_cell(value: float) -> str:
 _STAT_LABELS: tuple[str, ...] = ("max", "mean")
 
 
+def _recorded_scalar_fields(field_names: dict[str, object] | set[str] | tuple[str, ...]) -> tuple[str, ...]:
+    """Scalar log keys present in ``field_names``, in stable contact-then-joint order."""
+    keys = field_names if isinstance(field_names, set) else set(field_names)
+    fields: list[str] = []
+    for field in _CONTACT_SCALAR_FIELDS_FLOAT32:
+        if field in keys:
+            fields.append(field)
+    for field in _JOINT_SCALAR_FIELDS_FLOAT32:
+        if field in keys:
+            fields.append(field)
+    return tuple(fields)
+
+
 def _compute_summary_stats(
     np_data: dict[str, np.ndarray],
     per_world: bool,
@@ -195,8 +240,8 @@ def _compute_summary_stats(
         np_data: The dictionary returned by
             :meth:`PhysicsMetricsLogger.to_numpy`, mapping per-world summary
             field names to arrays of shape ``(num_frames, num_worlds)``.
-            Only the scalar fields in :data:`_SCALAR_FIELDS_FLOAT32` are
-            consumed; argmax companions are ignored.
+            Only recorded scalar fields (contact and joint log keys present
+            in ``np_data``) are consumed; argmax companions are ignored.
         per_world: If ``True``, reduce only along the frame axis so the result
             is per-world. If ``False``, also flatten across worlds so the
             result is a single ``(max, mean)`` pair per field.
@@ -213,7 +258,7 @@ def _compute_summary_stats(
     """
     stats: dict[str, tuple[float, float] | np.ndarray] = {}
     n_stats = len(_STAT_LABELS)
-    for field in _SCALAR_FIELDS_FLOAT32:
+    for field in _recorded_scalar_fields(np_data):
         arr = np_data.get(field)
         if arr is None or arr.size == 0:
             if per_world:
@@ -244,8 +289,8 @@ def _build_stats_rows(
         stats_by_logger: A list of ``(name, stats)`` pairs as returned by
             :func:`_compute_summary_stats`. ``table()`` passes a singleton
             list; ``table_comparison()`` passes one pair per logger.
-        per_world: If ``True``, emit ``6 * num_worlds`` rows ordered by world
-            then metric; otherwise emit one row per scalar field.
+        per_world: If ``True``, emit one row per ``(world, metric)`` pair;
+            otherwise emit one row per scalar field.
         num_worlds: Number of worlds carried by each logger. Used only when
             ``per_world`` is ``True`` to determine the row count.
 
@@ -257,8 +302,9 @@ def _build_stats_rows(
     rows: list[list[str]] = []
     n_outer = num_worlds if per_world else 1
     n_stats = len(_STAT_LABELS)
+    scalar_fields = _recorded_scalar_fields(stats_by_logger[0][1]) if stats_by_logger else ()
     for w in range(n_outer):
-        for field in _SCALAR_FIELDS_FLOAT32:
+        for field in scalar_fields:
             row: list[str] = []
             if per_world:
                 row.append(f"world_{w}")
@@ -345,9 +391,10 @@ def _compute_ranking_colors(
     n_stats = len(_STAT_LABELS)
     leading = 2 if per_world else 1
     n_outer = num_worlds if per_world else 1
+    scalar_fields = _recorded_scalar_fields(stats_by_logger[0][1]) if stats_by_logger else ()
     grid: list[list[str | None]] = []
     for w in range(n_outer):
-        for field in _SCALAR_FIELDS_FLOAT32:
+        for field in scalar_fields:
             cells: list[str | None] = [None] * leading
             logger_cells: list[str | None] = [None] * (n_loggers * n_stats)
             for s in range(n_stats):
@@ -481,10 +528,12 @@ class PhysicsMetricsLogger:
 
     The logger reads the per-world maximum and argmax buffers exposed by
     ``metrics.per_world_contacts_summary`` (populated by
-    :func:`compute_per_world_contact_constraint_summary`) and appends one row
+    :func:`compute_per_world_contact_constraint_summary`) and/or
+    ``metrics.per_world_joints_summary`` (populated by
+    :func:`compute_per_world_joint_constraint_summary`) and appends one row
     per :meth:`log` call into a fixed-shape ``(max_frames, num_worlds)``
     storage. Both the per-world max (``float32``) and its companion argmax
-    contact index (``int32``) are retained for every residual.
+    entity index (``int32``) are retained for every recorded residual.
 
     The buffer-overflow policy is controlled by :class:`Mode`:
 
@@ -548,8 +597,9 @@ class PhysicsMetricsLogger:
 
         Args:
             metrics: The :class:`PhysicsMetrics` container to record from. Must
-                have been constructed with a non-``None`` ``model`` so that
-                ``metrics.per_world_contacts_summary`` is allocated.
+                have been constructed with a non-``None`` ``model`` so that at
+                least one of ``metrics.per_world_contacts_summary`` or
+                ``metrics.per_world_joints_summary`` is allocated.
             max_frames: The maximum number of frames recorded by the logger.
                 Must be a strictly positive integer.
             mode: The buffer-overflow policy. Defaults to :attr:`Mode.BOUNDED`.
@@ -565,16 +615,21 @@ class PhysicsMetricsLogger:
             TypeError: If ``metrics`` is not a :class:`PhysicsMetrics`, or if
                 ``mode`` is not a :class:`Mode` value.
             ValueError: If ``max_frames`` or ``decimation`` is not a strictly
-                positive integer, or if ``metrics.per_world_contacts_summary``
-                is unallocated, or if ``dt`` is not a positive number.
+                positive integer, if neither per-world summary buffer is
+                allocated, if both are allocated with mismatched ``world_count``,
+                or if ``dt`` is not a positive number.
         """
         if not isinstance(metrics, PhysicsMetrics):
             raise TypeError(f"Expected 'metrics' to be of type `PhysicsMetrics`, got {type(metrics)}.")
-        if metrics.per_world_contacts_summary is None:
+        log_contacts = metrics.per_world_contacts_summary is not None
+        log_joints = metrics.per_world_joints_summary is not None
+        if not log_contacts and not log_joints:
             raise ValueError(
-                "PhysicsMetricsLogger requires `metrics.per_world_contacts_summary` to be allocated. "
-                "Construct `PhysicsMetrics` with a model whose `rigid_contact_max > 0` and "
-                "`world_count > 0`."
+                "PhysicsMetricsLogger requires at least one of "
+                "`metrics.per_world_contacts_summary` or `metrics.per_world_joints_summary` "
+                "to be allocated. Construct `PhysicsMetrics` with a model that has "
+                "`world_count > 0` and either contacts (`rigid_contact_max > 0`) or joints "
+                "(`joint_count > 0`)."
             )
         if not isinstance(max_frames, int) or max_frames <= 0:
             raise ValueError(f"Expected 'max_frames' to be a positive integer, got {max_frames!r}.")
@@ -595,13 +650,31 @@ class PhysicsMetricsLogger:
         self._mode: PhysicsMetricsLogger.Mode = mode
         self._decimation: int = int(decimation)
         self._dt: float | None = float(dt) if dt is not None else None
+        self._log_contacts = log_contacts
+        self._log_joints = log_joints
 
-        # Resolve the target device and per-world fan-out from the per-world
-        # summary container; this is the authoritative source for both since the
-        # logger directly reads (and replicates the shape of) those arrays.
-        summary = metrics.per_world_contacts_summary
+        # Resolve the target device and per-world fan-out from a per-world
+        # summary container (contacts or joints).
+        summary = metrics.per_world_contacts_summary or metrics.per_world_joints_summary
         self._device: wp.DeviceLike = summary.r_cts_penetration.device
         self._num_worlds: int = int(summary.r_cts_penetration.shape[0])
+        if log_contacts and log_joints:
+            n_contact_worlds = int(metrics.per_world_contacts_summary.r_cts_penetration.shape[0])
+            n_joint_worlds = int(metrics.per_world_joints_summary.r_cts_penetration.shape[0])
+            if n_contact_worlds != n_joint_worlds:
+                raise ValueError(
+                    "Contact and joint per-world summary buffers disagree on world_count: "
+                    f"{n_contact_worlds} vs {n_joint_worlds}."
+                )
+
+        self._log_scalar_fields: tuple[str, ...] = ()
+        self._log_argmax_fields: tuple[str, ...] = ()
+        if log_contacts:
+            self._log_scalar_fields += _CONTACT_SCALAR_FIELDS_FLOAT32
+            self._log_argmax_fields += _CONTACT_ARGMAX_FIELDS_INT32
+        if log_joints:
+            self._log_scalar_fields += _JOINT_SCALAR_FIELDS_FLOAT32
+            self._log_argmax_fields += _JOINT_ARGMAX_FIELDS_INT32
 
         # Allocate every per-frame log buffer on the metrics' device. The 2-D
         # layout ``(max_frames, num_worlds)`` matches the per-world scalar
@@ -611,9 +684,9 @@ class PhysicsMetricsLogger:
         # be safely captured into a CUDA graph alongside the solver step.
         with wp.ScopedDevice(self._device):
             shape = (self._max_frames, self._num_worlds)
-            for field in _SCALAR_FIELDS_FLOAT32:
+            for field in self._log_scalar_fields:
                 setattr(self, f"log_{field}", wp.zeros(shape=shape, dtype=wp.float32))
-            for field in _ARGMAX_FIELDS_INT32:
+            for field in self._log_argmax_fields:
                 setattr(self, f"log_{field}", wp.full(shape=shape, value=-1, dtype=wp.int32))
 
             # Device-side counters and per-call decision scratch buffer.
@@ -690,9 +763,9 @@ class PhysicsMetricsLogger:
         self._call_count.zero_()
         self._frames_total.zero_()
         self._decision.zero_()
-        for field in _SCALAR_FIELDS_FLOAT32:
+        for field in self._log_scalar_fields:
             getattr(self, f"log_{field}").zero_()
-        for field in _ARGMAX_FIELDS_INT32:
+        for field in self._log_argmax_fields:
             getattr(self, f"log_{field}").fill_(-1)
 
     def log(self):
@@ -719,21 +792,47 @@ class PhysicsMetricsLogger:
             device=self._device,
         )
 
-        summary = self._metrics.per_world_contacts_summary
-        for field in _SCALAR_FIELDS_FLOAT32:
-            wp.launch(
-                kernel=_write_log_row_float32,
-                dim=self._num_worlds,
-                inputs=[getattr(summary, field), self._decision, getattr(self, f"log_{field}")],
-                device=self._device,
-            )
-        for field in _ARGMAX_FIELDS_INT32:
-            wp.launch(
-                kernel=_write_log_row_int32,
-                dim=self._num_worlds,
-                inputs=[getattr(summary, field), self._decision, getattr(self, f"log_{field}")],
-                device=self._device,
-            )
+        if self._log_contacts:
+            summary = self._metrics.per_world_contacts_summary
+            for field in _CONTACT_SCALAR_FIELDS_FLOAT32:
+                wp.launch(
+                    kernel=_write_log_row_float32,
+                    dim=self._num_worlds,
+                    inputs=[getattr(summary, field), self._decision, getattr(self, f"log_{field}")],
+                    device=self._device,
+                )
+            for field in _CONTACT_ARGMAX_FIELDS_INT32:
+                wp.launch(
+                    kernel=_write_log_row_int32,
+                    dim=self._num_worlds,
+                    inputs=[getattr(summary, field), self._decision, getattr(self, f"log_{field}")],
+                    device=self._device,
+                )
+
+        if self._log_joints:
+            summary = self._metrics.per_world_joints_summary
+            for log_field, summary_field in zip(
+                _JOINT_SCALAR_FIELDS_FLOAT32, _JOINT_SUMMARY_SCALAR_FIELDS, strict=True
+            ):
+                wp.launch(
+                    kernel=_write_log_row_float32,
+                    dim=self._num_worlds,
+                    inputs=[getattr(summary, summary_field), self._decision, getattr(self, f"log_{log_field}")],
+                    device=self._device,
+                )
+            for log_field, summary_field in zip(
+                _JOINT_SCALAR_FIELDS_FLOAT32, _JOINT_SUMMARY_SCALAR_FIELDS, strict=True
+            ):
+                wp.launch(
+                    kernel=_write_log_row_int32,
+                    dim=self._num_worlds,
+                    inputs=[
+                        getattr(summary, summary_field + "_argmax"),
+                        self._decision,
+                        getattr(self, f"log_{log_field}_argmax"),
+                    ],
+                    device=self._device,
+                )
 
         wp.launch(
             kernel=_finalize_log_decision,
@@ -764,7 +863,7 @@ class PhysicsMetricsLogger:
         total = self.num_total_writes
         n = min(total, self._max_frames)
         result: dict[str, np.ndarray] = {}
-        for field in (*_SCALAR_FIELDS_FLOAT32, *_ARGMAX_FIELDS_INT32):
+        for field in (*self._log_scalar_fields, *self._log_argmax_fields):
             buf = getattr(self, f"log_{field}").numpy()
             if n == 0:
                 result[field] = buf[:0].copy()
@@ -856,9 +955,9 @@ class PhysicsMetricsLogger:
         time = self.time_axis()
         np_data = self.to_numpy()
         x_label = "Time (s)" if self._dt is not None else "Step"
-        for field in _SCALAR_FIELDS_FLOAT32:
-            equation = _METRIC_EQUATIONS[field]
-            base_title = _METRIC_TITLES[field]
+        for field in self._log_scalar_fields:
+            equation = _ALL_METRIC_EQUATIONS[field]
+            base_title = _ALL_METRIC_TITLES[field]
             title = f"{base_title} \n ({equation})"
             fig, ax = self.plt.subplots(1, 1, figsize=(10, 6))
             data = np_data[field]
@@ -978,7 +1077,7 @@ class PhysicsMetricsLogger:
             n_rows, n_cols = 2, 3
             fig, axes = plt.subplots(n_rows, n_cols, figsize=(18, 10))
             axes = axes.flatten()
-            for i, field in enumerate(_SCALAR_FIELDS_FLOAT32):
+            for i, field in enumerate(_CONTACT_SCALAR_FIELDS_FLOAT32):
                 cls._plot_overlay_metric(
                     logged_data,
                     field,
@@ -987,7 +1086,7 @@ class PhysicsMetricsLogger:
                     log_scale=log_scale,
                     log_floor=float(log_floor),
                 )
-            for j in range(len(_SCALAR_FIELDS_FLOAT32), len(axes)):
+            for j in range(len(_CONTACT_SCALAR_FIELDS_FLOAT32), len(axes)):
                 axes[j].set_visible(False)
             fig.tight_layout()
             if path is not None:
@@ -995,33 +1094,39 @@ class PhysicsMetricsLogger:
             if show:
                 plt.show()
             plt.close(fig)
+            extra_fields = [f for f in _JOINT_SCALAR_FIELDS_FLOAT32 if f in next(iter(loggers.values())).to_numpy()]
+            per_metric_filename = filename
+            per_metric_separator = "_"
         else:
             if filename is None:
-                filename = ""
-                separator = ""
+                per_metric_filename = ""
+                per_metric_separator = ""
             else:
-                separator = "_"
-            for field in _SCALAR_FIELDS_FLOAT32:
-                fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-                cls._plot_overlay_metric(
-                    logged_data,
-                    field,
-                    x_label,
-                    ax,
-                    log_scale=log_scale,
-                    log_floor=float(log_floor),
+                per_metric_filename = filename
+                per_metric_separator = "_"
+            extra_fields = list(_recorded_scalar_fields(next(iter(loggers.values())).to_numpy()))
+
+        for field in extra_fields:
+            fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+            cls._plot_overlay_metric(
+                logged_data,
+                field,
+                x_label,
+                ax,
+                log_scale=log_scale,
+                log_floor=float(log_floor),
+            )
+            fig.tight_layout()
+            if path is not None:
+                fig.savefig(
+                    os.path.join(path, f"{per_metric_filename}{per_metric_separator}{field}.{ext}"),
+                    format=ext,
+                    dpi=300,
+                    bbox_inches="tight",
                 )
-                fig.tight_layout()
-                if path is not None:
-                    fig.savefig(
-                        os.path.join(path, f"{filename}{separator}{field}.{ext}"),
-                        format=ext,
-                        dpi=300,
-                        bbox_inches="tight",
-                    )
-                if show:
-                    plt.show()
-                plt.close(fig)
+            if show:
+                plt.show()
+            plt.close(fig)
 
     ###
     # Tables
@@ -1039,8 +1144,8 @@ class PhysicsMetricsLogger:
         Reduces the chronological history returned by :meth:`to_numpy` over
         the frame axis (and optionally also the world axis) and emits the
         resulting statistics as a CSV file and/or a :mod:`rich`-rendered
-        console table. Only the six scalar fields in
-        :data:`_SCALAR_FIELDS_FLOAT32` are summarized; argmax companion
+        console table. All scalar fields present in :meth:`to_numpy` are
+        summarized (contact and joint metrics when recorded); argmax companion
         fields are skipped, mirroring the convention used by :meth:`plot`.
 
         Args:
@@ -1345,8 +1450,8 @@ class PhysicsMetricsLogger:
                     alpha=0.7,
                     label=f"{name}{world_label}",
                 )
-        equation = _METRIC_EQUATIONS[field]
-        base_title = _METRIC_TITLES[field]
+        equation = _ALL_METRIC_EQUATIONS[field]
+        base_title = _ALL_METRIC_TITLES[field]
         ax.set_title(f"{base_title} \n ({equation})")
         ax.set_xlabel(x_label)
         ax.set_ylabel(field)

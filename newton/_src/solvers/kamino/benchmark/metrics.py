@@ -1280,7 +1280,7 @@ def compute_contact_constraint_metrics(
 
     # Clear the metrics container prior to computing the contact constraint
     # residuals to avoid accumulating residuals from previous computations.
-    metrics.clear()
+    metrics.contacts.clear()
 
     # Launch the kernel to compute the contact constraint residuals
     wp.launch(

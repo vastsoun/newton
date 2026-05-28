@@ -1,0 +1,1014 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
+# SPDX-License-Identifier: Apache-2.0
+
+###########################################################################
+# Example for basic box on plane system.
+#
+# Shows how to simulate a basic box on plane using SolverKamino, while
+# logging and comparing SolutionMetrics between the solver-internal
+# evaluator and the front-end SolutionMetricsNewton wrapper.
+#
+# Command: python -m newton.examples kamino_basic_box_on_plane
+#
+###########################################################################
+
+import argparse
+import dataclasses
+import os
+import time
+from collections.abc import Callable
+from typing import Any
+
+import numpy as np
+import warp as wp
+
+import newton
+import newton.examples
+from newton._src.solvers.kamino._src.metrics import SolutionMetricsLogger, SolutionMetricsNewton
+from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino.benchmark import (
+    PhysicsMetrics,
+    PhysicsMetricsLogger,
+    compute_contact_constraint_metrics,
+    compute_per_world_contact_constraint_summary,
+)
+from newton._src.solvers.kamino.examples import print_progress_bar
+from newton._src.solvers.kamino.utils import SolverKaminoLogger
+from newton.tests.utils import basics
+
+###
+# Constants
+###
+
+START_Z_OFFSET: float = 0.0
+FRICTION: float = 0.7
+RESTITUTION: float = 0.0
+FORCE_SCALE: float = 10.0
+FORCE_START_TIME: float = 0.0
+FORCE_STOP_TIME: float = 3.0
+SIM_STOP_TIME: float = 0.03
+SIM_DT: float = 0.001
+VIZ_FPS: int = 50
+
+
+###
+# Kernels
+###
+
+
+@wp.kernel
+def _apply_external_tossing_force(
+    # Inputs:
+    dt: wp.float32,
+    time: wp.array[wp.float32],
+    # Outputs:
+    state_body_f: wp.array[wp.spatial_vectorf],
+):
+    """
+    A kernel to apply a time-dependent external force to the box.
+    """
+    # Define the time window for the active external force profile
+    t_start = wp.float32(FORCE_START_TIME)
+    t_end = wp.float32(FORCE_STOP_TIME)
+
+    # Get the current time
+    t = time[0]
+
+    # Apply a time-dependent external force
+    if t > t_start and t < t_end:
+        f_ext = wp.float32(FORCE_SCALE)  # noqa F841
+        state_body_f[0] = wp.spatial_vectorf(0.5, 0.0, 10.0, 0.0, 1.0, 0.0)
+    else:
+        state_body_f[0] = wp.spatial_vectorf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+    # Update the current time
+    time[0] += dt
+
+
+@wp.kernel
+def _apply_external_sliding_force(
+    # Inputs:
+    dt: wp.float32,
+    time: wp.array[wp.float32],
+    gravity: wp.array[wp.vec3],
+    body_mass: wp.array[wp.float32],
+    num_active_contacts: wp.array[wp.int32],
+    # Outputs:
+    state_body_f: wp.array[wp.spatial_vectorf],
+):
+    """
+    A kernel to apply a time-dependent external force to the box.
+    """
+    # Retrieve number of active contacts in the world
+    nc = num_active_contacts[0]
+
+    # Retrieve the mass of the box
+    m = body_mass[0]
+
+    # Retrieve the gravitational acceleration
+    g = wp.length(gravity[0])
+
+    # Define the time window for the active external force profile
+    t_start = wp.float32(FORCE_START_TIME)
+    t_end = wp.float32(FORCE_STOP_TIME)
+
+    # Get the current time
+    t = time[0]
+
+    # Apply a time-dependent external force
+    if t > t_start and t < t_end and nc > 0:
+        mu = wp.float32(FRICTION)
+        f_ext = wp.float32(FORCE_SCALE) * m * g * mu
+        state_body_f[0] = wp.spatial_vectorf(f_ext, 0.0, 0.0, 0.0, 0.0, 0.0)
+    else:
+        state_body_f[0] = wp.spatial_vectorf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+    # Update the current time
+    time[0] += dt
+
+
+###
+# Launchers
+###
+
+
+def apply_external_tossing_force(
+    model: newton.Model,
+    time: wp.array[wp.float32],
+    state_out: newton.State,
+    dt: float,
+):
+    """
+    Applies a time-dependent external force to the box.
+    """
+    # Launch the kernel to apply the external force to the box
+    wp.launch(
+        kernel=_apply_external_tossing_force,
+        dim=1,
+        inputs=[
+            wp.float32(dt),
+            time,
+        ],
+        outputs=[state_out.body_f],
+        device=model.device,
+    )
+
+
+def apply_external_sliding_force(
+    model: newton.Model,
+    time: wp.array[wp.float32],
+    contacts_in: newton.Contacts,
+    state_out: newton.State,
+    dt: float,
+):
+    """
+    Applies a time-dependent external force to the box.
+    """
+    # Launch the kernel to apply the external force to the box
+    wp.launch(
+        kernel=_apply_external_sliding_force,
+        dim=1,
+        inputs=[
+            wp.float32(dt),
+            time,
+            model.gravity,
+            model.body_mass,
+            contacts_in.rigid_contact_count,
+        ],
+        outputs=[state_out.body_f],
+        device=model.device,
+    )
+
+
+###
+# Scaffolding
+###
+
+
+@dataclasses.dataclass
+class SolverSetup:
+    # Required inputs
+    name: str
+    builder: newton.ModelBuilder
+    model: newton.Model
+    solver: newton.solvers.SolverBase
+    dt: float
+
+    # Generated by the model
+    state_0_m: newton.State | None = None
+    state_0: newton.State | None = None
+    state_1: newton.State | None = None
+    control: newton.Control | None = None
+    contacts: newton.Contacts | None = None
+
+    metrics: SolutionMetricsNewton | None = None
+    logger: SolutionMetricsLogger | None = None
+
+    solver_logger: SolutionMetricsLogger | None = None
+    aux_logger: SolverKaminoLogger | None = None
+
+    physics_metrics: PhysicsMetrics | None = None
+    physics_metrics_logger: PhysicsMetricsLogger | None = None
+
+    def __post_init__(self):
+        self.state_0_m = self.model.state()
+        self.state_0 = self.model.state()
+        self.state_1 = self.model.state()
+        self.control = self.model.control()
+        self.contacts = self.model.contacts()
+
+    def step(
+        self,
+        state_in: newton.State,
+        control: newton.Control,
+        contacts: newton.Contacts,
+        state_out: newton.State | None = None,
+        contacts_out: newton.Contacts | None = None,
+    ):
+        # TODO
+        copy_state(state_in=state_in, state_out=self.state_0_m)
+        copy_state(state_in=state_in, state_out=self.state_0)
+        copy_control(control_in=control, control_out=self.control)
+        copy_contacts(contacts_in=contacts, contacts_out=self.contacts)
+
+        # # TODO
+        # msg.notif("[%s]: state_0.body_f:\n%s", self.name, self.state_0.body_f)
+        # msg.notif("[%s]: state_0.body_q:\n%s", self.name, self.state_0.body_q)
+        # msg.notif("[%s]: state_0.body_qd:\n%s", self.name, self.state_0.body_qd)
+        # msg.notif("[%s]: state_0.joint_q: %s", self.name, self.state_0.joint_q)
+        # msg.notif("[%s]: state_0.joint_qd: %s", self.name, self.state_0.joint_qd)
+
+        # TODO
+        self.solver.step(
+            state_in=self.state_0,
+            state_out=self.state_1,
+            control=self.control,
+            contacts=self.contacts,
+            dt=self.dt,
+        )
+
+        # TODO
+        self.solver.update_contacts(self.contacts, self.state_0)
+
+        # # TODO
+        # nc = self.contacts.rigid_contact_count.numpy()[0]
+        # msg.info("[%s]: contacts.count: %s", self.name, nc)
+        # msg.info("[%s]: contacts.margin0: %s", self.name, self.contacts.rigid_contact_margin0[:nc])
+        # msg.info("[%s]: contacts.margin1: %s", self.name, self.contacts.rigid_contact_margin1[:nc])
+        # msg.info("[%s]: contacts.point0:\n%s", self.name, self.contacts.rigid_contact_point0[:nc])
+        # msg.info("[%s]: contacts.point1:\n%s", self.name, self.contacts.rigid_contact_point1[:nc])
+        # msg.info("[%s]: contacts.normal:\n%s", self.name, self.contacts.rigid_contact_normal[:nc])
+        # msg.info("[%s]: contacts.force:\n%s", self.name, self.contacts.force[:nc])
+
+        # # TODO
+        # msg.notif("[%s]: state_0.body_f:\n%s", self.name, self.state_0.body_f)
+        # msg.notif("[%s]: state_0.body_q:\n%s", self.name, self.state_0.body_q)
+        # msg.notif("[%s]: state_0.body_qd:\n%s", self.name, self.state_0.body_qd)
+        # msg.notif("[%s]: state_0.joint_q: %s", self.name, self.state_0.joint_q)
+        # msg.notif("[%s]: state_0.joint_qd: %s", self.name, self.state_0.joint_qd)
+
+        # TODO
+        # self.metrics.evaluate(
+        #     state=self.state_1,
+        #     state_p=self.state_0_m,
+        #     control=self.control,
+        #     contacts=self.contacts,
+        # )
+
+        # TODO
+        compute_contact_constraint_metrics(
+            self.model, self.state_0_m, self.state_1, self.contacts, self.physics_metrics, self.dt
+        )
+        compute_per_world_contact_constraint_summary(self.model, self.contacts, self.physics_metrics)
+        self.physics_metrics_logger.log()
+
+        # TODO
+        if state_out is not None:
+            copy_state(state_in=self.state_1, state_out=state_out)
+        if contacts_out is not None:
+            copy_contacts(contacts_in=self.contacts, contacts_out=contacts_out)
+
+        # # TODO
+        # self.logger.log()
+        # # TODO
+        # if self.solver_logger is not None:
+        #     self.solver_logger.log()
+        # if self.aux_logger is not None:
+        #     self.aux_logger.log()
+
+    def render(self, viewer: newton.viewer.ViewerBase):
+        viewer.log_state(self.state_1)
+        viewer.log_contacts(self.contacts, self.state_0)
+
+
+def make_scene_builder(
+    builder_fn: Callable,
+    builder_kwargs: dict[str, Any] | None = None,
+    solver_type: type[newton.solvers.SolverBase] | None = None,
+    gravity: float = -9.81,
+) -> newton.ModelBuilder:
+    """
+    TODO
+    """
+    if builder_kwargs is None:
+        builder_kwargs = {}
+
+    # TODO
+    scene_builder = newton.ModelBuilder(up_axis=newton.Axis.Z, gravity=gravity)
+
+    # TODO
+    if solver_type is not None:
+        solver_type.register_custom_attributes(scene_builder)
+
+    # TODO
+    builder_fn(builder=scene_builder, **builder_kwargs)
+
+    # TODO
+    builder = newton.ModelBuilder(up_axis=newton.Axis.Z, gravity=gravity)
+    builder.request_state_attributes("body_parent_f")  # TODO: Switch to joint_parent_f when supported by all solvers
+    builder.request_contact_attributes("force")
+    builder.add_world(scene_builder)
+    return builder
+
+
+def make_solver_setup(
+    solver_type: type[newton.solvers.SolverBase],
+    solver_name: str,
+    max_contacts: int,
+    max_frames: int,
+    dt: float,
+    builder_fn: Callable,
+    gravity: float = -9.81,
+    builder_postproc_fn: Callable | None = None,
+    builder_kwargs: dict[str, Any] | None = None,
+    builder_postproc_kwargs: dict[str, Any] | None = None,
+    model_kwargs: dict[str, Any] | None = None,
+    model_postproc_fn: Callable | None = None,
+    model_postproc_kwargs: dict[str, Any] | None = None,
+    solver_kwargs: dict[str, Any] | None = None,
+    solver_postproc_fn: Callable | None = None,
+    solver_postproc_kwargs: dict[str, Any] | None = None,
+    setup_postproc_fn: Callable | None = None,
+    setup_postproc_kwargs: dict[str, Any] | None = None,
+) -> SolverSetup:
+    """
+    TODO
+    """
+    # Set default values for all optional arguments
+    if builder_kwargs is None:
+        builder_kwargs = {}
+    if builder_postproc_kwargs is None:
+        builder_postproc_kwargs = {}
+    if model_kwargs is None:
+        model_kwargs = {}
+    if model_postproc_kwargs is None:
+        model_postproc_kwargs = {}
+    if solver_kwargs is None:
+        solver_kwargs = {}
+    if solver_postproc_kwargs is None:
+        solver_postproc_kwargs = {}
+    if setup_postproc_kwargs is None:
+        setup_postproc_kwargs = {}
+
+    # Create a solver-specialized model builder
+    # from the scene-specific builder factory
+    builder = make_scene_builder(
+        solver_type=solver_type,
+        builder_fn=builder_fn,
+        builder_kwargs=builder_kwargs,
+        gravity=gravity,
+    )
+
+    # Apply any post-processing to the builder
+    if builder_postproc_fn is not None:
+        builder_postproc_fn(builder=builder, **builder_postproc_kwargs)
+
+    # Finalize the simulation model from the builder
+    model = builder.finalize(**model_kwargs)
+    model.rigid_contact_max = int(max_contacts)
+
+    # Apply any post-processing to the model
+    if model_postproc_fn is not None:
+        model_postproc_fn(model=model, **model_postproc_kwargs)
+
+    # Create the solver instance for the given the model
+    solver = solver_type(model=model, **solver_kwargs)
+
+    # Apply any post-processing to the solver
+    if solver_postproc_fn is not None:
+        solver_postproc_fn(solver=solver, **solver_postproc_kwargs)
+
+    # # Create the metrics model from the builder and set
+    # # the maximum number of rigid contacts to be allocated
+    # # NOTE: This is a workaround since `SolutionMetricsNewton` converts
+    # # `Model` to `ModelKamino` internally which modifies the source model.
+    # metrics_model = builder.finalize(**model_kwargs)
+    # metrics_model.rigid_contact_max = int(max_contacts)
+
+    # # Create the metrics evaluator for the given the model
+    # metrics = SolutionMetricsNewton(
+    #     model=metrics_model,
+    #     dt=dt,
+    #     sparse=False,
+    # )
+
+    # # Create the metrics logger for the given the metrics evaluator
+    # logger = SolutionMetricsLogger(
+    #     metrics=metrics,
+    #     max_frames=max_frames,
+    #     mode=SolutionMetricsLogger.Mode.BOUNDED,
+    # )
+
+    # Create the metrics container
+    physics_metrics = PhysicsMetrics(model=model)
+
+    # Create the metrics logger
+    physics_metrics_logger = PhysicsMetricsLogger(
+        metrics=physics_metrics,
+        max_frames=max_frames,
+        mode=PhysicsMetricsLogger.Mode.BOUNDED,
+        decimation=1,
+        dt=dt,
+    )
+
+    # Create and return the solver setup for the
+    # given the solver, model, metrics, and logger
+    setup = SolverSetup(
+        name=solver_name,
+        builder=builder,
+        model=model,
+        solver=solver,
+        # metrics=metrics,
+        # logger=logger,
+        physics_metrics=physics_metrics,
+        physics_metrics_logger=physics_metrics_logger,
+        dt=dt,
+    )
+
+    # Apply any post-processing to the setup
+    if setup_postproc_fn is not None:
+        setup_postproc_fn(setup=setup, **setup_postproc_kwargs)
+
+    # Return the finalized setup
+    return setup
+
+
+def copy_state(state_in: newton.State, state_out: newton.State) -> None:
+    """
+    TODO
+    """
+    # TODO
+    if state_in.body_q.ptr == state_out.body_q.ptr:
+        return
+
+    # TODO
+    if state_in.body_count != state_out.body_count:
+        raise ValueError("State have different number of bodies")
+    if state_in.joint_coord_count != state_out.joint_coord_count:
+        raise ValueError("State have different number of joint coordinates")
+    if state_in.joint_dof_count != state_out.joint_dof_count:
+        raise ValueError("State have different number of joint degrees of freedom")
+
+    # TODO
+    wp.copy(state_out.body_q, state_in.body_q)
+    wp.copy(state_out.body_qd, state_in.body_qd)
+    wp.copy(state_out.body_f, state_in.body_f)
+    wp.copy(state_out.joint_q, state_in.joint_q)
+    wp.copy(state_out.joint_qd, state_in.joint_qd)
+
+    # TODO
+    if state_in.body_q_prev is not None and state_out.body_q_prev is not None:
+        wp.copy(state_out.body_q_prev, state_in.body_q_prev)
+    if state_in.body_qdd is not None and state_out.body_qdd is not None:
+        wp.copy(state_out.body_qdd, state_in.body_qdd)
+    if state_in.body_parent_f is not None and state_out.body_parent_f is not None:
+        wp.copy(state_out.body_parent_f, state_in.body_parent_f)
+    if state_in.joint_parent_f is not None and state_out.joint_parent_f is not None:
+        wp.copy(state_out.joint_parent_f, state_in.joint_parent_f)
+
+
+def copy_control(control_in: newton.Control, control_out: newton.Control):
+    """
+    TODO
+    """
+    # TODO
+    if control_in.joint_f.ptr == control_out.joint_f.ptr:
+        return
+
+    # TODO
+    wp.copy(control_out.joint_f, control_in.joint_f)
+    wp.copy(control_out.joint_target_pos, control_in.joint_target_pos)
+    wp.copy(control_out.joint_target_vel, control_in.joint_target_vel)
+    wp.copy(control_out.joint_act, control_in.joint_act)
+
+
+def copy_contacts(contacts_in: newton.Contacts, contacts_out: newton.Contacts):
+    """
+    TODO
+    """
+    if contacts_in.rigid_contact_max != contacts_out.rigid_contact_max:
+        raise ValueError("Contacts have different maximum number of contacts")
+
+    # TODO
+    if contacts_in.rigid_contact_count.ptr == contacts_out.rigid_contact_count.ptr:
+        return
+
+    # TODO
+    wp.copy(contacts_out.contact_counters, contacts_in.contact_counters)
+    wp.copy(contacts_out.contact_generation, contacts_in.contact_generation)
+    wp.copy(contacts_out.rigid_contact_tids, contacts_in.rigid_contact_tids)
+    wp.copy(contacts_out.rigid_contact_point_id, contacts_in.rigid_contact_point_id)
+    wp.copy(contacts_out.rigid_contact_shape0, contacts_in.rigid_contact_shape0)
+    wp.copy(contacts_out.rigid_contact_shape1, contacts_in.rigid_contact_shape1)
+    wp.copy(contacts_out.rigid_contact_margin0, contacts_in.rigid_contact_margin0)
+    wp.copy(contacts_out.rigid_contact_margin1, contacts_in.rigid_contact_margin1)
+    wp.copy(contacts_out.rigid_contact_point0, contacts_in.rigid_contact_point0)
+    wp.copy(contacts_out.rigid_contact_point1, contacts_in.rigid_contact_point1)
+    wp.copy(contacts_out.rigid_contact_offset0, contacts_in.rigid_contact_offset0)
+    wp.copy(contacts_out.rigid_contact_offset1, contacts_in.rigid_contact_offset1)
+    wp.copy(contacts_out.rigid_contact_normal, contacts_in.rigid_contact_normal)
+    wp.copy(contacts_out.rigid_contact_force, contacts_in.rigid_contact_force)
+
+    # TODO
+    if contacts_in.force is not None and contacts_out.force is not None:
+        wp.copy(contacts_out.force, contacts_in.force)
+    if contacts_in.rigid_contact_match_index is not None and contacts_out.rigid_contact_match_index is not None:
+        wp.copy(contacts_out.rigid_contact_match_index, contacts_in.rigid_contact_match_index)
+    if contacts_in.rigid_contact_stiffness is not None and contacts_out.rigid_contact_stiffness is not None:
+        wp.copy(contacts_out.rigid_contact_stiffness, contacts_in.rigid_contact_stiffness)
+    if contacts_in.rigid_contact_damping is not None and contacts_out.rigid_contact_damping is not None:
+        wp.copy(contacts_out.rigid_contact_damping, contacts_in.rigid_contact_damping)
+    if contacts_in.rigid_contact_friction is not None and contacts_out.rigid_contact_friction is not None:
+        wp.copy(contacts_out.rigid_contact_friction, contacts_in.rigid_contact_friction)
+
+
+###
+# Resets
+###
+
+
+def reset_state_articulated(
+    model: newton.Model,
+    q_base: wp.transformf,
+    state_out: newton.State,
+):
+    joint_q_np = model.joint_q.numpy().copy()
+    joint_q_np[:3] = [q_base.p[0], q_base.p[1], q_base.p[2]]
+    if len(joint_q_np) > 6:
+        joint_q_np[3:7] = [q_base.q[0], q_base.q[1], q_base.q[2], q_base.q[3]]
+    state_out.joint_q.assign(joint_q_np)
+    wp.copy(state_out.joint_qd, model.joint_qd)
+    newton.eval_fk(model, state_out.joint_q, state_out.joint_qd, state_out)
+
+
+def reset_state_kamino(
+    solver: newton.solvers.SolverKamino,
+    q_base: wp.transformf,
+    state_out: newton.State,
+):
+    base_q = wp.zeros(shape=(1,), dtype=wp.transformf)
+    base_q.assign([q_base])
+    solver.reset(state_out=state_out, base_q=base_q)
+
+
+def reset_state_mujoco(
+    model: newton.Model,
+    q_base: wp.transformf,
+    state_out: newton.State,
+):
+    reset_state_articulated(model, q_base, state_out)
+
+
+def reset_state_xpbd(
+    model: newton.Model,
+    q_base: wp.transformf,
+    state_out: newton.State,
+):
+    reset_state_articulated(model, q_base, state_out)
+
+
+###
+# Example
+###
+
+
+class Example:
+    def __init__(self, viewer: newton.viewer.ViewerBase, args=None):
+        # Set simulation run-time configurations
+        self.standalone: bool = args.standalone
+        self.headless: bool = args.headless
+        self.leader: str = args.leader
+        msg.notif("Standalone: %s", self.standalone)
+        msg.notif("Headless: %s", self.headless)
+        msg.notif("Leader: %s", self.leader)
+        if self.headless:
+            self.fps = 1
+            self.frame_dt = SIM_DT
+            self.sim_dt = SIM_DT
+            self.sim_substeps = 1
+        else:
+            self.fps = VIZ_FPS
+            self.frame_dt = 1.0 / self.fps
+            self.sim_dt = SIM_DT
+            self.sim_substeps = max(1, round(self.frame_dt / self.sim_dt))
+            self.sim_dt = self.frame_dt / self.sim_substeps
+        msg.notif("FPS: %s", self.fps)
+        msg.notif("Frame DT: %s", self.frame_dt)
+        msg.notif("Sim DT: %s", self.sim_dt)
+        msg.notif("Sim Substeps: %s", self.sim_substeps)
+
+        self.sim_time = 0.0
+        self.viewer = viewer
+        self.device = wp.get_device()
+        # self.use_external_force = args is not None and args.use_external_force
+
+        # Constants
+        self.max_log_frames: int = int(SIM_STOP_TIME / self.sim_dt)
+        self.gravity: float = -9.81  # 0.0 # -9.81
+        self.rigid_contact_max: int = 128
+
+        ###
+        # Builder setup
+        ###
+
+        builder_fn = basics.build_box_on_plane
+        builder_kwargs = {
+            "z_offset": START_Z_OFFSET,
+            "friction": FRICTION,
+            "restitution": RESTITUTION,
+            "gap": 0.0,
+            "margin": 0.0,
+            "use_custom_shape_cfg": True,
+        }
+        model_kwargs = None
+
+        ###
+        # Solver setup
+        ###
+
+        solver_kamino_cfg = newton.solvers.SolverKamino.Config()
+        solver_kamino_cfg.sparse_jacobian = False
+        solver_kamino_cfg.sparse_dynamics = False
+        solver_kamino_cfg.constraints.alpha = 0.01
+        solver_kamino_cfg.constraints.beta = 0.01
+        solver_kamino_cfg.constraints.gamma = 0.1
+        solver_kamino_cfg.constraints.delta = 1e-4
+        solver_kamino_cfg.dynamics.linear_solver_type = "LLTB"
+        solver_kamino_cfg.dynamics.preconditioning = True
+        solver_kamino_cfg.padmm.use_acceleration = True
+        solver_kamino_cfg.padmm.warmstart_mode = "none"
+        solver_kamino_cfg.padmm.max_iterations = 200
+        solver_kamino_cfg.padmm.primal_tolerance = 1e-6
+        solver_kamino_cfg.padmm.dual_tolerance = 1e-6
+        solver_kamino_cfg.padmm.compl_tolerance = 1e-6
+        solver_kamino_cfg.padmm.max_iterations = 200
+        solver_kamino_cfg.padmm.eta = 1e-5
+        solver_kamino_cfg.padmm.rho_0 = 1.0
+        solver_kamino_cfg.compute_solution_metrics = False
+        solver_kamino_kwargs = {"config": solver_kamino_cfg}
+        self.setup_kamino = make_solver_setup(
+            builder_fn=builder_fn,
+            builder_kwargs=builder_kwargs,
+            model_kwargs=model_kwargs,
+            solver_type=newton.solvers.SolverKamino,
+            solver_kwargs=solver_kamino_kwargs,
+            solver_name="kamino",
+            max_contacts=self.rigid_contact_max,
+            max_frames=self.max_log_frames,
+            dt=self.sim_dt,
+            gravity=self.gravity,
+        )
+
+        solver_mujoco_kwargs = {
+            "cone": "elliptic",
+            "impratio": 1.0,
+            "iterations": 100,
+            "ls_iterations": 50,
+            "tolerance": 1e-8,
+            "ls_tolerance": 1e-6,
+            "nconmax": self.rigid_contact_max,
+            "njmax": 3 * self.rigid_contact_max,
+            "use_mujoco_contacts": False,
+        }
+        self.setup_mujoco = make_solver_setup(
+            builder_fn=builder_fn,
+            builder_kwargs=builder_kwargs,
+            model_kwargs=model_kwargs,
+            solver_type=newton.solvers.SolverMuJoCo,
+            solver_kwargs=solver_mujoco_kwargs,
+            solver_name="mujoco",
+            max_contacts=self.rigid_contact_max,
+            max_frames=self.max_log_frames,
+            dt=self.sim_dt,
+            gravity=self.gravity,
+        )
+
+        solver_xpbd_kwargs = {
+            "iterations": 2,
+            "soft_body_relaxation": 0.9,
+            "soft_contact_relaxation": 0.9,
+            "joint_linear_relaxation": 0.7,
+            "joint_angular_relaxation": 0.4,
+            "joint_linear_compliance": 0.0,
+            "joint_angular_compliance": 0.0,
+            "rigid_contact_relaxation": 0.8,
+            "rigid_contact_con_weighting": True,
+            "angular_damping": 0.0,
+            "enable_restitution": True,
+        }
+        self.setup_xpbd = make_solver_setup(
+            builder_fn=builder_fn,
+            builder_kwargs=builder_kwargs,
+            model_kwargs=model_kwargs,
+            solver_type=newton.solvers.SolverXPBD,
+            solver_kwargs=solver_xpbd_kwargs,
+            solver_name="xpbd",
+            max_contacts=self.rigid_contact_max,
+            max_frames=self.max_log_frames,
+            dt=self.sim_dt,
+            gravity=self.gravity,
+        )
+
+        ###
+        # Runtime setup
+        ###
+
+        self.setups = {
+            "kamino": self.setup_kamino,
+            "mujoco": self.setup_mujoco,
+            # "xpbd": self.setup_xpbd,
+        }
+
+        # Define which are the follower solvers
+        self.followers = [s for s in self.setups.values() if s.name != self.leader]
+
+        # Set default values for all optional arguments
+        if builder_kwargs is None:
+            builder_kwargs = {}
+        if model_kwargs is None:
+            model_kwargs = {}
+
+        # TODO
+        self.builder: newton.ModelBuilder = make_scene_builder(
+            builder_fn=builder_fn,
+            builder_kwargs=builder_kwargs,
+            gravity=self.gravity,
+        )
+        # self.builder: newton.ModelBuilder = self.setups[self.leader].builder
+        self.model: newton.Model = self.builder.finalize(**model_kwargs)
+        self.model.rigid_contact_max = int(self.rigid_contact_max)
+
+        # TODO
+        self.state_0 = self.model.state()
+        self.state_1 = self.model.state()
+        self.control = self.model.control()
+        self.contacts = self.model.contacts()
+        self.vcontacts = self.model.contacts()
+
+        # Initialize the state using forward kinematics
+        newton.eval_fk(self.model, self.model.joint_q, self.model.joint_qd, self.state_0)
+
+        # Create the time array
+        self.time = wp.zeros(shape=(1,), dtype=wp.float32)
+
+        # Attach the model to the viewer for visualization
+        self.viewer.set_model(self.model)
+
+        # If only a single-world is created, set initial
+        # camera position for better view of the system
+        self.viewer._paused = True
+        if hasattr(self.viewer, "set_camera"):
+            camera_pos = wp.vec3(5.0, 5.0, 1.0)
+            pitch = -5.0
+            yaw = 180.0 + 48.0
+            self.viewer.set_camera(camera_pos, pitch, yaw)
+
+        # Capture the simulation graph if running on CUDA
+        # NOTE: This only has an effect on GPU devices
+        self.setup_graphs = dict.fromkeys(self.setups.keys())
+        self.dependent_graph = None
+        # self.capture()
+
+    def _reset_state(self, state: newton.State):
+        wp.copy(state.body_q, self.model.body_q)
+        wp.copy(state.body_qd, self.model.body_qd)
+        wp.copy(state.joint_q, self.model.joint_q)
+        wp.copy(state.joint_qd, self.model.joint_qd)
+        if state.body_q_prev is not None:
+            wp.copy(state.body_q_prev, state.body_q)
+        if state.body_qdd is not None:
+            state.body_qdd.zero_()
+        if state.body_parent_f is not None:
+            state.body_parent_f.zero_()
+        if state.joint_parent_f is not None:
+            state.joint_parent_f.zero_()
+        state.clear_forces()
+
+    def _reset_control(self, control: newton.Control):
+        control.clear()
+        wp.copy(control.joint_target_pos, self.model.joint_target_pos)
+        wp.copy(control.joint_target_vel, self.model.joint_target_vel)
+        wp.copy(control.joint_act, self.model.joint_act)
+
+    def _step_setup_standalone(self, setup: SolverSetup):
+        for _ in range(self.sim_substeps):
+            self.model.collide(self.state_0, self.contacts)
+            nc = self.contacts.rigid_contact_count.numpy()[0]
+            if nc > 0:
+                print(
+                    f"[{setup.name}]------------------------------------------------------------------------------------------------"
+                )
+            self.state_0.clear_forces()
+            # self.viewer.apply_forces(self.state_0)
+            # apply_external_force(self.model, self.time, self.state_0, self.sim_dt)
+            apply_external_sliding_force(self.model, self.time, self.contacts, self.state_0, self.sim_dt)
+            setup.step(self.state_0, self.control, self.contacts, self.state_1, self.vcontacts)
+            self.state_0, self.state_1 = self.state_1, self.state_0
+
+    def _step_setups_dependent(self):
+        for _ in range(self.sim_substeps):
+            self.model.collide(self.state_0, self.contacts)
+            nc = self.contacts.rigid_contact_count.numpy()[0]
+            if nc > 0:
+                print(
+                    f"[{self.leader}]------------------------------------------------------------------------------------------------"
+                )
+            self.state_0.clear_forces()
+            # self.viewer.apply_forces(self.state_0)
+            # apply_external_force(self.model, self.time, self.state_0, self.sim_dt)
+            apply_external_sliding_force(self.model, self.time, self.contacts, self.state_0, self.sim_dt)
+            self.setups[self.leader].step(self.state_0, self.control, self.contacts, self.state_1, self.vcontacts)
+            for follower in self.followers:
+                if nc > 0:
+                    print(
+                        f"[{follower.name}]------------------------------------------------------------------------------------------------"
+                    )
+                follower.step(self.state_0, self.control, self.contacts)
+            self.state_0, self.state_1 = self.state_1, self.state_0
+
+    def capture(self):
+        if wp.get_device().is_cuda:
+            with wp.ScopedCapture() as capture_dependent:
+                self._step_setups_dependent()
+            self.dependent_graph = capture_dependent.graph
+            for name, setup in self.setups.items():
+                with wp.ScopedCapture() as capture_setup:
+                    self._step_setup_standalone(setup)
+                self.setup_graphs[name] = capture_setup.graph
+
+    def reset(self):
+        self._reset_state(self.state_0)
+        self._reset_state(self.state_1)
+        self._reset_control(self.control)
+        self.contacts.clear()
+        self.vcontacts.clear()
+        newton.eval_fk(self.model, self.model.joint_q, self.model.joint_qd, self.state_0)
+        self.sim_time = 0.0
+        self.time.zero_()
+
+    def reset_setup(self, setup: SolverSetup):
+        self._reset_state(setup.state_0)
+        self._reset_state(setup.state_1)
+        self._reset_control(setup.control)
+        setup.contacts.clear()
+        setup.physics_metrics.clear()
+        setup.physics_metrics_logger.reset()
+
+    def step_dependent(self):
+        if self.dependent_graph:
+            wp.capture_launch(self.dependent_graph)
+        else:
+            self._step_setups_dependent()
+
+    def step_standalone(self, setup: SolverSetup):
+        if self.setup_graphs[setup.name]:
+            # msg.warning("Stepping standalone... with graph: %s", setup.name)
+            wp.capture_launch(self.setup_graphs[setup.name])
+        else:
+            # msg.warning("Stepping standalone... without graph: %s", setup.name)
+            self._step_setup_standalone(setup)
+
+    def step(self):
+        # msg.notif("Stepping...")
+        if self.standalone:
+            self.step_standalone(self.setups[self.leader])
+        else:
+            self.step_dependent()
+        # msg.notif("Synchronizing...")
+        self.sim_time += self.frame_dt
+
+    def render(self):
+        # msg.notif("Rendering...")
+        self.viewer.begin_frame(self.sim_time)
+        self.viewer.log_state(self.state_0)
+        self.viewer.log_contacts(self.vcontacts, self.state_1)
+        self.viewer.end_frame()
+
+    def _run_standalone(self):
+        for setup in self.setups.values():
+            msg.notif(f"Running {setup.name} standalone...")
+            self.reset()
+            self.reset_setup(setup)
+            start_time = time.time()
+            for i in range(self.max_log_frames):
+                self.step_standalone(setup)
+                wp.synchronize()
+                print_progress_bar(i + 1, self.max_log_frames, start_time, prefix="Progress", suffix="")
+                self.sim_time += self.frame_dt
+
+    def _run_dependent(self):
+        msg.notif(f"Running all solvers dependent with leader {self.leader}...")
+        self.reset()
+        for setup in self.setups.values():
+            self.reset_setup(setup)
+        start_time = time.time()
+        for i in range(self.max_log_frames):
+            self.step_dependent()
+            wp.synchronize()
+            print_progress_bar(i + 1, self.max_log_frames, start_time, prefix="Progress", suffix="")
+            self.sim_time += self.frame_dt
+
+    def run_headless(self):
+        if self.standalone:
+            self._run_standalone()
+        else:
+            self._run_dependent()
+
+    def test_final(self):
+        problem_name = "benchmark_basic_box_on_plane"
+        output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output", f"{problem_name}")
+        os.makedirs(output_path, exist_ok=True)
+        loggers = {
+            name: self.setups[name].physics_metrics_logger
+            for name in self.setups.keys()
+            if self.setups[name].physics_metrics_logger.num_logged_frames > 0
+        }
+        PhysicsMetricsLogger.plot_comparison(
+            loggers, filename=f"{problem_name}_physics_metrics", path=output_path, ext="pdf", grid=True
+        )
+        PhysicsMetricsLogger.plot_comparison(
+            loggers,
+            filename=f"{problem_name}_physics_metrics_logscale",
+            path=output_path,
+            ext="pdf",
+            grid=True,
+            log_scale=True,
+        )
+        PhysicsMetricsLogger.table_comparison(
+            loggers,
+            filename=f"{problem_name}_physics_metrics_table",
+            path=output_path,
+            to_console=True,
+            color_rankings=False,
+        )
+        PhysicsMetricsLogger.table_comparison(
+            loggers,
+            filename=f"{problem_name}_physics_metrics_table",
+            path=output_path,
+            to_console=True,
+            color_rankings=True,
+        )
+        # mujoco_r_ncp_dual = self.setup_mujoco.physics_metrics_logger.to_numpy()["r_ncp_dual"]
+        # msg.warning("mujoco_r_ncp_dual:\n%s", mujoco_r_ncp_dual)
+        # msg.warning("mujoco_r_ncp_dual: mean: %s", np.mean(mujoco_r_ncp_dual))
+        # msg.warning("mujoco_r_ncp_dual: std: %s", np.std(mujoco_r_ncp_dual))
+        # msg.warning("mujoco_r_ncp_dual: min: %s", np.min(mujoco_r_ncp_dual))
+        # msg.warning("mujoco_r_ncp_dual: max: %s", np.max(mujoco_r_ncp_dual))
+
+    @staticmethod
+    def create_parser():
+        parser = newton.examples.create_parser()
+        parser.add_argument(
+            "--standalone",
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help="Run the standalone solver.",
+        )
+        parser.add_argument(
+            "--leader",
+            type=str,
+            default="kamino",
+            help="The leader solver.",
+        )
+        parser.set_defaults(standalone=False, headless=True, leader="kamino")
+        return parser
+
+
+###
+# Main
+###
+
+
+if __name__ == "__main__":
+    msg.set_log_level(msg.LogLevel.INFO)
+    np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)
+    parser = Example.create_parser()
+    viewer, args = newton.examples.init(parser)
+    example = Example(viewer, args)
+    if args.headless:
+        msg.notif("Running in headless mode...")
+        example.run_headless()
+    else:
+        msg.notif("Running in Viewer mode...")
+        newton.examples.run(example, args)
+    example.test_final()

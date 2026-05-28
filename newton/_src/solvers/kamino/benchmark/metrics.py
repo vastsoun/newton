@@ -5,9 +5,24 @@
 TODO
 """
 
+from functools import cache
+
+import numpy as np
 import warp as wp
 
 from ....sim import Contacts, Model, State
+from .._src.core.bodies import convert_body_origin_to_com
+from .._src.core.conversions import convert_entity_local_transforms, convert_joints
+from .._src.core.joints import JointDoFType, JointsModel
+from .._src.core.math import screw
+from .._src.core.model import ModelKaminoInfo
+from .._src.core.size import SizeKamino
+from .._src.core.types import float32, int32, mat33f, quatf, transformf, vec3f, vec6f
+from .._src.kinematics.joints import (
+    compute_joint_pose_and_relative_motion,
+    get_joint_constraint_angular_residual_function,
+    joint_constraint_velocity_residual_universal,
+)
 from .._src.utils import logger as msg
 
 ###
@@ -20,7 +35,9 @@ __all__ = [
     "PhysicsMetrics",
     "compute_contact_constraint_metrics",
     "compute_contact_velocities",
+    "compute_joint_constraint_metrics",
     "compute_per_world_contact_constraint_summary",
+    "compute_per_world_joint_constraint_summary",
 ]
 
 
@@ -168,7 +185,7 @@ class PhysicsMetrics:
         """
         # Declare the constraint metrics containers
         self.joints: ConstraintMetrics | None = None
-        """Constraint metrics over all joints."""
+        """Constraint metrics over all joint kinematic constraints (size ``model.joint_constraint_count``)."""
 
         self.contacts: ConstraintMetrics | None = None
         """Constraint metrics over all active contacts."""
@@ -179,11 +196,21 @@ class PhysicsMetrics:
         self.per_world_contacts_summary: ConstraintMetrics | None = None
         """Per-world max+argmax summary of the per-contact constraint metrics."""
 
+        # Cached Kamino-side joint model used by :func:`compute_joint_constraint_metrics`.
+        # Built once at init via the existing Newton->Kamino conversions; provides the
+        # COM-baked ``B_r_Bj`` / ``F_r_Fj`` offsets, the ``X_j`` joint orientation matrix,
+        # the per-joint ``dof_type`` and ``kinematic_cts_offset`` arrays required by the
+        # residual kernel.
+        self._kamino_joints_model: JointsModel | None = None
+        self._kamino_body_com: wp.array | None = None
+        self._kamino_body_q_com: wp.array | None = None
+
         # Initialize the constraint metrics containers if a model is provided
         if model is not None:
             if model.joint_count > 0:
-                self.joints = ConstraintMetrics(size=model.joint_count)
+                self.joints = ConstraintMetrics(size=model.joint_constraint_count)
                 self.per_world_joints_summary = ConstraintMetrics(size=model.world_count)
+                self._init_kamino_joint_context(model)
             else:
                 msg.warning("No joints in the model, skipping joint constraint metrics.")
             if model.rigid_contact_max > 0:
@@ -191,6 +218,58 @@ class PhysicsMetrics:
                 self.per_world_contacts_summary = ConstraintMetrics(size=model.world_count)
             else:
                 msg.warning("No contacts in the model, skipping contact constraint metrics.")
+
+    def _init_kamino_joint_context(self, model: Model) -> None:
+        """
+        Build a Kamino :class:`JointsModel` for the Newton model and allocate the
+        working buffer required by :func:`compute_joint_constraint_metrics`.
+
+        Kamino's joint constraint formulas assume a single joint frame ``X_j``
+        applied to both parent and follower sides, which is only valid when
+        ``joint_X_p.rotation == joint_X_c.rotation`` for every joint (i.e. the
+        per-body correction ``q_corr = q_cj * q_pj^{-1}`` is identity, so
+        Newton's runtime ``body_q`` is already in Kamino's convention).
+        """
+        # Precondition check on the parent/child joint-frame rotations. Pulled
+        # host-side once at init; not on any hot path.
+        X_p_np = model.joint_X_p.numpy()
+        X_c_np = model.joint_X_c.numpy()
+        # Quaternion components are stored as ``[x, y, z, w]`` in Warp transforms.
+        q_pj = X_p_np[:, 3:7]
+        q_cj = X_c_np[:, 3:7]
+        dot = np.abs(np.sum(q_pj * q_cj, axis=1))
+        offending = np.where(dot < 1.0 - 1e-5)[0]
+        if offending.size > 0:
+            labels = [model.joint_label[j] if j < len(model.joint_label) else "" for j in offending]
+            details = ", ".join(f"{int(j)} ({lbl!r})" for j, lbl in zip(offending, labels, strict=True))
+            raise ValueError(
+                "compute_joint_constraint_metrics requires joint_X_p.rotation == "
+                "joint_X_c.rotation for every joint (Kamino's single-X_j formula "
+                "assumes the per-body correction q_corr = q_cj * q_pj^{-1} is "
+                f"identity). Offending joint indices (label): {details}."
+            )
+
+        # Build the Kamino joints model via the existing conversion pipeline.
+        # Under the precondition above ``entity_local_transform_conversion_kernel``
+        # leaves body_q / body_qd / body_com / joint_X_p / joint_X_c unchanged
+        # (its per-joint branch ``if ... wp.abs(q_corr[3] - 1.0) < 1e-5: continue``
+        # short-circuits everywhere), so the returned arrays are effectively
+        # clones of the corresponding ``model.*`` arrays.
+        transforms = convert_entity_local_transforms(model)
+        self._kamino_body_com = transforms["body_com"]
+        self._kamino_joints_model = convert_joints(
+            model,
+            SizeKamino(),
+            ModelKaminoInfo(),
+            transforms["body_com"],
+            transforms["joint_X_p"],
+            transforms["joint_X_c"],
+        )
+
+        # Working buffer for the body-origin -> COM transform applied at every
+        # metric evaluation (Newton stores body_q at the body origin, while
+        # Kamino's joint formulas expect body poses centered at the COM).
+        self._kamino_body_q_com = wp.empty(shape=(model.body_count,), dtype=transformf, device=model.device)
 
     def clear(self):
         """
@@ -940,6 +1019,208 @@ def _compute_per_world_contact_metrics_summary(
     atomic_max_with_argmax(world_frictional_dissipation, world_frictional_dissipation_argmax, wid, frictional_dissipation, cid)
 
 
+@wp.kernel
+def _compute_per_world_joint_metrics_summary(
+    joint_world: wp.array[int32],
+    joint_kinematic_cts_offset: wp.array[int32],
+    joint_r_cts_penetration: wp.array[float32],
+    joint_r_cts_velocity: wp.array[float32],
+    world_r_cts_penetration: wp.array[float32],
+    world_r_cts_penetration_argmax: wp.array[int32],
+    world_r_cts_velocity: wp.array[float32],
+    world_r_cts_velocity_argmax: wp.array[int32],
+):
+    """
+    Performs a per-world max+argmax reduction over joint kinematic constraint residuals.
+
+    One thread per joint. Each joint contributes the maximum absolute position-
+    and velocity-level residual among its kinematic constraint dimensions
+    (indexed via ``kinematic_cts_offset``). The argmax stores the joint index.
+    """
+    jid = wp.tid()
+
+    wid = joint_world[jid]
+    offset = joint_kinematic_cts_offset[jid]
+    num_cts = joint_kinematic_cts_offset[jid + 1] - offset
+
+    if num_cts <= 0:
+        return
+
+    max_pen = joint_r_cts_penetration[offset]
+    max_vel = joint_r_cts_velocity[offset]
+    for k in range(1, num_cts):
+        idx = offset + k
+        val_pen = joint_r_cts_penetration[idx]
+        if val_pen > max_pen:
+            max_pen = val_pen
+        val_vel = joint_r_cts_velocity[idx]
+        if val_vel > max_vel:
+            max_vel = val_vel
+
+    atomic_max_with_argmax(world_r_cts_penetration, world_r_cts_penetration_argmax, wid, max_pen, jid)
+    atomic_max_with_argmax(world_r_cts_velocity, world_r_cts_velocity_argmax, wid, max_vel, jid)
+
+
+@cache
+def make_typed_write_joint_residuals_abs(dof_type: JointDoFType):
+    """
+    Generate a Warp function that writes the absolute position- and velocity-level
+    joint constraint residuals for a specific :class:`JointDoFType`.
+
+    The returned function is a stripped-down counterpart of Kamino's
+    ``make_typed_write_joint_data``: it only writes the kinematic constraint
+    residuals (``r_cts_penetration`` and ``r_cts_velocity``) and skips the joint
+    DoF / generalized coordinate bookkeeping that the full solver pipeline needs.
+    """
+    cts_axes = dof_type.cts_axes
+    num_cts = dof_type.num_cts
+
+    @wp.func
+    def _write_typed_joint_residuals_abs(
+        kinematic_cts_offset: int32,
+        j_r_j: vec3f,
+        j_q_j: quatf,
+        j_u_j: vec6f,
+        r_cts_penetration: wp.array[float32],
+        r_cts_velocity: wp.array[float32],
+    ):
+        # Universal joints need an additional intermediary-body-frame projection
+        # of the angular velocity before extracting the constraint axes (mirrors
+        # the same step in ``make_typed_write_joint_data``).
+        if wp.static(dof_type == JointDoFType.UNIVERSAL):
+            j_u_j = joint_constraint_velocity_residual_universal(j_q_j, j_u_j)
+
+        if wp.static(num_cts > 0):
+            j_theta_j = wp.static(get_joint_constraint_angular_residual_function(dof_type))(j_q_j)
+            j_p_j = screw(j_r_j, j_theta_j)
+            for k in range(num_cts):
+                r_cts_penetration[kinematic_cts_offset + k] = wp.abs(j_p_j[cts_axes[k]])
+                r_cts_velocity[kinematic_cts_offset + k] = wp.abs(j_u_j[cts_axes[k]])
+
+    return _write_typed_joint_residuals_abs
+
+
+@cache
+def make_write_joint_residuals_abs():
+    """
+    Generate a Warp dispatch function that routes to the per-DoF-type residual
+    writer based on the runtime ``dof_type`` value.
+    """
+
+    @wp.func
+    def _write_joint_residuals_abs(
+        dof_type: int32,
+        kinematic_cts_offset: int32,
+        j_r_j: vec3f,
+        j_q_j: quatf,
+        j_u_j: vec6f,
+        r_cts_penetration: wp.array[float32],
+        r_cts_velocity: wp.array[float32],
+    ):
+        if dof_type == int32(JointDoFType.FREE.value):
+            wp.static(make_typed_write_joint_residuals_abs(JointDoFType.FREE))(
+                kinematic_cts_offset, j_r_j, j_q_j, j_u_j, r_cts_penetration, r_cts_velocity
+            )
+        elif dof_type == int32(JointDoFType.REVOLUTE.value):
+            wp.static(make_typed_write_joint_residuals_abs(JointDoFType.REVOLUTE))(
+                kinematic_cts_offset, j_r_j, j_q_j, j_u_j, r_cts_penetration, r_cts_velocity
+            )
+        elif dof_type == int32(JointDoFType.PRISMATIC.value):
+            wp.static(make_typed_write_joint_residuals_abs(JointDoFType.PRISMATIC))(
+                kinematic_cts_offset, j_r_j, j_q_j, j_u_j, r_cts_penetration, r_cts_velocity
+            )
+        elif dof_type == int32(JointDoFType.CYLINDRICAL.value):
+            wp.static(make_typed_write_joint_residuals_abs(JointDoFType.CYLINDRICAL))(
+                kinematic_cts_offset, j_r_j, j_q_j, j_u_j, r_cts_penetration, r_cts_velocity
+            )
+        elif dof_type == int32(JointDoFType.UNIVERSAL.value):
+            wp.static(make_typed_write_joint_residuals_abs(JointDoFType.UNIVERSAL))(
+                kinematic_cts_offset, j_r_j, j_q_j, j_u_j, r_cts_penetration, r_cts_velocity
+            )
+        elif dof_type == int32(JointDoFType.SPHERICAL.value):
+            wp.static(make_typed_write_joint_residuals_abs(JointDoFType.SPHERICAL))(
+                kinematic_cts_offset, j_r_j, j_q_j, j_u_j, r_cts_penetration, r_cts_velocity
+            )
+        elif dof_type == int32(JointDoFType.GIMBAL.value):
+            wp.static(make_typed_write_joint_residuals_abs(JointDoFType.GIMBAL))(
+                kinematic_cts_offset, j_r_j, j_q_j, j_u_j, r_cts_penetration, r_cts_velocity
+            )
+        elif dof_type == int32(JointDoFType.CARTESIAN.value):
+            wp.static(make_typed_write_joint_residuals_abs(JointDoFType.CARTESIAN))(
+                kinematic_cts_offset, j_r_j, j_q_j, j_u_j, r_cts_penetration, r_cts_velocity
+            )
+        elif dof_type == int32(JointDoFType.FIXED.value):
+            wp.static(make_typed_write_joint_residuals_abs(JointDoFType.FIXED))(
+                kinematic_cts_offset, j_r_j, j_q_j, j_u_j, r_cts_penetration, r_cts_velocity
+            )
+
+    return _write_joint_residuals_abs
+
+
+@cache
+def make_compute_joint_constraint_residuals_kernel():
+    """
+    Generate the kernel that computes per-joint absolute position- and
+    velocity-level constraint residuals and writes them into the flat
+    ``r_cts_penetration`` / ``r_cts_velocity`` buffers.
+    """
+
+    @wp.kernel
+    def _compute_joint_constraint_residuals(
+        # Kamino JointsModel arrays
+        joint_dof_type: wp.array[int32],
+        joint_kinematic_cts_offset: wp.array[int32],
+        joint_bid_B: wp.array[int32],
+        joint_bid_F: wp.array[int32],
+        joint_B_r_Bj: wp.array[vec3f],
+        joint_F_r_Fj: wp.array[vec3f],
+        joint_X_j: wp.array[mat33f],
+        # Preprocessed Newton state
+        body_q_com: wp.array[transformf],  # COM-frame body poses (from state_minus)
+        body_qd: wp.array[vec6f],  # COM-frame spatial velocities (from state_plus)
+        # Outputs
+        r_cts_penetration: wp.array[float32],
+        r_cts_velocity: wp.array[float32],
+    ):
+        jid = wp.tid()
+
+        dof_type = joint_dof_type[jid]
+        bid_B = joint_bid_B[jid]
+        bid_F = joint_bid_F[jid]
+        B_r_Bj = joint_B_r_Bj[jid]
+        F_r_Fj = joint_F_r_Fj[jid]
+        X_j = joint_X_j[jid]
+        kinematic_cts_offset = joint_kinematic_cts_offset[jid]
+
+        # If the base body is the world (bid=-1) use identity pose / zero twist;
+        # otherwise pull the body's COM-frame pose and spatial velocity.
+        T_B_j = wp.transform_identity(dtype=float32)
+        u_B_j = vec6f(0.0)
+        if bid_B > -1:
+            T_B_j = body_q_com[bid_B]
+            u_B_j = body_qd[bid_B]
+
+        T_F_j = body_q_com[bid_F]
+        u_F_j = body_qd[bid_F]
+
+        # Compute the joint-local relative pose / twist between the two attached frames.
+        _p_j, j_r_j, j_q_j, j_u_j = compute_joint_pose_and_relative_motion(
+            T_B_j, T_F_j, u_B_j, u_F_j, B_r_Bj, F_r_Fj, X_j
+        )
+
+        wp.static(make_write_joint_residuals_abs())(
+            dof_type,
+            kinematic_cts_offset,
+            j_r_j,
+            j_q_j,
+            j_u_j,
+            r_cts_penetration,
+            r_cts_velocity,
+        )
+
+    return _compute_joint_constraint_residuals
+
+
 ###
 # Launchers
 ###
@@ -1021,7 +1302,7 @@ def compute_contact_constraint_metrics(
 
     # Clear the metrics container prior to computing the contact constraint
     # residuals to avoid accumulating residuals from previous computations.
-    metrics.clear()
+    metrics.contacts.clear()
 
     # Launch the kernel to compute the contact constraint residuals
     wp.launch(
@@ -1144,6 +1425,169 @@ def compute_per_world_contact_constraint_summary(
             summary.r_vi_natmap_argmax,
             summary.frictional_dissipation,
             summary.frictional_dissipation_argmax,
+        ],
+        device=model.device,
+    )
+
+
+def compute_per_world_joint_constraint_summary(
+    model: Model,
+    metrics: PhysicsMetrics,
+) -> None:
+    """
+    Reduces the per-constraint joint kinematic residuals in ``metrics.joints``
+    into per-world max and argmax values stored in
+    ``metrics.per_world_joints_summary``.
+
+    One thread is launched per joint. For each joint, the maximum position-
+    and velocity-level residual over that joint's kinematic constraint block is
+    atomically merged into the corresponding world. The argmax companion
+    records the joint index that achieved the per-world maximum.
+
+    Args:
+        model: The Newton model providing ``joint_world``.
+        metrics: The :class:`PhysicsMetrics` container providing the flat
+            joint residual arrays (in ``metrics.joints``), the Kamino joint
+            context cached at init, and the per-world summary output arrays
+            (in ``metrics.per_world_joints_summary``).
+
+    Raises:
+        ValueError: If ``metrics.joints``, ``metrics.per_world_joints_summary``,
+            or the Kamino joint context was not initialized, or if any supplied
+            container lives on a different device than ``model``.
+    """
+    if metrics.joints is None:
+        raise ValueError(
+            "Metrics container does not contain a `joints` attribute. Ensure the model has joints "
+            "(model.joint_count > 0) when constructing PhysicsMetrics."
+        )
+    if metrics.per_world_joints_summary is None:
+        raise ValueError(
+            "Metrics container does not contain a `per_world_joints_summary` attribute. "
+            "Ensure `model.world_count > 0` and `model.joint_count > 0`."
+        )
+    if metrics._kamino_joints_model is None:
+        raise ValueError(
+            "PhysicsMetrics was not initialized with a Kamino joint context. "
+            "Reconstruct PhysicsMetrics from a model with joints."
+        )
+
+    joints_model = metrics._kamino_joints_model
+    summary = metrics.per_world_joints_summary
+    summary.clear()
+
+    wp.launch(
+        kernel=_compute_per_world_joint_metrics_summary,
+        dim=model.joint_count,
+        inputs=[
+            model.joint_world,
+            joints_model.kinematic_cts_offset,
+            metrics.joints.r_cts_penetration,
+            metrics.joints.r_cts_velocity,
+        ],
+        outputs=[
+            summary.r_cts_penetration,
+            summary.r_cts_penetration_argmax,
+            summary.r_cts_velocity,
+            summary.r_cts_velocity_argmax,
+        ],
+        device=model.device,
+    )
+
+
+def compute_joint_constraint_metrics(
+    model: Model,
+    state_minus: State,
+    state_plus: State,
+    metrics: PhysicsMetrics,
+) -> None:
+    """
+    Computes per-joint position- and velocity-level kinematic constraint
+    residuals and stores them in ``metrics.joints``.
+
+    The Newton joints are evaluated through a Kamino :class:`JointsModel` built
+    once at :class:`PhysicsMetrics` initialization (see
+    :meth:`PhysicsMetrics._init_kamino_joint_context`). For each joint, the
+    relative pose / twist of the two attached frames is computed via
+    :func:`compute_joint_pose_and_relative_motion` and the absolute values of
+    the kinematic constraint axes are written into the flat
+    ``r_cts_penetration`` / ``r_cts_velocity`` arrays at the joint's
+    ``kinematic_cts_offset``. The remaining ``ConstraintMetrics`` fields
+    (NCP / VI primal / dual / complementarity / natural map residuals) are not
+    populated by this routine: joint forces are not generally extractable from
+    a Newton ``State``, and the kinematic constraint residual alone already
+    captures the dominant numerical signal of interest.
+
+    The position-level residual is evaluated at ``state_minus`` (i.e. the
+    pre-step pose) and the velocity-level residual at ``state_plus`` (i.e. the
+    post-step velocity), matching Kamino's convention where the velocity
+    constraint is enforced on the *outgoing* twist of an integration step.
+
+    Args:
+        model: The Newton model.
+        state_minus: Pre-step state. Only ``body_q`` is consumed.
+        state_plus: Post-step state. Only ``body_qd`` is consumed.
+        metrics: The :class:`PhysicsMetrics` container. Must have been
+            initialized from a model with ``joint_count > 0``; the Kamino
+            joint context cached at init is reused on every call.
+
+    Raises:
+        ValueError: If any container lives on a different device than
+            ``model``, or if the Kamino joint context was not initialized.
+    """
+    if model.device != state_minus.device:
+        raise ValueError(
+            f"Model and state_minus must be on the same device but are on {model.device} and {state_minus.device}."
+        )
+    if model.device != state_plus.device:
+        raise ValueError(
+            f"Model and state_plus must be on the same device but are on {model.device} and {state_plus.device}."
+        )
+    if metrics.joints is None:
+        raise ValueError(
+            "Metrics container does not contain a `joints` attribute. Ensure the model has joints "
+            "(model.joint_count > 0) when constructing PhysicsMetrics."
+        )
+    if metrics._kamino_joints_model is None or metrics._kamino_body_com is None or metrics._kamino_body_q_com is None:
+        raise ValueError(
+            "PhysicsMetrics was not initialized with a Kamino joint context. "
+            "Reconstruct PhysicsMetrics from a model with joints, and ensure "
+            "joint_X_p.rotation == joint_X_c.rotation on every joint."
+        )
+
+    # Reset only the buffers actually written by the kernel. The other
+    # ConstraintMetrics fields (NCP/VI residuals) are intentionally left
+    # untouched here (they stay at their initial zero values).
+    metrics.joints.r_cts_penetration.zero_()
+    metrics.joints.r_cts_velocity.zero_()
+
+    # Convert body-origin poses (Newton convention) to COM-centric poses
+    # (Kamino convention). state_plus.body_qd is already COM-centric in
+    # Newton, so it can be passed straight to the kernel.
+    convert_body_origin_to_com(
+        body_com=metrics._kamino_body_com,
+        body_q=state_minus.body_q,
+        body_q_com=metrics._kamino_body_q_com,
+    )
+
+    joints_model = metrics._kamino_joints_model
+    wp.launch(
+        kernel=make_compute_joint_constraint_residuals_kernel(),
+        dim=model.joint_count,
+        inputs=[
+            joints_model.dof_type,
+            joints_model.kinematic_cts_offset,
+            joints_model.bid_B,
+            joints_model.bid_F,
+            joints_model.B_r_Bj,
+            joints_model.F_r_Fj,
+            joints_model.X_j,
+            metrics._kamino_body_q_com,
+            state_plus.body_qd,
+        ],
+        outputs=[
+            metrics.joints.r_cts_penetration,
+            metrics.joints.r_cts_velocity,
         ],
         device=model.device,
     )

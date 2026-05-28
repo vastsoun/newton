@@ -27,9 +27,9 @@ FORCE_END_TIME = 5.0
 MAX_FORCE = 1.5
 RECORD_END_TIME = 7.0
 
-MUJOCO_KE = 6.0e3
+MUJOCO_KE = 6.0e3  # 1.0 for very soft version that moves the correct distance
 MUJOCO_KD = 2.0 * np.sqrt(MUJOCO_KE)  # Set K_d for critical damping
-MUJOCO_IMPRATIO = 100.0
+MUJOCO_IMPRATIO = 100.0  # 0.1 for very soft version that moves the correct distance
 
 
 ###
@@ -379,6 +379,7 @@ class Example:
         msg.notif(f"Using sim_dt = {self.sim_dt} ({self.sim_substeps} substeps per frame)")
         self.sim_time = 0.0
         self.viewer = viewer
+        self.args = args
         self.device = wp.get_device()
         self.use_graph = use_graph
         self.start_paused = start_paused
@@ -390,6 +391,11 @@ class Example:
             self.traj = np.zeros((self.num_recording_frames, 3))
             self.recording_folder = os.path.join(get_examples_output_path(), "box_on_plane")
             os.makedirs(self.recording_folder, exist_ok=True)
+
+        # Clip recording state
+        self.record_clips = bool(getattr(args, "record", None))
+        if getattr(args, "record", None):
+            self.video_target_frames = int(np.floor(RECORD_END_TIME / self.viewer_dt)) + 1
 
         # External forces: applied in viewer vs automatically (force ramp up)
         self.viewer_forces = False
@@ -424,6 +430,20 @@ class Example:
         if self.record_traj:
             self.frame_id = 0
         self.setup.reset()
+
+    def start_recording_clip(self):
+        """Start a new video clip for the currently active solver."""
+        if not hasattr(self.viewer, "start_clip"):
+            msg.warning("Recording is not enabled (pass --record sync|async at launch).")
+            return
+        solver_name = self.setup_names[self.current_setup_id]
+        self.viewer.start_clip(
+            output_path=os.path.join(self.args.video_base_dir, f"recording_{solver_name}.mp4"),
+            max_frames=self.video_target_frames,
+            video_folder=os.path.join(self.args.video_base_dir, f"frames_{solver_name}"),
+            fps=self.viewer_fps,
+            keep_frames=self.args.keep_frames,
+        )
 
     def init_setup(self, reset_viewer=True, first=False):
         msg.notif(f"Initializing {self.setup_names[self.current_setup_id]} solver")
@@ -518,9 +538,15 @@ class Example:
                     imgui.set_item_default_focus()
             imgui.end_combo()
 
+        # Checkbox to record a clip on the next Reset press
+        if getattr(self.args, "record", None) and hasattr(self.viewer, "start_clip"):
+            _, self.record_clips = imgui.checkbox("Record clip on Reset", self.record_clips)
+
         # Reset button (using the solver-internal reset, rather than fully reloading the example and GUI)
         if imgui.button("Reset##custom_reset"):
             self.reset()
+            if self.record_clips and hasattr(self.viewer, "start_clip"):
+                self.start_recording_clip()
 
 
 if __name__ == "__main__":
@@ -547,6 +573,7 @@ if __name__ == "__main__":
     viewer, args = newton.examples.init(parser)
 
     recording_dir = os.path.join(get_examples_output_path(), "box_on_plane")
+    args.video_base_dir = recording_dir
     if args.record:
         viewer = enable_recording(
             viewer,
@@ -558,12 +585,3 @@ if __name__ == "__main__":
     example = Example(viewer, args, use_graph=True, start_paused=False)
 
     newton.examples.run(example, args)
-
-    if args.record and hasattr(viewer, "generate_video"):
-        output_path = args.video_output or os.path.join(recording_dir, "recording.mp4")
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        viewer.generate_video(
-            output_filename=output_path,
-            fps=example.viewer_fps,
-            keep_frames=args.keep_frames,
-        )

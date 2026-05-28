@@ -516,7 +516,7 @@ def _compute_contact_constraint_metrics(
     body_com: wp.array[wp.vec3f],
     body_q_minus: wp.array[wp.transformf],
     body_qd_minus: wp.array[wp.spatial_vectorf],
-    # body_q_plus: wp.array[wp.transformf],
+    body_q_plus: wp.array[wp.transformf],
     body_qd_plus: wp.array[wp.spatial_vectorf],
     contact_count: wp.array[wp.int32],
     contact_shape0: wp.array[wp.int32],
@@ -588,24 +588,24 @@ def _compute_contact_constraint_metrics(
     u_body_0_minus = wp.spatial_vectorf(0.0)
     u_body_0_plus = wp.spatial_vectorf(0.0)
     X_body_0_minus = wp.transform_identity(dtype=wp.float32)
-    # X_body_0_plus = wp.transform_identity(dtype=wp.float32)
+    X_body_0_plus = wp.transform_identity(dtype=wp.float32)
     if bid_0 >= 0:
         r_body_to_com_0 = body_com[bid_0]
         u_body_0_minus = body_qd_minus[bid_0]
         u_body_0_plus = body_qd_plus[bid_0]
         X_body_0_minus = body_q_minus[bid_0]
-        # X_body_0_plus = body_q_plus[bid_0]
+        X_body_0_plus = body_q_plus[bid_0]
     r_body_to_com_1 = wp.vec3f(0.0)
     u_body_1_minus = wp.spatial_vectorf(0.0)
     u_body_1_plus = wp.spatial_vectorf(0.0)
     X_body_1_minus = wp.transform_identity(dtype=wp.float32)
-    # X_body_1_plus = wp.transform_identity(dtype=wp.float32)
+    X_body_1_plus = wp.transform_identity(dtype=wp.float32)
     if bid_1 >= 0:
         r_body_to_com_1 = body_com[bid_1]
         u_body_1_minus = body_qd_minus[bid_1]
         u_body_1_plus = body_qd_plus[bid_1]
         X_body_1_minus = body_q_minus[bid_1]
-        # X_body_1_plus = body_q_plus[bid_1]
+        X_body_1_plus = body_q_plus[bid_1]
 
     # Retrieve the spatial contact force, i.e. wrench, applied by body1 onto
     # body0, referenced to the COM of body0, expressed in world frame
@@ -636,17 +636,17 @@ def _compute_contact_constraint_metrics(
     # Compute the contact points in world frame
     r_c_0_minus = wp.transform_point(X_body_0_minus, r_bc_0_local + r_bc_0_offset)
     r_c_1_minus = wp.transform_point(X_body_1_minus, r_bc_1_local + r_bc_1_offset)
-    # r_c_0_plus = wp.transform_point(X_body_0_plus, r_bc_0_local + r_bc_0_offset)
-    # r_c_1_plus = wp.transform_point(X_body_1_plus, r_bc_1_local + r_bc_1_offset)
+    r_c_0_plus = wp.transform_point(X_body_0_plus, r_bc_0_local + r_bc_0_offset)
+    r_c_1_plus = wp.transform_point(X_body_1_plus, r_bc_1_local + r_bc_1_offset)
     # wp.printf("[%d] r_c_0_minus: [%.9f, %.9f, %.9f]\n", cid, r_c_0_minus[0], r_c_0_minus[1], r_c_0_minus[2])
     # wp.printf("[%d] r_c_1_minus: [%.9f, %.9f, %.9f]\n", cid, r_c_1_minus[0], r_c_1_minus[1], r_c_1_minus[2])
     # wp.printf("[%d] r_c_0_plus: [%.9f, %.9f, %.9f]\n", cid, r_c_0_plus[0], r_c_0_plus[1], r_c_0_plus[2])
     # wp.printf("[%d] r_c_1_plus: [%.9f, %.9f, %.9f]\n", cid, r_c_1_plus[0], r_c_1_plus[1], r_c_1_plus[2])
 
     dr_c_01_minus = r_c_1_minus - r_c_0_minus
-    # dr_c_01_plus = r_c_1_plus - r_c_0_plus
-    # wp.printf("[%d] dr_c_01_minus: [%.9f, %.9f, %.9f]\n", cid, dr_c_01_minus[0], dr_c_01_minus[1], dr_c_01_minus[2])
-    # wp.printf("[%d] dr_c_01_plus: [%.9f, %.9f, %.9f]\n", cid, dr_c_01_plus[0], dr_c_01_plus[1], dr_c_01_plus[2])
+    dr_c_01_plus = r_c_1_plus - r_c_0_plus
+    wp.printf("[%d] dr_c_01_minus: [%.9f, %.9f, %.9f]\n", cid, dr_c_01_minus[0], dr_c_01_minus[1], dr_c_01_minus[2])
+    wp.printf("[%d] dr_c_01_plus: [%.9f, %.9f, %.9f]\n", cid, dr_c_01_plus[0], dr_c_01_plus[1], dr_c_01_plus[2])
 
     # Compute the world-frame body COM positions used below as the reference
     # points for the per-body twists stored in ``body_qd``.
@@ -661,7 +661,7 @@ def _compute_contact_constraint_metrics(
 
     # Reconstruct signed contact distance
     d_01_minus = wp.dot(dr_c_01_minus, n_01) - (margin_0 + margin_1)
-    # d_01_plus = wp.dot(dr_c_01_plus, n_01) - (margin_0 + margin_1)
+    d_01_plus = wp.dot(dr_c_01_plus, n_01) - (margin_0 + margin_1)
     # wp.printf("[%d] d_01_minus: %.18f\n", cid, d_01_minus)
     # wp.printf("[%d] d_01_plus: %.18f\n", cid, d_01_plus)
 
@@ -697,41 +697,41 @@ def _compute_contact_constraint_metrics(
     v_c_minus = wp.quat_rotate_inv(q_contact, v_01_minus)
     v_c_plus = wp.quat_rotate_inv(q_contact, v_01_plus)
     f_c = wp.quat_rotate_inv(q_contact, f_01)
-    # wp.printf("[%d] v_c_minus: [%.9f, %.9f, %.9f]\n", cid, v_c_minus[0], v_c_minus[1], v_c_minus[2])
-    # wp.printf("[%d] v_c_plus: [%.9f, %.9f, %.9f]\n", cid, v_c_plus[0], v_c_plus[1], v_c_plus[2])
+    wp.printf("[%d] v_c_minus: [%.9f, %.9f, %.9f]\n", cid, v_c_minus[0], v_c_minus[1], v_c_minus[2])
+    wp.printf("[%d] v_c_plus: [%.9f, %.9f, %.9f]\n", cid, v_c_plus[0], v_c_plus[1], v_c_plus[2])
     # wp.printf("[%d] f_c: [%.9f, %.9f, %.9f]\n", cid, f_c[0], f_c[1], f_c[2])
 
     # Convert the contact force to an impulse
     f_c *= dt
-    # wp.printf("[%d] f_c (impulse): [%.9f, %.9f, %.9f]\n", cid, f_c[0], f_c[1], f_c[2])
+    wp.printf("[%d] f_c (impulse): [%.9f, %.9f, %.9f]\n", cid, f_c[0], f_c[1], f_c[2])
 
     # Compute the De Saxce correction
     s = wp.vec3f(0.0, 0.0, mu_01 * wp.length(v_c_plus[0:2]))
-    # wp.printf("[%d] s: [%.9f, %.9f, %.9f]\n", cid, s[0], s[1], s[2])
+    wp.printf("[%d] s: [%.9f, %.9f, %.9f]\n", cid, s[0], s[1], s[2])
 
     # Compute the augmented contact velocity
     v_c_plus_aug = v_c_plus + s
-    # wp.printf("[%d] v_c_plus_aug: [%.9f, %.9f, %.9f]\n", cid, v_c_plus_aug[0], v_c_plus_aug[1], v_c_plus_aug[2])
+    wp.printf("[%d] v_c_plus_aug: [%.9f, %.9f, %.9f]\n", cid, v_c_plus_aug[0], v_c_plus_aug[1], v_c_plus_aug[2])
 
     # ---------------------------------------------------------
     # Contact residuals
     # ---------------------------------------------------------
 
     # Predict the contact distance after the step
-    # d_01_correction = dt * v_c_plus.z
-    # wp.printf("[%d] d_01_correction: %.18f\n", cid, d_01_correction)
-    # d_01_plus_predicted = d_01_minus + d_01_correction
-    # wp.printf("[%d] d_01_plus_predicted: %.18f\n", cid, d_01_plus_predicted)
+    d_01_correction = dt * v_c_plus.z
+    wp.printf("[%d] d_01_correction: %.18f\n", cid, d_01_correction)
+    d_01_plus_predicted = d_01_minus + d_01_correction
+    wp.printf("[%d] d_01_plus_predicted: %.18f\n", cid, d_01_plus_predicted)
 
-    # # Compute contact status over the state transition of the step
-    # # contact_active = d_01_minus < 1e-5
-    # # wp.printf("[%d] contact_active: %d\n", cid, contact_active)
-    # contact_active_before = d_01_minus < 0.0
-    # wp.printf("[%d] contact_active_before: %d\n", cid, contact_active_before)
-    # contact_active_after = d_01_plus < 0.0
-    # wp.printf("[%d] contact_active_after: %d\n", cid, contact_active_after)
-    # contact_sign_changed = (d_01_plus * d_01_minus) < 0.0
-    # wp.printf("[%d] contact_sign_changed: %d\n", cid, contact_sign_changed)
+    # Compute contact status over the state transition of the step
+    # contact_active = d_01_minus < 1e-5
+    # wp.printf("[%d] contact_active: %d\n", cid, contact_active)
+    contact_active_before = d_01_minus < 0.0
+    wp.printf("[%d] contact_active_before: %d\n", cid, contact_active_before)
+    contact_active_after = d_01_plus < 0.0
+    wp.printf("[%d] contact_active_after: %d\n", cid, contact_active_after)
+    contact_sign_changed = (d_01_plus * d_01_minus) < 0.0
+    wp.printf("[%d] contact_sign_changed: %d\n", cid, contact_sign_changed)
 
     # # TODO
     # eps = 1e-6
@@ -750,22 +750,22 @@ def _compute_contact_constraint_metrics(
 
     # TODO
     # eps = 1e-6
-    # contact_remained_closed = d_01_plus < 0.0
-    # wp.printf("[%d] contact_remained_closed: %d\n", cid, contact_remained_closed)
+    contact_remained_closed = d_01_plus < 0.0
+    wp.printf("[%d] contact_remained_closed: %d\n", cid, contact_remained_closed)
 
     # 1. If sum is negative, then the contact is deepening -> check metrics
     # 2. If sum is positive, then the contact is opening -> no metrics
-    # contact_traversal = (v_c_minus.z + v_c_plus.z)  # * dt
-    # wp.printf("[%d] contact_traversal: %.18f\n", cid, contact_traversal)
+    contact_traversal = v_c_minus.z + v_c_plus.z  # * dt
+    wp.printf("[%d] contact_traversal: %.18f\n", cid, contact_traversal)
 
-    # contact_is_stable = wp.abs(contact_traversal) < 1e-4
-    # wp.printf("[%d] contact_is_stable: %d\n", cid, contact_is_stable)
+    contact_is_stable = wp.abs(contact_traversal) < 1e-4
+    wp.printf("[%d] contact_is_stable: %d\n", cid, contact_is_stable)
 
     contact_restitution = restitution_01 * v_c_minus.z + v_c_plus.z  # * dt
     wp.printf("[%d] contact_restitution: %.18f\n", cid, contact_restitution)
 
     contact_is_restitutive = wp.abs(contact_restitution) < 1e-4 and wp.abs(v_c_plus.z) > 1e-3
-    wp.printf("[%d] v_c_plus.z: %d\n", cid, v_c_plus.z)
+    wp.printf("[%d] v_c_plus.z: %.12f\n", cid, v_c_plus.z)
     wp.printf("[%d] contact_is_restitutive: %d\n", cid, contact_is_restitutive)
 
     # compute_metrics = True
@@ -1006,7 +1006,7 @@ def compute_contact_constraint_metrics(
             model.body_com,
             state_minus.body_q,
             state_minus.body_qd,
-            # state_plus.body_q,
+            state_plus.body_q,
             state_plus.body_qd,
             contacts.rigid_contact_count,
             contacts.rigid_contact_shape0,

@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import collections
 import ctypes
+import logging
 import math
 import re
 import time
 from collections.abc import Callable, Sequence
 from importlib import metadata
+from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
@@ -25,8 +27,11 @@ from .gl.gui import UI
 from .gl.image_logger import ImageLogger
 from .gl.opengl import LinesGL, MeshGL, MeshInstancerGL, RendererGL
 from .picking import Picking
-from .viewer import ViewerBase
+from .recording import LiveMp4Recorder
+from .viewer import _DEFAULT_LAYER_ID, ViewerBase
 from .wind import Wind
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_version_tuple(version: str) -> tuple[int, ...]:
@@ -113,6 +118,7 @@ def _compute_shape_vbo_xforms(
     shape_type: wp.array[int],
     shape_world: wp.array[int],
     world_offsets: wp.array[wp.vec3],
+    layer_xform: wp.transform,
     write_indices: wp.array[int],
     out_world_xforms: wp.array[wp.transformf],
     out_vbo_xforms: wp.array[wp.mat44],
@@ -137,6 +143,7 @@ def _compute_shape_vbo_xforms(
             p = wp.transform_get_translation(xform)
             xform = wp.transform(p + world_offsets[wi], wp.transform_get_rotation(xform))
 
+    xform = wp.transform_multiply(layer_xform, xform)
     out_world_xforms[out_idx] = xform
 
     p = wp.transform_get_translation(xform)
@@ -318,13 +325,53 @@ class ViewerGL(ViewerBase):
         self._pbo = None
         self._wp_pbo = None
 
-    def _hash_geometry(self, geo_type: int, geo_scale, thickness: float, is_solid: bool, geo_src=None) -> int:
+        # Optional live MP4 recording (driven from the sidebar "Recording" panel).
+        self._recorder = LiveMp4Recorder()
+        self._recorder.set_filename_prefix("gl_recording")
+        self._record_frame_gpu: wp.array | None = None
+        # Capture is driven by simulation time so the MP4's wall-clock
+        # duration matches sim time regardless of how fast the renderer
+        # produces frames. ``_record_next_sim_t`` is the next sim time at
+        # which we must emit a video frame; ``_record_last_frame_bytes``
+        # caches the most recent encoded frame so repeating it (when the
+        # sim is slower than the recording FPS) is cheap.
+        self._record_fps: float = 60.0
+        self._record_fps_text: str = "60"
+        self._record_fps_manual: bool = False
+        self._record_sim_fps: float | None = None
+        self._record_next_sim_t: float | None = None
+        self._record_last_frame_bytes: bytes | None = None
+
+    @override
+    def _extra_layer_state_attrs(self) -> tuple[str, ...]:
+        """Per-layer attributes specific to the OpenGL backend.
+
+        These are caches that are tied to a single model: the packed VBO
+        transform arrays, the capsule key set, and the picking/wind
+        helpers. Including them in the snapshot lets each layer keep its
+        own model + packed buffers without overwriting other layers'
+        state when the active layer is switched.
+        """
+        return (
+            "_packed_groups",
+            "_capsule_keys",
+            "_packed_write_indices",
+            "_packed_world_xforms",
+            "_packed_vbo_xforms",
+            "_packed_vbo_xforms_host",
+            "picking",
+            "wind",
+        )
+
+    def _hash_geometry(
+        self, geo_type: int, geo_scale, thickness: float, is_solid: bool, geo_src=None, mirror: bool = False
+    ) -> int:
         # For capsules, ignore (radius, half_height) in the geometry hash so varying-length capsules batch together.
         # Capsule dimensions are stored per-shape in model.shape_scale as (radius, half_height, _unused) and
         # are remapped in set_model() to per-instance render scales (radius, radius, half_height).
         if geo_type == nt.GeoType.CAPSULE:
             geo_scale = (1.0, 1.0)
-        return super()._hash_geometry(geo_type, geo_scale, thickness, is_solid, geo_src)
+        return super()._hash_geometry(geo_type, geo_scale, thickness, is_solid, geo_src, mirror)
 
     def _invalidate_pbo(self):
         """Invalidate PBO resources, forcing reallocation on next get_frame() call."""
@@ -450,22 +497,56 @@ class ViewerGL(ViewerBase):
         """Reset GL-specific model-dependent state to defaults.
 
         Called from ``__init__`` (via ``super().__init__`` → ``clear_model``)
-        and whenever the current model is discarded.
+        and whenever the current model is discarded. Only resources owned by
+        the currently active layer are destroyed so other layers' models
+        keep rendering.
         """
-        # Render object and line caches (path -> GL object)
-        for obj in getattr(self, "objects", {}).values():
-            if hasattr(obj, "destroy"):
-                obj.destroy()
-        self.objects = {}
-        for obj in getattr(self, "lines", {}).values():
-            obj.destroy()
-        self.lines = {}
-        for obj in getattr(self, "arrows", {}).values():
-            obj.destroy()
-        self.arrows = {}
-        self._destroy_all_wireframes()
-        self.wireframe_shapes = {}
-        self._wireframe_vbo_owners: dict[int, WireframeShapeGL] = {}
+        # Only destroy backend objects owned by the active layer so other
+        # live layers retain their meshes / instancers / lines / wireframes.
+        owns = self._is_layer_owned_path
+
+        def _filter_destroy(d: dict) -> dict:
+            kept: dict = {}
+            for k, v in d.items():
+                if owns(k):
+                    if hasattr(v, "destroy"):
+                        v.destroy()
+                else:
+                    kept[k] = v
+            return kept
+
+        self.objects = _filter_destroy(getattr(self, "objects", {}))
+        self.lines = _filter_destroy(getattr(self, "lines", {}))
+        self.arrows = _filter_destroy(getattr(self, "arrows", {}))
+
+        # Wireframe shapes are keyed on layer-qualified names; filter by ownership.
+        # VBO owners are shared across layers by ``id(vertex_data)``; after
+        # destroying this layer's shared shapes, drop any owners with no
+        # surviving references so their GL buffers are freed immediately
+        # instead of leaking until viewer close().
+        wireframe_shapes = getattr(self, "wireframe_shapes", {})
+        kept_wf: dict = {}
+        for k, v in wireframe_shapes.items():
+            if owns(k):
+                v.destroy()
+            else:
+                kept_wf[k] = v
+        self.wireframe_shapes = kept_wf
+        if not hasattr(self, "_wireframe_vbo_owners"):
+            self._wireframe_vbo_owners = {}
+        else:
+            # An owner is still live iff at least one remaining wireframe
+            # shape shares its VAO handle (``create_shared`` aliases the
+            # GLuint object, so identity is sufficient).
+            live_vao_ids = {id(s.vao) for s in kept_wf.values() if hasattr(s, "vao")}
+            orphan_keys = [
+                key
+                for key, owner in self._wireframe_vbo_owners.items()
+                if hasattr(owner, "vao") and id(owner.vao) not in live_vao_ids
+            ]
+            for key in orphan_keys:
+                owner = self._wireframe_vbo_owners.pop(key)
+                owner.destroy()
 
         # Interactive picking and wind force helpers
         self.picking = None
@@ -650,7 +731,10 @@ class ViewerGL(ViewerBase):
         from .gl.opengl import MeshInstancerGL  # noqa: PLC0415
 
         current_names = {s.name for s in self._shape_instances.values()}
-        stale = [k for k, v in self.objects.items() if isinstance(v, MeshInstancerGL) and k not in current_names]
+        owns = self._is_layer_owned_path
+        stale = [
+            k for k, v in self.objects.items() if isinstance(v, MeshInstancerGL) and owns(k) and k not in current_names
+        ]
         for k in stale:
             obj = self.objects.pop(k)
             del obj
@@ -760,6 +844,9 @@ class ViewerGL(ViewerBase):
         assert normals is None or isinstance(normals, wp.array)
         assert uvs is None or isinstance(uvs, wp.array)
 
+        # Route user-supplied names through the active layer (idempotent).
+        name = self._qualify(name)
+
         if name not in self.objects:
             self.objects[name] = MeshGL(
                 len(points), len(indices), self.device, hidden=hidden, backface_culling=backface_culling
@@ -803,6 +890,13 @@ class ViewerGL(ViewerBase):
             materials: Array of materials.
             hidden: Whether the instances are hidden.
         """
+        # Route user-supplied names through the active layer (idempotent).
+        # ``mesh`` is the path of a previously registered mesh; qualify it
+        # the same way so a caller using the bare path produced by
+        # ``log_mesh`` finds the prototype the active layer registered.
+        name = self._qualify(name)
+        mesh = self._qualify(mesh)
+
         if mesh not in self.objects:
             raise RuntimeError(f"Path {mesh} not found")
 
@@ -859,9 +953,17 @@ class ViewerGL(ViewerBase):
             materials: Capsule instance materials (wp.vec4), length N or None (no update).
             hidden: Whether the instances are hidden.
         """
+        # Route the user-supplied capsule batch name through the active
+        # layer so two layers calling ``log_capsules`` with the same path
+        # don't overwrite each other (idempotent on already-qualified names).
+        name = self._qualify(name)
+
         # Render capsules via instanced cylinder body + instanced sphere caps.
-        sphere_mesh = "/geometry/_capsule_instancer/sphere"
-        cylinder_mesh = "/geometry/_capsule_instancer/cylinder"
+        # Prototype mesh keys are qualified with the active layer so a
+        # ``clear_model()`` on one layer does not destroy prototypes shared
+        # by capsule instancers in other live layers.
+        sphere_mesh = self._qualify("/geometry/_capsule_instancer/sphere")
+        cylinder_mesh = self._qualify("/geometry/_capsule_instancer/cylinder")
 
         if sphere_mesh not in self.objects:
             self.log_geo(sphere_mesh, nt.GeoType.SPHERE, (1.0,), 0.0, True, hidden=True)
@@ -951,6 +1053,9 @@ class ViewerGL(ViewerBase):
                 ``RendererGL.line_width``.
             hidden: Whether the lines are initially hidden.
         """
+        # Route user-supplied names through the active layer (idempotent).
+        name = self._qualify(name)
+
         # Handle empty logs by resetting the LinesGL object
         if starts is None or ends is None or colors is None:
             if name in self.lines:
@@ -1016,6 +1121,8 @@ class ViewerGL(ViewerBase):
                 ``RendererGL.arrow_scale``.
             hidden: Whether the arrows are initially hidden.
         """
+        # Route user-supplied names through the active layer (idempotent).
+        name = self._qualify(name)
         if starts is None or ends is None or colors is None:
             if name in self.arrows:
                 self.arrows[name].update(None, None, None)
@@ -1067,6 +1174,8 @@ class ViewerGL(ViewerBase):
             world_matrix: 4x4 float32 world matrix, or ``None`` to keep current.
             hidden: Whether the shape is hidden.
         """
+        # Route user-supplied names through the active layer (idempotent).
+        name = self._qualify(name)
         existing = self.wireframe_shapes.get(name)
 
         if vertex_data is not None:
@@ -1124,6 +1233,9 @@ class ViewerGL(ViewerBase):
             colors: Array of point colors.
             hidden: Whether the points are hidden.
         """
+        # Route user-supplied names through the active layer (idempotent).
+        name = self._qualify(name)
+
         if points is None:
             if name in self.objects:
                 self.objects[name].hidden = True
@@ -1185,6 +1297,9 @@ class ViewerGL(ViewerBase):
             xform: Optional world-space transform applied to all splat centers.
             hidden: Whether the point cloud should be hidden.
         """
+        # Route user-supplied names through the active layer (idempotent).
+        name = self._qualify(name)
+
         if hidden:
             if name in self.objects:
                 self.objects[name].hidden = True
@@ -1314,6 +1429,9 @@ class ViewerGL(ViewerBase):
             array: Array data to visualize, or ``None`` to remove a previously
                 logged array.
         """
+        # Route user-supplied names through the active layer (idempotent).
+        name = self._qualify(name)
+
         if array is None:
             self._array_buffers.pop(name, None)
             self._array_dirty.discard(name)
@@ -1336,6 +1454,9 @@ class ViewerGL(ViewerBase):
     @override
     def log_image(self, name: str, image: wp.array[Any] | np.ndarray) -> None:
         """See :meth:`~newton.viewer.ViewerBase.log_image`."""
+        # Route user-supplied names through the active layer (idempotent)
+        # so two layers logging the same image name don't stomp each other.
+        name = self._qualify(name)
         self._image_logger.log(name, image)
 
     @override
@@ -1364,6 +1485,8 @@ class ViewerGL(ViewerBase):
         """
         if smoothing < 1:
             raise ValueError("smoothing must be >= 1")
+        # Route user-supplied names through the active layer (idempotent).
+        name = self._qualify(name)
         val = float(value.item() if hasattr(value, "item") else value)
         buf = self._scalar_buffers.get(name)
         if buf is None:
@@ -1420,6 +1543,7 @@ class ViewerGL(ViewerBase):
                     self.model.shape_type,
                     self.model.shape_world,
                     self.world_offsets,
+                    self.layer.xform,
                     self._packed_write_indices,
                 ],
                 outputs=[self._packed_world_xforms, self._packed_vbo_xforms],
@@ -1432,8 +1556,9 @@ class ViewerGL(ViewerBase):
             # ---- Upload pinned host slices to GL per instancer ----
             host_np = self._packed_vbo_xforms_host.numpy()
 
+            layer_hidden = self._layer_force_hidden()
             for key, shapes, offset, count in self._packed_groups:
-                visible = self._should_show_shape(shapes.flags, shapes.static)
+                visible = self._should_show_shape(shapes.flags, shapes.static) and not layer_hidden
                 colors = shapes.colors if self.model_changed or shapes.colors_changed else None
                 materials = shapes.materials if self.model_changed else None
 
@@ -1521,7 +1646,14 @@ class ViewerGL(ViewerBase):
         Args:
             time: Current simulation time.
         """
+        prev_time = float(self.time)
         super().begin_frame(time)
+        sim_dt = float(time) - prev_time
+        if sim_dt > 0.0 and math.isfinite(sim_dt):
+            self._record_sim_fps = 1.0 / sim_dt
+            if not self._record_fps_manual and not self._recorder.is_recording:
+                self._record_fps = self._record_sim_fps
+                self._record_fps_text = self._format_record_fps(self._record_fps)
         self._gizmo_log = {}
 
     @override
@@ -1567,8 +1699,12 @@ class ViewerGL(ViewerBase):
         if self.wind is not None:
             self.wind.update(dt)
 
-        # If the window was closed during event processing, skip rendering
+        # If the window was closed during event processing, skip rendering.
+        # Also finalize any active recording so ffmpeg flushes a valid MP4
+        # even when the user closes the window instead of calling close().
         if self.renderer.has_exit():
+            if self._recorder.is_recording:
+                self._stop_recording()
             return
 
         # Render the scene and present it
@@ -1588,6 +1724,141 @@ class ViewerGL(ViewerBase):
             self.ui.render()
 
         self.renderer.present()
+
+        # Capture this frame for live MP4 recording, if active.
+        self._record_frame_if_needed()
+
+    @staticmethod
+    def _format_record_fps(fps: float) -> str:
+        """Return a compact user-facing FPS string."""
+        if not math.isfinite(fps) or fps <= 0.0:
+            return "60"
+        if abs(fps - round(fps)) < 1.0e-3:
+            return str(int(round(fps)))
+        return f"{fps:.3f}".rstrip("0").rstrip(".")
+
+    def _parse_record_fps_text(self) -> float | None:
+        """Parse the recording FPS text box, returning None while invalid."""
+        try:
+            fps = float(self._record_fps_text.strip())
+        except ValueError:
+            return None
+        if not math.isfinite(fps) or fps <= 0.0:
+            return None
+        return fps
+
+    def _sync_record_fps_from_text(self) -> bool:
+        """Update ``_record_fps`` from the UI text field if it is valid."""
+        fps = self._parse_record_fps_text()
+        if fps is None:
+            return False
+        self._record_fps = fps
+        return True
+
+    def _use_simulation_record_fps(self):
+        """Reset the recording FPS text field to the current simulation rate."""
+        if self._record_sim_fps is not None:
+            self._record_fps = self._record_sim_fps
+        self._record_fps_text = self._format_record_fps(self._record_fps)
+        self._record_fps_manual = False
+
+    def _start_recording(self, output_path: str | Path | None = None) -> bool:
+        """Start live MP4 recording at the current framebuffer size.
+
+        The MP4 is encoded at the FPS selected in the Recording panel and
+        paced by the simulator's clock (``ViewerBase.time``), so the on-disk
+        video plays back in sync with sim time regardless of render speed.
+
+        Args:
+            output_path: Optional output file path. ``None`` selects a
+                timestamped default under the recorder's output directory.
+
+        Returns:
+            ``True`` if recording started successfully.
+        """
+        if not self._sync_record_fps_from_text():
+            logger.warning("Cannot start MP4 recording: invalid recording FPS %r.", self._record_fps_text)
+            return False
+
+        # Use the renderer's cached screen size — this is what get_frame()
+        # validates against, so the preallocated capture buffer is
+        # guaranteed to match on HiDPI/scaled displays.
+        w = self.renderer._screen_width
+        h = self.renderer._screen_height
+        started = self._recorder.start(
+            width=w,
+            height=h,
+            fps=float(self._record_fps),
+            output_path=output_path,
+            flip_vertical=False,
+        )
+        if started:
+            self._record_frame_gpu = wp.empty(
+                shape=(h, w, 3),
+                dtype=wp.uint8,  # pyright: ignore[reportArgumentType]
+                device=self.device,
+            )
+            self._record_next_sim_t = float(self.time)
+            self._record_last_frame_bytes = None
+        return started
+
+    def _stop_recording(self) -> Path | None:
+        """Stop live MP4 recording and return the output path (if any)."""
+        path = self._recorder.stop()
+        self._record_frame_gpu = None
+        self._record_next_sim_t = None
+        self._record_last_frame_bytes = None
+        return path
+
+    def _record_frame_if_needed(self):
+        """Emit MP4 frames driven by simulation time.
+
+        Writes zero or more frames per render call so the video's
+        wall-clock duration matches ``self.time``. When the sim is slower
+        than the recording FPS the most recent frame is repeated; when
+        faster, intermediate render frames are simply dropped from the
+        recording (the live preview still shows them).
+        """
+        if not self._recorder.is_recording or self._record_next_sim_t is None:
+            return
+
+        record_fps = max(1.0e-6, float(self._record_fps))
+        record_dt = 1.0 / record_fps
+        # Nothing to emit yet: sim has not advanced past the next slot.
+        if self.time + 0.5 * record_dt < self._record_next_sim_t:
+            return
+
+        w = self.renderer._screen_width
+        h = self.renderer._screen_height
+        if self._record_frame_gpu is None or self._record_frame_gpu.shape != (h, w, 3):
+            # Framebuffer changed underneath us (e.g. resize during recording);
+            # cleanest behavior is to stop and let the user start a new recording.
+            prev_shape = None if self._record_frame_gpu is None else tuple(self._record_frame_gpu.shape)
+            logger.warning(
+                "Stopping MP4 recording: framebuffer size changed from %s to (%d, %d, 3) "
+                "after recording started. Start a new recording to capture at the new resolution.",
+                prev_shape,
+                h,
+                w,
+            )
+            self._stop_recording()
+            return
+
+        # Read the current framebuffer once, then emit it as many times as
+        # needed to catch up to sim time. Reuse the previous frame's bytes
+        # if the sim didn't advance enough to warrant a fresh readback.
+        frame_gpu = self.get_frame(target_image=self._record_frame_gpu, render_ui=False)
+        self._record_last_frame_bytes = frame_gpu.numpy().tobytes()
+
+        # Emit at least one frame; if the sim leapt forward, emit duplicates
+        # to keep playback wall-clock-accurate. Cap to avoid runaway loops
+        # if the sim time jumps unexpectedly (e.g. after a long pause).
+        max_emit = max(1, int(math.ceil(4.0 * record_fps)))  # at most ~4 s worth of catch-up
+        emitted = 0
+        while self.time + 0.5 * record_dt >= self._record_next_sim_t and emitted < max_emit:
+            self._recorder.write_frame_bytes(self._record_last_frame_bytes, w, h)
+            self._record_next_sim_t += record_dt
+            emitted += 1
 
     def get_frame(self, target_image: wp.array | None = None, render_ui: bool = False) -> wp.array:
         """
@@ -1744,6 +2015,8 @@ class ViewerGL(ViewerBase):
         """
         Close the viewer and clean up resources.
         """
+        if self._recorder.is_recording:
+            self._stop_recording()
         self._clear_array_textures()
         self._invalidate_pbo()
         if self._image_logger is not None:
@@ -2169,6 +2442,10 @@ class ViewerGL(ViewerBase):
         self.camera.update_screen_size(fb_w, fb_h)
         self._invalidate_pbo()
 
+        if self._recorder.is_recording:
+            # ffmpeg was started with a fixed resolution; stop cleanly on resize.
+            self._stop_recording()
+
         if self.ui:
             self.ui.resize(width, height)
 
@@ -2563,6 +2840,19 @@ class ViewerGL(ViewerBase):
                     show_inertia_boxes = self.show_inertia_boxes
                     changed, self.show_inertia_boxes = imgui.checkbox("Show Inertia Boxes", show_inertia_boxes)
 
+            # Layers section — toggle visibility of overlaid solvers/models.
+            # Only shown when more than just the default layer has been
+            # registered (i.e., the user opted in via viewer.activate()).
+            user_layers = [lyr for lid, lyr in self._layers.items() if lid != _DEFAULT_LAYER_ID]
+            if user_layers:
+                imgui.set_next_item_open(True, imgui.Cond_.appearing)
+                if imgui.collapsing_header("Layers", flags=header_flags):
+                    imgui.separator()
+                    for lyr in user_layers:
+                        changed, new_visible = imgui.checkbox(f"Show '{lyr.layer_id}'", lyr.visible)
+                        if changed:
+                            self.set_layer_visible(lyr.layer_id, new_visible)
+
             imgui.set_next_item_open(True, imgui.Cond_.appearing)
             if imgui.collapsing_header("Example Options"):
                 # Render UI callbacks for side panel
@@ -2605,6 +2895,55 @@ class ViewerGL(ViewerBase):
                 changed, self.renderer.sky_upper = _edit_color3("Sky Color", self.renderer.sky_upper)
                 # Ground color
                 changed, self.renderer.sky_lower = _edit_color3("Ground Color", self.renderer.sky_lower)
+
+            # Recording section
+            imgui.set_next_item_open(False, imgui.Cond_.once)
+            if imgui.collapsing_header("Recording"):
+                imgui.separator()
+
+                changed, quality = imgui.slider_float(
+                    "Video Quality",
+                    float(self._recorder.quality),
+                    0.0,
+                    100.0,
+                    "%.0f",
+                )
+                if changed:
+                    self._recorder.set_quality(float(quality))
+
+                if self._recorder.is_recording:
+                    output_path = self._recorder.output_path
+                    imgui.text("Status: recording")
+                    imgui.text(f"Quality: {self._recorder.quality:.0f}/100")
+                    imgui.text(f"FPS: {self._format_record_fps(self._record_fps)}")
+                    if output_path is not None:
+                        imgui.text_wrapped(str(output_path))
+                    if imgui.button("Stop Recording"):
+                        self._stop_recording()
+                else:
+                    sim_fps_text = (
+                        self._format_record_fps(self._record_sim_fps) if self._record_sim_fps is not None else "unknown"
+                    )
+                    imgui.text(f"Simulation Rate: {sim_fps_text} Hz")
+
+                    changed, fps_text = imgui.input_text("Video FPS", self._record_fps_text)
+                    if changed:
+                        self._record_fps_text = fps_text
+                        self._record_fps_manual = True
+                        self._sync_record_fps_from_text()
+
+                    if self._parse_record_fps_text() is None:
+                        imgui.text("Enter a positive FPS value.")
+
+                    if imgui.button("Use Simulation Rate"):
+                        self._use_simulation_record_fps()
+                    imgui.same_line()
+                    imgui.text("(default)")
+
+                    imgui.text("Status: idle")
+                    imgui.text_wrapped(str(self._recorder.suggested_output_path()))
+                    if imgui.button("Start Recording"):
+                        self._start_recording()
 
             self._image_logger.draw_controls()
 

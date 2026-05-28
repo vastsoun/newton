@@ -420,6 +420,8 @@ def build_box_on_plane(
     restitution: float | None = None,
     ground: bool = True,
     new_world: bool = True,
+    gap: float = 0.0,
+    margin: float = 0.0,
     use_custom_shape_cfg: bool = False,
 ) -> ModelBuilder:
     """
@@ -476,8 +478,8 @@ def build_box_on_plane(
     # Use custom shape config if requested
     custom_shape_cfg = (
         ModelBuilder.ShapeConfig(
-            gap=0.01,
-            margin=1e-6,
+            gap=gap,
+            margin=margin,
             mu=friction if friction is not None else _builder.default_shape_cfg.mu,
             restitution=restitution if restitution is not None else _builder.default_shape_cfg.restitution,
         )

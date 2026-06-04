@@ -327,7 +327,7 @@ def _generate_video(
             fps=fps,
             codec="libx264",
             macro_block_size=8,
-            quality=5,
+            quality=8,
         )
         writer.send(None)
 

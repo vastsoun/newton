@@ -333,7 +333,7 @@ class Example:
             os.makedirs(self.recording_folder, exist_ok=True)
 
         # Clip recording state
-        self.record_clips = bool(getattr(args, "record", None))
+        self.record_clips = False
         if getattr(args, "record", None):
             self.video_target_frames = int(np.floor(RECORD_END_TIME / self.viewer_dt)) + 1
 

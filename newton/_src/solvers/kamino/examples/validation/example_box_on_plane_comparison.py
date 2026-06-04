@@ -74,6 +74,12 @@ class SolverSetup:
         self.contacts = self.model.contacts()
         self.time = wp.zeros(dtype=wp.float32, shape=1, device=self.model.device)
 
+        self.force_start = wp.zeros(shape=1, dtype=wp.vec3f, device=self.model.device)
+        self.force_end = wp.zeros(shape=1, dtype=wp.vec3f, device=self.model.device)
+
+        shape_body_np = self.model.shape_body.numpy()
+        self.box_shape_id = next(i for i in range(len(shape_body_np)) if shape_body_np[i] == 0)
+
     def step(self, state_in: newton.State, sim_dt: float):
         self.model.collide(state_in, self.contacts)
         self.solver.step(state_in, self.state_1, self.control, self.contacts, sim_dt)
@@ -96,6 +102,19 @@ class SolverSetup:
     def render(self, viewer: newton.viewer.ViewerBase):
         viewer.log_state(self.state_0)
         viewer.log_contacts(self.contacts, self.state_0)
+
+        # External force visualization
+        force = self.state_0.body_f.numpy()[0, :3]
+        if np.linalg.norm(force) > 1e-4:
+            force_scale = 0.3 / (9.81 * 0.71 * 1.0)
+            pos_loc = wp.vec3f(0.0, 0.0, -0.1)
+            body_state = wp.transformf(*(self.state_0.body_q[0:1].numpy()[0]))
+            pos_glob = wp.transform_point(body_state, pos_loc)
+            self.force_start.assign(pos_glob)
+            self.force_end.assign(pos_glob + wp.vec3f(force * force_scale))
+            viewer.log_arrows("/ext_force", self.force_start, self.force_end, (0.0, 0.0, 1.0))
+        else:
+            viewer.log_arrows("/ext_force", None, None, None)
 
 
 ###
@@ -384,9 +403,10 @@ class Example:
         self.use_graph = use_graph
         self.start_paused = start_paused
 
+        # Setup trajectory recording
         self.record_traj = False
+        self.frame_id = 0
         if self.record_traj:
-            self.frame_id = 0
             self.num_recording_frames = int(np.floor(RECORD_END_TIME / self.viewer_dt)) + 1
             self.traj = np.zeros((self.num_recording_frames, 3))
             self.recording_folder = os.path.join(get_examples_output_path(), "box_on_plane")
@@ -409,9 +429,19 @@ class Example:
         self.setup_mujoco = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000)
         self.setup_xpbd = make_setup_solver_xpbd(asset_file, self.sim_dt, 5000)
 
+        # Load reference trajectory
+        self.use_ref_traj = False
+        ref_folder = os.path.join(assets_dir, "Reference")
+        self.body_q_ref = np.load(os.path.join(ref_folder, "body_q_ref_box_on_plane.npy"))
+        self.body_dq_ref = np.load(os.path.join(ref_folder, "body_dq_ref_box_on_plane.npy"))
+        self.f_norm_front_ref = np.load(os.path.join(ref_folder, "f_norm_front_ref_box_on_plane.npy"))
+        self.f_norm_back_ref = np.load(os.path.join(ref_folder, "f_norm_back_ref_box_on_plane.npy"))
+        self.f_tang_front_ref = np.load(os.path.join(ref_folder, "f_tang_front_ref_box_on_plane.npy"))
+        self.f_tang_back_ref = np.load(os.path.join(ref_folder, "f_tang_back_ref_box_on_plane.npy"))
+
         # Solver setup choice
-        self.setup_names = ["Kamino", "MuJoCo", "XPBD"]
-        self.setups = [self.setup_kamino, self.setup_mujoco, self.setup_xpbd]
+        self.setup_names = ["Kamino", "MuJoCo", "XPBD", "Reference"]
+        self.setups = [self.setup_kamino, self.setup_mujoco, self.setup_xpbd, self.setup_kamino]
         self.current_setup_id = 0
         self.init_setup(reset_viewer=True, first=True)
 
@@ -427,8 +457,7 @@ class Example:
             self.graph = capture.graph
 
     def reset(self):
-        if self.record_traj:
-            self.frame_id = 0
+        self.frame_id = 0
         self.setup.reset()
 
     def start_recording_clip(self):
@@ -446,7 +475,10 @@ class Example:
         )
 
     def init_setup(self, reset_viewer=True, first=False):
-        msg.notif(f"Initializing {self.setup_names[self.current_setup_id]} solver")
+        solver_name = self.setup_names[self.current_setup_id]
+        self.use_ref_traj = solver_name == "Reference"
+        msg.notif(f"Initializing {solver_name} solver")
+
         # Reset state
         self.reset()
 
@@ -494,21 +526,48 @@ class Example:
             self.setup.state_0, self.setup.state_1 = self.setup.state_1, self.setup.state_0
 
     def step(self):
+        # Optionally record trajectory (before step so we capture the first frame)
         if self.record_traj:
             if self.frame_id < self.num_recording_frames:
                 self.traj[self.frame_id] = self.setup.state_0.body_q.numpy()[0, :3]
-                self.frame_id += 1
-                if self.frame_id == self.num_recording_frames:
+                if self.frame_id == self.num_recording_frames - 1:
                     solver_name = self.setup_names[self.current_setup_id]
                     if solver_name == "MuJoCo":
                         solver_name = f"{solver_name}_{MUJOCO_KE}_{MUJOCO_IMPRATIO}"
                     np.save(os.path.join(self.recording_folder, f"traj_{solver_name}.npy"), self.traj)
                     msg.notif("Trajectory recorded")
+
+        # Perform step
         if self.graph:
             wp.capture_launch(self.graph)
         else:
             self.simulate()
         self.sim_time += self.viewer_dt
+        self.frame_id += 1
+
+        # Optionally overwrite state and contact forces with reference solution
+        if self.use_ref_traj:
+            if self.frame_id < self.body_q_ref.shape[0]:
+                self.setup.state_0.body_q.assign(self.body_q_ref[self.frame_id])
+                self.setup.state_0.body_qd.assign(self.body_dq_ref[self.frame_id])
+                num_contacts = self.setup.contacts.rigid_contact_count.numpy()[0]
+                contact_point0_np = self.setup.contacts.rigid_contact_point0[:4].numpy()
+                contact_point1_np = self.setup.contacts.rigid_contact_point1[:4].numpy()
+                contact_shape0_np = self.setup.contacts.rigid_contact_shape0[:4].numpy()
+                contact_forces_np = np.zeros((4, 6), dtype=np.float32)
+                for i in range(min(4, num_contacts)):
+                    contact_point = (
+                        contact_point0_np[i]
+                        if contact_shape0_np[i] == self.setup.box_shape_id
+                        else contact_point1_np[i]
+                    )
+                    if contact_point[0] > 0.05:  # Front contact
+                        contact_forces_np[i, 0] = -0.5 * self.f_tang_front_ref[self.frame_id]
+                        contact_forces_np[i, 2] = -0.5 * self.f_norm_front_ref[self.frame_id]
+                    elif contact_point[0] < -0.05:  # Back contact
+                        contact_forces_np[i, 0] = -0.5 * self.f_tang_back_ref[self.frame_id]
+                        contact_forces_np[i, 2] = -0.5 * self.f_norm_back_ref[self.frame_id]
+                self.setup.contacts.force[:4].assign(contact_forces_np)
 
     def render(self):
         self.viewer.begin_frame(self.sim_time)

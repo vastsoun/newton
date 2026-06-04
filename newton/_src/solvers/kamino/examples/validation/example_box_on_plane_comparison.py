@@ -27,10 +27,6 @@ FORCE_END_TIME = 5.0
 MAX_FORCE = 1.5
 RECORD_END_TIME = 7.0
 
-MUJOCO_KE = 6.0e3  # 1.0 for very soft version that moves the correct distance
-MUJOCO_KD = 2.0 * np.sqrt(MUJOCO_KE)  # Set K_d for critical damping
-MUJOCO_IMPRATIO = 100.0  # 0.1 for very soft version that moves the correct distance
-
 
 ###
 # Classes
@@ -265,7 +261,11 @@ def make_setup_solver_kamino(asset_file: str, dt: float, max_frames: int) -> Sol
     return setup
 
 
-def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int) -> SolverSetup:
+def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int, soft: bool) -> SolverSetup:
+    MUJOCO_KE = 1.0 if soft else 6.0e3
+    MUJOCO_KD = 2.0 * np.sqrt(MUJOCO_KE)  # Set K_d for critical damping
+    MUJOCO_IMPRATIO = 0.1 if soft else 100.0
+
     articulation_builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
     newton.solvers.SolverMuJoCo.register_custom_attributes(articulation_builder)
     articulation_builder.default_joint_cfg = newton.ModelBuilder.JointDofConfig(
@@ -426,7 +426,8 @@ class Example:
 
         # Create the solver setups
         self.setup_kamino = make_setup_solver_kamino(asset_file, self.sim_dt, 5000)
-        self.setup_mujoco = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000)
+        self.setup_mujoco_stiff = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000, False)
+        self.setup_mujoco_soft = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000, True)
         self.setup_xpbd = make_setup_solver_xpbd(asset_file, self.sim_dt, 5000)
 
         # Load reference trajectory
@@ -440,8 +441,14 @@ class Example:
         self.f_tang_back_ref = np.load(os.path.join(ref_folder, "f_tang_back_ref_box_on_plane.npy"))
 
         # Solver setup choice
-        self.setup_names = ["Kamino", "MuJoCo", "XPBD", "Reference"]
-        self.setups = [self.setup_kamino, self.setup_mujoco, self.setup_xpbd, self.setup_kamino]
+        self.setup_names = ["Kamino", "MuJoCo_stiff", "MuJoCo_soft", "XPBD", "Reference"]
+        self.setups = [
+            self.setup_kamino,
+            self.setup_mujoco_stiff,
+            self.setup_mujoco_soft,
+            self.setup_xpbd,
+            self.setup_kamino,
+        ]
         self.current_setup_id = 0
         self.init_setup(reset_viewer=True, first=True)
 
@@ -532,8 +539,6 @@ class Example:
                 self.traj[self.frame_id] = self.setup.state_0.body_q.numpy()[0, :3]
                 if self.frame_id == self.num_recording_frames - 1:
                     solver_name = self.setup_names[self.current_setup_id]
-                    if solver_name == "MuJoCo":
-                        solver_name = f"{solver_name}_{MUJOCO_KE}_{MUJOCO_IMPRATIO}"
                     np.save(os.path.join(self.recording_folder, f"traj_{solver_name}.npy"), self.traj)
                     msg.notif("Trajectory recorded")
 

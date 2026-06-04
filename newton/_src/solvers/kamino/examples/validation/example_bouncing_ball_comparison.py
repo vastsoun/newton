@@ -18,6 +18,7 @@ import newton.examples
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.examples import get_examples_output_path
 from newton._src.solvers.kamino.examples.validation.viewer_recording import enable_recording
+from newton.tests import get_kamino_assets_directory
 
 np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)
 
@@ -424,9 +425,10 @@ class Example:
         # Whether to switch the geometry to a box
         use_box = False
 
+        # Setup trajectory recording
         self.record_traj = False
+        self.frame_id = 0
         if self.record_traj:
-            self.frame_id = 0
             self.num_recording_frames = int(np.floor(RECORD_END_TIME / self.viewer_dt)) + 1
             self.traj = np.zeros((self.num_recording_frames, 3))
             self.recording_folder = os.path.join(
@@ -447,9 +449,14 @@ class Example:
         self.setup_mujoco = make_setup_solver_mujoco(self.sim_dt, 5000, use_box=use_box)
         self.setup_xpbd = make_setup_solver_xpbd(self.sim_dt, 5000, use_box=use_box)
 
+        # Load reference trajectory
+        self.use_ref_traj = False
+        ref_folder = os.path.join(get_kamino_assets_directory(), "validation", "Reference")
+        self.body_q_ref = np.load(os.path.join(ref_folder, "body_q_ref_bouncing_ball.npy"))
+
         # Solver setup choice
-        self.setup_names = ["Kamino", "MuJoCo", "XPBD"]
-        self.setups = [self.setup_kamino, self.setup_mujoco, self.setup_xpbd]
+        self.setup_names = ["Kamino", "MuJoCo", "XPBD", "Reference"]
+        self.setups = [self.setup_kamino, self.setup_mujoco, self.setup_xpbd, self.setup_kamino]
         self.current_setup_id = 0
         self.init_setup(reset_viewer=True, first=True)
 
@@ -465,8 +472,7 @@ class Example:
             self.graph = capture.graph
 
     def reset(self):
-        if self.record_traj:
-            self.frame_id = 0
+        self.frame_id = 0
         self.setup.reset()
 
     def start_recording_clip(self):
@@ -484,7 +490,10 @@ class Example:
         )
 
     def init_setup(self, reset_viewer=True, first=False):
-        msg.notif(f"Initializing {self.setup_names[self.current_setup_id]} solver")
+        solver_name = self.setup_names[self.current_setup_id]
+        self.use_ref_traj = solver_name == "Reference"
+        msg.notif(f"Initializing {solver_name} solver")
+
         # Reset state
         self.reset()
 
@@ -529,19 +538,27 @@ class Example:
             self.setup.state_0, self.setup.state_1 = self.setup.state_1, self.setup.state_0
 
     def step(self):
+        # Optionally record trajectory (before step so we capture the first frame)
         if self.record_traj:
             if self.frame_id < self.num_recording_frames:
                 self.traj[self.frame_id] = self.setup.state_0.body_q.numpy()[0, :3]
-                self.frame_id += 1
-                if self.frame_id == self.num_recording_frames:
+                if self.frame_id == self.num_recording_frames - 1:
                     solver_name = self.setup_names[self.current_setup_id]
                     np.save(os.path.join(self.recording_folder, f"traj_{solver_name}_{RESTITUTION}.npy"), self.traj)
                     msg.notif("Trajectory recorded")
+
+        # Perform step
         if self.graph:
             wp.capture_launch(self.graph)
         else:
             self.simulate()
         self.sim_time += self.viewer_dt
+        self.frame_id += 1
+
+        # Optionally overwrite state with reference solution
+        if self.use_ref_traj:
+            if self.frame_id < self.body_q_ref.shape[0]:
+                self.setup.state_0.body_q.assign(self.body_q_ref[self.frame_id])
 
     def render(self):
         self.viewer.begin_frame(self.sim_time)

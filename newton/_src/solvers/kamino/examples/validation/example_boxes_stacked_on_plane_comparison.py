@@ -395,8 +395,8 @@ class Example:
 
         # Set up recording of trajectory
         self.record_traj = False
+        self.frame_id = 0
         if self.record_traj:
-            self.frame_id = 0
             self.num_recording_frames = int(np.floor(RECORD_END_TIME / self.viewer_dt)) + 1
             self.traj_body_q = np.zeros((self.num_recording_frames, 2, 7))
             self.recording_folder = os.path.join(get_examples_output_path(), f"boxes_stacked_{scenario}")
@@ -413,6 +413,11 @@ class Example:
         self.setup_xpbd_20 = make_setup_solver_xpbd(asset_file, self.sim_dt, 5000, iterations=20)
         self.setup_xpbd_200 = make_setup_solver_xpbd(asset_file, self.sim_dt, 5000, iterations=200)
 
+        # Load reference trajectory
+        self.use_ref_traj = False
+        ref_folder = os.path.join(assets_dir, "Reference")
+        self.body_q_ref = np.load(os.path.join(ref_folder, "body_q_ref_boxes_stacked.npy"))
+
         # Extract total mass, and box-ground friction coefficient
         self.total_mass = self.setup_kamino.model.body_mass.numpy().sum()
         shape_body_np = self.setup_kamino.model.shape_body.numpy()
@@ -423,8 +428,8 @@ class Example:
         msg.notif(f"Total mass = {self.total_mass}, friction coefficient = {self.mu}")
 
         # Solver setup choice
-        self.setup_names = ["Kamino", "MuJoCo", "XPBD_20_it", "XPBD_200_it"]
-        self.setups = [self.setup_kamino, self.setup_mujoco, self.setup_xpbd_20, self.setup_xpbd_200]
+        self.setup_names = ["Kamino", "MuJoCo", "XPBD_20_it", "XPBD_200_it", "Reference"]
+        self.setups = [self.setup_kamino, self.setup_mujoco, self.setup_xpbd_20, self.setup_xpbd_200, self.setup_kamino]
         self.current_setup_id = 0
         self.init_setup(reset_viewer=True, first=True)
 
@@ -440,8 +445,7 @@ class Example:
             self.graph = capture.graph
 
     def reset(self):
-        if self.record_traj:
-            self.frame_id = 0
+        self.frame_id = 0
         self.setup.reset()
 
     def start_recording_clip(self):
@@ -459,7 +463,10 @@ class Example:
         )
 
     def init_setup(self, reset_viewer=True, first=False):
-        msg.notif(f"Initializing {self.setup_names[self.current_setup_id]} solver")
+        solver_name = self.setup_names[self.current_setup_id]
+        self.use_ref_traj = solver_name == "Reference"
+        msg.notif(f"Initializing {solver_name} solver")
+
         # Reset state
         self.reset()
 
@@ -512,19 +519,27 @@ class Example:
             self.setup.state_0, self.setup.state_1 = self.setup.state_1, self.setup.state_0
 
     def step(self):
+        # Optionally record trajectory (before step so we capture the first frame)
         if self.record_traj:
             if self.frame_id < self.num_recording_frames:
                 self.traj_body_q[self.frame_id] = self.setup.state_0.body_q.numpy()
-                self.frame_id += 1
-                if self.frame_id == self.num_recording_frames:
+                if self.frame_id == self.num_recording_frames - 1:
                     solver_name = self.setup_names[self.current_setup_id]
                     np.save(os.path.join(self.recording_folder, f"traj_body_q_{solver_name}.npy"), self.traj_body_q)
                     msg.notif("Trajectory recorded")
+
+        # Perform step
         if self.graph:
             wp.capture_launch(self.graph)
         else:
             self.simulate()
         self.sim_time += self.viewer_dt
+        self.frame_id += 1
+
+        # Optionally overwrite state with reference solution
+        if self.use_ref_traj:
+            if self.frame_id < self.body_q_ref.shape[0]:
+                self.setup.state_0.body_q.assign(self.body_q_ref[self.frame_id])
 
     def render(self):
         self.viewer.begin_frame(self.sim_time)

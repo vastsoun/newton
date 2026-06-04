@@ -321,9 +321,10 @@ class Example:
         self.use_graph = use_graph
         self.start_paused = start_paused
 
+        # Setup trajectory recording
         self.record_traj = False
+        self.frame_id = 0
         if self.record_traj:
-            self.frame_id = 0
             self.num_recording_frames = int(np.floor(RECORD_END_TIME / self.viewer_dt)) + 1
             self.traj_body_q = np.zeros((self.num_recording_frames, 4, 7))
             self.traj_body_dq = np.zeros((self.num_recording_frames, 4, 6))
@@ -351,8 +352,21 @@ class Example:
         self.setup_mujoco_stiff = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000, 0.001)
         self.setup_xpbd = make_setup_solver_xpbd(asset_file, self.sim_dt, 5000)
 
+        # Load reference trajectory
+        self.use_ref_traj = False
+        ref_folder = os.path.join(get_kamino_assets_directory(), "validation", "Reference")
+        self.body_q_ref = np.load(os.path.join(ref_folder, "body_q_ref_four_bar.npy"))
+
         # Solver setup choice
-        self.setup_names = ["Kamino_soft", "Kamino_stiff", "MuJoCo_soft", "MuJoCo_medium", "MuJoCo_stiff", "XPBD"]
+        self.setup_names = [
+            "Kamino_soft",
+            "Kamino_stiff",
+            "MuJoCo_soft",
+            "MuJoCo_medium",
+            "MuJoCo_stiff",
+            "XPBD",
+            "Reference",
+        ]
         self.setups = [
             self.setup_kamino_soft,
             self.setup_kamino_stiff,
@@ -360,6 +374,7 @@ class Example:
             self.setup_mujoco_medium,
             self.setup_mujoco_stiff,
             self.setup_xpbd,
+            self.setup_kamino_stiff,
         ]
         self.current_setup_id = 0
         self.init_setup(reset_viewer=True, first=True)
@@ -376,8 +391,7 @@ class Example:
             self.graph = capture.graph
 
     def reset(self):
-        if self.record_traj:
-            self.frame_id = 0
+        self.frame_id = 0
         self.setup.reset()
 
     def start_recording_clip(self):
@@ -396,7 +410,10 @@ class Example:
         )
 
     def init_setup(self, reset_viewer=True, first=False):
-        msg.notif(f"Initializing {self.setup_names[self.current_setup_id]} solver")
+        solver_name = self.setup_names[self.current_setup_id]
+        self.use_ref_traj = solver_name == "Reference"
+        msg.notif(f"Initializing {solver_name} solver")
+
         # Reset state
         self.reset()
 
@@ -442,12 +459,12 @@ class Example:
             self.setup.state_0, self.setup.state_1 = self.setup.state_1, self.setup.state_0
 
     def step(self):
+        # Optionally record trajectory (before step so we capture the first frame)
         if self.record_traj:
             if self.frame_id < self.num_recording_frames:
                 self.traj_body_q[self.frame_id] = self.setup.state_0.body_q.numpy()
                 self.traj_body_dq[self.frame_id] = self.setup.state_0.body_qd.numpy()
-                self.frame_id += 1
-                if self.frame_id == self.num_recording_frames:
+                if self.frame_id == self.num_recording_frames - 1:
                     solver_name = self.setup_names[self.current_setup_id]
                     model = self.setup.model
                     np.save(os.path.join(self.recording_folder, "body_mass.npy"), model.body_mass.numpy())
@@ -460,11 +477,19 @@ class Example:
                     np.save(os.path.join(self.recording_folder, f"traj_body_q_{solver_name}.npy"), self.traj_body_q)
                     np.save(os.path.join(self.recording_folder, f"traj_body_dq_{solver_name}.npy"), self.traj_body_dq)
                     msg.notif("Trajectory recorded")
+
+        # Perform step
         if self.graph:
             wp.capture_launch(self.graph)
         else:
             self.simulate()
         self.sim_time += self.viewer_dt
+        self.frame_id += 1
+
+        # Optionally overwrite state with reference solution
+        if self.use_ref_traj:
+            if self.frame_id < self.body_q_ref.shape[0]:
+                self.setup.state_0.body_q.assign(self.body_q_ref[self.frame_id])
 
     def render(self):
         self.viewer.begin_frame(self.sim_time)

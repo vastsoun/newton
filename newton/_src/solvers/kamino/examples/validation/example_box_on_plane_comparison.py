@@ -257,7 +257,7 @@ def make_setup_solver_kamino(asset_file: str, dt: float, max_frames: int) -> Sol
         # metrics=metrics,
         # logger=logger,
     )
-    solver.reset(state_out=setup.state_0)
+    solver.reset(state=setup.state_0)
     return setup
 
 

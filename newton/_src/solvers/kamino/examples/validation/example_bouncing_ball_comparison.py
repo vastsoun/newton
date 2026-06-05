@@ -283,7 +283,7 @@ def make_setup_solver_kamino(dt: float, max_frames: int, use_box: bool = False) 
         # metrics=metrics,
         # logger=logger,
     )
-    solver.reset(state_out=setup.state_0)
+    solver.reset(state=setup.state_0)
     return setup
 
 

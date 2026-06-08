@@ -16,6 +16,8 @@ import newton.examples
 
 # from newton._src.solvers.kamino._src.metrics import SolutionMetricsNewton, SolutionMetricsLogger
 from newton._src.solvers.kamino._src.utils import logger as msg
+from newton._src.solvers.kamino.examples import get_examples_output_path
+from newton._src.solvers.kamino.examples.validation.viewer_recording import enable_recording
 from newton.tests import get_kamino_assets_directory
 
 np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True)
@@ -23,6 +25,7 @@ np.set_printoptions(linewidth=20000, precision=6, threshold=10000, suppress=True
 FORCE_START_TIME = 1.0
 FORCE_END_TIME = 5.0
 MAX_FORCE = 1.5
+RECORD_END_TIME = 7.0
 
 
 ###
@@ -373,9 +376,15 @@ class Example:
         msg.notif(f"Using sim_dt = {self.sim_dt} ({self.sim_substeps} substeps per frame)")
         self.sim_time = 0.0
         self.viewer = viewer
+        self.args = args
         self.device = wp.get_device()
         self.use_graph = use_graph
         self.start_paused = start_paused
+
+        # Clip recording state
+        self.record_clips = False
+        if getattr(args, "record", None):
+            self.video_target_frames = int(np.floor(RECORD_END_TIME / self.viewer_dt)) + 1
 
         # External forces: applied in viewer vs automatically (force ramp up)
         self.viewer_forces = False
@@ -408,6 +417,20 @@ class Example:
 
     def reset(self):
         self.setup.reset()
+
+    def start_recording_clip(self):
+        """Start a new video clip for the currently active solver."""
+        if not hasattr(self.viewer, "start_clip"):
+            msg.warning("Recording is not enabled (pass --record sync|async at launch).")
+            return
+        solver_name = self.setup_names[self.current_setup_id]
+        self.viewer.start_clip(
+            output_path=os.path.join(self.args.video_base_dir, f"recording_{solver_name}.mp4"),
+            max_frames=self.video_target_frames,
+            video_folder=os.path.join(self.args.video_base_dir, f"frames_{solver_name}"),
+            fps=self.viewer_fps,
+            keep_frames=self.args.keep_frames,
+        )
 
     def init_setup(self, reset_viewer=True, first=False):
         msg.notif(f"Initializing {self.setup_names[self.current_setup_id]} solver")
@@ -492,14 +515,50 @@ class Example:
                     imgui.set_item_default_focus()
             imgui.end_combo()
 
+        # Checkbox to record a clip on the next Reset press
+        if getattr(self.args, "record", None) and hasattr(self.viewer, "start_clip"):
+            _, self.record_clips = imgui.checkbox("Record clip on Reset", self.record_clips)
+
         # Reset button (using the solver-internal reset, rather than fully reloading the example and GUI)
         if imgui.button("Reset##custom_reset"):
             self.reset()
+            if self.record_clips and hasattr(self.viewer, "start_clip"):
+                self.start_recording_clip()
 
 
 if __name__ == "__main__":
     parser = Example.create_parser()
+    parser.add_argument(
+        "--record",
+        type=str,
+        choices=["sync", "async"],
+        default="async",
+        help="Enable frame recording: 'sync' for synchronous, 'async' for non-blocking",
+    )
+    parser.add_argument(
+        "--video-output",
+        type=str,
+        default=None,
+        help="Output MP4 path (defaults to <examples_output>/puck_on_plane/recording.mp4)",
+    )
+    parser.add_argument(
+        "--keep-frames",
+        type=bool,
+        default=True,
+        help="Keep recorded PNG frames after the MP4 has been generated",
+    )
     viewer, args = newton.examples.init(parser)
+
+    recording_dir = os.path.join(get_examples_output_path(), "puck_on_plane")
+    args.video_base_dir = recording_dir
+    if args.record:
+        viewer = enable_recording(
+            viewer,
+            record_video=True,
+            video_folder=os.path.join(recording_dir, "frames"),
+            async_save=(args.record == "async"),
+        )
+
     example = Example(viewer, args, use_graph=True, start_paused=False)
 
     newton.examples.run(example, args)

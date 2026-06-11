@@ -212,13 +212,17 @@ def make_setup_solver_kamino(asset_file: str, dt: float, max_frames: int) -> Sol
     builder.add_world(robot_builder)
     builder.add_ground_plane()
     model = builder.finalize(skip_validation_joints=True)
+    # model.shape_material_restitution.zero_()  # Uncomment to disable restitution (solves flickering)
     solver_config = newton.solvers.SolverKamino.Config.from_model(model)
-    solver_config.padmm.primal_tolerance = 1e-4
-    solver_config.padmm.dual_tolerance = 1e-4
-    solver_config.padmm.compl_tolerance = 1e-4
+    solver_config.padmm.primal_tolerance = 1e-6
+    solver_config.padmm.dual_tolerance = 1e-6
+    solver_config.padmm.compl_tolerance = 1e-6
     solver_config.padmm.max_iterations = 200
     solver_config.padmm.rho_0 = 0.1
     solver_config.padmm.warmstart_mode = "none"
+    solver_config.constraints.gamma = 0.01
+    solver_config.constraints.delta = 1e-5
+    solver_config.collision_detector.pipeline = "unified"
     solver = newton.solvers.SolverKamino(model=model, config=solver_config)
     # metrics = SolutionMetricsNewton(
     #    dt=dt,

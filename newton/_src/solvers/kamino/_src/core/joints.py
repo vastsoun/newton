@@ -1172,6 +1172,18 @@ class JointDescriptor(Descriptor):
     that the joint has no internal damping and is thus frictionless.
     """
 
+    mu_j: ArrayLike | float | None = None
+    """
+    Friction coefficient of the joint used for implicit integration of joint dynamics.
+
+    If specified as a type conforming to the `ArrayLike`
+    union, then the number of elements must equal number of
+    DoFs of the joint, i.e. `num_dofs = dof_type.num_dofs`.
+
+    Defaults to `[0.0] * num_dofs` if not specified, indicating
+    that the joint has no friction and is thus frictionless.
+    """
+
     k_p_j: ArrayLike | float | None = None
     """
     Implicit PD-control proportional gain.
@@ -1366,7 +1378,7 @@ class JointDescriptor(Descriptor):
         """
         Returns whether the joint's dynamics is simulated implicitly.
         """
-        return np.any(self.a_j) or np.any(self.b_j)
+        return np.any(self.a_j) or np.any(self.b_j) or np.any(self.mu_j)
 
     @property
     def is_implicit_pd(self) -> bool:
@@ -1441,6 +1453,7 @@ class JointDescriptor(Descriptor):
         # Set default values for internal inertia, damping, and implicit PD gains if not provided
         self.a_j = self._check_dofs_array(self.a_j, self.num_dofs, 0.0)
         self.b_j = self._check_dofs_array(self.b_j, self.num_dofs, 0.0)
+        self.mu_j = self._check_dofs_array(self.mu_j, self.num_dofs, 0.0)
         self.k_p_j = self._check_dofs_array(self.k_p_j, self.num_dofs, 0.0)
         self.k_d_j = self._check_dofs_array(self.k_d_j, self.num_dofs, 0.0)
 
@@ -1516,6 +1529,7 @@ class JointDescriptor(Descriptor):
             "----------------------------------------------\n"
             f"a_j: {self.a_j},\n"
             f"b_j: {self.b_j},\n"
+            f"mu_j: {self.mu_j},\n"
             f"k_p_j: {self.k_p_j},\n"
             f"k_d_j: {self.k_d_j},\n"
             "----------------------------------------------\n"
@@ -1610,6 +1624,7 @@ class JointDescriptor(Descriptor):
                 - tau_j_max <= 0 for any DoF
                 - a_j < 0 for any DoF
                 - b_j < 0 for any DoF
+                - mu_j < 0 for any DoF
                 - k_p_j < 0 for any DoF
                 - k_d_j < 0 for any DoF
         """
@@ -1628,6 +1643,8 @@ class JointDescriptor(Descriptor):
                 raise ValueError(f"Invalid joint armature: a_j[{i}] < 0 (name={self.name}, uid={self.uid}).")
             if self.b_j[i] < 0:
                 raise ValueError(f"Invalid joint damping: b_j[{i}] < 0 (name={self.name}, uid={self.uid}).")
+            if self.mu_j[i] < 0:
+                raise ValueError(f"Invalid joint friction: mu_j[{i}] < 0 (name={self.name}, uid={self.uid}).")
             if self.k_p_j[i] < 0:
                 raise ValueError(f"Invalid joint proportional gain: k_p_j[{i}] < 0 (name={self.name}, uid={self.uid}).")
             if self.k_d_j[i] < 0:
@@ -1774,6 +1791,12 @@ class JointsModel:
     b_j: wp.array[wp.float32] | None = None
     """
     Internal damping of each joint (as flat array) used for implicit integration of joint dynamics.
+    Shape of ``(sum_of_num_joint_dofs,)``.
+    """
+
+    mu_j: wp.array[wp.float32] | None = None
+    """
+    Friction coefficient of each joint (as flat array).
     Shape of ``(sum_of_num_joint_dofs,)``.
     """
 
@@ -1946,6 +1969,7 @@ class JointsModel:
     Used to index into joint-specific blocks of:
     - array of effective joint-space inertia :attr:`JointsData.m_j`
     - array of joint-space damping :attr:`JointsData.b_j`
+    - array of joint-space friction :attr:`JointsData.mu_j`
     - array of joint-space P gains :attr:`JointsData.k_p_j`
     - array of joint-space D gains :attr:`JointsData.k_d_j`
 

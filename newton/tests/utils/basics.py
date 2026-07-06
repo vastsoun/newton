@@ -354,14 +354,14 @@ def build_box_pendulum(
             target_ke=100.0,
             target_kd=1.0,
             armature=1.0 if dynamic_joints else 0.0,
-            friction=0.1 if dynamic_joints else 0.0,
+            damping=0.1 if dynamic_joints else 0.0,
         )
     else:
         axis_cfg = ModelBuilder.JointDofConfig(
             axis=Axis.Y,
             actuator_mode=JointTargetMode.EFFORT,
             armature=1.0 if dynamic_joints else 0.0,
-            friction=0.1 if dynamic_joints else 0.0,
+            damping=0.1 if dynamic_joints else 0.0,
         )
 
     # Add a revolute joint between the world and the pendulum body
@@ -891,14 +891,14 @@ def build_boxes_hinged(
             target_ke=100.0,
             target_kd=1.0,
             armature=1.0 if dynamic_joints else 0.0,
-            friction=0.1 if dynamic_joints else 0.0,
+            damping=0.1 if dynamic_joints else 0.0,
         )
     else:
         hinge_axis = ModelBuilder.JointDofConfig(
             axis=Axis.Y,
             actuator_mode=JointTargetMode.EFFORT,
             armature=1.0 if dynamic_joints else 0.0,
-            friction=0.1 if dynamic_joints else 0.0,
+            damping=0.1 if dynamic_joints else 0.0,
         )
 
     # Add a revolute joint between the two bodies
@@ -1576,7 +1576,7 @@ def build_boxes_fourbar(
         limit_lower=qmin,
         limit_upper=qmax,
         armature=0.1 if dynamic_joints else 0.0,
-        friction=0.001 if dynamic_joints else 0.0,
+        damping=0.001 if dynamic_joints else 0.0,
     )
     effort_joint_other = ModelBuilder.JointDofConfig(
         axis=Axis.Y,
@@ -1588,7 +1588,7 @@ def build_boxes_fourbar(
         axis=Axis.Y,
         actuator_mode=JointTargetMode.POSITION_VELOCITY,
         armature=0.1 if dynamic_joints else 0.0,
-        friction=0.001 if dynamic_joints else 0.0,
+        damping=0.001 if dynamic_joints else 0.0,
         target_ke=1000.0,
         target_kd=20.0,
         limit_lower=qmin,

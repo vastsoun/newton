@@ -178,6 +178,7 @@ def joint_conversion_kernel(
     model_joint_qd_start: wp.array[wp.int32],
     model_joint_armature: wp.array[wp.float32],
     model_joint_damping: wp.array[wp.float32],
+    model_joint_friction: wp.array[wp.float32],
     model_joint_target_ke: wp.array[wp.float32],
     model_joint_target_kd: wp.array[wp.float32],
     joint_limit_lower: wp.array[wp.float32],
@@ -238,9 +239,10 @@ def joint_conversion_kernel(
     for dof_id in range(ndofs_j):
         a_j = model_joint_armature[dofs_start_j + dof_id]
         b_j = model_joint_damping[dofs_start_j + dof_id]
+        mu_j = model_joint_friction[dofs_start_j + dof_id]
         ke_j = model_joint_target_ke[dofs_start_j + dof_id]
         kd_j = model_joint_target_kd[dofs_start_j + dof_id]
-        is_dynamic_j = is_dynamic_j or (a_j > 0.0) or (b_j > 0.0) or (ke_j > 0.0) or (kd_j > 0.0)
+        is_dynamic_j = is_dynamic_j or (a_j > 0.0) or (b_j > 0.0) or (mu_j > 0.0) or (ke_j > 0.0) or (kd_j > 0.0)
 
     # Set joint dimensions
     joint_num_kinematic_cts[joint_id] = ncts_j
@@ -874,6 +876,7 @@ def convert_joints(
             model.joint_qd_start,
             model.joint_armature,
             model.joint_damping,
+            model.joint_friction,
             model.joint_target_ke,
             model.joint_target_kd,
             joint_limit_lower,
@@ -1233,6 +1236,7 @@ def convert_joints(
         tau_j_max=joint_effort_limit,
         a_j=model.joint_armature,
         b_j=model.joint_damping,
+        mu_j=model.joint_friction,
         k_p_j=model.joint_target_ke,
         k_d_j=model.joint_target_kd,
         q_j_0=model.joint_q,

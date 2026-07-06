@@ -1011,6 +1011,7 @@ class ModelBuilderKamino:
         joints_tau_j_max = []
         joints_a_j = []
         joints_b_j = []
+        joints_mu_j = []
         joints_k_p_j = []
         joints_k_d_j = []
         joints_ncoords_j = []
@@ -1155,6 +1156,7 @@ class ModelBuilderKamino:
                 joints_tau_j_max.extend(joint.tau_j_max)
                 joints_a_j.extend(joint.a_j)
                 joints_b_j.extend(joint.b_j)
+                joints_mu_j.extend(joint.mu_j)
                 joints_k_p_j.extend(joint.k_p_j)
                 joints_k_d_j.extend(joint.k_d_j)
                 joints_ncoords_j.append(joint.num_coords)
@@ -1403,6 +1405,7 @@ class ModelBuilderKamino:
                 tau_j_max=wp.array(joints_tau_j_max, dtype=wp.float32, requires_grad=requires_grad),
                 a_j=wp.array(joints_a_j, dtype=wp.float32, requires_grad=requires_grad),
                 b_j=wp.array(joints_b_j, dtype=wp.float32, requires_grad=requires_grad),
+                mu_j=wp.array(joints_mu_j, dtype=wp.float32, requires_grad=requires_grad),
                 k_p_j=wp.array(joints_k_p_j, dtype=wp.float32, requires_grad=requires_grad),
                 k_d_j=wp.array(joints_k_d_j, dtype=wp.float32, requires_grad=requires_grad),
                 q_j_0=wp.array(joints_q_j_0, dtype=wp.float32, requires_grad=requires_grad),

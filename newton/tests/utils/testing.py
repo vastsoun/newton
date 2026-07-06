@@ -556,11 +556,27 @@ def build_unary_prismatic_joint_test(
     # Define test system
     bid_F = _follower_body(_builder, "follower", (0.0, 0.0, z_offset))
 
+    # j_prismatic = _builder.add_joint_prismatic(
+    #     label="world_to_follower_prismatic",
+    #     parent=-1,
+    #     child=bid_F,
+    #     axis=Axis.Z,
+    #     parent_xform=wp.transformf(0.0, 0.0, z_offset, 0.0, 0.0, 0.0, 1.0),
+    #     child_xform=wp.transform_identity(dtype=wp.float32),
+    #     actuator_mode=_actuator_mode(implicit_pd),
+    #     limit_lower=-0.5 if limits else None,
+    #     limit_upper=0.5 if limits else None,
+    #     armature=0.1 if dynamic else None,
+    #     friction=0.01 if dynamic else None,
+    #     target_ke=10.0 if implicit_pd else None,
+    #     target_kd=0.01 if implicit_pd else None,
+    #     effort_limit=100.0,
+    # )
     j_prismatic = _builder.add_joint_prismatic(
         label="world_to_follower_prismatic",
         parent=-1,
         child=bid_F,
-        axis=Axis.Z,
+        axis=Axis.X,
         parent_xform=wp.transformf(0.0, 0.0, z_offset, 0.0, 0.0, 0.0, 1.0),
         child_xform=wp.transform_identity(dtype=wp.float32),
         actuator_mode=_actuator_mode(implicit_pd),
@@ -575,12 +591,20 @@ def build_unary_prismatic_joint_test(
     _builder.add_articulation([j_prismatic])
 
     # Add body collision geometries
+    # _builder.add_shape_box(
+    #     label="base/box",
+    #     body=-1,
+    #     hx=0.025,
+    #     hy=0.025,
+    #     hz=0.5,
+    #     cfg=_shape_cfg_basic(collision_group=0),
+    # )
     _builder.add_shape_box(
         label="base/box",
         body=-1,
-        hx=0.025,
+        hx=0.5,
         hy=0.025,
-        hz=0.5,
+        hz=0.025,
         cfg=_shape_cfg_basic(collision_group=0),
     )
     _builder.add_shape_box(
@@ -1456,19 +1480,19 @@ def build_all_joints_test(
     builder_kwargs = {"z_offset": z_offset, "ground": ground}
 
     # Add a new world for each joint type
-    _builder.add_world(build_free_joint_test(**builder_kwargs))
-    _builder.add_world(build_unary_revolute_joint_test(**builder_kwargs))
-    _builder.add_world(build_binary_revolute_joint_test(**builder_kwargs))
+    # _builder.add_world(build_free_joint_test(**builder_kwargs))
+    # _builder.add_world(build_unary_revolute_joint_test(**builder_kwargs))
+    # _builder.add_world(build_binary_revolute_joint_test(**builder_kwargs))
     _builder.add_world(build_unary_prismatic_joint_test(**builder_kwargs))
-    _builder.add_world(build_binary_prismatic_joint_test(**builder_kwargs))
-    _builder.add_world(build_unary_cylindrical_joint_test(**builder_kwargs))
-    _builder.add_world(build_binary_cylindrical_joint_test(**builder_kwargs))
-    _builder.add_world(build_unary_universal_joint_test(**builder_kwargs))
-    _builder.add_world(build_binary_universal_joint_test(**builder_kwargs))
-    _builder.add_world(build_unary_spherical_joint_test(**builder_kwargs))
-    _builder.add_world(build_binary_spherical_joint_test(**builder_kwargs))
-    _builder.add_world(build_unary_cartesian_joint_test(**builder_kwargs))
-    _builder.add_world(build_binary_cartesian_joint_test(**builder_kwargs))
+    # _builder.add_world(build_binary_prismatic_joint_test(**builder_kwargs))
+    # _builder.add_world(build_unary_cylindrical_joint_test(**builder_kwargs))
+    # _builder.add_world(build_binary_cylindrical_joint_test(**builder_kwargs))
+    # _builder.add_world(build_unary_universal_joint_test(**builder_kwargs))
+    # _builder.add_world(build_binary_universal_joint_test(**builder_kwargs))
+    # _builder.add_world(build_unary_spherical_joint_test(**builder_kwargs))
+    # _builder.add_world(build_binary_spherical_joint_test(**builder_kwargs))
+    # _builder.add_world(build_unary_cartesian_joint_test(**builder_kwargs))
+    # _builder.add_world(build_binary_cartesian_joint_test(**builder_kwargs))
 
     # Return the populated builder
     return _builder

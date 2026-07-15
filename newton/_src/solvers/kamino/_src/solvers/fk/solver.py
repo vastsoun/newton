@@ -169,7 +169,9 @@ class ForwardKinematicsSolver:
         self._preconditioner_type = ForwardKinematicsSolver.PreconditionerType.from_string(self.config.preconditioner)
 
         # Retrieve / compute dimensions - Bodies
-        num_bodies = self.model.info.num_bodies.numpy()  # Number of bodies per world
+        # `model.info.num_*` per-world arrays are of length (num_worlds + 1)
+        # where the last entry holds the grand total; slice off that entry.
+        num_bodies = self.model.info.num_bodies.numpy()[: self.num_worlds]  # Number of bodies per world
         first_body_id = np.concatenate(([0], num_bodies.cumsum()))  # Index of first body per world
         self.num_bodies_max = self.model.size.max_of_num_bodies  # Max number of bodies across worlds
 
@@ -179,7 +181,7 @@ class ForwardKinematicsSolver:
         self.num_states_max = 7 * self.num_bodies_max  # Max state dimension across worlds
 
         # Retrieve / compute dimensions - Joints (main model)
-        num_joints_prev = self.model.info.num_joints.numpy().copy()  # Number of joints per world
+        num_joints_prev = self.model.info.num_joints.numpy()[: self.num_worlds].copy()  # Number of joints per world
         first_joint_id_prev = np.concatenate(([0], num_joints_prev.cumsum()))  # Index of first joint per world
 
         # Retrieve / compute dimensions - Actuated coordinates/dofs (main model)
@@ -2165,42 +2167,46 @@ class ForwardKinematicsSolver:
 
 def compute_fk_equivalence_classes(model: ModelKamino) -> list[list[int]]:
     """Groups world that are equivalent for FK discrete information"""
-    sig_num_bodies = DiscreteSignature(num_worlds=model.size.num_worlds, data=model.info.num_bodies)
+    num_worlds = model.size.num_worlds
+    # `model.info.num_*` per-world arrays are of length (num_worlds + 1); the
+    # `DiscreteSignature` `world_size` parameter must have exactly `num_worlds`
+    # entries, so slice off the trailing grand-total entry.
+    sig_num_bodies = DiscreteSignature(num_worlds=num_worlds, data=model.info.num_bodies[:num_worlds])
     sig_joint_act_type = DiscreteSignature(
-        num_worlds=model.size.num_worlds,
+        num_worlds=num_worlds,
         data=model.joints.act_type,
         world_offset=model.info.joints_offset,
-        world_size=model.info.num_joints,
+        world_size=model.info.num_joints[:num_worlds],
     )
     sig_joint_dof_type = DiscreteSignature(
-        num_worlds=model.size.num_worlds,
+        num_worlds=num_worlds,
         data=model.joints.dof_type,
         world_offset=model.info.joints_offset,
-        world_size=model.info.num_joints,
+        world_size=model.info.num_joints[:num_worlds],
     )
     sig_joint_bid_B = DiscreteSignature(
-        num_worlds=model.size.num_worlds,
+        num_worlds=num_worlds,
         data=model.joints.bid_B,
         world_offset=model.info.joints_offset,
-        world_size=model.info.num_joints,
+        world_size=model.info.num_joints[:num_worlds],
         world_delta=model.info.bodies_offset,
         ignore_negative=True,
     )
     sig_joint_bid_F = DiscreteSignature(
-        num_worlds=model.size.num_worlds,
+        num_worlds=num_worlds,
         data=model.joints.bid_F,
         world_offset=model.info.joints_offset,
-        world_size=model.info.num_joints,
+        world_size=model.info.num_joints[:num_worlds],
         world_delta=model.info.bodies_offset,
     )
     sig_base_body = DiscreteSignature(
-        num_worlds=model.size.num_worlds,
+        num_worlds=num_worlds,
         data=model.info.base_body_index,
         world_delta=model.info.bodies_offset,
         ignore_negative=True,
     )
     sig_base_joint = DiscreteSignature(
-        num_worlds=model.size.num_worlds,
+        num_worlds=num_worlds,
         data=model.info.base_joint_index,
         world_delta=model.info.joints_offset,
         ignore_negative=True,

@@ -126,6 +126,15 @@ def rigid_bodies_indexing_kernel(
     world_shape_offset[world_id] = model_shape_world_start[world_id]
     world_body_dof_offset[world_id] = 6 * model_body_world_start[world_id]
 
+    # If this is the first world, set the total number of bodies/shapes/body DoFs
+    if world_id == 0:
+        num_bodies[-1] = model_body_world_start[-1]
+        num_shapes[-1] = model_shape_world_start[-1]
+        num_body_dofs[-1] = 6 * model_body_world_start[-1]
+        world_body_offset[-1] = model_body_world_start[-1]
+        world_shape_offset[-1] = model_shape_world_start[-1]
+        world_body_dof_offset[-1] = 6 * model_body_world_start[-1]
+
 
 @wp.kernel
 def mass_prop_accumulation_kernel(
@@ -721,12 +730,12 @@ def convert_rigid_bodies(
     # Compute the offsets and number of entities per world
     with wp.ScopedDevice(model.device):
         body_bid = wp.zeros((model.body_count,), dtype=wp.int32)
-        num_bodies = wp.zeros((model.world_count,), dtype=wp.int32)
-        num_shapes = wp.zeros((model.world_count,), dtype=wp.int32)
-        num_body_dofs = wp.zeros((model.world_count,), dtype=wp.int32)
+        num_bodies = wp.zeros((model.world_count + 1,), dtype=wp.int32)
+        num_shapes = wp.zeros((model.world_count + 1,), dtype=wp.int32)
+        num_body_dofs = wp.zeros((model.world_count + 1,), dtype=wp.int32)
         world_body_offset = wp.zeros((model.world_count + 1,), dtype=wp.int32)
-        world_shape_offset = wp.zeros((model.world_count,), dtype=wp.int32)
-        world_body_dof_offset = wp.zeros((model.world_count,), dtype=wp.int32)
+        world_shape_offset = wp.zeros((model.world_count + 1,), dtype=wp.int32)
+        world_body_dof_offset = wp.zeros((model.world_count + 1,), dtype=wp.int32)
     wp.launch(
         kernel=rigid_bodies_indexing_kernel,
         dim=model.world_count,
@@ -776,11 +785,11 @@ def convert_rigid_bodies(
 
     # Fill in size data for bodies
     model_size.sum_of_num_bodies = model.body_count
-    model_size.max_of_num_bodies = int(num_bodies.numpy().max())
+    model_size.max_of_num_bodies = int(num_bodies.numpy()[:-1].max())
     model_size.sum_of_num_geoms = model.shape_count
-    model_size.max_of_num_geoms = int(num_shapes.numpy().max())
+    model_size.max_of_num_geoms = int(num_shapes.numpy()[:-1].max())
     model_size.sum_of_num_body_dofs = 6 * model.body_count
-    model_size.max_of_num_body_dofs = int(num_body_dofs.numpy().max())
+    model_size.max_of_num_body_dofs = int(num_body_dofs.numpy()[:-1].max())
 
     # Write the N+1 entry (grand total) into the bodies offset array.
     wp.launch(
@@ -837,9 +846,13 @@ def convert_joints(
     Returns:
         Fully converted joints model in Kamino's format.
     """
-    # Compute the number of joints per world
+    # Compute the number of joints per world (last entry stores the total)
     joint_world_start_np = model.joint_world_start.numpy()
-    num_joints_np = joint_world_start_np[1 : model.world_count + 1] - joint_world_start_np[: model.world_count]
+    num_joints_np = np.zeros((model.world_count + 1,), dtype=np.int32)
+    num_joints_np[0 : model.world_count] = (
+        joint_world_start_np[1 : model.world_count + 1] - joint_world_start_np[: model.world_count]
+    )
+    num_joints_np[-1] = model.joint_count
 
     # Create joint property arrays
     with wp.ScopedDevice(model.device):
@@ -921,18 +934,18 @@ def convert_joints(
 
     # Compute sizes and indices for all joint properties
     with wp.ScopedDevice(model.device):
-        num_passive_joints = wp.zeros(shape=(model.world_count,), dtype=wp.int32)
-        num_actuated_joints = wp.zeros(shape=(model.world_count,), dtype=wp.int32)
-        num_dynamic_joints = wp.zeros(shape=(model.world_count,), dtype=wp.int32)
-        num_joint_coords = wp.zeros(shape=(model.world_count,), dtype=wp.int32)
-        num_joint_dofs = wp.zeros(shape=(model.world_count,), dtype=wp.int32)
-        num_joint_passive_coords = wp.zeros(shape=(model.world_count,), dtype=wp.int32)
-        num_joint_passive_dofs = wp.zeros(shape=(model.world_count,), dtype=wp.int32)
-        num_joint_actuated_coords = wp.zeros(shape=(model.world_count,), dtype=wp.int32)
-        num_joint_actuated_dofs = wp.zeros(shape=(model.world_count,), dtype=wp.int32)
-        num_joint_cts = wp.zeros(shape=(model.world_count,), dtype=wp.int32)
-        num_joint_dynamic_cts = wp.zeros(shape=(model.world_count,), dtype=wp.int32)
-        num_joint_kinematic_cts = wp.zeros(shape=(model.world_count,), dtype=wp.int32)
+        num_passive_joints = wp.zeros(shape=(model.world_count + 1,), dtype=wp.int32)
+        num_actuated_joints = wp.zeros(shape=(model.world_count + 1,), dtype=wp.int32)
+        num_dynamic_joints = wp.zeros(shape=(model.world_count + 1,), dtype=wp.int32)
+        num_joint_coords = wp.zeros(shape=(model.world_count + 1,), dtype=wp.int32)
+        num_joint_dofs = wp.zeros(shape=(model.world_count + 1,), dtype=wp.int32)
+        num_joint_passive_coords = wp.zeros(shape=(model.world_count + 1,), dtype=wp.int32)
+        num_joint_passive_dofs = wp.zeros(shape=(model.world_count + 1,), dtype=wp.int32)
+        num_joint_actuated_coords = wp.zeros(shape=(model.world_count + 1,), dtype=wp.int32)
+        num_joint_actuated_dofs = wp.zeros(shape=(model.world_count + 1,), dtype=wp.int32)
+        num_joint_cts = wp.zeros(shape=(model.world_count + 1,), dtype=wp.int32)
+        num_joint_dynamic_cts = wp.zeros(shape=(model.world_count + 1,), dtype=wp.int32)
+        num_joint_kinematic_cts = wp.zeros(shape=(model.world_count + 1,), dtype=wp.int32)
         joint_coord_start = wp.zeros(shape=(model.joint_count + 1,), dtype=wp.int32)
         joint_dofs_start = wp.zeros(shape=(model.joint_count + 1,), dtype=wp.int32)
         joint_actuated_coord_start = wp.zeros(shape=(model.joint_count + 1,), dtype=wp.int32)
@@ -980,7 +993,10 @@ def convert_joints(
         device=model.device,
     )
 
-    # Get on-device copies of the per-world sizes
+    # Get on-device copies of the per-world sizes.
+    # `joint_indexing_kernel` writes only indices [0..world_count-1] and
+    # leaves index [-1] at zero, so we compute the grand totals here and
+    # write them back to the device below.
     num_passive_joints_np = num_passive_joints.numpy()
     num_actuated_joints_np = num_actuated_joints.numpy()
     num_dynamic_joints_np = num_dynamic_joints.numpy()
@@ -994,40 +1010,45 @@ def convert_joints(
     num_joint_dynamic_cts_np = num_joint_dynamic_cts.numpy()
     num_joint_kinematic_cts_np = num_joint_kinematic_cts.numpy()
 
-    # Compute offsets per world
-    world_joint_offset_np = np.zeros((model.world_count,), dtype=int)
-    world_joint_coord_offset_np = np.zeros((model.world_count,), dtype=int)
-    world_joint_dof_offset_np = np.zeros((model.world_count,), dtype=int)
-    world_actuated_joint_coord_offset_np = np.zeros((model.world_count,), dtype=int)
-    world_actuated_joint_dofs_offset_np = np.zeros((model.world_count,), dtype=int)
-    world_passive_joint_coord_offset_np = np.zeros((model.world_count,), dtype=int)
-    world_passive_joint_dofs_offset_np = np.zeros((model.world_count,), dtype=int)
-    world_joint_cts_offset_np = np.zeros((model.world_count,), dtype=int)
-    world_joint_dynamic_cts_offset_np = np.zeros((model.world_count,), dtype=int)
-    world_joint_kinematic_cts_offset_np = np.zeros((model.world_count,), dtype=int)
-    for w in range(1, model.world_count):
-        world_joint_offset_np[w] = world_joint_offset_np[w - 1] + num_joints_np[w - 1]
-        world_joint_coord_offset_np[w] = world_joint_coord_offset_np[w - 1] + num_joint_coords_np[w - 1]
-        world_joint_dof_offset_np[w] = world_joint_dof_offset_np[w - 1] + num_joint_dofs_np[w - 1]
-        world_actuated_joint_coord_offset_np[w] = (
-            world_actuated_joint_coord_offset_np[w - 1] + num_joint_actuated_coords_np[w - 1]
-        )
-        world_actuated_joint_dofs_offset_np[w] = (
-            world_actuated_joint_dofs_offset_np[w - 1] + num_joint_actuated_dofs_np[w - 1]
-        )
-        world_passive_joint_coord_offset_np[w] = (
-            world_passive_joint_coord_offset_np[w - 1] + num_joint_passive_coords_np[w - 1]
-        )
-        world_passive_joint_dofs_offset_np[w] = (
-            world_passive_joint_dofs_offset_np[w - 1] + num_joint_passive_dofs_np[w - 1]
-        )
-        world_joint_cts_offset_np[w] = world_joint_cts_offset_np[w - 1] + num_joint_cts_np[w - 1]
-        world_joint_dynamic_cts_offset_np[w] = (
-            world_joint_dynamic_cts_offset_np[w - 1] + num_joint_dynamic_cts_np[w - 1]
-        )
-        world_joint_kinematic_cts_offset_np[w] = (
-            world_joint_kinematic_cts_offset_np[w - 1] + num_joint_kinematic_cts_np[w - 1]
-        )
+    # Populate the grand-total entry [-1] of each per-world count array and
+    # push it back to the device so downstream consumers can read the total
+    # from `arr[-1]`.
+    for arr, arr_np in (
+        (num_passive_joints, num_passive_joints_np),
+        (num_actuated_joints, num_actuated_joints_np),
+        (num_dynamic_joints, num_dynamic_joints_np),
+        (num_joint_coords, num_joint_coords_np),
+        (num_joint_dofs, num_joint_dofs_np),
+        (num_joint_passive_coords, num_joint_passive_coords_np),
+        (num_joint_passive_dofs, num_joint_passive_dofs_np),
+        (num_joint_actuated_coords, num_joint_actuated_coords_np),
+        (num_joint_actuated_dofs, num_joint_actuated_dofs_np),
+        (num_joint_cts, num_joint_cts_np),
+        (num_joint_dynamic_cts, num_joint_dynamic_cts_np),
+        (num_joint_kinematic_cts, num_joint_kinematic_cts_np),
+    ):
+        arr_np[-1] = int(arr_np[:-1].sum())
+        arr.assign(arr_np)
+
+    # Compute per-world offsets. Each offset array has length (world_count + 1)
+    # where the last entry stores the grand total (i.e. the exclusive prefix
+    # sum evaluated past the last world).
+    def _cumulative_offsets(counts_np: np.ndarray) -> np.ndarray:
+        """Return exclusive prefix sums of the per-world counts (length world_count + 1)."""
+        offsets = np.zeros((model.world_count + 1,), dtype=int)
+        offsets[1:] = np.cumsum(counts_np[: model.world_count])
+        return offsets
+
+    world_joint_offset_np = _cumulative_offsets(num_joints_np)
+    world_joint_coord_offset_np = _cumulative_offsets(num_joint_coords_np)
+    world_joint_dof_offset_np = _cumulative_offsets(num_joint_dofs_np)
+    world_actuated_joint_coord_offset_np = _cumulative_offsets(num_joint_actuated_coords_np)
+    world_actuated_joint_dofs_offset_np = _cumulative_offsets(num_joint_actuated_dofs_np)
+    world_passive_joint_coord_offset_np = _cumulative_offsets(num_joint_passive_coords_np)
+    world_passive_joint_dofs_offset_np = _cumulative_offsets(num_joint_passive_dofs_np)
+    world_joint_cts_offset_np = _cumulative_offsets(num_joint_cts_np)
+    world_joint_dynamic_cts_offset_np = _cumulative_offsets(num_joint_dynamic_cts_np)
+    world_joint_kinematic_cts_offset_np = _cumulative_offsets(num_joint_kinematic_cts_np)
 
     # Determine the base body and joint indices per world
     base_body_idx_np = np.full((model.world_count,), -1, dtype=int)
@@ -1072,35 +1093,38 @@ def convert_joints(
             if body_world_start_np[wid] == body_world_start_np[wid + 1]:
                 raise RuntimeError(f"Zero bodies in world {wid}, cannot set base body.")
 
-    # Update size object
-    model_size.sum_of_num_joints = int(num_joints_np.sum())
-    model_size.max_of_num_joints = int(num_joints_np.max())
-    model_size.sum_of_num_passive_joints = int(num_passive_joints_np.sum())
-    model_size.max_of_num_passive_joints = int(num_passive_joints_np.max())
-    model_size.sum_of_num_actuated_joints = int(num_actuated_joints_np.sum())
-    model_size.max_of_num_actuated_joints = int(num_actuated_joints_np.max())
-    model_size.sum_of_num_dynamic_joints = int(num_dynamic_joints_np.sum())
-    model_size.max_of_num_dynamic_joints = int(num_dynamic_joints_np.max())
-    model_size.sum_of_num_joint_coords = int(num_joint_coords_np.sum())
-    model_size.max_of_num_joint_coords = int(num_joint_coords_np.max())
-    model_size.sum_of_num_joint_dofs = int(num_joint_dofs_np.sum())
-    model_size.max_of_num_joint_dofs = int(num_joint_dofs_np.max())
-    model_size.sum_of_num_passive_joint_coords = int(num_joint_passive_coords_np.sum())
-    model_size.max_of_num_passive_joint_coords = int(num_joint_passive_coords_np.max())
-    model_size.sum_of_num_passive_joint_dofs = int(num_joint_passive_dofs_np.sum())
-    model_size.max_of_num_passive_joint_dofs = int(num_joint_passive_dofs_np.max())
-    model_size.sum_of_num_actuated_joint_coords = int(num_joint_actuated_coords_np.sum())
-    model_size.max_of_num_actuated_joint_coords = int(num_joint_actuated_coords_np.max())
-    model_size.sum_of_num_actuated_joint_dofs = int(num_joint_actuated_dofs_np.sum())
-    model_size.max_of_num_actuated_joint_dofs = int(num_joint_actuated_dofs_np.max())
-    model_size.sum_of_num_joint_cts = int(num_joint_cts_np.sum())
-    model_size.max_of_num_joint_cts = int(num_joint_cts_np.max())
-    model_size.sum_of_num_dynamic_joint_cts = int(num_joint_dynamic_cts_np.sum())
-    model_size.max_of_num_dynamic_joint_cts = int(num_joint_dynamic_cts_np.max())
-    model_size.sum_of_num_kinematic_joint_cts = int(num_joint_kinematic_cts_np.sum())
-    model_size.max_of_num_kinematic_joint_cts = int(num_joint_kinematic_cts_np.max())
-    model_size.sum_of_max_total_cts = int(num_joint_cts_np.sum())
-    model_size.max_of_max_total_cts = int(num_joint_cts_np.max())
+    # Update size object.
+    # Per-world count arrays are of length (world_count + 1) where [-1] holds
+    # the grand total, so slice [:-1] for per-world sums/maxes and use [-1]
+    # for the total.
+    model_size.sum_of_num_joints = int(num_joints_np[-1])
+    model_size.max_of_num_joints = int(num_joints_np[:-1].max())
+    model_size.sum_of_num_passive_joints = int(num_passive_joints_np[-1])
+    model_size.max_of_num_passive_joints = int(num_passive_joints_np[:-1].max())
+    model_size.sum_of_num_actuated_joints = int(num_actuated_joints_np[-1])
+    model_size.max_of_num_actuated_joints = int(num_actuated_joints_np[:-1].max())
+    model_size.sum_of_num_dynamic_joints = int(num_dynamic_joints_np[-1])
+    model_size.max_of_num_dynamic_joints = int(num_dynamic_joints_np[:-1].max())
+    model_size.sum_of_num_joint_coords = int(num_joint_coords_np[-1])
+    model_size.max_of_num_joint_coords = int(num_joint_coords_np[:-1].max())
+    model_size.sum_of_num_joint_dofs = int(num_joint_dofs_np[-1])
+    model_size.max_of_num_joint_dofs = int(num_joint_dofs_np[:-1].max())
+    model_size.sum_of_num_passive_joint_coords = int(num_joint_passive_coords_np[-1])
+    model_size.max_of_num_passive_joint_coords = int(num_joint_passive_coords_np[:-1].max())
+    model_size.sum_of_num_passive_joint_dofs = int(num_joint_passive_dofs_np[-1])
+    model_size.max_of_num_passive_joint_dofs = int(num_joint_passive_dofs_np[:-1].max())
+    model_size.sum_of_num_actuated_joint_coords = int(num_joint_actuated_coords_np[-1])
+    model_size.max_of_num_actuated_joint_coords = int(num_joint_actuated_coords_np[:-1].max())
+    model_size.sum_of_num_actuated_joint_dofs = int(num_joint_actuated_dofs_np[-1])
+    model_size.max_of_num_actuated_joint_dofs = int(num_joint_actuated_dofs_np[:-1].max())
+    model_size.sum_of_num_joint_cts = int(num_joint_cts_np[-1])
+    model_size.max_of_num_joint_cts = int(num_joint_cts_np[:-1].max())
+    model_size.sum_of_num_dynamic_joint_cts = int(num_joint_dynamic_cts_np[-1])
+    model_size.max_of_num_dynamic_joint_cts = int(num_joint_dynamic_cts_np[:-1].max())
+    model_size.sum_of_num_kinematic_joint_cts = int(num_joint_kinematic_cts_np[-1])
+    model_size.max_of_num_kinematic_joint_cts = int(num_joint_kinematic_cts_np[:-1].max())
+    model_size.sum_of_max_total_cts = int(num_joint_cts_np[-1])
+    model_size.max_of_max_total_cts = int(num_joint_cts_np[:-1].max())
 
     # Update per-world heterogeneous model info
     model_info.num_passive_joints = num_passive_joints

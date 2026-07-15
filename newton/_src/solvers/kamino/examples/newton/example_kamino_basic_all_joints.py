@@ -35,7 +35,8 @@ class Example:
         builder.default_shape_cfg.gap = 0.0
 
         # Build one world per supported joint type on the shared builder.
-        testing.build_all_joints_test(builder=builder)
+        # testing.build_all_joints_test(builder=builder)
+        testing.build_unary_prismatic_joint_test(builder=builder, ground=False, dynamic=True, limits=False)
 
         # Create the model from the builder
         self.model = builder.finalize()
@@ -48,6 +49,7 @@ class Example:
         solver_config.padmm.compl_tolerance = 1e-6
         solver_config.padmm.max_iterations = 200
         solver_config.padmm.rho_0 = 0.1
+        solver_config.padmm.use_acceleration = False
 
         # Create the Kamino solver for the given model
         self.solver = newton.solvers.SolverKamino(model=self.model, config=solver_config)

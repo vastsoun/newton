@@ -918,10 +918,12 @@ class DelassusOperator:
         self._operator.mat = wp.zeros(shape=(self._model_maxsize,), dtype=wp.float32, device=self._device)
         if (model.info is not None) and (data.info is not None):
             mat_offsets = [0] + [sum(self._world_maxsize[:i]) for i in range(1, self._num_worlds + 1)]
+            # `ModelKaminoInfo` per-world arrays are of length (num_worlds + 1),
+            # but `DenseSquareMultiLinearInfo` expects arrays of size num_worlds.
             self._operator.info.assign(
-                maxdim=model.info.max_total_cts,
-                dim=data.info.num_total_cts,
-                vio=model.info.total_cts_offset,
+                maxdim=model.info.max_total_cts[: self._num_worlds],
+                dim=data.info.num_total_cts[: self._num_worlds],
+                vio=model.info.total_cts_offset[: self._num_worlds],
                 mio=to_warp_int32_array(mat_offsets[: self._num_worlds], device=self._device),
                 dtype=wp.float32,
                 device=self._device,
@@ -1329,17 +1331,19 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators[wp.float3
 
         self._info = DenseSquareMultiLinearInfo[wp.float32, wp.int32]()
         if model.info is not None and data.info is not None:
+            # `ModelKaminoInfo` per-world arrays are of length (num_worlds + 1),
+            # but `DenseSquareMultiLinearInfo` expects arrays of size num_worlds.
             self._info.assign(
-                maxdim=model.info.max_total_cts,
-                dim=data.info.num_total_cts,
-                vio=model.info.total_cts_offset,
+                maxdim=model.info.max_total_cts[:num_worlds],
+                dim=data.info.num_total_cts[:num_worlds],
+                vio=model.info.total_cts_offset[:num_worlds],
                 mio=wp.empty((self.num_matrices,), dtype=wp.int32, device=self._device),
                 dtype=wp.float32,
                 device=self._device,
             )
         else:
             self._info.finalize(
-                dimensions=model.info.max_total_cts.numpy(),
+                dimensions=model.info.max_total_cts.numpy()[:num_worlds],
                 dtype=wp.float32,
                 itype=wp.int32,
                 device=self._device,
@@ -1371,7 +1375,7 @@ class BlockSparseMatrixFreeDelassusOperator(BlockSparseLinearOperators[wp.float3
 
         # Check whether any of the maximum row dimensions of the Jacobians is smaller than six.
         # If so, we avoid building the column-major Jacobian due to potential memory access issues.
-        min_of_max_rows = np.min(self._model.info.max_total_cts.numpy())
+        min_of_max_rows = np.min(self._model.info.max_total_cts.numpy()[:num_worlds])
 
         if min_of_max_rows >= 6:
             self._col_major_jacobian = ColMajorSparseConstraintJacobians(

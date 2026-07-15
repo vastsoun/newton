@@ -72,12 +72,14 @@ def get_max_constraints_per_world(
         if not isinstance(contacts, ContactsKamino):
             raise TypeError(f"`contacts` is required to be of type `ContactsKamino` but got {type(contacts)}.")
 
-    # Compute the maximum number of constraints per world
+    # Compute the maximum number of constraints per world.
+    # `model.info.num_joint_cts` has length (num_worlds + 1); iteration up to
+    # `nw` skips the trailing grand-total entry.
     nw = model.info.num_worlds
     njc = model.info.num_joint_cts.numpy()
     maxnl = limits.world_max_limits_host if limits and limits.model_max_limits_host > 0 else [0] * nw
     maxnc = contacts.world_max_contacts_host if contacts and contacts.model_max_contacts_host > 0 else [0] * nw
-    maxncts = [njc[i] + maxnl[i] + 3 * maxnc[i] for i in range(nw)]
+    maxncts = [int(njc[i]) + maxnl[i] + 3 * maxnc[i] for i in range(nw)]
     return maxncts
 
 
@@ -179,8 +181,12 @@ def make_unilateral_constraints_info(
     else:
         _make_empty_model_contacts_info()
 
-    # Compute the maximum number of unilateral entities (limits and contacts) per world
-    world_max_unilaterals: list[int] = [nl + nc for nl, nc in zip(world_maxnl, world_maxnc, strict=False)]
+    # Compute the maximum number of unilateral entities (limits and contacts) per world.
+    # `model.info.num_joint_dynamic_cts` has length (num_worlds + 1); slice off the trailing total.
+    world_nf = model.info.num_joint_dynamic_cts.numpy()[:num_worlds].astype(int).tolist()
+    world_max_unilaterals: list[int] = [
+        nf + nl + nc for nf, nl, nc in zip(world_nf, world_maxnl, world_maxnc, strict=False)
+    ]
     model.size.sum_of_max_unilaterals = sum(world_max_unilaterals)
     model.size.max_of_max_unilaterals = max(world_max_unilaterals)
 
@@ -209,7 +215,9 @@ def make_unilateral_constraints_info(
     # NOTE: unilaterals is simply the concatenation of limits and contacts
     world_lio = [0] + [sum(world_maxnl[:i]) for i in range(1, num_worlds + 1)]
     world_cio = [0] + [sum(world_maxnc[:i]) for i in range(1, num_worlds + 1)]
-    world_uio = [0] + [sum(world_maxnl[:i]) + sum(world_maxnc[:i]) for i in range(1, num_worlds + 1)]
+    world_uio = [0] + [
+        sum(world_nf[:i]) + sum(world_maxnl[:i]) + sum(world_maxnc[:i]) for i in range(1, num_worlds + 1)
+    ]
 
     # Compute the per-world absolute total constraint block offsets
     # NOTE: These are the per-world start indices of arrays like the constraint multipliers `lambda`.
@@ -258,16 +266,16 @@ def make_unilateral_constraints_info(
 
         # Allocate the per-world active constraints count arrays
         # data.info.num_total_cts = wp.clone(model.info.num_joint_cts)
-        data.info.num_limit_cts = wp.zeros(shape=(num_worlds,), dtype=wp.int32)
-        data.info.num_contact_cts = wp.zeros(shape=(num_worlds,), dtype=wp.int32)
+        data.info.num_limit_cts = wp.zeros(shape=(num_worlds + 1,), dtype=wp.int32)
+        data.info.num_contact_cts = wp.zeros(shape=(num_worlds + 1,), dtype=wp.int32)
 
         # Allocate the per-world entity start arrays
-        model.info.limits_offset = to_warp_int32_array(world_lio[:num_worlds])
-        model.info.contacts_offset = to_warp_int32_array(world_cio[:num_worlds])
-        model.info.unilaterals_offset = to_warp_int32_array(world_uio[:num_worlds])
+        model.info.limits_offset = to_warp_int32_array(world_lio)
+        model.info.contacts_offset = to_warp_int32_array(world_cio)
+        model.info.unilaterals_offset = to_warp_int32_array(world_uio)
 
         # Allocate the per-world constraint block/group arrays
-        model.info.total_cts_offset = to_warp_int32_array(world_ctsio[:num_worlds])
+        model.info.total_cts_offset = to_warp_int32_array(world_ctsio)
         model.info.joint_dynamic_cts_group_offset = to_warp_int32_array(world_jdcio[:num_worlds])
         model.info.joint_kinematic_cts_group_offset = to_warp_int32_array(world_jkcio[:num_worlds])
         data.info.limit_cts_group_offset = to_warp_int32_array(world_lcio[:num_worlds])

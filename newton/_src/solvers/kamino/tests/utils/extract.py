@@ -43,22 +43,25 @@ def get_vector_block(index: int, flatvec: np.ndarray, dims: list[int], maxdims: 
 
 
 def extract_active_constraint_dims(data: DataKamino) -> list[int]:
-    active_dim_np = data.info.num_total_cts.numpy()
+    # `data.info.num_total_cts` has length (num_worlds + 1); drop the trailing grand-total entry.
+    active_dim_np = data.info.num_total_cts.numpy()[:-1]
     return [int(active_dim_np[i]) for i in range(len(active_dim_np))]
 
 
 def extract_active_constraint_vectors(
     model: ModelKamino, data: DataKamino, x: wp.array[wp.float32]
 ) -> list[np.ndarray]:
-    cts_start_np = model.info.total_cts_offset.numpy()
+    # `model.info.total_cts_offset` has length (num_worlds + 1); drop the trailing grand-total entry.
+    cts_start_np = model.info.total_cts_offset.numpy()[:-1]
     num_active_cts_np = extract_active_constraint_dims(data)
     x_np = x.numpy()
     return [x_np[cts_start_np[n] : cts_start_np[n] + num_active_cts_np[n]] for n in range(len(cts_start_np))]
 
 
 def extract_actuation_forces(model: ModelKamino, data: DataKamino) -> list[np.ndarray]:
-    dofs_start_np = model.info.joint_dofs_offset.numpy()
-    num_dofs_np = model.info.num_joint_dofs.numpy()
+    # Per-world info arrays have length (num_worlds + 1); drop the trailing grand-total entry.
+    dofs_start_np = model.info.joint_dofs_offset.numpy()[:-1]
+    num_dofs_np = model.info.num_joint_dofs.numpy()[:-1]
     tau_j_np = data.joints.tau_j.numpy()
     return [tau_j_np[dofs_start_np[n] : dofs_start_np[n] + num_dofs_np[n]] for n in range(len(dofs_start_np))]
 
@@ -86,11 +89,12 @@ def extract_cts_jacobians(
     for w in range(num_worlds - 1, -1, -1):
         J_cts_flat_sizes[w] = J_cts_flat_offsets_ext[w + 1] - J_cts_flat_offsets_ext[w]
 
-    # Retrieve the Jacobian dimensions in each world
+    # Retrieve the Jacobian dimensions in each world.
+    # `model.info.num_*` arrays have length (num_worlds + 1); drop the trailing grand-total entry.
     has_limits = limits is not None and limits.model_max_limits_host > 0
     has_contacts = contacts is not None and contacts.model_max_contacts_host > 0
-    num_bdofs = model.info.num_body_dofs.numpy().tolist()
-    num_jcts = model.info.num_joint_cts.numpy().tolist()
+    num_bdofs = model.info.num_body_dofs.numpy()[:num_worlds].tolist()
+    num_jcts = model.info.num_joint_cts.numpy()[:num_worlds].tolist()
     maxnl = limits.world_max_limits_host if has_limits else [0] * num_worlds
     maxnc = contacts.world_max_contacts_host if has_contacts else [0] * num_worlds
     nlact = limits.world_active_limits.numpy().tolist() if has_limits else [0] * num_worlds
@@ -145,9 +149,10 @@ def extract_dofs_jacobians(
     for i in range(num_worlds - 1, -1, -1):
         J_dofs_flat_sizes[i] = J_dofs_flat_offsets_ext[i + 1] - J_dofs_flat_offsets_ext[i]
 
-    # Extract each Jacobian as a matrix
-    num_bdofs = model.info.num_body_dofs.numpy().tolist()
-    num_jdofs = model.info.num_joint_dofs.numpy().tolist()
+    # Extract each Jacobian as a matrix.
+    # `model.info.num_*` arrays have length (num_worlds + 1); drop the trailing grand-total entry.
+    num_bdofs = model.info.num_body_dofs.numpy()[:num_worlds].tolist()
+    num_jdofs = model.info.num_joint_dofs.numpy()[:num_worlds].tolist()
     J_dofs_mat: list[np.ndarray] = []
     for i in range(num_worlds):
         start = J_dofs_flat_offsets[i]
@@ -206,10 +211,12 @@ def extract_delassus_sparse(
     """
     num_worlds = delassus._model.size.num_worlds
     sum_max_cts = delassus._model.size.sum_of_max_total_cts
-    max_cts_np = delassus._model.info.max_total_cts.numpy()
+    # Per-world info arrays have length (num_worlds + 1); slice off the trailing grand-total entry
+    # so that `np.max` returns the max over per-world entries, not the grand total.
+    max_cts_np = delassus._model.info.max_total_cts.numpy()[:num_worlds]
 
     num_cts = delassus._data.info.num_total_cts
-    num_cts_np = num_cts.numpy()
+    num_cts_np = num_cts.numpy()[:num_worlds]
     max_dim = np.max(num_cts_np) if only_active_dims else np.max(max_cts_np)
 
     D_mat: list[np.ndarray] = []

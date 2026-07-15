@@ -988,12 +988,15 @@ class PADMMSolver:
             dim=(self._size.num_worlds, self._size.max_of_max_unilaterals),
             inputs=[
                 # Inputs:
+                problem.data.nf,
                 problem.data.nl,
                 problem.data.nc,
+                problem.data.fio,
                 problem.data.cio,
                 problem.data.lcgo,
                 problem.data.ccgo,
                 problem.data.vio,
+                problem.data.mu_j,
                 problem.data.mu,
                 self._data.status,
                 # Outputs:
@@ -1016,6 +1019,7 @@ class PADMMSolver:
             dim=(self._size.num_worlds, self._size.max_of_max_unilaterals),
             inputs=[
                 # Inputs:
+                problem.data.nf,
                 problem.data.nl,
                 problem.data.nc,
                 problem.data.vio,

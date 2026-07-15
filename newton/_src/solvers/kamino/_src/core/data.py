@@ -48,7 +48,7 @@ class DataKaminoInfo:
     num_total_cts: wp.array[wp.int32] | None = None
     """
     The total number of active constraints.
-    Shape of ``(num_worlds,)``.
+    Shape of ``(num_worlds + 1,)``.
     """
 
     ###
@@ -58,13 +58,13 @@ class DataKaminoInfo:
     num_limits: wp.array[wp.int32] | None = None
     """
     The number of active limits in each world.
-    Shape of ``(num_worlds,)``.
+    Shape of ``(num_worlds + 1,)``.
     """
 
     num_limit_cts: wp.array[wp.int32] | None = None
     """
     The number of active limit constraints.
-    Shape of ``(num_worlds,)``.
+    Shape of ``(num_worlds + 1,)``.
     """
 
     limit_cts_group_offset: wp.array[wp.int32] | None = None
@@ -80,13 +80,13 @@ class DataKaminoInfo:
     num_contacts: wp.array[wp.int32] | None = None
     """
     The number of active contacts in each world.
-    Shape of ``(num_worlds,)``.
+    Shape of ``(num_worlds + 1,)``.
     """
 
     num_contact_cts: wp.array[wp.int32] | None = None
     """
     The number of active contact constraints.
-    Shape of ``(num_worlds,)``.
+    Shape of ``(num_worlds + 1,)``.
     """
 
     contact_cts_group_offset: wp.array[wp.int32] | None = None

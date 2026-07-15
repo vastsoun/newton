@@ -157,6 +157,180 @@ class TestModel(unittest.TestCase):
         self.assertEqual(model.info.num_worlds, num_worlds)
 
 
+###
+# ModelKaminoInfo array shape/contents helpers
+###
+
+
+# Mapping from ``ModelKaminoInfo`` count attribute to the corresponding per-world
+# attribute on ``WorldKamino`` (as tracked by ``ModelBuilderKamino``).
+_INFO_COUNT_ATTR_TO_WORLD_ATTR = {
+    "num_bodies": "num_bodies",
+    "num_joints": "num_joints",
+    "num_passive_joints": "num_passive_joints",
+    "num_actuated_joints": "num_actuated_joints",
+    "num_dynamic_joints": "num_dynamic_joints",
+    "num_geoms": "num_geoms",
+    "num_body_dofs": "num_body_dofs",
+    "num_joint_coords": "num_joint_coords",
+    "num_joint_dofs": "num_joint_dofs",
+    "num_passive_joint_coords": "num_passive_joint_coords",
+    "num_passive_joint_dofs": "num_passive_joint_dofs",
+    "num_actuated_joint_coords": "num_actuated_joint_coords",
+    "num_actuated_joint_dofs": "num_actuated_joint_dofs",
+    "num_joint_cts": "num_joint_cts",
+    "num_joint_dynamic_cts": "num_dynamic_joint_cts",
+    "num_joint_kinematic_cts": "num_kinematic_joint_cts",
+}
+
+# Mapping from ``ModelKaminoInfo`` offset attribute to the corresponding per-world
+# offset attribute on ``WorldKamino``.
+_INFO_OFFSET_ATTR_TO_WORLD_ATTR = {
+    "bodies_offset": "bodies_idx_offset",
+    "joints_offset": "joints_idx_offset",
+    "geoms_offset": "geoms_idx_offset",
+    "body_dofs_offset": "body_dofs_idx_offset",
+    "joint_coords_offset": "joint_coords_idx_offset",
+    "joint_dofs_offset": "joint_dofs_idx_offset",
+    "joint_passive_coords_offset": "joint_passive_coords_idx_offset",
+    "joint_passive_dofs_offset": "joint_passive_dofs_idx_offset",
+    "joint_actuated_coords_offset": "joint_actuated_coords_idx_offset",
+    "joint_actuated_dofs_offset": "joint_actuated_dofs_idx_offset",
+    "joint_cts_offset": "joint_cts_idx_offset",
+    "joint_dynamic_cts_offset": "joint_dynamic_cts_idx_offset",
+    "joint_kinematic_cts_offset": "joint_kinematic_cts_idx_offset",
+}
+
+# Mapping from ``ModelKaminoInfo`` offset attribute to the matching ``SizeKamino``
+# grand-total field. Used to cross-check that ``offset[-1]`` equals the model total.
+_INFO_OFFSET_ATTR_TO_SIZE_ATTR = {
+    "bodies_offset": "sum_of_num_bodies",
+    "joints_offset": "sum_of_num_joints",
+    "geoms_offset": "sum_of_num_geoms",
+    "body_dofs_offset": "sum_of_num_body_dofs",
+    "joint_coords_offset": "sum_of_num_joint_coords",
+    "joint_dofs_offset": "sum_of_num_joint_dofs",
+    "joint_passive_coords_offset": "sum_of_num_passive_joint_coords",
+    "joint_passive_dofs_offset": "sum_of_num_passive_joint_dofs",
+    "joint_actuated_coords_offset": "sum_of_num_actuated_joint_coords",
+    "joint_actuated_dofs_offset": "sum_of_num_actuated_joint_dofs",
+    "joint_cts_offset": "sum_of_num_joint_cts",
+    "joint_dynamic_cts_offset": "sum_of_num_dynamic_joint_cts",
+    "joint_kinematic_cts_offset": "sum_of_num_kinematic_joint_cts",
+}
+
+
+def assert_info_arrays_shape_and_contents(test: unittest.TestCase, builder: ModelBuilderKamino, model: ModelKamino):
+    """Assert that every populated ``num_***`` and ``**_offset`` array on
+    ``model.info`` has shape ``(num_worlds + 1,)`` and correct per-world and
+    grand-total contents, driven off the builder's per-world data.
+
+    Only attributes that are non-``None`` on ``model.info`` are checked, so the
+    helper is safe on models built via ``ModelBuilderKamino.finalize()`` where
+    unilateral-related arrays (limits/contacts/total_cts) are not allocated.
+    """
+    num_worlds = builder.num_worlds
+    expected_shape = (num_worlds + 1,)
+
+    for info_attr, world_attr in _INFO_COUNT_ATTR_TO_WORLD_ATTR.items():
+        arr = getattr(model.info, info_attr)
+        if arr is None:
+            continue
+        arr_np = arr.numpy()
+        test.assertEqual(arr_np.shape, expected_shape, msg=f"{info_attr}: unexpected shape")
+        for w in range(num_worlds):
+            expected = getattr(builder.worlds[w], world_attr)
+            test.assertEqual(
+                int(arr_np[w]),
+                int(expected),
+                msg=f"{info_attr}[{w}] mismatch (expected builder.worlds[{w}].{world_attr}={expected})",
+            )
+        test.assertEqual(
+            int(arr_np[-1]),
+            int(arr_np[:-1].sum()),
+            msg=f"{info_attr}[-1] should equal sum of per-world entries",
+        )
+
+    for info_attr, world_attr in _INFO_OFFSET_ATTR_TO_WORLD_ATTR.items():
+        arr = getattr(model.info, info_attr)
+        if arr is None:
+            continue
+        arr_np = arr.numpy()
+        test.assertEqual(arr_np.shape, expected_shape, msg=f"{info_attr}: unexpected shape")
+        test.assertEqual(int(arr_np[0]), 0, msg=f"{info_attr}[0] should be 0")
+        for w in range(num_worlds):
+            expected = getattr(builder.worlds[w], world_attr)
+            test.assertEqual(
+                int(arr_np[w]),
+                int(expected),
+                msg=f"{info_attr}[{w}] mismatch (expected builder.worlds[{w}].{world_attr}={expected})",
+            )
+        size_attr = _INFO_OFFSET_ATTR_TO_SIZE_ATTR[info_attr]
+        test.assertEqual(
+            int(arr_np[-1]),
+            int(getattr(model.size, size_attr)),
+            msg=f"{info_attr}[-1] should equal model.size.{size_attr}",
+        )
+        test.assertTrue(
+            bool(np.all(np.diff(arr_np) >= 0)),
+            msg=f"{info_attr} should be monotonically non-decreasing",
+        )
+
+
+class TestModelInfoArrays(unittest.TestCase):
+    def setUp(self):
+        if not test_context.setup_done:
+            setup_tests(clear_cache=False)
+        self.default_device = wp.get_device(test_context.device)
+        self.verbose = test_context.verbose
+
+        if self.verbose:
+            print("\n")
+            msg.set_log_level(msg.LogLevel.DEBUG)
+        else:
+            msg.reset_log_level()
+
+    def tearDown(self):
+        self.default_device = None
+        if self.verbose:
+            msg.reset_log_level()
+
+    def test_boxes_fourbar_3_worlds(self):
+        """Verify ``ModelKaminoInfo`` per-world arrays for a 3-world homogeneous
+        ``boxes_fourbar`` model built via ``ModelBuilderKamino``."""
+        num_worlds = 3
+        builder = model_utils.make_homogeneous_builder(
+            num_worlds=num_worlds, build_fn=basics_kamino.build_boxes_fourbar
+        )
+        model: ModelKamino = builder.finalize(self.default_device)
+
+        self.assertEqual(builder.num_worlds, num_worlds)
+        self.assertEqual(model.info.num_worlds, num_worlds)
+
+        assert_info_arrays_shape_and_contents(self, builder, model)
+
+    def test_dr_legs_3_worlds(self):
+        """Verify ``ModelKaminoInfo`` per-world arrays for a 3-world model built
+        by replicating the DR Legs USD import via ``ModelBuilderKamino.add_builder``."""
+        num_worlds = 3
+        asset_path = newton.utils.download_asset("disneyresearch")
+        asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
+
+        importer = USDImporter()
+        single_builder = importer.import_from(source=asset_file, load_drive_dynamics=True)
+
+        builder = ModelBuilderKamino(default_world=False)
+        for _ in range(num_worlds):
+            builder.add_builder(copy.deepcopy(single_builder))
+
+        model: ModelKamino = builder.finalize(self.default_device)
+
+        self.assertEqual(builder.num_worlds, num_worlds)
+        self.assertEqual(model.info.num_worlds, num_worlds)
+
+        assert_info_arrays_shape_and_contents(self, builder, model)
+
+
 class TestModelConversions(unittest.TestCase):
     def setUp(self):
         if not test_context.setup_done:

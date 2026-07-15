@@ -1310,11 +1310,13 @@ class DenseSystemJacobians:
             if not isinstance(contacts, ContactsKamino):
                 raise TypeError(f"`contacts` is required to be of type `ContactsKamino` but got {type(contacts)}.")
 
-        # Extract the constraint and DoF sizes of each world
+        # Extract the constraint and DoF sizes of each world.
+        # `model.info.num_*` arrays have length (num_worlds + 1); drop the
+        # trailing grand-total entry.
         nw = model.info.num_worlds
-        nbd = model.info.num_body_dofs.numpy().tolist()
-        njc = model.info.num_joint_cts.numpy().tolist()
-        njd = model.info.num_joint_dofs.numpy().tolist()
+        nbd = model.info.num_body_dofs.numpy()[:nw].tolist()
+        njc = model.info.num_joint_cts.numpy()[:nw].tolist()
+        njd = model.info.num_joint_dofs.numpy()[:nw].tolist()
         maxnl = limits.world_max_limits_host if limits and limits.model_max_limits_host > 0 else [0] * nw
         maxnc = contacts.world_max_contacts_host if contacts and contacts.model_max_contacts_host > 0 else [0] * nw
         maxncts = [njc[w] + maxnl[w] + 3 * maxnc[w] for w in range(nw)]
@@ -1541,11 +1543,13 @@ class SparseSystemJacobians:
             if not isinstance(contacts, ContactsKamino):
                 raise TypeError(f"`contacts` is required to be of type `ContactsKamino` but got {type(contacts)}.")
 
-        # Extract the constraint and DoF sizes of each world
+        # Extract the constraint and DoF sizes of each world.
+        # The `model.info.num_*` arrays have length (num_worlds + 1) where
+        # the last entry is the grand total; slice off that trailing total.
         num_worlds = model.info.num_worlds
-        num_body_dofs = model.info.num_body_dofs.numpy().tolist()
-        num_joint_cts = model.info.num_joint_cts.numpy().tolist()
-        num_joint_dofs = model.info.num_joint_dofs.numpy().tolist()
+        num_body_dofs = model.info.num_body_dofs.numpy()[:num_worlds].tolist()
+        num_joint_cts = model.info.num_joint_cts.numpy()[:num_worlds].tolist()
+        num_joint_dofs = model.info.num_joint_dofs.numpy()[:num_worlds].tolist()
         max_num_limits = (
             limits.world_max_limits_host if limits and limits.model_max_limits_host > 0 else [0] * num_worlds
         )
@@ -1903,10 +1907,12 @@ class ColMajorSparseConstraintJacobians(BlockSparseLinearOperators[wp.float32, w
             jacobians: Row-major sparse Jacobians. If provided, the column-major Jacobian will be
                 immediately updated with values from the provided Jacobians after allocation.
         """
-        # Extract the constraint and DoF sizes of each world
+        # Extract the constraint and DoF sizes of each world.
+        # The `model.info.num_*` arrays have length (num_worlds + 1) where
+        # the last entry is the grand total; slice off that trailing total.
         num_worlds = model.info.num_worlds
-        num_body_dofs = model.info.num_body_dofs.numpy().tolist()
-        num_joint_cts = model.info.num_joint_cts.numpy().tolist()
+        num_body_dofs = model.info.num_body_dofs.numpy()[:num_worlds].tolist()
+        num_joint_cts = model.info.num_joint_cts.numpy()[:num_worlds].tolist()
         max_num_limits = (
             limits.world_max_limits_host if limits and limits.model_max_limits_host > 0 else [0] * num_worlds
         )

@@ -143,6 +143,12 @@ class DualProblemData:
     Shape of `(num_worlds,)`.
     """
 
+    nf: wp.array[wp.int32] | None = None
+    """
+    The number of active friction constraints in each world.
+    Shape of `(num_worlds,)`.
+    """
+
     nl: wp.array[wp.int32] | None = None
     """
     The number of active limit constraints in each world.
@@ -152,6 +158,12 @@ class DualProblemData:
     nc: wp.array[wp.int32] | None = None
     """
     The number of active contact constraints in each world.
+    Shape of `(num_worlds,)`.
+    """
+
+    fio: wp.array[wp.int32] | None = None
+    """
+    The joint friction index offset of each world.
     Shape of `(num_worlds,)`.
     """
 
@@ -319,6 +331,12 @@ class DualProblemData:
     Shape of `(sum_of_max_total_cts,)`.
     """
 
+    mu_j: wp.array[wp.float32] | None = None
+    """
+    Stack of per-dynamic joint constraint friction coefficient vectors.
+    Shape of `(sum_of_num_dynamic_joint_cts,)`.
+    """
+
     mu: wp.array[wp.float32] | None = None
     """
     Stack of per-contact constraint friction coefficient vectors.
@@ -464,17 +482,20 @@ def _build_generalized_free_velocity(
 @wp.kernel
 def _build_free_velocity_bias_joint_dynamics(
     # Inputs:
-    model_joints_wid: wp.array[wp.int32],
+    model_joints_dofs_offset: wp.array[wp.int32],
     model_joints_dynamic_cts_offset: wp.array[wp.int32],
     model_joints_dynamic_cts_offset_total_cts: wp.array[wp.int32],
     data_joints_dq_b_j: wp.array[wp.float32],
+    model_joints_mu_j: wp.array[wp.float32],
     # Outputs:
     problem_v_b: wp.array[wp.float32],
+    problem_mu_j: wp.array[wp.float32],
 ):
     # Retrieve the joint index as the thread index
     jid = wp.tid()
 
     # Retrieve the joint constraints size + index offset into the dynamic-only constraints array
+    dofs_start_j = model_joints_dofs_offset[jid]
     bias_row_start_j = model_joints_dynamic_cts_offset[jid]
     num_dyn_cts_j = model_joints_dynamic_cts_offset[jid + 1] - bias_row_start_j
 
@@ -488,6 +509,7 @@ def _build_free_velocity_bias_joint_dynamics(
     # Compute the free-velocity bias for the joint
     for j in range(num_dyn_cts_j):
         problem_v_b[cts_row_start_j + j] = -data_joints_dq_b_j[bias_row_start_j + j]
+        problem_mu_j[bias_row_start_j + j] = model_joints_mu_j[dofs_start_j + j]
 
 
 @wp.kernel
@@ -1087,21 +1109,22 @@ class DualProblem:
         if model is not None and jacobians is None:
             raise ValueError("`jacobians` parameter must be provided if `model` parameter is specified.")
 
-        # Declare the device cache
-        self._device: wp.DeviceLike = None
+        # Declare the model cache
+        self._model: ModelKamino | None = None
 
-        # Declare the model size cache
-        self._size: SizeKamino | None = None
-
+        # Declare the problem configs
         self._config: list[DualProblem.Config] = []
         """Host-side cache of the list of per world dual problem config."""
 
+        # Declare the Delassus operator
         self._delassus: DelassusOperator | BlockSparseMatrixFreeDelassusOperator | None = None
         """The Delassus operator interface container."""
 
+        # Declare the dual problem data
         self._data: DualProblemData | None = None
         """The dual problem data container bundling are relevant memory allocations."""
 
+        # Declare and initialize the sparse flag
         self._sparse: bool = sparse
         """Flag to indicate whether the dual uses a sparse data representation."""
 
@@ -1124,11 +1147,22 @@ class DualProblem:
     ###
 
     @property
+    def model(self) -> ModelKamino:
+        """
+        Returns the model the dual problem is built for.
+        """
+        if self._model is None:
+            raise ValueError("ModelKamino is not allocated. Call `finalize()` first.")
+        return self._model
+
+    @property
     def device(self) -> wp.DeviceLike:
         """
         Returns the device the dual problem is allocated on.
         """
-        return self._device
+        if self._model is None:
+            raise ValueError("ModelKamino is not allocated. Call `finalize()` first.")
+        return self._model.device
 
     @property
     def size(self) -> SizeKamino:
@@ -1136,15 +1170,17 @@ class DualProblem:
         Returns the model size of the dual problem.
         This is the size of the model that the dual problem is built for.
         """
-        if self._size is None:
-            raise ValueError("ModelKamino size is not allocated. Call `finalize()` first.")
-        return self._size
+        if self._model is None:
+            raise ValueError("ModelKamino is not allocated. Call `finalize()` first.")
+        return self._model.size
 
     @property
     def config(self) -> list[DualProblem.Config]:
         """
         Returns the list of per world dual problem config.
         """
+        if self._config is None or len(self._config) == 0:
+            raise ValueError("Dual problem config is not allocated. Call `finalize()` first.")
         return self._config
 
     @config.setter
@@ -1232,11 +1268,8 @@ class DualProblem:
             if not isinstance(contacts, ContactsKamino):
                 raise ValueError("Invalid contacts container provided. Must be an instance of `ContactsKamino`.")
 
-        # Use the model's device
-        self._device = model.device
-
-        # Capture reference to the model size
-        self._size = model.size
+        # Capture reference to the model
+        self._model = model
 
         # Check config validity and update cache
         self._config = self._check_config(config, model.info.num_worlds)
@@ -1263,7 +1296,7 @@ class DualProblem:
                 wp.zeros(
                     (model.size.sum_of_max_total_cts,),
                     dtype=wp.float32,
-                    device=self._device,
+                    device=self._model.device,
                 )
             )
         else:
@@ -1277,7 +1310,7 @@ class DualProblem:
             )
 
         # Construct the dual problem data container
-        with wp.ScopedDevice(self._device):
+        with wp.ScopedDevice(self._model.device):
             if self._sparse:
                 self._data = DualProblemData(
                     # Set the host-side caches of the maximal problem dimensions
@@ -1285,8 +1318,10 @@ class DualProblem:
                     max_of_maxdims=self._delassus.max_of_max_dims,
                     # Capture references to the mode and data info arrays
                     njc=model.info.num_joint_cts,
+                    nf=model.info.num_joint_dynamic_cts,
                     nl=data.info.num_limits,
                     nc=data.info.num_contacts,
+                    fio=model.info.joint_dynamic_cts_offset,
                     lio=model.info.limits_offset,
                     cio=model.info.contacts_offset,
                     uio=model.info.unilaterals_offset,
@@ -1307,6 +1342,7 @@ class DualProblem:
                     v_b=wp.zeros(shape=(self._delassus.sum_of_max_dims,), dtype=wp.float32),
                     v_i=wp.zeros(shape=(self._delassus.sum_of_max_dims,), dtype=wp.float32),
                     v_f=wp.zeros(shape=(self._delassus.sum_of_max_dims,), dtype=wp.float32),
+                    mu_j=wp.zeros(shape=(model.size.sum_of_num_dynamic_joint_cts,), dtype=wp.float32),
                     mu=wp.zeros(shape=(model_max_contacts_host,), dtype=wp.float32),
                     P=wp.ones(shape=(self._delassus.sum_of_max_dims,), dtype=wp.float32),
                 )
@@ -1319,8 +1355,10 @@ class DualProblem:
                     max_of_maxdims=self._delassus.num_maxdims,
                     # Capture references to the mode and data info arrays
                     njc=model.info.num_joint_cts,
+                    nf=model.info.num_joint_dynamic_cts,
                     nl=data.info.num_limits,
                     nc=data.info.num_contacts,
+                    fio=model.info.joint_dynamic_cts_offset,
                     lio=model.info.limits_offset,
                     cio=model.info.contacts_offset,
                     uio=model.info.unilaterals_offset,
@@ -1341,6 +1379,7 @@ class DualProblem:
                     v_b=wp.zeros(shape=(self._delassus.num_maxdims,), dtype=wp.float32),
                     v_i=wp.zeros(shape=(self._delassus.num_maxdims,), dtype=wp.float32),
                     v_f=wp.zeros(shape=(self._delassus.num_maxdims,), dtype=wp.float32),
+                    mu_j=wp.zeros(shape=(model.size.sum_of_num_dynamic_joint_cts,), dtype=wp.float32),
                     mu=wp.zeros(shape=(model_max_contacts_host,), dtype=wp.float32),
                     P=wp.ones(shape=(self._delassus.num_maxdims,), dtype=wp.float32),
                 )
@@ -1402,7 +1441,7 @@ class DualProblem:
             J_cts = jacobians._J_cts.bsm
             wp.launch(
                 _build_free_velocity_sparse,
-                dim=(self._size.num_worlds, J_cts.max_of_num_nzb),
+                dim=(self._model.size.num_worlds, J_cts.max_of_num_nzb),
                 inputs=[
                     # Inputs:
                     model.info.bodies_offset,
@@ -1422,7 +1461,7 @@ class DualProblem:
         else:
             wp.launch(
                 _build_free_velocity,
-                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+                dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
                 inputs=[
                     # Inputs:
                     model.info.bodies_offset,
@@ -1542,12 +1581,14 @@ class DualProblem:
                     dim=model.size.sum_of_num_joints,
                     inputs=[
                         # Inputs:
-                        model.joints.wid,
+                        model.joints.dofs_offset,
                         model.joints.dynamic_cts_offset,
                         model.joints.dynamic_cts_offset_total_cts,
                         data.joints.dq_b_j,
+                        model.joints.mu_j,
                         # Outputs:
                         self._data.v_b,
+                        self._data.mu_j,
                     ],
                     device=self.device,
                 )
@@ -1620,7 +1661,7 @@ class DualProblem:
         """
         wp.launch(
             _build_free_velocity,
-            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
             inputs=[
                 # Inputs:
                 model.info.bodies_offset,
@@ -1646,7 +1687,7 @@ class DualProblem:
             self._delassus.diagonal(self._data.P)
             wp.launch(
                 _build_dual_preconditioner_all_constraints_sparse,
-                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+                dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
                 inputs=[
                     # Inputs:
                     self._data.config,
@@ -1662,7 +1703,7 @@ class DualProblem:
         else:
             wp.launch(
                 _build_dual_preconditioner_all_constraints,
-                dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+                dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
                 inputs=[
                     # Inputs:
                     self._data.config,
@@ -1689,7 +1730,7 @@ class DualProblem:
         else:
             wp.launch(
                 _apply_dual_preconditioner_to_matrix,
-                dim=(self._size.num_worlds, self.delassus._max_of_max_total_D_size),
+                dim=(self._model.size.num_worlds, self.delassus._max_of_max_total_D_size),
                 inputs=[
                     # Inputs:
                     self._data.dim,
@@ -1704,7 +1745,7 @@ class DualProblem:
 
         wp.launch(
             _apply_dual_preconditioner_to_vector,
-            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
             inputs=[
                 # Inputs:
                 self._data.dim,
@@ -1722,7 +1763,7 @@ class DualProblem:
         """
         wp.launch(
             _apply_dual_preconditioner_to_matrix,
-            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
             inputs=[
                 # Inputs:
                 self._data.dim,
@@ -1741,7 +1782,7 @@ class DualProblem:
         """
         wp.launch(
             _apply_dual_preconditioner_to_vector,
-            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            dim=(self._model.size.num_worlds, self._model.size.max_of_max_total_cts),
             inputs=[
                 # Inputs:
                 self._data.dim,

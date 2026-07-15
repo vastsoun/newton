@@ -584,7 +584,7 @@ def build_unary_prismatic_joint_test(
         limit_upper=0.5 if limits else None,
         armature=0.1 if dynamic else None,
         damping=0.01 if dynamic else None,
-        friction=1.0 if dynamic else None,
+        friction=100.0 if dynamic else None,
         target_ke=10.0 if implicit_pd else None,
         target_kd=0.01 if implicit_pd else None,
         effort_limit=100.0,

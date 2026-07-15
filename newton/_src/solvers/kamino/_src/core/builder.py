@@ -1288,9 +1288,6 @@ class ModelBuilderKamino:
             max_of_max_total_cts=max([world.num_joint_cts for world in self._worlds]),
         )
 
-        # Append total number of bodies to body offsets
-        info_bio.append(model_size.sum_of_num_bodies)
-
         ###
         # Collision detection and contact-allocation meta-data
         ###
@@ -1312,6 +1309,41 @@ class ModelBuilderKamino:
             collidable_pairs_offset=collidable_pairs_offset,
             max_contacts_per_pair=self._max_contacts_per_pair,
         )
+
+        ###
+        # Extend counts and offsets to include the total counts and offsets
+        ###
+
+        # Extend the counts and offsets to include the total counts and offsets
+        info_nb.append(model_size.sum_of_num_bodies)
+        info_nj.append(model_size.sum_of_num_joints)
+        info_njp.append(model_size.sum_of_num_passive_joints)
+        info_nja.append(model_size.sum_of_num_actuated_joints)
+        info_nji.append(model_size.sum_of_num_dynamic_joints)
+        info_ng.append(model_size.sum_of_num_geoms)
+        info_nbd.append(model_size.sum_of_num_body_dofs)
+        info_njq.append(model_size.sum_of_num_joint_coords)
+        info_njd.append(model_size.sum_of_num_joint_dofs)
+        info_njpq.append(model_size.sum_of_num_passive_joint_coords)
+        info_njpd.append(model_size.sum_of_num_passive_joint_dofs)
+        info_njaq.append(model_size.sum_of_num_actuated_joint_coords)
+        info_njad.append(model_size.sum_of_num_actuated_joint_dofs)
+        info_njc.append(model_size.sum_of_num_joint_cts)
+        info_njdc.append(model_size.sum_of_num_dynamic_joint_cts)
+        info_njkc.append(model_size.sum_of_num_kinematic_joint_cts)
+        info_bio.append(model_size.sum_of_num_bodies)
+        info_jio.append(model_size.sum_of_num_joints)
+        info_gio.append(model_size.sum_of_num_geoms)
+        info_bdio.append(model_size.sum_of_num_body_dofs)
+        info_jqio.append(model_size.sum_of_num_joint_coords)
+        info_jdio.append(model_size.sum_of_num_joint_dofs)
+        info_jpqio.append(model_size.sum_of_num_passive_joint_coords)
+        info_jpdio.append(model_size.sum_of_num_passive_joint_dofs)
+        info_jaqio.append(model_size.sum_of_num_actuated_joint_coords)
+        info_jadio.append(model_size.sum_of_num_actuated_joint_dofs)
+        info_jcio.append(model_size.sum_of_num_joint_cts)
+        info_jdcio.append(model_size.sum_of_num_dynamic_joint_cts)
+        info_jkcio.append(model_size.sum_of_num_kinematic_joint_cts)
 
         ###
         # On-device data allocation

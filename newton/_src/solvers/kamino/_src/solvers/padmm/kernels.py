@@ -748,12 +748,15 @@ def _compute_projection_argument(
 @wp.kernel
 def _project_to_feasible_cone(
     # Inputs:
+    problem_nf: wp.array[wp.int32],
     problem_nl: wp.array[wp.int32],
     problem_nc: wp.array[wp.int32],
+    problem_fio: wp.array[wp.int32],
     problem_cio: wp.array[wp.int32],
     problem_lcgo: wp.array[wp.int32],
     problem_ccgo: wp.array[wp.int32],
     problem_vio: wp.array[wp.int32],
+    problem_mu_j: wp.array[wp.float32],
     problem_mu: wp.array[wp.float32],
     solver_status: wp.array[PADMMStatus],
     # Outputs:
@@ -766,18 +769,33 @@ def _project_to_feasible_cone(
     status = solver_status[wid]
 
     # Retrieve the number of active limits and contacts in the world
+    nf = problem_nf[wid]
     nl = problem_nl[wid]
     nc = problem_nc[wid]
 
     # Skip if row index exceed the problem size or if the solver has already converged
-    if uid >= (nl + nc) or status.converged > 0:
+    if uid >= (nf + nl + nc) or status.converged > 0:
         return
 
     # Retrieve the index offset of the vector block of the world
     vio = problem_vio[wid]
 
+    # Check if the thread should handle a joint friction constraint
+    if nf > 0 and uid < nf:
+        # Retrieve the index offset of the joint friction constraint of the world
+        fio = problem_fio[wid]
+        # Retrieve the index offset of the joint DoF of the friction constraint
+        fdio_j = fio + uid
+        # Compute the constraint index offset of the friction constraint element
+        fcio_j = vio + uid
+        # Retrieve the joint friction coefficient
+        mu_j = problem_mu_j[fdio_j]
+        # Project to the the box constraint [-mu_j, mu_j] only if the friction coefficient is positive
+        if mu_j > 0.0:
+            solver_y[fcio_j] = wp.max(-mu_j, wp.min(solver_y[fcio_j], mu_j))
+
     # Check if the thread should handle a limit
-    if nl > 0 and uid < nl:
+    elif nl > 0 and uid < nf + nl:
         # Retrieve the limit constraint group offset of the world
         lcgo = problem_lcgo[wid]
         # Compute the constraint index offset of the limit element
@@ -786,14 +804,14 @@ def _project_to_feasible_cone(
         solver_y[lcio_j] = wp.max(solver_y[lcio_j], 0.0)
 
     # Check if the thread should handle a contact
-    elif nc > 0 and uid >= nl:
+    elif nc > 0 and uid >= nf + nl:
         # Retrieve the contact index offset of the world
         cio = problem_cio[wid]
         # Retrieve the limit constraint group offset of the world
         ccgo = problem_ccgo[wid]
         # Compute the index of the contact element in the unilaterals array
-        # NOTE: We need to subtract the number of active limits
-        cid = uid - nl
+        # NOTE: We need to subtract the number of active limits and friction constraints
+        cid = uid - nl - nf
         # Compute the index offset of the contact constraint
         ccio_j = vio + ccgo + 3 * cid
         # Capture a 3D vector
@@ -1177,6 +1195,7 @@ def _make_project_dual_convergence_accel_kernel(reduction_size: int):
 @wp.kernel
 def _compute_complementarity_residuals(
     # Inputs:
+    problem_nf: wp.array[wp.int32],
     problem_nl: wp.array[wp.int32],
     problem_nc: wp.array[wp.int32],
     problem_vio: wp.array[wp.int32],
@@ -1196,6 +1215,7 @@ def _compute_complementarity_residuals(
     status = solver_status[wid]
 
     # Retrieve the number of active limits and contacts in the world
+    nf = problem_nf[wid]
     nl = problem_nl[wid]
     nc = problem_nc[wid]
 
@@ -1212,8 +1232,15 @@ def _compute_complementarity_residuals(
     # Compute the index offset of the vector block of the world
     uio_u = uio + uid
 
+    # Check if the thread should handle a joint friction constraint
+    if nf > 0 and uid < nf:
+        # Compute the constraint index offset of the friction constraint element
+        fcio_j = vio + uid
+        # Compute the scalar product of the primal and dual variables
+        solver_r_c[uio_u] = solver_x[fcio_j] * solver_z[fcio_j]
+
     # Check if the thread should handle a limit
-    if nl > 0 and uid < nl:
+    elif nl > 0 and uid < nf + nl:
         # Retrieve the limit constraint group offset of the world
         lcgo = problem_lcgo[wid]
         # Compute the constraint index offset of the limit element
@@ -1222,12 +1249,12 @@ def _compute_complementarity_residuals(
         solver_r_c[uio_u] = solver_x[lcio_j] * solver_z[lcio_j]
 
     # Check if the thread should handle a contact
-    elif nc > 0 and uid >= nl:
+    elif nc > 0 and uid >= nf + nl:
         # Retrieve the limit constraint group offset of the world
         ccgo = problem_ccgo[wid]
         # Compute the index of the contact element in the unilaterals array
         # NOTE: We need to subtract the number of active limits
-        cid = uid - nl
+        cid = uid - nl - nf
         # Compute the index offset of the contact constraint
         ccio_j = vio + ccgo + 3 * cid
         # Capture 3D vectors

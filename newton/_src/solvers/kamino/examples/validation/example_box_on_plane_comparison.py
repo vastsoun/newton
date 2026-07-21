@@ -67,7 +67,8 @@ class SolverSetup:
         self.state_1.assign(self._ref_state)
 
         self.control = self.model.control()
-        self.contacts = self.model.contacts()
+        self.collision_pipeline = newton.CollisionPipeline(self.model)
+        self.contacts = self.collision_pipeline.contacts()
         self.time = wp.zeros(dtype=wp.float32, shape=1, device=self.model.device)
 
         self.force_start = wp.zeros(shape=1, dtype=wp.vec3f, device=self.model.device)
@@ -77,7 +78,7 @@ class SolverSetup:
         self.box_shape_id = next(i for i in range(len(shape_body_np)) if shape_body_np[i] == 0)
 
     def step(self, state_in: newton.State, sim_dt: float):
-        self.model.collide(state_in, self.contacts)
+        self.collision_pipeline.collide(state_in, self.contacts)
         self.solver.step(state_in, self.state_1, self.control, self.contacts, sim_dt)
         # Pull per-contact forces back into self.contacts.force (when allocated) so
         # the viewer's "Show Contacts -> Forces" / "Modes" layers have data to draw.

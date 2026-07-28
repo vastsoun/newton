@@ -41,7 +41,9 @@
 - Add `joint_dof_mask` to `newton.ik.IKSolver` to keep selected joint DOFs fixed during LM optimization. (#3488)
 ### Changed
 
+- Decide collider visibility from USD `purpose` and visibility rather than from a bound render material. A collider whose `purpose` resolves to `default` is viewport geometry and is drawn; mark it `guide` to state that it is collision-only. Previously an unrelated visual elsewhere in the scene could make a collider vanish. `force_show_colliders` and `hide_collision_shapes` are unchanged.
 - Disable the implicit positive Dahl-friction defaults in `SolverVBD.register_custom_attributes()` (deprecated in 1.3.0): `vbd:dahl_eps_max` and `vbd:dahl_tau` now default to zero, and Dahl cable friction is enabled only where both are authored positive. Pass `dahl_defaults_enabled=True` to temporarily restore the old defaults; the compatibility mode will be removed in a future release.
+- Keep the authored render mesh when `ModelBuilder.add_usd()` approximates a collider. `physics:approximation` is scoped to collision, so a Mesh that is both render geometry and a collider now imports as an approximated collision shape plus a visual shape carrying the original topology, instead of replacing the render mesh with the approximation. This raises `Model.shape_count` for such prims: iterate on `ShapeFlags.COLLIDE_SHAPES` rather than assuming one shape per collider prim. The visual shape adds no mass and no collision, appends after the originals so existing shape indices and `path_shape_map` entries are unchanged, and is skipped when `load_visual_shapes=False`.
 - Compile tiled camera render kernels with CUDA fast math by default for faster rendering; set `SensorTiledCamera.render_config.enable_fast_math = False` for bit-exact, IEEE-precise output.
 - Make `CollisionPipeline` the sole owner of rigid-contact geometry for `SolverVBD`: `"latest"` supplies fresh geometry and `"sticky"` supplies replayed geometry. `SolverVBD(rigid_contact_history=True)` uses either mode's match indices only to warm-start its numeric lambda/penalty state.
 - Optimize raycast/raytrace queries by restructuring ray-shape intersection into local-space primitives and compile specialized depth/shadow variants that skip unused surface-normal work (mesh shadows also use any-hit queries).
@@ -87,6 +89,7 @@
 
 - Complete Kamino RCM traversal for large and disconnected systems and reuse the resulting permutation by default; set `reuse_permutation=False` to recompute it for changing matrix topology.
 - Fix panel-parallel RCM-blocked LLT factorization hanging when a matrix ends in a partial tile.
+- Fix `ModelBuilder.add_usd()` marking a `guide`-purpose collider visible when it has a bound render material. Such a collider is not viewport geometry, and the extra `VISIBLE` flag left it drawn by the viewer's visual toggle instead of its collision toggle. `force_show_colliders` still reveals it.
 - Fix USD capsule, cylinder, and cone visual and site scaling to follow the authored primitive axis.
 - Fix USD plane visual width and length to scale along the axes defined by the `UsdGeomPlane` schema, and orient X- and Y-axis plane visuals along the authored axis.
 - Validate `ArticulationView` mask shapes and devices before launching selection kernels. (#3448)

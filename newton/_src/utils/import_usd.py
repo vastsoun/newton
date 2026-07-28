@@ -66,7 +66,6 @@ from .import_usd_deformable_utils import (
     _scout_deformable_prims,
 )
 from .import_usd_deformable_volume import _deformable_import_volume
-from .import_utils import should_show_collider
 
 logger = logging.getLogger("newton")
 
@@ -495,6 +494,9 @@ def parse_usd(
     }
     # mapping from remeshing method to a list of shape indices
     remeshing_queue = {}
+    # Approximated colliders whose prim is viewport geometry, and which therefore keep
+    # their authored topology as a visual shape. See the approximation pass below.
+    approximated_viewport_shapes: set[int] = set()
 
     if ignore_paths is None:
         ignore_paths = []
@@ -1207,11 +1209,10 @@ def parse_usd(
 
         USD viewports draw the ``default`` and ``proxy`` purposes and hide ``guide`` and
         ``render``; the allowlist also keeps any future purpose hidden until explicitly
-        handled. Colliders deliberately do not use this check: ``guide`` is the conventional
-        purpose for authored collision geometry (e.g. the MuJoCo USD exporter), and the
-        collider display policy (``force_show_colliders`` / ``hide_collision_shapes``) is the
-        explicit mechanism for revealing colliders — gating them on purpose would make
-        ``force_show_colliders`` a no-op on such assets.
+        handled. This is what decides whether a collider is drawn: ``guide`` is the
+        conventional purpose for authored collision geometry (e.g. the MuJoCo USD
+        exporter), and such a prim is not viewport geometry. ``force_show_colliders``
+        is the explicit override for inspecting it anyway.
         """
         if not _is_effectively_visible(prim):
             return False
@@ -3476,24 +3477,18 @@ def parse_usd(
                     margin_val = newton_margin
 
                 has_body_visual_shapes = load_visual_shapes and body_id in bodies_with_visual_shapes
-                model_has_visual_shapes = load_visual_shapes and bool(bodies_with_visual_shapes)
                 material_props = _get_material_props_cached(prim)
-                collider_has_visual_material = (
-                    key == UsdPhysics.ObjectType.MeshShape and _has_visual_material_properties(material_props)
-                )
 
-                # Explicit hide_collision_shapes overrides material-based visibility:
+                # Explicit hide_collision_shapes overrides drawability:
                 # if the body already has visual shapes, hide its colliders unconditionally.
                 hide_collider_for_body = hide_collision_shapes and has_body_visual_shapes
-                show_collider_by_policy = should_show_collider(
-                    force_show_colliders,
-                    model_has_visual_shapes=model_has_visual_shapes,
-                )
-                collider_is_visible = (
-                    show_collider_by_policy or collider_has_visual_material
-                ) and not hide_collider_for_body
-                # visibility only — see _is_viewport_drawn for why purpose does not gate colliders
-                collider_is_visible = collider_is_visible and _is_effectively_visible(prim)
+                # A collider is drawn when USD says it is drawn: ``purpose`` resolving to
+                # ``default``/``proxy`` and the prim not being invisible. Not because a
+                # render material happens to be bound, and not because nothing else in the
+                # scene is visible -- an asset whose geometry is all ``guide`` has no render
+                # geometry, and an empty viewport is the honest result of that. Reach for
+                # ``force_show_colliders`` to inspect such a scene.
+                collider_is_visible = (force_show_colliders or _is_viewport_drawn(prim)) and not hide_collider_for_body
 
                 # Contact response precedence:
                 #   per-shape mjc:solref (non-legacy) > material > legacy per-shape > default
@@ -3802,8 +3797,13 @@ def parse_usd(
                     )
                 elif key == UsdPhysics.ObjectType.MeshShape:
                     # Resolve mesh hull vertex limit from schema with fallback to parameter
-                    if collider_is_visible:
-                        # Visible colliders should render with the same visual material metadata
+                    # The mesh needs its render material when anything will draw it: either
+                    # the collider itself is visible, or it is viewport geometry whose
+                    # authored topology is about to be split off as a visual shape. The
+                    # latter is not covered by collider_is_visible, which hide_collision_shapes
+                    # can clear while the visual copy is still produced.
+                    if collider_is_visible or (load_visual_shapes and _is_viewport_drawn(prim)):
+                        # Drawn colliders should render with the same visual material metadata
                         # as visual-only mesh imports.
                         mesh = _get_mesh_with_visual_material(prim, path_name=path)
                     else:
@@ -3863,6 +3863,8 @@ def parse_usd(
                                     if remeshing_method not in remeshing_queue:
                                         remeshing_queue[remeshing_method] = []
                                     remeshing_queue[remeshing_method].append(shape_id)
+                                    if _is_viewport_drawn(prim):
+                                        approximated_viewport_shapes.add(shape_id)
 
                 elif key == UsdPhysics.ObjectType.PlaneShape:
                     # Warp uses +Z convention for planes
@@ -3903,9 +3905,30 @@ def parse_usd(
                     no_collision_shapes.add(shape_id)
                     builder.shape_flags[shape_id] &= ~ShapeFlags.COLLIDE_SHAPES
 
-    # approximate meshes
+    # Approximate meshes. ``physics:approximation`` belongs to
+    # UsdPhysicsMeshCollisionAPI and is scoped to collision: it says which shape to
+    # collide against, not which to draw. Approximating a prim that is viewport
+    # geometry therefore splits it in two -- an approximated collider and a visual
+    # carrying the authored topology -- rather than replacing what is drawn.
+    #
+    # Viewport geometry is decided by USD purpose and visibility alone. A prim whose
+    # purpose resolves to ``default`` is drawable whether that value was authored or
+    # inherited from the fallback, and whether or not a material is bound; the
+    # collider display policy that governs pure colliders does not apply to a prim
+    # that is also render geometry. ``approximate_meshes`` copies shapes carrying
+    # VISIBLE, so mark these before handing them over.
     for remeshing_method, shape_ids in remeshing_queue.items():
-        builder.approximate_meshes(method=remeshing_method, shape_indices=shape_ids)
+        drawn = [s for s in shape_ids if s in approximated_viewport_shapes] if load_visual_shapes else []
+        for shape_id in drawn:
+            builder.shape_flags[shape_id] |= int(ShapeFlags.VISIBLE)
+        if drawn:
+            builder.approximate_meshes(method=remeshing_method, shape_indices=drawn, keep_visual_shapes=True)
+        # Colliders that are not render geometry keep no visual: there is nothing
+        # authored to preserve. If one is on screen it is because the collider
+        # display policy put it there, and what it should show is the collider.
+        rest = [s for s in shape_ids if s not in set(drawn)]
+        if rest:
+            builder.approximate_meshes(method=remeshing_method, shape_indices=rest, keep_visual_shapes=False)
 
     # Filtered pairs are applied after the deformable passes below, once every endpoint's
     # Newton shapes exist.

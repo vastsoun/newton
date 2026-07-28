@@ -44,6 +44,7 @@
 
 - Disable the implicit positive Dahl-friction defaults in `SolverVBD.register_custom_attributes()` (deprecated in 1.3.0): `vbd:dahl_eps_max` and `vbd:dahl_tau` now default to zero, and Dahl cable friction is enabled only where both are authored positive. Pass `dahl_defaults_enabled=True` to temporarily restore the old defaults; the compatibility mode will be removed in a future release.
 - Compile tiled camera render kernels with CUDA fast math by default for faster rendering; set `SensorTiledCamera.render_config.enable_fast_math = False` for bit-exact, IEEE-precise output.
+- Make `CollisionPipeline` the sole owner of rigid-contact geometry for `SolverVBD`: `"latest"` supplies fresh geometry and `"sticky"` supplies replayed geometry. `SolverVBD(rigid_contact_history=True)` uses either mode's match indices only to warm-start its numeric lambda/penalty state.
 - Optimize raycast/raytrace queries by restructuring ray-shape intersection into local-space primitives and compile specialized depth/shadow variants that skip unused surface-normal work (mesh shadows also use any-hit queries).
 - Change experimental `SolverVBD` cable constraint slots from `[STRETCH=0, BEND=1]` to `[STRETCH=0, SHEAR=1, BEND=2, TWIST=3]`, allowing each stiffness and constraint mode to be configured independently. Existing cable calls using raw `slot=1` or `JointSlot.ANGULAR` now select shear; use `JointSlot.BEND` (now slot 2) to select bending.
 - Improve `SolverKamino` GPU simulation and kernel compilation performance.
@@ -54,6 +55,7 @@
 ### Deprecated
 
 - Deprecate scalar `ModelBuilder.gravity`; pass a three-component gravity vector instead.
+- Deprecate and ignore `SolverVBD`'s `rigid_contact_stick_motion_eps`, `rigid_contact_stick_freeze_translation_eps`, and `rigid_contact_stick_freeze_angular_eps`; use collision-pipeline sticky matching for persistent geometry. The SolverVBD body deadzone was removed without replacement.
 - Deprecate per-DOF `newton:{axis}:limitStiffness` and `newton:{axis}:limitDamping` attributes (where `{axis}` is `linear`, `angular`, `rotX`, `rotY`, or `rotZ`). Use the broadcast `newton:limitStiffness` and `newton:limitDamping` attributes from `NewtonJointAPI` instead; the broadcast value applies uniformly to all DOFs on the joint. For joints requiring per-DOF variance, split into separate 1-DOF (revolute / prismatic) joints.
 - Deprecate passing solver constructor options positionally after stable positional inputs such as `model` and explicit solver configs; migrate calls such as `SolverVBD(model, 10)` to `SolverVBD(model, iterations=10)`.
 - Deprecate `Model.contacts()` and `Model.collide()` in favor of explicitly creating a `CollisionPipeline`, allocating with `pipeline.contacts()`, and detecting collisions with `pipeline.collide(state, contacts)`.

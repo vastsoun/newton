@@ -60,7 +60,11 @@ from .import_usd_deformable_attachments import (
 )
 from .import_usd_deformable_cable import _deformable_import_cable, _deformable_import_cable_graphs
 from .import_usd_deformable_cloth import _deformable_import_cloth
-from .import_usd_deformable_utils import _DeformableImportContext, _scout_deformable_prims
+from .import_usd_deformable_utils import (
+    _LOADABLE_VISUAL_TYPE_NAMES_LOWER,
+    _DeformableImportContext,
+    _scout_deformable_prims,
+)
 from .import_usd_deformable_volume import _deformable_import_volume
 from .import_utils import should_show_collider
 
@@ -213,6 +217,7 @@ def parse_usd(
     skip_mesh_approximation: bool = False,
     load_sites: bool = True,
     load_visual_shapes: bool = True,
+    load_static_visual_shapes: bool = True,
     hide_collision_shapes: bool = False,
     force_show_colliders: bool = False,
     parse_mujoco_options: bool = True,
@@ -320,6 +325,9 @@ def parse_usd(
         skip_mesh_approximation: If True, mesh approximation is skipped. Otherwise, meshes are approximated according to the ``physics:approximation`` attribute defined on the UsdPhysicsMeshCollisionAPI (if it is defined), using the settings from :attr:`~newton.ModelBuilder.default_mesh_approximation_cfg`. Default is False.
         load_sites: If True, sites (prims with ``NewtonSiteAPI`` or ``MjcSiteAPI``) are loaded as non-colliding reference points. If False, sites are ignored. Default is True.
         load_visual_shapes: If True, non-physics visual geometry is loaded. If False, visual-only shapes are ignored (sites are still controlled by ``load_sites``). Default is True.
+        load_static_visual_shapes: If True, supported visual-only geometry outside
+            rigid-body hierarchies is loaded as static shapes when
+            ``load_visual_shapes`` is also True. Default is True.
         hide_collision_shapes: If True, collision shapes on bodies that already
             have visual-only geometry are hidden unconditionally, regardless of
             whether the collider has authored PBR material data. Default is False.
@@ -534,12 +542,16 @@ def parse_usd(
         )
 
     non_regex_ignore_paths = [path for path in ignore_paths if ".*" not in path]
-    # One scouting walk classifies every deformable candidate prim; it runs before the
-    # native loader so deformable-owned geometry (simulation prims and their colliders)
-    # can be excluded from rigid parsing, and the buckets are reused by the deformable
-    # passes below instead of re-traversing the stage.
+    # LoadUsdPhysicsFromRange remains the native rigid/joint descriptor parser, so this
+    # pre-pass supplies its deformable exclusions before it runs. The same walk also
+    # collects static visual leaves when requested, avoiding a third stage traversal.
     root_prim = stage.GetPrimAtPath(root_path)
-    _deformable_prims = _scout_deformable_prims(root_prim, ignore_paths)
+    _deformable_prims = _scout_deformable_prims(
+        root_prim,
+        ignore_paths,
+        collect_static_visuals=load_visual_shapes and load_static_visual_shapes,
+    )
+    deformable_visual_exclude_paths = set(_deformable_prims.native_physics_exclude_paths)
     native_exclude_paths = list(
         dict.fromkeys([*non_regex_ignore_paths, *_deformable_prims.native_physics_exclude_paths])
     )
@@ -611,16 +623,6 @@ def parse_usd(
     # Create a cache for world transforms to avoid recomputing them for each prim.
     xform_cache = UsdGeom.XformCache(Usd.TimeCode.Default())
     traverse_instance_proxies = Usd.TraverseInstanceProxies()
-    _visual_geom_types = {
-        "cube",
-        "sphere",
-        "plane",
-        "capsule",
-        "cylinder",
-        "cone",
-        "mesh",
-        "particlefield3dgaussiansplat",
-    }
 
     def _is_enabled_collider(prim: Usd.Prim) -> bool:
         if collider := UsdPhysics.CollisionAPI(prim):
@@ -1244,6 +1246,7 @@ def parse_usd(
         body_xform: wp.transform | None = None,
         articulation_root_xform: wp.transform | None = None,
         allow_visual_shapes: bool = True,
+        recurse: bool = True,
     ):
         """Load visual shapes and sites for a prim subtree.
 
@@ -1258,6 +1261,7 @@ def parse_usd(
                 passed when override_root_xform=True. Strips the root's original
                 pose from visual prim transforms to match the rebased body transforms.
             allow_visual_shapes: Whether non-site geometry may be loaded from this subtree.
+            recurse: Whether to inspect child prims after processing ``prim``.
         """
         if prim.HasAPI(UsdPhysics.RigidBodyAPI):
             return
@@ -1265,7 +1269,8 @@ def parse_usd(
         if any(re.match(path, path_name) for path in ignore_paths):
             return
         if _is_enabled_collider(prim):
-            _load_visual_shape_children(parent_body_id, prim, body_xform, articulation_root_xform, False)
+            if recurse:
+                _load_visual_shape_children(parent_body_id, prim, body_xform, articulation_root_xform, False)
             return
 
         type_name = str(prim.GetTypeName()).lower()
@@ -1276,9 +1281,12 @@ def parse_usd(
         if is_site and not load_sites:
             return
         if not is_site and not allow_visual_shapes:
-            _load_visual_shape_children(parent_body_id, prim, body_xform, articulation_root_xform, allow_visual_shapes)
+            if recurse:
+                _load_visual_shape_children(
+                    parent_body_id, prim, body_xform, articulation_root_xform, allow_visual_shapes
+                )
             return
-        if type_name not in _visual_geom_types:
+        if type_name not in _LOADABLE_VISUAL_TYPE_NAMES_LOWER:
             # Skip the transform/material work below for prims that cannot produce a shape.
             if (
                 len(type_name) > 0
@@ -1287,7 +1295,10 @@ def parse_usd(
                 and verbose
             ):
                 print(f"Warning: Unsupported geometry type {type_name} at {path_name} while loading visual shapes.")
-            _load_visual_shape_children(parent_body_id, prim, body_xform, articulation_root_xform, allow_visual_shapes)
+            if recurse:
+                _load_visual_shape_children(
+                    parent_body_id, prim, body_xform, articulation_root_xform, allow_visual_shapes
+                )
             return
 
         prim_world_mat = _get_prim_world_mat(
@@ -1457,7 +1468,8 @@ def parse_usd(
                 if verbose:
                     print(f"Added visual shape {path_name} ({type_name}) with id {shape_id}.")
 
-        _load_visual_shape_children(parent_body_id, prim, body_xform, articulation_root_xform, allow_visual_shapes)
+        if recurse:
+            _load_visual_shape_children(parent_body_id, prim, body_xform, articulation_root_xform, allow_visual_shapes)
 
     def add_body(
         prim: Usd.Prim,
@@ -3269,6 +3281,25 @@ def parse_usd(
             if src != dst:
                 authored_filtered_path_pairs.add((src, dst) if src < dst else (dst, src))
 
+    # The import scout collected supported visual leaf candidates during its existing
+    # instance-proxy walk. Body visuals were already loaded by add_body(), so only untouched
+    # static candidates need geometry/material work here.
+    if load_visual_shapes and load_static_visual_shapes:
+        rigid_body_paths = {str(path) for path in ret_dict.get(UsdPhysics.ObjectType.RigidBody, ((), ()))[0]}
+
+        def _is_in_rigid_body_hierarchy(path: str) -> bool:
+            while path:
+                if path in rigid_body_paths:
+                    return True
+                path = path.rpartition("/")[0]
+            return False
+
+        for prim in _deformable_prims.static_visuals:
+            path = str(prim.GetPath())
+            if path in deformable_visual_exclude_paths or path in path_shape_map or _is_in_rigid_body_hierarchy(path):
+                continue
+            _load_visual_shapes_impl(-1, prim, recurse=False)
+
     no_collision_shapes = set()
     collision_group_ids = {}
     rigid_body_mass_info_map = {}
@@ -3892,49 +3923,6 @@ def parse_usd(
                 for shape1 in builder.body_shapes[body1]:
                     for shape2 in builder.body_shapes[body2]:
                         builder.add_shape_collision_filter_pair(shape1, shape2)
-
-    # Load Gaussian splat prims that weren't already captured as children of rigid bodies.
-    if load_visual_shapes:
-        prims = iter(Usd.PrimRange(stage.GetPrimAtPath(root_path), Usd.TraverseInstanceProxies()))
-        for gaussian_prim in prims:
-            if str(gaussian_prim.GetPath()).startswith("/Prototypes/"):
-                continue
-
-            if gaussian_prim.HasAPI(UsdPhysics.RigidBodyAPI):
-                prims.PruneChildren()
-                continue
-
-            if str(gaussian_prim.GetTypeName()) != "ParticleField3DGaussianSplat":
-                continue
-
-            gaussian_path = str(gaussian_prim.GetPath())
-            if gaussian_path in path_shape_map:
-                continue
-            if any(re.match(p, gaussian_path) for p in ignore_paths):
-                continue
-
-            body_id = -1
-
-            prim_world_mat = _get_prim_world_mat(gaussian_prim, None, incoming_world_xform)
-
-            g_pos, g_rot, g_scale = wp.transform_decompose(prim_world_mat)
-            gaussian = usd.get_gaussian(gaussian_prim)
-            splat_cfg = copy.copy(visual_shape_cfg)
-            splat_cfg.is_visible = _is_viewport_drawn(gaussian_prim)
-            splat_material_props = _get_material_props_cached(gaussian_prim)
-            shape_id = builder.add_shape_gaussian(
-                body_id,
-                gaussian=gaussian,
-                xform=wp.transform(g_pos, g_rot),
-                scale=g_scale,
-                cfg=splat_cfg,
-                color=splat_material_props.get("color"),
-                label=gaussian_path,
-            )
-            path_shape_map[gaussian_path] = shape_id
-            path_shape_scale[gaussian_path] = g_scale
-            if verbose:
-                print(f"Added Gaussian splat shape {gaussian_path} with id {shape_id}.")
 
     def _zero_mass_information():
         """Create a reusable zero-contribution collider mass payload for callback fallback."""

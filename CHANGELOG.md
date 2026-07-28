@@ -103,6 +103,7 @@
 - Fix scrambled textures on USD meshes whose texture-coordinate primvar is not named `st` (e.g. `st_0`). The texcoord set is now resolved from the bound material's shader network (the `UsdPreviewSurface` texture reader's `varname` or an MDL/OmniPBR `uv_space_index`), and textured material subsets slice real per-corner UVs and authored normals instead of collapsing faceVarying data per vertex.
 - Fix builder merging (`ModelBuilder.add_builder()`, `add_world()`, `replicate()`) offsetting negative reference sentinels in custom attribute values stored as NumPy or Warp integer scalars.
 - Fix `ModelBuilder.add_usd()` requiring the optional `mujoco` package when handling `MjcActuator` prims, including during default MJC equality conversion.
+- Fix `ModelBuilder.add_usd()` ignoring enabled collider mass properties and counting disabled colliders toward body mass. (#3594)
 - Report malformed MJCF free-joint and inertial inputs with deterministic validation errors, and ignore MJCF mesh geom `size` lengths consistently.
 - Fix MJCF imports ignoring material and inline RGBA colors on primitive geoms.
 - Fix Style3D solver divergence caused by isolated vertices.

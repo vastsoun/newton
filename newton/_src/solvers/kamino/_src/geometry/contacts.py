@@ -1352,7 +1352,7 @@ def convert_contacts_newton_to_kamino(
     # convert exceeds the capacity of the output contacts.
     if contacts_in.rigid_contact_max > contacts_out.model_max_contacts_host:
         msg.warning(
-            "Newton `rigid_contact_max` (%d) exceeds Kamino `model_max_contacts_host` (%d); contacts will be truncated.",
+            "Newton `rigid_contact_max` (%d) exceeds Kamino `model_max_contacts_host` (%d); active contacts may be truncated.",
             contacts_in.rigid_contact_max,
             contacts_out.model_max_contacts_host,
         )
@@ -1494,11 +1494,10 @@ def convert_contacts_kamino_to_newton(
             f"contacts_out.device={contacts_out.device}"
         )
 
-    # Issue warning to the user if the number of contacts to
-    # convert exceeds the capacity of the output contacts.
-    if contacts_in.model_max_contacts_host > contacts_out.rigid_contact_max:
+    # Only Kamino-generated contacts can be truncated during export.
+    if clear_output and contacts_in.model_max_contacts_host > contacts_out.rigid_contact_max:
         msg.warning(
-            "Kamino `model_max_contacts_host` (%d) exceeds Newton `rigid_contact_max` (%d); contacts will be truncated.",
+            "Kamino `model_max_contacts_host` (%d) exceeds Newton `rigid_contact_max` (%d); active contacts may be truncated.",
             contacts_in.model_max_contacts_host,
             contacts_out.rigid_contact_max,
         )

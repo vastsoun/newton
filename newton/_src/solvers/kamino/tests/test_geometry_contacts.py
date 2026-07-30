@@ -1392,6 +1392,51 @@ class TestGeometryContactConversions(unittest.TestCase):
                 convert_forces=True,
             )
 
+    def test_09_multi_world_per_world_capacity_not_starved(self):
+        """Preserve capacity for later worlds when earlier worlds are saturated.
+
+        The conversion must examine all Newton contact slots so a saturated
+        world cannot prevent a later world from filling its own contact cap.
+
+        Test the following regression:
+        Scanning with the lower Kamino contact capacity would miss contacts.
+        """
+        scene = ModelBuilder()
+        scene.add_ground_plane()
+        scene.add_world(build_nunchaku_scene(ground=False))
+
+        single_box = ModelBuilder()
+        body = single_box.add_link()
+        no_gap = ModelBuilder.ShapeConfig(gap=0.0)
+        single_box.add_shape_box(body, hx=0.25, hy=0.25, hz=0.25, cfg=no_gap)
+        joint = single_box.add_joint_free(
+            parent=-1,
+            child=body,
+            parent_xform=wp.transform(p=wp.vec3(0.0, 0.0, 0.25), q=wp.quat_identity()),
+            child_xform=wp.transform_identity(),
+        )
+        single_box.add_articulation([joint])
+        scene.add_world(single_box, xform=wp.transform(p=wp.vec3(10.0, 0.0, 0.0)))
+
+        model = scene.finalize(self.default_device)
+        self.assertEqual(model.world_count, 2)
+        state = model.state()
+        newton.eval_fk(model, model.joint_q, model.joint_qd, state)
+        collision_pipeline = newton.CollisionPipeline(model)
+        contacts = collision_pipeline.contacts()
+        collision_pipeline.collide(state, contacts)
+
+        input_count = int(contacts.rigid_contact_count.numpy()[0])
+        self.assertGreater(input_count, 2)
+
+        kamino = ContactsKamino(capacity=[1, 1], device=self.default_device)
+        convert_contacts_newton_to_kamino(model, state, contacts, kamino)
+
+        np.testing.assert_array_equal(kamino.world_active_contacts.numpy(), [1, 1])
+        self.assertEqual(int(kamino.model_active_contacts.numpy()[0]), 2)
+        bid_AB = kamino.bid_AB.numpy()[:2]
+        self.assertTrue(np.all(bid_AB[:, 1] >= 0))
+
 
 ###
 # Test execution

@@ -100,9 +100,9 @@ class CollisionDetectorConfig(ConfigBase):
 
     max_contacts: int | None = None
     """
-    The maximum number of contacts to generate over the entire model.\n
-    Used to compute the total maximum contacts allocated for the model,
-    in conjunction with the total number of candidate geom-pairs.\n
+    The maximum number of contacts to allocate over the entire model.\n
+    Caps the geometry-based contact capacity estimate during collision-detector
+    initialization.\n
     Defaults to `DEFAULT_MODEL_MAX_CONTACTS` (`1000`) if unspecified.
     """
 

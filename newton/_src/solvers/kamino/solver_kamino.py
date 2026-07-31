@@ -744,7 +744,11 @@ class SolverKamino(SolverBase, CouplingInterface):
         )
 
         # Scratch array for notify validation
-        self._notify_violations = wp.empty(4, dtype=wp.int32, device=model.device)
+        self._notify_violations = wp.empty(
+            len(self._kamino.JointUpdateViolation),
+            dtype=wp.int32,
+            device=model.device,
+        )
 
         # Cache one representative shape per material.
         self._material_first_shape = self._kamino.compute_material_first_shape(
@@ -1030,8 +1034,10 @@ class SolverKamino(SolverBase, CouplingInterface):
             # q_i_0 is derived from both model.body_q and model.body_com.
             self._update_body_initial_pose()
 
-        if flags & (ModelFlags.BODY_INERTIAL_PROPERTIES | ModelFlags.JOINT_PROPERTIES):
-            # Joint transforms are derived from body_com and joint_X_p / joint_X_c.
+        if flags & (
+            ModelFlags.BODY_INERTIAL_PROPERTIES | ModelFlags.JOINT_PROPERTIES | ModelFlags.JOINT_DOF_PROPERTIES
+        ):
+            # Joint frames are derived from body_com, anchor transforms, and DoF axes.
             self._update_joint_transforms()
 
         if flags & (ModelFlags.BODY_INERTIAL_PROPERTIES | ModelFlags.SHAPE_PROPERTIES):
@@ -1205,7 +1211,7 @@ class SolverKamino(SolverBase, CouplingInterface):
         - springs
         - triangles, edges, tetrahedra
         - muscles
-        - distance, cable, or gimbal joints
+        - distance or cable joints
 
         Args:
             model: The Newton model to validate.
@@ -1231,27 +1237,17 @@ class SolverKamino(SolverBase, CouplingInterface):
         # Check for unsupported joint types
         if model.joint_count > 0:
             joint_type_np = model.joint_type.numpy()
-            joint_dof_dim_np = model.joint_dof_dim.numpy()
-            joint_q_start_np = model.joint_q_start.numpy()
-            joint_qd_start_np = model.joint_qd_start.numpy()
 
             unsupported_joint_types = {}
 
             for j in range(model.joint_count):
                 joint_type = int(joint_type_np[j])
-                dof_dim = (int(joint_dof_dim_np[j][0]), int(joint_dof_dim_np[j][1]))
-                q_count = int(joint_q_start_np[j + 1] - joint_q_start_np[j])
-                qd_count = int(joint_qd_start_np[j + 1] - joint_qd_start_np[j])
 
                 # Check for explicitly unsupported joint types
                 if joint_type == JointType.DISTANCE:
                     unsupported_joint_types["DISTANCE"] = unsupported_joint_types.get("DISTANCE", 0) + 1
                 elif joint_type == JointType.CABLE:
                     unsupported_joint_types["CABLE"] = unsupported_joint_types.get("CABLE", 0) + 1
-                # Check for GIMBAL configuration (3 coords, 3 DoFs, 0 linear/3 angular)
-                elif joint_type == JointType.D6 and q_count == 3 and qd_count == 3 and dof_dim == (0, 3):
-                    unsupported_joint_types["D6 (GIMBAL)"] = unsupported_joint_types.get("D6 (GIMBAL)", 0) + 1
-
             if len(unsupported_joint_types) > 0:
                 joint_desc = [f"{name} ({count} instances)" for name, count in unsupported_joint_types.items()]
                 unsupported_features.append("joint types: " + ", ".join(joint_desc))
@@ -1275,7 +1271,8 @@ class SolverKamino(SolverBase, CouplingInterface):
         """
         check_dof = bool(flags & ModelFlags.JOINT_DOF_PROPERTIES)
         check_actuation = bool(flags & (ModelFlags.JOINT_DOF_PROPERTIES | ModelFlags.ACTUATOR_PROPERTIES))
-        if not check_dof and not check_actuation:
+        check_axes = check_dof
+        if not check_dof and not check_actuation and not check_axes:
             return
 
         sentinel = self._kamino.validate_model_joint_updates(
@@ -1285,8 +1282,15 @@ class SolverKamino(SolverBase, CouplingInterface):
             self._notify_violations,
             check_dof=check_dof,
             check_actuation=check_actuation,
+            check_axes=check_axes,
         )
-        dynamic_joint, limit_dof, actuation_joint, invalid_joint = self._notify_violations.numpy()
+        violations = self._notify_violations.numpy()
+        dynamic_joint = violations[self._kamino.JointUpdateViolation.DYNAMIC_CTS]
+        limit_dof = violations[self._kamino.JointUpdateViolation.LIMIT_FINITE]
+        actuation_joint = violations[self._kamino.JointUpdateViolation.ACTUATION_PARTITION]
+        invalid_joint = violations[self._kamino.JointUpdateViolation.INVALID_TARGET_MODE]
+        axis_joint = violations[self._kamino.JointUpdateViolation.NONORTHONORMAL_AXES]
+        gimbal_handedness_joint = violations[self._kamino.JointUpdateViolation.GIMBAL_HANDEDNESS]
 
         if dynamic_joint != sentinel:
             joint = int(dynamic_joint)
@@ -1314,6 +1318,22 @@ class SolverKamino(SolverBase, CouplingInterface):
         if invalid_joint != sentinel:
             joint = int(invalid_joint)
             raise ValueError(f"Unsupported joint target mode for joint {joint}")
+
+        if axis_joint != sentinel:
+            joint = int(axis_joint)
+            raise ValueError(
+                f"Invalid joint configuration for SolverKamino:\n"
+                f"  - joint {joint} ({self.model.joint_label[joint]!r}): "
+                "universal and gimbal axes must be unit length and orthogonal"
+            )
+
+        if gimbal_handedness_joint != sentinel:
+            joint = int(gimbal_handedness_joint)
+            raise ValueError(
+                f"Invalid joint configuration for SolverKamino:\n"
+                f"  - joint {joint} ({self.model.joint_label[joint]!r}): "
+                "gimbal axes must preserve the solver's original handedness"
+            )
 
     def _update_actuation_types(self) -> None:
         """Refresh actuation modes without changing the passive/actuated layout."""

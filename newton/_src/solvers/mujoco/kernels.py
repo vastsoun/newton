@@ -888,6 +888,7 @@ def convert_mj_coords_to_warp_kernel(
 def convert_warp_coords_to_mj_kernel(
     joint_q: wp.array[wp.float32],
     joint_qd: wp.array[wp.float32],
+    world_mask: wp.array[wp.bool],
     joints_per_world: int,
     joint_type: wp.array[wp.int32],
     joint_q_start: wp.array[wp.int32],
@@ -905,6 +906,9 @@ def convert_warp_coords_to_mj_kernel(
     qvel: wp.array2d[wp.float32],
 ):
     worldid, jntid = wp.tid()
+
+    if world_mask and not world_mask[worldid]:
+        return
 
     joint_id = joints_per_world * worldid + jntid
 
@@ -3296,6 +3300,7 @@ def restore_sleeping_state_kernel(
 @wp.kernel(enable_backward=False)
 def copy_qpos_and_detect_tree_change_kernel(
     qpos_new: wp.array2d[wp.float32],
+    world_mask: wp.array[wp.bool],
     tolerance: float,
     qpos_treeid: wp.array[wp.int32],
     qpos: wp.array2d[wp.float32],
@@ -3303,6 +3308,8 @@ def copy_qpos_and_detect_tree_change_kernel(
 ):
     """Copy converted coordinates and flag trees with external pose edits."""
     worldid, i = wp.tid()
+    if world_mask and not world_mask[worldid]:
+        return
     value = qpos_new[worldid, i]
     if wp.abs(value - qpos[worldid, i]) > tolerance:
         treeid = qpos_treeid[i]

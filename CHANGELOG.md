@@ -34,6 +34,7 @@
 - Warn in `ModelBuilder.add_usd()` when a rigid body prim has a mirrored (negative-determinant) world transform. Improper transforms have no unique rotation decomposition, so imported body and joint frames can acquire a spurious constant rotation (common with mirror-scaled CAD exports); the warning recommends baking the reflection into the mesh geometry before import.
 - Add opt-in filtering of static-static, static-kinematic, and kinematic-kinematic contacts during broad-phase collision detection. Set `CollisionPipeline(include_static_kinematic_pairs=False)` to enable filtering; the default preserves existing contact generation. `Model.shape_contact_pairs` remains an unfiltered superset for direct consumers such as `SolverKamino` and hydroelastic SDF setup.
 - Add opt-in `body_frame_origin="com"` to `ModelBuilder.add_rod()` and `ModelBuilder.add_rod_graph()` for COM-centered cable capsule body frames.
+- Add dedicated gravity for global world `-1` while preserving the single-entry `Model.gravity` array for implicit single-world models and local-only array updates through `Model.set_gravity()`. (#3723)
 - Add `sign_method` argument to `Mesh.build_sdf` and `SDF.create_from_mesh` support for a `"normal"` (angle-weighted pseudo-normal) sign strategy, for selecting the inside/outside sign of the baked SDF (`"auto"`, `"parity"`, `"winding"`, or `"normal"`).
 - Add opt-in MuJoCo Warp sleeping support to `SolverMuJoCo` with MJCF sleep configuration, initial tree policies, `sleep_tolerance`, compact `nvmax` storage, and a launchable `mujoco_sleeping` example. (#3725)
 - Add `forward_depth_image` output support to `SensorTiledCamera.update()` and `SensorTiledCamera.utils.create_forward_depth_image_output()` for native forward-depth rendering without post-processing `depth_image`.
@@ -139,6 +140,8 @@
 - Fix Style3D solver divergence caused by isolated vertices.
 - Fix a use-after-free where finalizing a second model built from shared mesh geometry (e.g. via `ModelBuilder.replicate()` or `ModelBuilder.add_builder()`) invalidated the meshes referenced by previously finalized models.
 - Fix compiler warnings about overflowing int32 constants when compiling SDF texture and `SensorTiledCamera` kernels.
+- Fix `SolverVBD` particles using world 0 gravity in multi-world models instead of their assigned world's gravity. (#3692)
+- Fix `SensorIMU` to use per-world gravity for world-local sites not attached to a body.
 - Fix USD site import to discover sites beneath non-visual containers, collider prims, and instanceable rigid-body prims independently of `load_visual_shapes`; the reworked traversal also speeds up import of scenes with many nested `Xform` or instance prims.
 - Fix `SolverFeatherstone` BALL joints to apply passive `joint_damping` on all three angular DOFs.
 - Fix `eval_ik()` and `SolverSemiImplicit` rounding small float32 revolute-joint angles to zero. (#3434)

@@ -2086,6 +2086,7 @@ class SolverVBD(SolverBase, CouplingInterface):
             inputs=[
                 dt,
                 model.gravity,
+                model.particle_world,
                 self.particle_q_prev,
                 state_in.particle_q,
                 state_in.particle_qd,

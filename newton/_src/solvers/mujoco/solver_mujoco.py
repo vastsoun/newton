@@ -4707,6 +4707,10 @@ class SolverMuJoCo(SolverBase, CouplingInterface):
                     self.mjc_body_to_newton,
                     model.body_flags,
                     state.body_f,
+                    model.body_mass,
+                    model.body_world,
+                    model.gravity,
+                    self.mjw_model.body_gravcomp,
                 ],
                 outputs=[
                     xfrc,

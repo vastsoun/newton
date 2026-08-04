@@ -111,6 +111,7 @@
 
 - Fix MPR returning scale-dependent, excessively deep contacts for small convex shapes on large mesh triangles while preserving triangle-specific shared-edge manifold witnesses.
 - Make deterministic collision pipelines cover hydroelastic contact generation and reduction, including unique reduced-contact sort keys and overflow-safe fixed-point pressure accumulation.
+- Preserve box-box face contact manifolds under sub-microradian solver drift.
 - Fix `SolverMuJoCo` retaining an invalid external-contact cache when its first step is captured in a CUDA graph. (#3767)
 - Convert `newton:mimicCoef0` from degrees to radians when the mimic follower joint is angular. Assets authored against the old behavior need the value rescaled to degrees.
 - Complete Kamino RCM traversal for large and disconnected systems and reuse the resulting permutation by default; set `reuse_permutation=False` to recompute it for changing matrix topology.

@@ -1392,6 +1392,7 @@ class TestGeometryContactConversions(unittest.TestCase):
             small_capacity,
             f"Active count {nc_small} must not exceed Kamino capacity {small_capacity}",
         )
+        self.assertEqual(int(kamino_small._data.contact_overflow_warning_emitted.numpy()[0]), 1)
         # Geometry must be sound for whatever was kept.
         bid_AB = kamino_small.bid_AB.numpy()[:nc_small]
         for i in range(nc_small):

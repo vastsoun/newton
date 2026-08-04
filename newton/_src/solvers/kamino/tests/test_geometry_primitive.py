@@ -395,7 +395,14 @@ def test_narrowphase(
         contacts.clear()
 
         # Execute narrowphase for primitive shapes
-        primitive_narrowphase(model, data, broadphase._cdata, contacts, default_gap=gap)
+        primitive_narrowphase(
+            model,
+            data,
+            broadphase._cdata,
+            contacts,
+            wp.zeros(shape=1, dtype=wp.int32, device=device),
+            default_gap=gap,
+        )
 
         # Optional verbose output
         msg.debug("[%s][%s]: bodies.q_i:\n%s", case, bp_name, data.bodies.q_i)
@@ -1088,6 +1095,21 @@ class TestPipelinePrimitive(unittest.TestCase):
             case="all shape pairs",
             header="pipeline primitive narrow-phase",
         )
+
+    def test_03_reports_contact_capacity_overflow(self):
+        """Report primitive contacts truncated by the final contact capacity."""
+        builder = testing.make_shape_pairs_builder(shape_pairs=[("box", "box")])
+        model = builder.finalize(device=self.default_device)
+        data = model.data()
+        state = model.state()
+        contacts = ContactsKamino(capacity=1, device=self.default_device)
+        pipeline = CollisionPipelinePrimitive(model=model)
+
+        pipeline.collide(data, state, contacts)
+
+        self.assertEqual(int(contacts.model_active_contacts.numpy()[0]), 1)
+        self.assertEqual(int(contacts.world_active_contacts.numpy()[0]), 1)
+        self.assertEqual(int(pipeline._contact_overflow_warning_emitted.numpy()[0]), 1)
 
 
 ###

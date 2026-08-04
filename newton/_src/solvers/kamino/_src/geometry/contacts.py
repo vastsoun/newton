@@ -238,6 +238,9 @@ class ContactsKaminoData:
     Shape of ``(num_worlds,)``.
     """
 
+    contact_overflow_warning_emitted: wp.array[wp.int32] | None = None
+    """Internal flag to track contact-buffer overflow warning messages."""
+
     wid: wp.array[wp.int32] | None = None
     """
     The world index of each active contact.
@@ -805,6 +808,7 @@ class ContactsKamino:
                 model_active_contacts=wp.zeros(shape=1, dtype=wp.int32),
                 world_max_contacts=to_warp_int32_array(world_max_contacts),
                 world_active_contacts=wp.zeros(shape=len(world_max_contacts), dtype=wp.int32),
+                contact_overflow_warning_emitted=wp.zeros(shape=1, dtype=wp.int32),
                 wid=wp.full(value=-1, shape=(model_max_contacts,), dtype=wp.int32),
                 cid=wp.full(value=-1, shape=(model_max_contacts,), dtype=wp.int32),
                 gid_AB=wp.full(value=wp.vec2i(-1, -1), shape=(model_max_contacts,), dtype=wp.vec2i),
@@ -874,6 +878,7 @@ def make_convert_contacts_newton_to_kamino(
         num_worlds: wp.int32,
         kamino_model_max_contacts: wp.array[wp.int32],
         kamino_world_max_contacts: wp.array[wp.int32],
+        contact_overflow_warning_emitted: wp.array[wp.int32],
         newton_count: wp.array[wp.int32],
         newton_shape0: wp.array[wp.int32],
         newton_shape1: wp.array[wp.int32],
@@ -1026,11 +1031,21 @@ def make_convert_contacts_newton_to_kamino(
         wcid = wp.atomic_add(kamino_world_active, wid, 1)
         if wcid >= world_max_contacts:
             wp.atomic_sub(kamino_world_active, wid, 1)
+            if wp.atomic_exch(contact_overflow_warning_emitted, 0, 1) == 0:
+                wp.printf(
+                    "Warning: Kamino per-world contact capacity exceeded while converting Newton contacts. "
+                    "Increase Kamino contact capacity.\n"
+                )
             return
         mcid = wp.atomic_add(kamino_model_active, 0, 1)
         if mcid >= model_max_contacts:
             wp.atomic_sub(kamino_model_active, 0, 1)
             wp.atomic_sub(kamino_world_active, wid, 1)
+            if wp.atomic_exch(contact_overflow_warning_emitted, 0, 1) == 0:
+                wp.printf(
+                    "Warning: Kamino model contact capacity exceeded while converting Newton contacts. "
+                    "Increase Kamino contact capacity.\n"
+                )
             return
 
         # Store the contact data in the Kamino format if the contact is valid
@@ -1383,6 +1398,7 @@ def convert_contacts_newton_to_kamino(
             wp.int32(model.world_count),
             contacts_out.model_max_contacts,
             contacts_out.world_max_contacts,
+            contacts_out._data.contact_overflow_warning_emitted,
             contacts_in.rigid_contact_count,
             contacts_in.rigid_contact_shape0,
             contacts_in.rigid_contact_shape1,

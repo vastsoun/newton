@@ -107,6 +107,7 @@
 - Fix masked `SolverCoupledProxy.reset()` calls clearing proxy feedback history for unselected worlds.
 - Fix masked solver resets modifying unselected worlds or discarding their coupling and contact history.
 - Fix MJCF, URDF, and USD imports rendering collision-only bodies as visuals when the asset authors visual geometry elsewhere. (#3291)
+- Fix fully locked XPBD joints becoming permanently separated after large transient anchor errors.
 - Fix `SchemaResolverPhysx` reading every D6 translational limit gain from the `linear` instance instead of its `transX`, `transY`, or `transZ` instance.
 - Fix USD capsule, cylinder, and cone visuals and sites without authored `radius`/`height` to use the UsdGeom schema fallbacks, matching collision shapes.
 - Fix `ViewerUSD` texture consumers observing partially written PNGs by publishing generated textures atomically (#3288)

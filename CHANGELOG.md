@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+<!-- towncrier release notes start -->
+
 ### Added
 
 - Import MJCF mesh assets authored with inline vertex, face, normal, and texture-coordinate data.

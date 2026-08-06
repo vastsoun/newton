@@ -221,6 +221,7 @@ def make_setup_solver_kamino(asset_file: str, dt: float, max_frames: int) -> Sol
     solver_config.padmm.max_iterations = 200
     solver_config.padmm.rho_0 = 0.1
     solver_config.padmm.warmstart_mode = "none"
+    solver_config.dynamics.cull_speculative_contacts = False
     solver_config.constraints.gamma = 0.01
     solver_config.constraints.delta = 1e-5
     solver_config.collision_detector.pipeline = "unified"

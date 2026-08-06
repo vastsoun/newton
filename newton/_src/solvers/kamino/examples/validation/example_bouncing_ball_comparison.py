@@ -265,6 +265,7 @@ def make_setup_solver_kamino(dt: float, max_frames: int, use_box: bool = False) 
     solver_config.padmm.max_iterations = 200
     solver_config.padmm.rho_0 = 1.0
     solver_config.padmm.warmstart_mode = "none"
+    solver_config.dynamics.cull_speculative_contacts = False
     solver = newton.solvers.SolverKamino(model=model, config=solver_config)
     # metrics = SolutionMetricsNewton(
     #    dt=dt,

@@ -315,7 +315,7 @@ class SolverKaminoImpl(SolverBase):
         # Allocate the solution metrics evaluator if enabled
         self._metrics: SolutionMetrics | None = None
         if self._config.compute_solution_metrics:
-            self._metrics = SolutionMetrics(model=self._model)
+            self._metrics = SolutionMetrics(model=self._model, data=self._data)
 
         # Initialize callbacks
         self._pre_reset_cb: SolverKaminoImpl.ResetCallbackType | None = None
@@ -729,17 +729,19 @@ class SolverKaminoImpl(SolverBase):
         # updated body states after time-integration
         self._update_joints_data()
 
-        # Compute solver solution metrics if enabled
-        self._compute_metrics(state_in=state_in, contacts=contacts)
+        # Publish the updated internal solver state to the output state container
+        # before evaluating metrics and running user callbacks, so they observe the
+        # post-event state rather than stale data from a previous frame.
+        self._write_step_output(state_out=state_out)
 
         # Update time-keeping (i.e. physical time and discrete steps)
         self._advance_time()
 
+        # Compute solver solution metrics if enabled
+        self._compute_metrics(state_in=state_in, state_out=state_out, contacts=contacts)
+
         # Run the post-step callback if it has been set
         self._run_poststep_callback(state_in, state_out, control, contacts)
-
-        # Copy the updated internal solver state to the output state
-        self._write_step_output(state_out=state_out)
 
     @override
     def notify_model_changed(self, flags: ModelFlags | int) -> None:
@@ -1136,18 +1138,16 @@ class SolverKaminoImpl(SolverBase):
         # Run the mid-step callback if it has been set
         self._run_midstep_callback(state_in, state_out, control, contacts)
 
-    def _compute_metrics(self, state_in: StateKamino, contacts: ContactsKamino | None = None):
+    def _compute_metrics(self, state_in: StateKamino, state_out: StateKamino, contacts: ContactsKamino | None = None):
         """
         Computes performance metrics measuring the physical fidelity of the dynamics solver solution.
         """
         if self._config.compute_solution_metrics:
             self.metrics.reset()
             self._metrics.evaluate(
-                sigma=self._solver_fd.data.state.sigma,
                 lambdas=self._solver_fd.data.solution.lambdas,
                 v_plus=self._solver_fd.data.solution.v_plus,
-                model=self._model,
-                data=self._data,
+                state=state_out,
                 state_p=state_in,
                 problem=self._problem_fd,
                 jacobians=self._jacobians,

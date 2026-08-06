@@ -23,6 +23,10 @@ from .core.conversions import (
 from .core.joints import JOINT_QMAX, JOINT_QMIN, JointActuationType
 from .core.model import ModelKamino
 from .core.state import StateKamino
+from .dynamics.wrenches import (
+    compute_body_parent_wrenches,
+    compute_joint_parent_wrenches,
+)
 from .geometry.contacts import (
     ContactsKamino,
     convert_contacts_kamino_to_newton,
@@ -47,6 +51,8 @@ __all__ = [
     "ModelKamino",
     "SolverKaminoImpl",
     "StateKamino",
+    "compute_body_parent_wrenches",
+    "compute_joint_parent_wrenches",
     "compute_material_first_shape",
     "convert_base_origin_to_com",
     "convert_body_com_to_origin",

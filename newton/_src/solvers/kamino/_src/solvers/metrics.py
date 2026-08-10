@@ -1057,7 +1057,20 @@ class SolutionMetrics:
         Returns the metrics data container.
         """
         self._assert_finalized()
-        return self.metrics
+        return self._metrics
+
+    @property
+    def model(self) -> ModelKamino:
+        """
+        Returns the Kamino model wired to this metrics evaluator.
+
+        Exposed so :class:`SolutionMetricsLogger` (which accepts both
+        :class:`SolutionMetricsNewton` and this internal :class:`SolutionMetrics`)
+        can read ``model.size.num_worlds`` and ``model.time.dt`` uniformly across
+        both container flavours.
+        """
+        self._assert_finalized()
+        return self._model
 
     ###
     # Public Operations

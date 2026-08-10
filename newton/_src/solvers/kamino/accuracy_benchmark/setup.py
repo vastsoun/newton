@@ -1,12 +1,24 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
 
-"""
-TODO
+"""Shared benchmark scaffolding: per-solver ``SolverSetup`` and multi-solver ``SetupRunner``.
+
+Both classes support the two logger flavours used by the accuracy benchmark:
+
+- :class:`SolutionMetricsNewton` + :class:`SolutionMetricsLogger` — Kamino-front-end
+  residuals; always instantiated by the setup.
+- :class:`PhysicsMetrics` + :class:`PhysicsMetricsLogger` — cross-solver constraint
+  residuals computed directly from the Newton state; opt-in via
+  ``setup.physics_metrics`` / ``setup.physics_metrics_logger``.
+
+Plus an opt-in ``setup.aux_logger`` slot for solver-specific PADMM diagnostics
+(:class:`SolverKaminoLogger`), which are complementary to both logger flavours.
 """
 
 import os
+import time
 from collections.abc import Callable
+from typing import Any
 
 import warp as wp
 
@@ -15,6 +27,15 @@ from ....solvers import SolverBase
 from ....viewer import ViewerBase
 from .._src.metrics import SolutionMetricsLogger, SolutionMetricsNewton
 from .._src.utils import logger as msg
+from ..examples import print_progress_bar
+from .logging import PhysicsMetricsLogger
+from .metrics import (
+    PhysicsMetrics,
+    compute_contact_constraint_metrics,
+    compute_joint_constraint_metrics,
+    compute_per_world_contact_constraint_summary,
+    compute_per_world_joint_constraint_summary,
+)
 
 ###
 # Module interface
@@ -34,7 +55,11 @@ def _copy_array(dst: wp.array, src: wp.array, name: str) -> None:
     ``wp.copy`` only raises when the source overruns the destination. When the
     source is smaller, it silently copies a prefix and leaves the destination's
     tail stale. The explicit size check converts that into a named error.
+    Skips the copy when ``src is dst`` — the runner's independent mode reuses
+    the setup's own state buffers as ``step()`` inputs.
     """
+    if dst is src:
+        return
     if dst.size != src.size:
         raise ValueError(f"{name!r}: size mismatch (src={src.size}, dst={dst.size})")
     wp.copy(dst, src)
@@ -58,7 +83,9 @@ def _copy_optional(dst: object, src: object, attr: str) -> None:
 
 
 def _copy_state(state_in: State, state_out: State) -> None:
-    """Copy every field of ``state_in`` into ``state_out``."""
+    """Copy every field of ``state_in`` into ``state_out``. No-op when ``state_in is state_out``."""
+    if state_in is state_out:
+        return
     if state_in.body_count != state_out.body_count:
         raise ValueError(f"states have different body_count: src={state_in.body_count}, dst={state_out.body_count}")
     if state_in.joint_coord_count != state_out.joint_coord_count:
@@ -79,13 +106,17 @@ def _copy_state(state_in: State, state_out: State) -> None:
 
 
 def _copy_control(control_in: Control, control_out: Control) -> None:
-    """Copy every field of ``control_in`` into ``control_out``."""
-    for attr in ("joint_f", "joint_target_pos", "joint_target_vel", "joint_act"):
+    """Copy every field of ``control_in`` into ``control_out``. No-op when the two aliases match."""
+    if control_in is control_out:
+        return
+    for attr in ("joint_f", "joint_target_q", "joint_target_qd", "joint_act"):
         _copy_optional(control_out, control_in, attr)
 
 
 def _copy_contacts(contacts_in: Contacts, contacts_out: Contacts) -> None:
-    """Copy every field of ``contacts_in`` into ``contacts_out``."""
+    """Copy every field of ``contacts_in`` into ``contacts_out``. No-op when the two aliases match."""
+    if contacts_in is contacts_out:
+        return
     if contacts_in.rigid_contact_max != contacts_out.rigid_contact_max:
         raise ValueError(
             f"contacts have different rigid_contact_max: src={contacts_in.rigid_contact_max}, dst={contacts_out.rigid_contact_max}"
@@ -147,6 +178,7 @@ class SolverSetup:
         control_cb: Callable | None = None,
         kwargs_builder: dict | None = None,
         kwargs_logger: dict | None = None,
+        with_solution_metrics: bool = True,
     ):
         """
         Constructs a solver benchmark setup for a given problem-solver combination.
@@ -192,6 +224,18 @@ class SolverSetup:
         # the per-solver factories when the solver exposes such an object;
         # logged in ``step()`` and surfaced by ``SetupRunner.test_final``.
         self.solver_logger: SolutionMetricsLogger | None = None
+        # Optional cross-solver physics-constraint metrics computed from the
+        # Newton state and populated in ``step()`` when both are attached.
+        # See ``PhysicsMetrics`` / ``PhysicsMetricsLogger`` for the underlying
+        # buffers; ``SetupRunner.test_final`` renders their comparison output
+        # when at least one setup in the run carries a populated logger.
+        self.physics_metrics: PhysicsMetrics | None = None
+        self.physics_metrics_logger: PhysicsMetricsLogger | None = None
+        # Optional solver-specific auxiliary logger (e.g. SolverKaminoLogger for
+        # PADMM iteration diagnostics). Duck-typed: only ``.log()`` is required
+        # in ``step()``; ``SetupRunner.test_final`` also calls ``.plot(...)``
+        # when present.
+        self.aux_logger: Any | None = None
         self.state_out: State | None = None
         self.state_in: State | None = None
         self.control: Control | None = None
@@ -214,26 +258,31 @@ class SolverSetup:
         if not self.standalone:
             self._state_in_snapshot = self.model.state()
 
-        # Finalise the metrics and logger
-        # NOTE: We need to create a new model for the metrics to operate on,
-        # because ModelKamino currently modifies the model in-place which can
-        # break the assumptions of each solver.
-        if kwargs_builder is None:
-            kwargs_builder = {"skip_validation_joints": True}
-        metrics_model = self.builder.finalize(**kwargs_builder)
-        metrics_model.rigid_contact_max = rigid_contact_max
-        self.metrics = SolutionMetricsNewton(
-            model=metrics_model,
-            dt=self.dt,
-            sparse=False,
-        )
-        if kwargs_logger is None:
-            kwargs_logger = {
-                "max_frames": 5000,
-                "mode": SolutionMetricsLogger.Mode.BOUNDED,
-                "dt": self.dt,
-            }
-        self.logger = SolutionMetricsLogger(metrics=self.metrics, **kwargs_logger)
+        # Finalise the metrics and logger. Opt-in via ``with_solution_metrics``:
+        # the ``SolutionMetricsNewton`` front-end wraps Kamino's converters and
+        # is not maintained in sync with the geometry / solver APIs — paper
+        # setups turn it off and rely on ``PhysicsMetrics`` (see below) for the
+        # cross-solver comparison.
+        if with_solution_metrics:
+            # NOTE: A dedicated builder finalize call is used because ``ModelKamino``
+            # currently modifies the source model in-place, which would otherwise
+            # break the assumptions of the primary solver's own model.
+            if kwargs_builder is None:
+                kwargs_builder = {"skip_validation_joints": True}
+            metrics_model = self.builder.finalize(**kwargs_builder)
+            metrics_model.rigid_contact_max = rigid_contact_max
+            self.metrics = SolutionMetricsNewton(
+                model=metrics_model,
+                dt=self.dt,
+                sparse=False,
+            )
+            if kwargs_logger is None:
+                kwargs_logger = {
+                    "max_frames": 5000,
+                    "mode": SolutionMetricsLogger.Mode.BOUNDED,
+                    "dt": self.dt,
+                }
+            self.logger = SolutionMetricsLogger(metrics=self.metrics, **kwargs_logger)
 
     ###
     # Operations
@@ -275,7 +324,7 @@ class SolverSetup:
 
     def _log_verbose_metrics(self) -> None:
         """Dump the active slice of ``metrics._contacts`` (ContactsKamino). No-op unless ``verbose``."""
-        if not self.verbose:
+        if not self.verbose or self.metrics is None:
             return
         # ``_contacts`` is private but stable enough for diagnostic logging;
         # mirrors the sandbox comparison-example access path.
@@ -334,24 +383,48 @@ class SolverSetup:
 
         self._log_verbose_contacts()
 
-        self.metrics.evaluate(
-            state=self.state_out,
-            state_p=state_p,
-            control=self.control,
-            contacts=self.contacts,
-        )
+        if self.metrics is not None:
+            self.metrics.evaluate(
+                state=self.state_out,
+                state_p=state_p,
+                control=self.control,
+                contacts=self.contacts,
+            )
 
         self._log_verbose_metrics()
 
-        self.logger.log()
+        if self.physics_metrics is not None:
+            self._evaluate_physics_metrics(state_p=state_p)
+
+        if self.logger is not None:
+            self.logger.log()
         if self.solver_logger is not None:
             self.solver_logger.log()
+        if self.physics_metrics_logger is not None:
+            self.physics_metrics_logger.log()
+        if self.aux_logger is not None:
+            self.aux_logger.log()
 
         # Standalone mode advances by swapping state_in/state_out so the next call
         # reads from the new post-step state. Non-standalone setups don't swap;
         # the runner manages the canonical state externally.
         if self.standalone:
             self.state_in, self.state_out = self.state_out, self.state_in
+
+    def _evaluate_physics_metrics(self, state_p: State) -> None:
+        """Populate ``physics_metrics`` per-contact and per-joint residuals.
+
+        Contact/joint groups are gated by the corresponding ``PhysicsMetrics``
+        sub-container so a scene without articulation (e.g. box-on-plane)
+        transparently skips the joint pass.
+        """
+        pm = self.physics_metrics
+        if pm.contacts is not None:
+            compute_contact_constraint_metrics(self.model, state_p, self.state_out, self.contacts, pm, self.dt)
+            compute_per_world_contact_constraint_summary(self.model, self.contacts, pm)
+        if pm.joints is not None:
+            compute_joint_constraint_metrics(self.model, state_p, self.state_out, pm)
+            compute_per_world_joint_constraint_summary(self.model, pm)
 
     def render(
         self,
@@ -374,15 +447,30 @@ class SolverSetup:
 
 
 class SetupRunner:
-    """Drives one or more :class:`SolverSetup` instances against a shared canonical state.
+    """Drives one or more :class:`SolverSetup` instances in one of two comparison modes.
 
-    The runner allocates its own canonical ``state_in``, ``control``, and ``contacts``
-    buffers from the leader setup's model and steps every setup from those same inputs
-    each sub-step. Setups inside the runner must be ``standalone=False`` — the runner is
-    the single source of truth for the live state.
+    Two modes are exposed via the ``independent`` flag:
 
-    Conforms to the ``example`` interface expected by :func:`newton.examples.run` so it
-    can be passed directly as the example object.
+    - **Tied** (``independent=False``): the runner owns a single canonical
+      ``state_in`` / ``control`` / ``contacts`` triplet, steps every setup from
+      those same inputs each sub-step, and propagates the leader's post-step
+      state as the next canonical state. Best for **single-step accuracy**
+      metrics (every solver sees the same per-step problem).
+    - **Independent** (``independent=True``): each setup keeps its own
+      trajectory in its private ``state_in`` / ``state_out`` / ``contacts``
+      buffers; the runner still applies the shared ``force_cb`` / ``control_cb``
+      inputs to each setup's canonical state but does not propagate any leader.
+      Best for **position-level residual accumulation** — solvers diverge along
+      their own trajectories rather than tracking the leader.
+
+    In both modes setups must be constructed with ``standalone=False`` — the
+    runner handles state cycling for independent mode via an explicit
+    ``state_in`` ↔ ``state_out`` swap on each setup.
+
+    Conforms to the ``example`` interface expected by :func:`newton.examples.run`
+    so it can be passed directly as the example object. For headless
+    data-collection runs, prefer :meth:`run_headless` which enforces
+    ``num_frames`` and prints a progress bar.
     """
 
     def __init__(
@@ -391,22 +479,33 @@ class SetupRunner:
         leader: str,
         viewer: ViewerBase | None = None,
         force_cb: Callable | None = None,
+        control_cb: Callable | None = None,
         fps: float = 50.0,
         sim_substeps: int = 20,
         verbose: bool = False,
+        independent: bool = False,
+        use_cuda_graph: bool = True,
     ):
         """Construct a runner around a dict of solver setups.
 
         Args:
             setups: Mapping of name to :class:`SolverSetup`. All setups must be
                 non-standalone (``standalone=False``).
-            leader: Key of the leader setup whose post-step output is treated as the
-                canonical state for the next frame.
+            leader: Key of the leader setup. In tied mode drives state propagation;
+                in independent mode used only to pick the model backing the
+                runner's shared ``control`` buffer (for ``control_cb``) and the
+                viewer's ``set_model`` call.
             viewer: Optional viewer. When ``None``, ``render()`` is a no-op and the
                 runner skips the default ``viewer.apply_forces`` fallback.
             force_cb: Optional callable ``force_cb(state, contacts)`` applied to
                 ``state_in`` at the start of every sub-step (after ``clear_forces``).
                 When set, replaces the default ``viewer.apply_forces`` fallback.
+                In independent mode, invoked once per setup with that setup's own
+                ``state_in`` / ``contacts``.
+            control_cb: Optional callable ``control_cb(control, sim_time)`` invoked
+                at the start of every sub-step to update the shared canonical
+                :class:`Control`. In independent mode the shared control is fanned
+                out to every setup via ``_copy_control``.
             fps: Viewer/render frame rate. ``frame_dt = 1/fps`` is the per-call
                 advance of ``self.sim_time``.
             sim_substeps: Number of physics sub-steps per ``step()`` call.
@@ -416,6 +515,15 @@ class SetupRunner:
             verbose: When ``True``, sets ``setup.verbose = True`` on every setup so
                 every sub-step dumps state / contact / metrics diagnostics. Noisy;
                 pair with a low ``--num-frames`` value.
+            independent: When ``True``, run each setup on its own trajectory (no
+                leader propagation). See class docstring for when to pick which
+                mode.
+            use_cuda_graph: When ``True`` (and running on CUDA), capture the
+                per-frame substep loop into a CUDA graph on the first call to
+                :meth:`step` and replay it on subsequent calls. Automatically
+                disabled if ``control_cb`` or ``viewer`` is set (both introduce
+                host-side operations that can't be captured), if the device is
+                not CUDA, or if ``wp.config.verify_cuda`` is on.
         """
         if leader not in setups:
             raise ValueError(f"leader {leader!r} not in setups: {list(setups)}")
@@ -423,7 +531,7 @@ class SetupRunner:
             if setup.standalone:
                 raise ValueError(
                     f"setup {name!r} must be standalone=False when used inside SetupRunner; "
-                    f"the runner owns state_in / control / contacts"
+                    f"the runner manages state cycling in both tied and independent modes"
                 )
         if sim_substeps < 1:
             raise ValueError(f"sim_substeps must be >= 1, got {sim_substeps}")
@@ -437,6 +545,8 @@ class SetupRunner:
         self.leader: SolverSetup = setups[leader]
         self.viewer: ViewerBase | None = viewer
         self.force_cb: Callable | None = force_cb
+        self.control_cb: Callable | None = control_cb
+        self.independent: bool = independent
 
         self.fps: float = fps
         self.sim_substeps: int = sim_substeps
@@ -444,11 +554,27 @@ class SetupRunner:
         self.sim_dt: float = self.frame_dt / sim_substeps
         self.sim_time: float = 0.0
 
-        # Canonical state buffers, allocated from the leader's model
+        # Shared canonical buffers. In tied mode these hold the live state
+        # every setup steps from. In independent mode ``state_in`` / ``contacts``
+        # are unused (each setup owns its own) but ``control`` is still used
+        # as the ``control_cb`` scratch buffer, fanned out to every setup.
         self.model: Model = self.leader.model
         self.state_in: State = self.model.state()
         self.control: Control = self.model.control()
         self.contacts: Contacts = self.model.contacts()
+
+        # CUDA-graph capture is only meaningful when the substep loop is a pure
+        # sequence of device kernels — ``control_cb`` (host-side ``.assign``, e.g.
+        # DR Legs animation) and ``viewer.apply_forces`` (host-side event
+        # handling) both introduce non-captureable operations.
+        self._use_cuda_graph: bool = bool(
+            use_cuda_graph
+            and wp.get_device().is_cuda
+            and not wp.config.verify_cuda
+            and self.control_cb is None
+            and self.viewer is None
+        )
+        self._graph: Any | None = None
 
         if self.viewer is not None:
             self.viewer.set_model(self.model)
@@ -456,22 +582,71 @@ class SetupRunner:
         self.reset()
 
     def reset(self) -> None:
-        """Re-initialise ``state_in`` by calling each setup's ``reset_cb``.
+        """Re-initialise the canonical state(s) by calling each setup's ``reset_cb``.
 
-        Followers reset first, then the leader. This matters when a follower's
-        ``reset_cb`` writes a base pose via forward kinematics (touching ``joint_q``
-        and the derived ``body_q``/``body_qd``) and the leader's ``reset_cb``
-        applies solver-internal initialisation on top — running the leader last
-        prevents the follower from overwriting it.
+        In **tied** mode, followers reset first, then the leader, all writing into
+        the shared ``self.state_in``. This matters when a follower's ``reset_cb``
+        writes a base pose via forward kinematics (touching ``joint_q`` and the
+        derived ``body_q``/``body_qd``) and the leader's ``reset_cb`` applies
+        solver-internal initialisation on top — running the leader last prevents
+        the follower from overwriting it.
+
+        In **independent** mode, each setup resets its own private ``state_in``
+        buffer instead. There is no cross-setup ordering constraint.
         """
-        for name, setup in self.setups.items():
-            if name == self.leader_name:
-                continue
-            setup.reset(state_out=self.state_in)
-        self.leader.reset(state_out=self.state_in)
+        if self.independent:
+            for setup in self.setups.values():
+                setup.reset(state_out=setup.state_in)
+        else:
+            for name, setup in self.setups.items():
+                if name == self.leader_name:
+                    continue
+                setup.reset(state_out=self.state_in)
+            self.leader.reset(state_out=self.state_in)
 
     def step(self) -> None:
         """Run ``sim_substeps`` physics sub-steps and advance ``sim_time`` by ``frame_dt``.
+
+        Dispatches to :meth:`_step_tied` or :meth:`_step_independent` based on
+        ``self.independent``. See class docstring for the difference. When
+        ``use_cuda_graph`` is enabled (default on CUDA without ``control_cb`` /
+        ``viewer``), the first call captures the substep loop into a graph and
+        subsequent calls replay it via :func:`wp.capture_launch`.
+        """
+        if self._use_cuda_graph:
+            if self._graph is None:
+                self._graph = self._capture_step_graph()
+            if self._graph is not None:
+                wp.capture_launch(self._graph)
+                self.sim_time += self.frame_dt
+                return
+        if self.independent:
+            self._step_independent()
+        else:
+            self._step_tied()
+        self.sim_time += self.frame_dt
+
+    def _capture_step_graph(self):
+        """Capture the current mode's substep loop into a reusable CUDA graph.
+
+        Falls back to ``None`` (i.e. the eager path in :meth:`step`) if the
+        capture raises — e.g. a solver internally issues a host-side operation
+        we can't work around here. The failed capture attempt is logged so the
+        first-frame slowdown is diagnosable.
+        """
+        step_fn = self._step_independent if self.independent else self._step_tied
+        try:
+            with wp.ScopedCapture() as capture:
+                step_fn()
+            msg.notif("CUDA graph captured (%s substeps)", self.sim_substeps)
+            return capture.graph
+        except Exception as exc:
+            msg.warning("CUDA graph capture failed (%s); falling back to eager step", exc)
+            self._use_cuda_graph = False
+            return None
+
+    def _step_tied(self) -> None:
+        """Run ``sim_substeps`` physics sub-steps against the shared canonical state.
 
         Per sub-step:
             1. Clear forces on ``state_in``.
@@ -486,6 +661,8 @@ class SetupRunner:
         """
         for _ in range(self.sim_substeps):
             self.state_in.clear_forces()
+            if self.control_cb is not None:
+                self.control_cb(control=self.control, sim_time=self.sim_time)
             if self.force_cb is not None:
                 self.force_cb(state=self.state_in, contacts=self.contacts)
             elif self.viewer is not None:
@@ -498,31 +675,103 @@ class SetupRunner:
 
             self.state_in, self.leader.state_out = self.leader.state_out, self.state_in
 
-        self.sim_time += self.frame_dt
+    def _step_independent(self) -> None:
+        """Run ``sim_substeps`` physics sub-steps with each setup on its own trajectory.
+
+        Per sub-step, and per setup:
+            1. Clear forces on the setup's private ``state_in``.
+            2. Apply external forces (via ``force_cb`` or ``viewer.apply_forces``).
+            3. Run collision detection into the setup's private ``contacts``.
+            4. Call ``setup.step()`` on its own buffers (self-copies short-circuited).
+            5. Swap the setup's ``state_in`` ↔ ``state_out`` so the next sub-step
+               reads from the new post-step state.
+
+        ``control_cb`` writes into the runner's shared ``self.control`` once per
+        sub-step, then setup.step's internal ``_copy_control`` fans it out to each
+        setup — every solver sees the same PD targets even when trajectories diverge.
+        """
+        for _ in range(self.sim_substeps):
+            if self.control_cb is not None:
+                self.control_cb(control=self.control, sim_time=self.sim_time)
+            for setup in self.setups.values():
+                state_in = setup.state_in
+                state_in.clear_forces()
+                if self.force_cb is not None:
+                    self.force_cb(state=state_in, contacts=setup.contacts)
+                elif self.viewer is not None:
+                    self.viewer.apply_forces(state_in)
+                setup.model.collide(state_in, setup.contacts)
+                setup.step(state_in=state_in, control_in=self.control, contacts_in=setup.contacts)
+                setup.state_in, setup.state_out = setup.state_out, setup.state_in
 
     def render(self) -> None:
         """Log the canonical post-step state and pre-step contact geometry to the viewer.
 
-        Uses ``self.leader.contacts`` (the leader setup's private contacts copy, with
-        solver-written forces from ``update_contacts``) rather than ``self.contacts``
-        (the runner's pre-collide-only buffer).
+        In tied mode uses the shared ``self.state_in`` (post-swap: holds the leader's
+        post-step state) together with ``self.leader.contacts``. In independent mode
+        uses the leader's private ``state_in`` (post-swap: also post-step) so the
+        viewer shows the leader's trajectory; the follower trajectories diverge on
+        their own private buffers but are not currently multiplexed in the viewer.
         """
         if self.viewer is None:
             return
+        state_display = self.state_in if not self.independent else self.leader.state_in
         self.viewer.begin_frame(self.sim_time)
-        self.viewer.log_state(self.state_in)
+        self.viewer.log_state(state_display)
         self.viewer.log_contacts(self.leader.contacts, self.leader.state_out)
         self.viewer.end_frame()
 
+    def run_headless(self, num_frames: int, progress: bool = True) -> None:
+        """Run ``num_frames`` frames without a viewer, optionally printing a progress bar.
+
+        Called from paper scripts when ``args.headless`` — the newton example runner
+        doesn't enforce ``args.num_frames`` for the GL viewer's headless mode, so we
+        drive the loop directly here. ``wp.synchronize()`` after each ``step`` gives
+        the progress bar a stable FPS estimate; the ``test_final`` call still lives
+        on the caller side so we don't force an output layout choice.
+
+        Args:
+            num_frames: Number of frames to advance (each frame runs
+                :attr:`sim_substeps` physics sub-steps).
+            progress: When ``True``, refreshes an ASCII progress bar with ETA / FPS.
+        """
+        msg.notif(
+            "Running %s frames (%s sub-steps each, mode=%s, leader=%s, cuda_graph=%s)",
+            num_frames,
+            self.sim_substeps,
+            "independent" if self.independent else "tied",
+            self.leader_name,
+            self._use_cuda_graph,
+        )
+        start_time = time.time()
+        for i in range(num_frames):
+            self.step()
+            # Sync so the progress-bar FPS/ETA reflects real device work rather
+            # than queued kernel launches. Cheap in the CUDA-graph path (one
+            # sync per frame after ``sim_substeps`` fused launches); still
+            # negligible for the eager path.
+            wp.synchronize()
+            if progress:
+                print_progress_bar(i + 1, num_frames, start_time, prefix="Progress", suffix="")
+        msg.notif("Finished headless run")
+
     def test_final(self, problem_name: str = "comparison", output_path: str | None = None) -> None:
-        """Write :meth:`SolutionMetricsLogger.plot_comparison` PDFs for the run.
+        """Emit end-of-run comparison plots and tables for every attached logger.
 
         Always emits ``<problem_name>_solvers.pdf`` comparing the front-end
         :class:`SolutionMetricsNewton` of every setup. For any setup whose
         ``solver_logger`` is populated (i.e. the solver exposes an internal
         metrics object), also emits ``<problem_name>_<setup_name>.pdf``
         comparing that solver's internal metrics against its own front-end
-        evaluator — a useful diagnostic for verifying the two paths agree.
+        evaluator.
+
+        When at least one setup carries a populated
+        :class:`PhysicsMetricsLogger`, additionally emits
+        ``<problem_name>_physics_metrics{,_logscale}.pdf`` overlay plots and a
+        ``<problem_name>_physics_metrics_table.csv`` (also rendered to console
+        with color rankings). Per-setup ``aux_logger.plot(...)`` outputs are
+        emitted as ``<problem_name>_<setup_name>_aux.pdf`` when the logger is
+        attached.
 
         Args:
             problem_name: Used as both the filename stem and the default sub-directory
@@ -534,13 +783,14 @@ class SetupRunner:
             output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output", problem_name)
         os.makedirs(output_path, exist_ok=True)
 
-        front_end_loggers = {name: setup.logger for name, setup in self.setups.items()}
-        SolutionMetricsLogger.plot_comparison(
-            front_end_loggers, filename=f"{problem_name}_solvers", path=output_path, ext="pdf", grid=True
-        )
+        front_end_loggers = {name: setup.logger for name, setup in self.setups.items() if setup.logger is not None}
+        if front_end_loggers:
+            SolutionMetricsLogger.plot_comparison(
+                front_end_loggers, filename=f"{problem_name}_solvers", path=output_path, ext="pdf", grid=True
+            )
 
         for name, setup in self.setups.items():
-            if setup.solver_logger is None:
+            if setup.solver_logger is None or setup.logger is None:
                 continue
             internal_vs_front_end = {"solver": setup.solver_logger, name: setup.logger}
             SolutionMetricsLogger.plot_comparison(
@@ -550,3 +800,36 @@ class SetupRunner:
                 ext="pdf",
                 grid=True,
             )
+
+        physics_loggers = {
+            name: setup.physics_metrics_logger
+            for name, setup in self.setups.items()
+            if setup.physics_metrics_logger is not None and setup.physics_metrics_logger.num_logged_frames > 0
+        }
+        if physics_loggers:
+            PhysicsMetricsLogger.plot_comparison(
+                physics_loggers, filename=f"{problem_name}_physics_metrics", path=output_path, ext="pdf", grid=True
+            )
+            PhysicsMetricsLogger.plot_comparison(
+                physics_loggers,
+                filename=f"{problem_name}_physics_metrics_logscale",
+                path=output_path,
+                ext="pdf",
+                grid=True,
+                log_scale=True,
+            )
+            PhysicsMetricsLogger.table_comparison(
+                physics_loggers,
+                filename=f"{problem_name}_physics_metrics_table",
+                path=output_path,
+                to_console=True,
+                color_rankings=True,
+            )
+
+        for name, setup in self.setups.items():
+            if setup.aux_logger is None:
+                continue
+            plot = getattr(setup.aux_logger, "plot", None)
+            if plot is None:
+                continue
+            plot(path=output_path, ext="pdf", filename=f"{problem_name}_{name}_aux")

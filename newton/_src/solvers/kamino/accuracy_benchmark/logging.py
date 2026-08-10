@@ -29,7 +29,7 @@ Usage
 
 A typical example for using this module is::
 
-    from newton._src.solvers.kamino.benchmark import (
+    from newton._src.solvers.kamino.accuracy_benchmark import (
         PhysicsMetrics,
         PhysicsMetricsLogger,
         compute_contact_constraint_metrics,

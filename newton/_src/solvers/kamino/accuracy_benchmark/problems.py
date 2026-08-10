@@ -13,7 +13,7 @@ from newton import solvers
 from newton._src.core import Axis
 from newton._src.sim import ModelBuilder
 from newton._src.solvers.kamino._src.metrics import SolutionMetricsLogger
-from newton._src.solvers.kamino.benchmark.setup import SolverSetup
+from newton._src.solvers.kamino.accuracy_benchmark.setup import SolverSetup
 from newton.tests.utils import basics
 
 ###
@@ -142,6 +142,12 @@ def _build_problem_model(
     it in a world with the extended ``body_parent_f`` / ``force`` attributes, and writes
     ``base_position`` into the floating-base prefix of ``joint_q`` (when present).
     """
+    # Coord-layout targets are required for correctness on floating-base models
+    # (FREE joint has 7 coords / 6 dofs); with the legacy DoF-sized layout,
+    # writes to `control.joint_target_q` would silently truncate. Setting the
+    # flag here (before any builder is constructed) means every accuracy-
+    # benchmark problem picks it up uniformly.
+    newton.use_coord_layout_targets = True
     scene_kwargs = scene_kwargs or {}
     scene_builder = ModelBuilder(up_axis=Axis.Z)
     solver_type.register_custom_attributes(scene_builder)
@@ -160,6 +166,24 @@ def _build_problem_model(
     model = builder.finalize(skip_validation_joints=True)
     model.rigid_contact_max = int(rigid_contact_max)
     return builder, model, q_base
+
+
+def _make_kamino_reset_cb_with_base(solver: solvers.SolverKamino, q_base: wp.transformf) -> Callable:
+    """Return a ``reset_cb(state_out)`` that resets Kamino state and sets the base pose.
+
+    Uses :class:`SolverKamino.ResetConfig.FromBaseQ` to seed the floating-base
+    pose from the same ``q_base`` written into ``builder.joint_q[:7]``.
+    """
+    base_q = wp.zeros(shape=(1,), dtype=wp.transformf)
+    base_q.assign([q_base])
+    config = solvers.SolverKamino.ResetConfig(
+        base_pose=solvers.SolverKamino.ResetConfig.FromBaseQ(base_q),
+    )
+
+    def reset_cb(state_out):
+        solver.reset(state=state_out, config=config)
+
+    return reset_cb
 
 
 def _make_fk_reset_cb(model, q_base: wp.transformf) -> Callable:
@@ -259,10 +283,7 @@ def make_setup_box_on_plane_kamino(
     cfg.compute_solution_metrics = True
     solver = solvers.SolverKamino(model=model, config=cfg)
 
-    base_q_arr = wp.array([q_base], dtype=wp.transformf)
-
-    def reset_cb(state_out):
-        solver.reset(state_out=state_out, base_q=base_q_arr)
+    reset_cb = _make_kamino_reset_cb_with_base(solver, q_base)
 
     setup = _make_setup(
         name="kamino",
@@ -457,10 +478,7 @@ def make_setup_fourbar_kamino(
     cfg.compute_solution_metrics = True
     solver = solvers.SolverKamino(model=model, config=cfg)
 
-    base_q_arr = wp.array([q_base], dtype=wp.transformf)
-
-    def reset_cb(state_out):
-        solver.reset(state_out=state_out, base_q=base_q_arr)
+    reset_cb = _make_kamino_reset_cb_with_base(solver, q_base)
 
     setup = _make_setup(
         name="kamino",

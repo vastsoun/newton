@@ -405,16 +405,16 @@ def compute_and_compare_dense_sparse_joint_parent_wrenches(
     np.testing.assert_allclose(
         joint_parent_f_dense_np,
         joint_parent_f_ref_np,
-        rtol=_TEST_WRENCH_RTOL,
-        atol=_TEST_WRENCH_ATOL,
+        rtol=TEST_WRENCH_RTOL,
+        atol=TEST_WRENCH_ATOL,
     )
 
     # Check that the dense and sparse kernels agree
     np.testing.assert_allclose(
         joint_parent_f_sparse_np,
         joint_parent_f_dense_np,
-        rtol=_TEST_WRENCH_RTOL,
-        atol=_TEST_WRENCH_ATOL,
+        rtol=TEST_WRENCH_RTOL,
+        atol=TEST_WRENCH_ATOL,
     )
 
 
@@ -470,7 +470,7 @@ class ConvertWrenchesTestSetup:
         # Build a parallel set of Kamino containers, mirroring the allocation order
         # used by ``SolutionMetricsNewton.finalize`` so we can exercise the convert
         # and pack/unpack primitives without going through the metrics wrapper.
-        self.model_kamino: ModelKamino = ModelKamino.from_newton(model=self.model, overwrite_source_model=False)
+        self.model_kamino: ModelKamino = ModelKamino.from_newton(model=self.model)
         self.model_kamino.time.dt.fill_(wp.float32(dt))
         self.model_kamino.time.inv_dt.fill_(wp.float32(1.0 / dt))
 

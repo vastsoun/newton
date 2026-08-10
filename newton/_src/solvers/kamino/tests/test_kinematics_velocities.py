@@ -89,7 +89,7 @@ class TestSetup:
         # Build a parallel set of Kamino containers, mirroring the allocation order
         # used by SolutionMetricsNewton.finalize so we can exercise the same
         # constraint-space computations without going through the metrics wrapper.
-        self.model_kamino: ModelKamino = ModelKamino.from_newton(model=self.model, overwrite_source_model=False)
+        self.model_kamino: ModelKamino = ModelKamino.from_newton(model=self.model)
         self.model_kamino.time.dt.fill_(wp.float32(dt))
         self.model_kamino.time.inv_dt.fill_(wp.float32(1.0 / dt))
 

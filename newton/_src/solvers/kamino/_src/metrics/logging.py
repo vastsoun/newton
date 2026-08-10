@@ -656,7 +656,7 @@ class SolutionMetricsLogger:
         n = self.num_logged_frames
         dt = self._resolve_dt()
         scale = (dt if dt is not None else 1.0) * float(self._decimation)
-        return np.arange(n, dtype=np.wp.float32) * scale
+        return np.arange(n, dtype=np.float32) * scale
 
     @staticmethod
     def unpack_argmax_key(key: int) -> tuple[int, int]:

@@ -34,11 +34,11 @@ import warp as wp
 
 from newton import Contacts, Model, ModelBuilder, State
 from newton._src.solvers.kamino._src.utils import logger as msg
-from newton._src.solvers.kamino.benchmark import (
+from newton._src.solvers.kamino.accuracy_benchmark import (
     PhysicsMetrics,
     PhysicsMetricsLogger,
 )
-from newton._src.solvers.kamino.benchmark.logging import (
+from newton._src.solvers.kamino.accuracy_benchmark.logging import (
     _METRIC_EQUATIONS,
     _METRIC_TITLES,
 )
@@ -60,6 +60,16 @@ _SCALAR_FIELDS = (
     "r_vi_natmap",
 )
 _ARGMAX_FIELDS = tuple(f + "_argmax" for f in _SCALAR_FIELDS)
+
+# Joint-side companion scalars logged alongside the contact fields. Tests do not
+# populate these (their per-world summary lives on ``per_world_joints_summary``,
+# not on ``per_world_contacts_summary``), so their CSV rows are always zeros.
+# Kept here so table-CSV row counts and field-set checks stay accurate.
+_JOINT_SCALAR_FIELDS = (
+    "joints_r_cts_penetration",
+    "joints_r_cts_velocity",
+)
+_ALL_SCALAR_FIELDS = _SCALAR_FIELDS + _JOINT_SCALAR_FIELDS
 
 
 ###
@@ -96,8 +106,6 @@ class _LoggerTestSetup:
             if w == 0:
                 basics.build_sphere_on_plane(
                     builder=self.builder,
-                    radius=0.1,
-                    mass=1.0,
                     z_offset=-1.0e-3,
                     friction=0.5,
                     new_world=True,
@@ -720,15 +728,16 @@ class TestPhysicsMetricsLogger(unittest.TestCase):
             rows = list(reader)
 
         self.assertEqual(header, ["Metric", "max", "mean"])
-        self.assertEqual(len(rows), len(_SCALAR_FIELDS))
+        self.assertEqual(len(rows), len(_ALL_SCALAR_FIELDS))
 
         expected_max = float(all_values.max())
         expected_mean = float(all_values.mean())
         observed_fields = {row[0] for row in rows}
-        self.assertEqual(observed_fields, set(_SCALAR_FIELDS))
+        self.assertEqual(observed_fields, set(_ALL_SCALAR_FIELDS))
         for row in rows:
-            self.assertAlmostEqual(float(row[1]), expected_max, places=5)
-            self.assertAlmostEqual(float(row[2]), expected_mean, places=5)
+            if row[0] in _SCALAR_FIELDS:
+                self.assertAlmostEqual(float(row[1]), expected_max, places=5)
+                self.assertAlmostEqual(float(row[2]), expected_mean, places=5)
 
     def test_table_csv_per_world(self):
         """``table(per_world=True)`` writes one CSV row per ``(world, metric)`` with per-world stats."""
@@ -756,14 +765,15 @@ class TestPhysicsMetricsLogger(unittest.TestCase):
             rows = list(reader)
 
         self.assertEqual(header, ["World", "Metric", "max", "mean"])
-        self.assertEqual(len(rows), len(_SCALAR_FIELDS) * setup.num_worlds)
+        self.assertEqual(len(rows), len(_ALL_SCALAR_FIELDS) * setup.num_worlds)
         for row in rows:
             world_token, field, mx, mean = row
-            self.assertIn(field, _SCALAR_FIELDS)
+            self.assertIn(field, _ALL_SCALAR_FIELDS)
             self.assertTrue(world_token.startswith("world_"))
             w = int(world_token.split("_")[1])
-            self.assertAlmostEqual(float(mx), float(all_values[:, w].max()), places=5)
-            self.assertAlmostEqual(float(mean), float(all_values[:, w].mean()), places=5)
+            if field in _SCALAR_FIELDS:
+                self.assertAlmostEqual(float(mx), float(all_values[:, w].max()), places=5)
+                self.assertAlmostEqual(float(mean), float(all_values[:, w].mean()), places=5)
 
     def test_table_console_smoke(self):
         """``table(to_console=True)`` renders a rich table to stdout without raising."""
@@ -839,13 +849,14 @@ class TestPhysicsMetricsLogger(unittest.TestCase):
 
         self.assertEqual(top_header, ["", "setup_a", "", "setup_b", ""])
         self.assertEqual(sub_header, ["Metric", "max", "mean", "max", "mean"])
-        self.assertEqual(len(rows), len(_SCALAR_FIELDS))
+        self.assertEqual(len(rows), len(_ALL_SCALAR_FIELDS))
         for row in rows:
-            self.assertIn(row[0], _SCALAR_FIELDS)
-            self.assertAlmostEqual(float(row[1]), float(all_a.max()), places=5)
-            self.assertAlmostEqual(float(row[2]), float(all_a.mean()), places=5)
-            self.assertAlmostEqual(float(row[3]), float(all_b.max()), places=5)
-            self.assertAlmostEqual(float(row[4]), float(all_b.mean()), places=5)
+            self.assertIn(row[0], _ALL_SCALAR_FIELDS)
+            if row[0] in _SCALAR_FIELDS:
+                self.assertAlmostEqual(float(row[1]), float(all_a.max()), places=5)
+                self.assertAlmostEqual(float(row[2]), float(all_a.mean()), places=5)
+                self.assertAlmostEqual(float(row[3]), float(all_b.max()), places=5)
+                self.assertAlmostEqual(float(row[4]), float(all_b.mean()), places=5)
 
     def test_table_comparison_csv_per_world(self):
         """``table_comparison(per_world=True)`` produces per-``(world, metric)`` rows with per-world stats per logger."""
@@ -876,17 +887,18 @@ class TestPhysicsMetricsLogger(unittest.TestCase):
 
         self.assertEqual(top_header, ["", "", "setup_a", "", "setup_b", ""])
         self.assertEqual(sub_header, ["World", "Metric", "max", "mean", "max", "mean"])
-        self.assertEqual(len(rows), len(_SCALAR_FIELDS) * setup_a.num_worlds)
+        self.assertEqual(len(rows), len(_ALL_SCALAR_FIELDS) * setup_a.num_worlds)
         for row in rows:
             world_token = row[0]
             field = row[1]
             self.assertTrue(world_token.startswith("world_"))
-            self.assertIn(field, _SCALAR_FIELDS)
+            self.assertIn(field, _ALL_SCALAR_FIELDS)
             w = int(world_token.split("_")[1])
-            self.assertAlmostEqual(float(row[2]), float(all_a[:, w].max()), places=5)
-            self.assertAlmostEqual(float(row[3]), float(all_a[:, w].mean()), places=5)
-            self.assertAlmostEqual(float(row[4]), float(all_b[:, w].max()), places=5)
-            self.assertAlmostEqual(float(row[5]), float(all_b[:, w].mean()), places=5)
+            if field in _SCALAR_FIELDS:
+                self.assertAlmostEqual(float(row[2]), float(all_a[:, w].max()), places=5)
+                self.assertAlmostEqual(float(row[3]), float(all_a[:, w].mean()), places=5)
+                self.assertAlmostEqual(float(row[4]), float(all_b[:, w].max()), places=5)
+                self.assertAlmostEqual(float(row[5]), float(all_b[:, w].mean()), places=5)
 
     def test_table_comparison_color_rankings_smoke(self):
         """``table_comparison(color_rankings=True)`` renders colored cells to stdout without raising."""

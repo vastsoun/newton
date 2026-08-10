@@ -431,17 +431,35 @@ def build_ironman_run(*, dt: float, max_log_frames: int, rigid_contact_max: int 
 ###
 
 _OLAF_ASSET_RELPATH = "usda/Olaf/olaf_articulated.usda"
-_OLAF_FORCED_BODY_LABEL = "/Olaf/RigidBodies/pelvis"
+_OLAF_ARTICULATION_ROOT_PATH = "/olaf_v6/PELVIS"
+_OLAF_FORCED_BODY_LABEL = _OLAF_ARTICULATION_ROOT_PATH
 _OLAF_FORCE_SCALE = 20.0
 _OLAF_FORCE_WINDOW = (1.0, 2.0)
 _OLAF_START_Z = 0.5
 
 
-def _scene_olaf(builder: ModelBuilder) -> None:
+def _get_olaf_usd_stage() -> Usd.Stage:
+    """Open the Olaf USD and mark the pelvis as the articulation root.
+
+    Upstream ``olaf_articulated.usda`` has no ``PhysicsArticulationRootAPI``
+    authored, so ``add_usd`` would import every body as a free-flying root
+    connected by orphan joints. Applying the API here promotes the whole
+    tree to a single articulation rooted at the pelvis. The USD is already
+    a joint tree (no loop closures) so no ``excludeFromArticulation`` markers
+    are needed.
+    """
+    stage = Usd.Stage.Open(resolve_asset(_OLAF_ASSET_RELPATH))
+    if stage is None:
+        raise RuntimeError(f"Failed to open Olaf USD stage: {_OLAF_ASSET_RELPATH}")
+    UsdPhysics.ArticulationRootAPI.Apply(_get_prim(stage, _OLAF_ARTICULATION_ROOT_PATH))
+    return stage
+
+
+def _scene_olaf(builder: ModelBuilder, usd_stage: Usd.Stage) -> None:
     """Populate ``builder`` with a floating-base Olaf on a ground plane."""
     _apply_articulated_defaults(builder, _FRICTION, _RESTITUTION)
     builder.add_usd(
-        resolve_asset(_OLAF_ASSET_RELPATH),
+        usd_stage,
         xform=wp.transform(wp.vec3(0.0, 0.0, _OLAF_START_Z), wp.quatf(0.0, 0.0, 0.0, 1.0)),
         floating=True,
         collapse_fixed_joints=False,
@@ -451,8 +469,15 @@ def _scene_olaf(builder: ModelBuilder) -> None:
     _add_ground_defaults(builder, _FRICTION, _RESTITUTION)
 
 
-def make_setup_olaf_kamino(*, dt: float, max_log_frames: int, rigid_contact_max: int) -> SolverSetup:
-    builder, model = _build_articulated_model(solvers.SolverKamino, _scene_olaf, rigid_contact_max=rigid_contact_max)
+def make_setup_olaf_kamino(
+    *, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage
+) -> SolverSetup:
+    builder, model = _build_articulated_model(
+        solvers.SolverKamino,
+        _scene_olaf,
+        rigid_contact_max=rigid_contact_max,
+        scene_kwargs={"usd_stage": usd_stage},
+    )
     cfg = _kamino_articulated_config()
     cfg.padmm.max_iterations = 400
     solver = solvers.SolverKamino(model=model, config=cfg)
@@ -470,8 +495,15 @@ def make_setup_olaf_kamino(*, dt: float, max_log_frames: int, rigid_contact_max:
     return setup
 
 
-def make_setup_olaf_mujoco(*, dt: float, max_log_frames: int, rigid_contact_max: int) -> SolverSetup:
-    builder, model = _build_articulated_model(solvers.SolverMuJoCo, _scene_olaf, rigid_contact_max=rigid_contact_max)
+def make_setup_olaf_mujoco(
+    *, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage
+) -> SolverSetup:
+    builder, model = _build_articulated_model(
+        solvers.SolverMuJoCo,
+        _scene_olaf,
+        rigid_contact_max=rigid_contact_max,
+        scene_kwargs={"usd_stage": usd_stage},
+    )
     solver = solvers.SolverMuJoCo(model, nconmax=rigid_contact_max, **_MUJOCO_KWARGS_ARTICULATED)
     return _make_paper_setup(
         name="mujoco",
@@ -485,8 +517,15 @@ def make_setup_olaf_mujoco(*, dt: float, max_log_frames: int, rigid_contact_max:
     )
 
 
-def make_setup_olaf_xpbd(*, dt: float, max_log_frames: int, rigid_contact_max: int) -> SolverSetup:
-    builder, model = _build_articulated_model(solvers.SolverXPBD, _scene_olaf, rigid_contact_max=rigid_contact_max)
+def make_setup_olaf_xpbd(
+    *, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage
+) -> SolverSetup:
+    builder, model = _build_articulated_model(
+        solvers.SolverXPBD,
+        _scene_olaf,
+        rigid_contact_max=rigid_contact_max,
+        scene_kwargs={"usd_stage": usd_stage},
+    )
     # Small joint compliance keeps the light Olaf articulation stable under
     # XPBD's default 2 iterations.
     xpbd_kwargs = {**_XPBD_KWARGS_ARTICULATED, "joint_linear_compliance": 1e-6, "joint_angular_compliance": 1e-6}
@@ -505,7 +544,13 @@ def make_setup_olaf_xpbd(*, dt: float, max_log_frames: int, rigid_contact_max: i
 
 def build_olaf_run(*, dt: float, max_log_frames: int, rigid_contact_max: int = 128) -> ProblemRun:
     """Build the floating-base Olaf :class:`ProblemRun` (with a pelvis push)."""
-    kwargs = {"dt": dt, "max_log_frames": max_log_frames, "rigid_contact_max": rigid_contact_max}
+    usd_stage = _get_olaf_usd_stage()
+    kwargs = {
+        "dt": dt,
+        "max_log_frames": max_log_frames,
+        "rigid_contact_max": rigid_contact_max,
+        "usd_stage": usd_stage,
+    }
     setups = {
         "kamino": make_setup_olaf_kamino(**kwargs),
         "mujoco": make_setup_olaf_mujoco(**kwargs),
@@ -530,17 +575,33 @@ def build_olaf_run(*, dt: float, max_log_frames: int, rigid_contact_max: int = 1
 ###
 
 _BDX_ASSET_RELPATH = "usda/bdx/bipedal.usda"
-_BDX_FORCED_BODY_LABEL = "/BD_9002_001209/PELVIS"
+_BDX_ARTICULATION_ROOT_PATH = "/BD_9002_001209/PELVIS"
+_BDX_FORCED_BODY_LABEL = _BDX_ARTICULATION_ROOT_PATH
 _BDX_FORCE_SCALE = 120.0
 _BDX_FORCE_WINDOW = (1.0, 3.0)
 _BDX_START_Z = 0.5
 
 
-def _scene_bdx(builder: ModelBuilder) -> None:
+def _get_bdx_usd_stage() -> Usd.Stage:
+    """Open the BDX USD and mark the pelvis as the articulation root.
+
+    Same rationale as :func:`_get_olaf_usd_stage`: the asset ships without
+    ``PhysicsArticulationRootAPI`` and is already a joint tree (no loop
+    closures), so a single Apply on the pelvis promotes the whole tree to a
+    single articulation on import.
+    """
+    stage = Usd.Stage.Open(resolve_asset(_BDX_ASSET_RELPATH))
+    if stage is None:
+        raise RuntimeError(f"Failed to open BDX USD stage: {_BDX_ASSET_RELPATH}")
+    UsdPhysics.ArticulationRootAPI.Apply(_get_prim(stage, _BDX_ARTICULATION_ROOT_PATH))
+    return stage
+
+
+def _scene_bdx(builder: ModelBuilder, usd_stage: Usd.Stage) -> None:
     """Populate ``builder`` with a floating-base BDX bipedal on a ground plane."""
     _apply_articulated_defaults(builder, _FRICTION, _RESTITUTION)
     builder.add_usd(
-        resolve_asset(_BDX_ASSET_RELPATH),
+        usd_stage,
         xform=wp.transform(wp.vec3(0.0, 0.0, _BDX_START_Z), wp.quatf(0.0, 0.0, 0.0, 1.0)),
         floating=True,
         collapse_fixed_joints=False,
@@ -550,8 +611,15 @@ def _scene_bdx(builder: ModelBuilder) -> None:
     _add_ground_defaults(builder, _FRICTION, _RESTITUTION)
 
 
-def make_setup_bdx_kamino(*, dt: float, max_log_frames: int, rigid_contact_max: int) -> SolverSetup:
-    builder, model = _build_articulated_model(solvers.SolverKamino, _scene_bdx, rigid_contact_max=rigid_contact_max)
+def make_setup_bdx_kamino(
+    *, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage
+) -> SolverSetup:
+    builder, model = _build_articulated_model(
+        solvers.SolverKamino,
+        _scene_bdx,
+        rigid_contact_max=rigid_contact_max,
+        scene_kwargs={"usd_stage": usd_stage},
+    )
     cfg = _kamino_articulated_config()
     # BDX uses the reverse-Cuthill-McKee ordering for the LLT-blocked solver
     # and a tighter iteration budget.
@@ -573,8 +641,15 @@ def make_setup_bdx_kamino(*, dt: float, max_log_frames: int, rigid_contact_max: 
     return setup
 
 
-def make_setup_bdx_mujoco(*, dt: float, max_log_frames: int, rigid_contact_max: int) -> SolverSetup:
-    builder, model = _build_articulated_model(solvers.SolverMuJoCo, _scene_bdx, rigid_contact_max=rigid_contact_max)
+def make_setup_bdx_mujoco(
+    *, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage
+) -> SolverSetup:
+    builder, model = _build_articulated_model(
+        solvers.SolverMuJoCo,
+        _scene_bdx,
+        rigid_contact_max=rigid_contact_max,
+        scene_kwargs={"usd_stage": usd_stage},
+    )
     solver = solvers.SolverMuJoCo(model, nconmax=rigid_contact_max, **_MUJOCO_KWARGS_ARTICULATED)
     return _make_paper_setup(
         name="mujoco",
@@ -588,8 +663,13 @@ def make_setup_bdx_mujoco(*, dt: float, max_log_frames: int, rigid_contact_max: 
     )
 
 
-def make_setup_bdx_xpbd(*, dt: float, max_log_frames: int, rigid_contact_max: int) -> SolverSetup:
-    builder, model = _build_articulated_model(solvers.SolverXPBD, _scene_bdx, rigid_contact_max=rigid_contact_max)
+def make_setup_bdx_xpbd(*, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage) -> SolverSetup:
+    builder, model = _build_articulated_model(
+        solvers.SolverXPBD,
+        _scene_bdx,
+        rigid_contact_max=rigid_contact_max,
+        scene_kwargs={"usd_stage": usd_stage},
+    )
     solver = solvers.SolverXPBD(model, **_XPBD_KWARGS_ARTICULATED)
     return _make_paper_setup(
         name="xpbd",
@@ -605,7 +685,13 @@ def make_setup_bdx_xpbd(*, dt: float, max_log_frames: int, rigid_contact_max: in
 
 def build_bdx_run(*, dt: float, max_log_frames: int, rigid_contact_max: int = 128) -> ProblemRun:
     """Build the floating-base BDX :class:`ProblemRun` (with a pelvis push)."""
-    kwargs = {"dt": dt, "max_log_frames": max_log_frames, "rigid_contact_max": rigid_contact_max}
+    usd_stage = _get_bdx_usd_stage()
+    kwargs = {
+        "dt": dt,
+        "max_log_frames": max_log_frames,
+        "rigid_contact_max": rigid_contact_max,
+        "usd_stage": usd_stage,
+    }
     setups = {
         "kamino": make_setup_bdx_kamino(**kwargs),
         "mujoco": make_setup_bdx_mujoco(**kwargs),

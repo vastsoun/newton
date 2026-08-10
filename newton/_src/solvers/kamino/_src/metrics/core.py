@@ -149,7 +149,7 @@ class SolutionMetricsNewton:
             self._model = model_kamino
         else:
             # TODO: We need a mechanism to force all joints being only kinematic, i.e. no dynamic constraints
-            self._model = ModelKamino.from_newton(model=model, overwrite_source_model=False)
+            self._model = ModelKamino.from_newton(model=model)
 
         # Configure model time-steps
         self._model.time.dt.fill_(wp.float32(dt))
@@ -251,7 +251,6 @@ class SolutionMetricsNewton:
             contacts_in=contacts,
             contacts_out=self._contacts,
             convert_forces=True,
-            allow_positive_distance=False,
         )
 
         # TODO: ENABLE THIS WHEN WE EXTEND TO SUPPORT JOINT LIMITS

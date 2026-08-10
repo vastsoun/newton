@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Unit tests for the `kamino.benchmark.metrics` module.
+Unit tests for the `kamino.accuracy_benchmark.metrics` module.
 
 The tests fall into three groups:
 
@@ -34,8 +34,8 @@ import warp as wp
 
 from newton import Contacts, Model, ModelBuilder, State
 from newton._src.solvers.kamino._src.utils import logger as msg
-from newton._src.solvers.kamino.benchmark import metrics
-from newton._src.solvers.kamino.benchmark.logging import (
+from newton._src.solvers.kamino.accuracy_benchmark import metrics
+from newton._src.solvers.kamino.accuracy_benchmark.logging import (
     _compute_ranking_colors,
     _compute_summary_stats,
     _gradient_color,
@@ -331,11 +331,20 @@ def _project_to_coulomb_dual_cone(x: np.ndarray, mu: float) -> np.ndarray:
     return np.zeros(3, dtype=np.float32)
 
 
-def _evaluate_metrics(setup: TestSetup) -> dict[str, np.ndarray]:
-    """Runs the metrics kernels on ``setup`` and returns numpy snapshots."""
+def _evaluate_metrics(setup: TestSetup, *, dt: float = 1.0) -> dict[str, np.ndarray]:
+    """Runs the metrics kernels on ``setup`` and returns numpy snapshots.
+
+    The tests configure a single ``setup.state`` and inject synthetic contact
+    forces via :meth:`TestSetup.manual_contact` whose numerical values are meant
+    to be consumed directly (as impulses, not continuous forces). The kernel
+    scales ``contact_force`` by ``dt`` internally to obtain an impulse, so we
+    pass ``dt=1.0`` here to make that scaling a no-op. State-based residuals
+    that would depend on pre/post velocity differencing are unaffected because
+    ``state_minus == state_plus``.
+    """
     container = metrics.PhysicsMetrics(model=setup.model)
     metrics.compute_contact_velocities(setup.model, setup.state, setup.contacts)
-    metrics.compute_contact_constraint_metrics(setup.model, setup.state, setup.contacts, container)
+    metrics.compute_contact_constraint_metrics(setup.model, setup.state, setup.state, setup.contacts, container, dt)
     return {
         "velocity": setup.contacts.velocity.numpy(),
         "r_cts_penetration": container.contacts.r_cts_penetration.numpy(),
@@ -396,8 +405,6 @@ class TestSphereOnPlane(_BenchmarkMetricsTestBase):
         return TestSetup(
             builder_fn=basics.build_sphere_on_plane,
             builder_kwargs={
-                "radius": self.RADIUS,
-                "mass": self.MASS,
                 "z_offset": z_offset,
                 "friction": self.FRICTION,
                 "ground": True,
@@ -998,7 +1005,7 @@ class TestPerWorldContactMetricsSummary(_BenchmarkMetricsTestBase):
     def _build_single_world(self) -> TestSetup:
         return TestSetup(
             builder_fn=basics.build_sphere_on_plane,
-            builder_kwargs={"radius": 0.1, "mass": 1.0, "z_offset": -1.0e-3, "ground": True},
+            builder_kwargs={"z_offset": -1.0e-3, "ground": True},
             num_worlds=1,
             margin=0.0,
             gap=0.0,
@@ -1162,8 +1169,6 @@ class TestPerWorldContactMetricsSummary(_BenchmarkMetricsTestBase):
         builder.begin_world(label="world0")
         basics.build_sphere_on_plane(
             builder=builder,
-            radius=0.1,
-            mass=1.0,
             z_offset=-1.0e-3,
             friction=0.5,
             ground=False,

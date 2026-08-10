@@ -15,9 +15,11 @@ import warp as wp
 import newton
 import newton._src.solvers.kamino.config as kamino_config
 from newton._src.solvers.kamino._src.core import ModelBuilderKamino, inertia
+from newton._src.solvers.kamino._src.core.bodies import update_body_wrenches
 from newton._src.solvers.kamino._src.core.shapes import BoxShape, SphereShape
 from newton._src.solvers.kamino._src.core.types import vec6f
 from newton._src.solvers.kamino._src.dynamics.dual import DualProblem
+from newton._src.solvers.kamino._src.dynamics.wrenches import compute_constraint_body_wrenches
 from newton._src.solvers.kamino._src.integrators.euler import integrate_euler_semi_implicit
 from newton._src.solvers.kamino._src.kinematics.constraints import unpack_constraint_solutions, update_constraints_info
 from newton._src.solvers.kamino._src.kinematics.jacobians import DenseSystemJacobians
@@ -276,14 +278,29 @@ def _assert_solution_finite(testcase: unittest.TestCase, solver: DVISolver):
 
 
 def _evaluate_solution_metrics(test: TestSetup, solver: DVISolver) -> dict[str, float]:
-    integrate_euler_semi_implicit(model=test.model, data=test.data)
-    metrics = SolutionMetrics(model=test.model)
-    metrics.evaluate(
-        sigma=solver.data.state.sigma,
-        lambdas=solver.data.solution.lambdas,
-        v_plus=solver.data.solution.v_plus,
+    # Propagate the DVI solution to a post-event state: convert lambdas into per-body
+    # constraint wrenches, add them into `data.bodies.w_i`, integrate one Euler step,
+    # then mirror the post-event body twists onto `state.u_i` (which the metrics kernel
+    # reads to evaluate `v_plus_true = J_cts @ u^+`). Mirrors the PADMM propagation
+    # helper in ``test_solvers_metrics``.
+    compute_constraint_body_wrenches(
         model=test.model,
         data=test.data,
+        limits=test.limits,
+        contacts=test.contacts,
+        jacobians=test.jacobians,
+        lambdas_offsets=test.problem.data.vio,
+        lambdas_data=solver.data.solution.lambdas,
+    )
+    update_body_wrenches(test.model.bodies, test.data.bodies)
+    integrate_euler_semi_implicit(model=test.model, data=test.data)
+    wp.copy(test.state.u_i, test.data.bodies.u_i)
+
+    metrics = SolutionMetrics(model=test.model, data=test.data)
+    metrics.evaluate(
+        lambdas=solver.data.solution.lambdas,
+        v_plus=solver.data.solution.v_plus,
+        state=test.state,
         state_p=test.state_p,
         problem=test.problem,
         jacobians=test.jacobians,

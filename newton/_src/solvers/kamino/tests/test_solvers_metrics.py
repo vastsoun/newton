@@ -167,15 +167,17 @@ def _log_metric_values(
 def _compute_max_contact_penetration(test: TestSetup) -> float:
     """Maximum positive contact penetration depth across the active contacts of world 0.
 
-    Reads ``test.contacts.gapfunc[cid][3]`` over the active contact range and
-    returns the largest value, which is the residual that ``r_cts_contacts``
-    should equal on a converged (or trivially zero) impulse solution.
+    Reads ``test.contacts.gapfunc[cid][3]`` (signed distance, negative when
+    penetrating) over the active contact range and returns ``max_k max(0, -d_k)``,
+    matching :func:`_compute_cts_contacts_residual`. This is the residual that
+    ``r_cts_contacts`` should equal on a converged (or trivially zero) impulse
+    solution.
     """
     nc = int(test.contacts.model_active_contacts.numpy()[0])
     gap = test.contacts.gapfunc.numpy()
     max_pen = 0.0
     for cid in range(nc):
-        max_pen = max(max_pen, float(gap[cid][3]))
+        max_pen = max(max_pen, max(0.0, -float(gap[cid][3])))  # noqa: PLW3301
     return max_pen
 
 
@@ -543,7 +545,7 @@ class TestSolverMetrics(unittest.TestCase):
         test.contacts.cid.assign(cid)
         test.contacts.gapfunc.assign(gapfunc)
 
-        metrics = SolutionMetrics(model=test.model)
+        metrics = SolutionMetrics(model=test.model, data=test.data)
         metrics.reset()
         metrics._evaluate_constraint_violations_perf(
             model=test.model,
@@ -648,7 +650,10 @@ class TestSolverMetrics(unittest.TestCase):
         # NOTE: all contacts have the same residual,
         # so the argmax evaluates to the last constraint
         np.testing.assert_allclose(metrics.data.r_v_plus_argmax.numpy()[0], 11)
-        np.testing.assert_allclose(metrics.data.r_cts_contacts_argmax.numpy()[0], max_contact_argmax)
+        # ``r_cts_contacts_argmax`` is only updated when the per-contact penetration
+        # is strictly positive; with a resting box on a plane the penetration is
+        # numerically zero, so the argmax stays at its sentinel value ``-1``.
+        np.testing.assert_allclose(metrics.data.r_cts_contacts_argmax.numpy()[0], -1)
         np.testing.assert_allclose(metrics.data.r_ncp_primal_argmax.numpy()[0], 3)
         np.testing.assert_allclose(metrics.data.r_ncp_dual_argmax.numpy()[0], 3)
         np.testing.assert_allclose(metrics.data.r_ncp_compl_argmax.numpy()[0], 3)
@@ -707,6 +712,9 @@ class TestSolverMetrics(unittest.TestCase):
         # Creating a default solver metrics evaluator from the test model
         metrics = SolutionMetrics(model=test.model, data=test.data)
 
+        # Build the dual problem before solving; ``TestSetup`` defers this so
+        # perturbations applied in ``__init__`` are reflected in ``test.problem``.
+        test.build()
         _solve_padmm_and_propagate(test, solver)
         _evaluate_metrics(metrics, test, solver.data.solution.lambdas, solver.data.solution.v_plus)
 

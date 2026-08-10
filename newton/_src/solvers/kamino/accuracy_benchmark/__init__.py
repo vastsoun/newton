@@ -17,6 +17,7 @@ This subpackage exposes:
   :func:`compute_per_world_joint_constraint_summary`.
 """
 
+from .assets import paper_assets_root, resolve_asset
 from .logging import PhysicsMetricsLogger
 from .metrics import (
     ConstraintMetrics,
@@ -27,7 +28,7 @@ from .metrics import (
     compute_per_world_contact_constraint_summary,
     compute_per_world_joint_constraint_summary,
 )
-from .setup import SolverSetup
+from .setup import SetupRunner, SolverSetup
 
 ###
 # Module interface
@@ -37,10 +38,13 @@ __all__ = [
     "ConstraintMetrics",
     "PhysicsMetrics",
     "PhysicsMetricsLogger",
+    "SetupRunner",
     "SolverSetup",
     "compute_contact_constraint_metrics",
     "compute_contact_velocities",
     "compute_joint_constraint_metrics",
     "compute_per_world_contact_constraint_summary",
     "compute_per_world_joint_constraint_summary",
+    "paper_assets_root",
+    "resolve_asset",
 ]

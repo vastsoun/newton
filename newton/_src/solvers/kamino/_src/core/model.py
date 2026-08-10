@@ -572,22 +572,16 @@ class ModelKamino:
                 q_j_ref=wp.clone(self.joints.q_j_0, requires_grad=requires_grad),
                 dq_j_ref=wp.clone(self.joints.dq_j_0, requires_grad=requires_grad),
                 tau_j_ref=wp.zeros(shape=njdofs, dtype=wp.float32, requires_grad=requires_grad),
-                w_j_F_com=wp.zeros(shape=nj, dtype=wp.spatial_vectorf, requires_grad=requires_grad)
-                if joint_wrenches
-                else None,
                 j_w_j=wp.zeros(shape=nj, dtype=wp.spatial_vectorf, requires_grad=requires_grad)
                 if joint_wrenches
                 else None,
-                j_w_j_dof_act=wp.zeros(shape=nj, dtype=wp.spatial_vectorf, requires_grad=requires_grad)
+                j_w_c_j=wp.zeros(shape=nj, dtype=wp.spatial_vectorf, requires_grad=requires_grad)
                 if joint_wrenches
                 else None,
-                j_w_j_cts_dyn=wp.zeros(shape=nj, dtype=wp.spatial_vectorf, requires_grad=requires_grad)
+                j_w_a_j=wp.zeros(shape=nj, dtype=wp.spatial_vectorf, requires_grad=requires_grad)
                 if joint_wrenches
                 else None,
-                j_w_j_cts_kin=wp.zeros(shape=nj, dtype=wp.spatial_vectorf, requires_grad=requires_grad)
-                if joint_wrenches
-                else None,
-                j_w_j_cts_lim=wp.zeros(shape=nj, dtype=wp.spatial_vectorf, requires_grad=requires_grad)
+                j_w_l_j=wp.zeros(shape=nj, dtype=wp.spatial_vectorf, requires_grad=requires_grad)
                 if joint_wrenches
                 else None,
             )
@@ -607,19 +601,13 @@ class ModelKamino:
             geoms=geoms,
         )
 
-    def state(
-        self,
-        requires_grad: bool = False,
-        device: wp.DeviceLike = None,
-        joint_wrenches: bool = False,
-    ) -> StateKamino:
+    def state(self, requires_grad: bool = False, device: wp.DeviceLike = None) -> StateKamino:
         """
         Creates state container initialized to the initial body state defined in the model.
 
         Args:
             requires_grad: Whether the state should require gradients. Defaults to ``False``.
             device: The device to create the state on. If not specified, the model's device is used.
-            joint_wrenches: Whether to initialize buffers to store joint wrenches.
         """
         # If no device is specified, use the model's device
         if device is None:
@@ -627,10 +615,6 @@ class ModelKamino:
 
         # Create a new state container with the initial state of the model entities on the specified device
         with wp.ScopedDevice(device=device):
-            njdof = self.size.sum_of_num_joint_dofs
-            njcts = self.size.sum_of_num_joint_cts
-            nb = self.size.sum_of_num_bodies
-            nj = self.size.sum_of_num_joints
             state = StateKamino(
                 q_i=wp.clone(self.bodies.q_i_0, requires_grad=requires_grad),
                 u_i=wp.clone(self.bodies.u_i_0, requires_grad=requires_grad),
@@ -638,14 +622,8 @@ class ModelKamino:
                 w_i_e=wp.zeros_like(self.bodies.u_i_0, requires_grad=requires_grad),
                 q_j=wp.clone(self.joints.q_j_0, requires_grad=requires_grad),
                 q_j_p=wp.clone(self.joints.q_j_0, requires_grad=requires_grad),
-                dq_j=wp.zeros(shape=njdof, dtype=wp.float32, requires_grad=requires_grad),
-                lambda_j=wp.zeros(shape=njcts, dtype=wp.float32, requires_grad=requires_grad),
-                w_i_F_com=wp.zeros(shape=nb, dtype=wp.spatial_vectorf, requires_grad=requires_grad)
-                if joint_wrenches
-                else None,
-                w_j_F_com=wp.zeros(shape=nj, dtype=wp.spatial_vectorf, requires_grad=requires_grad)
-                if joint_wrenches
-                else None,
+                dq_j=wp.zeros(shape=self.size.sum_of_num_joint_dofs, dtype=wp.float32, requires_grad=requires_grad),
+                lambda_j=wp.zeros(shape=self.size.sum_of_num_joint_cts, dtype=wp.float32, requires_grad=requires_grad),
             )
 
         # Return the constructed state container

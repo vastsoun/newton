@@ -25,7 +25,7 @@ import newton
 import newton.examples
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.accuracy_benchmark import SetupRunner
-from newton._src.solvers.kamino.accuracy_benchmark.paper_problems import (
+from newton._src.solvers.kamino.accuracy_benchmark.problems import (
     build_dr_legs_run,
     make_dr_legs_animation_cb,
 )

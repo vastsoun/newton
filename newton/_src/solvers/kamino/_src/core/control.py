@@ -38,16 +38,6 @@ class ControlKamino:
     """
 
     ###
-    # Meta-data
-    ###
-
-    src: Control | None = None
-    """
-    A source :class:`newton.State` object that this :class:`StateKamino` object is wrapping.
-    If ``None``, the :class:`StateKamino` object is not associated with a :class:`newton.State` object.
-    """
-
-    ###
     # Attributes
     ###
 
@@ -161,7 +151,6 @@ class ControlKamino:
             control: Source :class:`newton.Control` to read from.
             model: The Kamino model holding the system description.
         """
-        self.src = control
         self.tau_j = control.joint_f
         self.dq_j_ref = control.joint_target_qd
         if self._needs_coord_conversion:

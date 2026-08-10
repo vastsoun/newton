@@ -287,7 +287,7 @@ class TestSolverKaminoLogger(unittest.TestCase):
             )
 
     ###
-    # CUDA-graph capture (the key improvement over SolutionMetricsLogger)
+    # CUDA-graph capture
     ###
 
     def test_graph_capture_log_only(self):

@@ -3,16 +3,12 @@
 
 """Shared benchmark scaffolding: per-solver ``SolverSetup`` and multi-solver ``SetupRunner``.
 
-Both classes support the two logger flavours used by the accuracy benchmark:
-
-- :class:`SolutionMetricsNewton` + :class:`SolutionMetricsLogger` — Kamino-front-end
-  residuals; always instantiated by the setup.
-- :class:`PhysicsMetrics` + :class:`PhysicsMetricsLogger` — cross-solver constraint
-  residuals computed directly from the Newton state; opt-in via
-  ``setup.physics_metrics`` / ``setup.physics_metrics_logger``.
-
-Plus an opt-in ``setup.aux_logger`` slot for solver-specific PADMM diagnostics
-(:class:`SolverKaminoLogger`), which are complementary to both logger flavours.
+Each :class:`SolverSetup` may attach a :class:`PhysicsMetrics` +
+:class:`PhysicsMetricsLogger` pair (cross-solver constraint residuals computed
+from the Newton state); this is the metric stack the paper CSV/table pipeline
+consumes. It may also attach an ``aux_logger`` (typically
+:class:`SolverKaminoLogger`) for solver-specific PADMM diagnostics that live
+outside the paper CSV output.
 """
 
 import os
@@ -25,7 +21,6 @@ import warp as wp
 from ....sim import Contacts, Control, Model, ModelBuilder, State
 from ....solvers import SolverBase
 from ....viewer import ViewerBase
-from .._src.metrics import SolutionMetricsLogger, SolutionMetricsNewton
 from .._src.utils import logger as msg
 from ..examples import print_progress_bar
 from .logging import PhysicsMetricsLogger
@@ -176,9 +171,6 @@ class SolverSetup:
         verbose: bool = False,
         reset_cb: Callable | None = None,
         control_cb: Callable | None = None,
-        kwargs_builder: dict | None = None,
-        kwargs_logger: dict | None = None,
-        with_solution_metrics: bool = True,
     ):
         """
         Constructs a solver benchmark setup for a given problem-solver combination.
@@ -195,13 +187,11 @@ class SolverSetup:
             dt: The time step size.
             rigid_contact_max: The maximum number of rigid contacts per world.
             standalone: Whether the setup is standalone or not.
-            verbose: When ``True``, ``step()`` logs the pre-step ``state_in``,
-                the post-step contact buffer, and the post-evaluate metrics
-                contact data via :mod:`logger` at ``info`` level.
+            verbose: When ``True``, ``step()`` logs the pre-step ``state_in``
+                and the post-step contact buffer via :mod:`logger` at
+                ``info`` level.
             reset_cb: The callback to be called to reset the simulation.
             control_cb: The callback to be called to control the simulation.
-            kwargs_builder: Additional keyword arguments to be passed to the builder.
-            kwargs_logger: Additional keyword arguments to be passed to the logger.
         """
         # Required input attributes
         self.name: str = name
@@ -216,19 +206,11 @@ class SolverSetup:
         self.reset_cb: Callable | None = reset_cb
         self.control_cb: Callable | None = control_cb
 
-        # Derived attributes
-        self.metrics: SolutionMetricsNewton | None = None
-        self.logger: SolutionMetricsLogger | None = None
-        # Optional second logger over a solver-internal metrics object (e.g.
-        # ``solver._solver_kamino.metrics`` for SolverKamino). Attached by
-        # the per-solver factories when the solver exposes such an object;
-        # logged in ``step()`` and surfaced by ``SetupRunner.test_final``.
-        self.solver_logger: SolutionMetricsLogger | None = None
         # Optional cross-solver physics-constraint metrics computed from the
-        # Newton state and populated in ``step()`` when both are attached.
-        # See ``PhysicsMetrics`` / ``PhysicsMetricsLogger`` for the underlying
-        # buffers; ``SetupRunner.test_final`` renders their comparison output
-        # when at least one setup in the run carries a populated logger.
+        # Newton state. Attached by the per-solver factories via
+        # :func:`_attach_physics_metrics`; populated in :meth:`step` and
+        # surfaced by :meth:`SetupRunner.test_final` when at least one setup
+        # in the run carries a populated logger.
         self.physics_metrics: PhysicsMetrics | None = None
         self.physics_metrics_logger: PhysicsMetricsLogger | None = None
         # Optional solver-specific auxiliary logger (e.g. SolverKaminoLogger for
@@ -242,47 +224,20 @@ class SolverSetup:
         self.contacts: Contacts | None = None
         self._state_in_snapshot: State | None = None
 
-        # TODO Add check that the required extended attributes are present in the builder
-
         # Ensure the model is configured for the expected rigid-contact capacity
         # and allocate the relevant state, control and contacts containers.
         self.model.rigid_contact_max = rigid_contact_max
 
         # _state_in_snapshot holds a frozen pre-step copy of state_in used as
-        # state_p in metrics.evaluate, which the solver may otherwise mutate
-        # via state_in during step(). Only needed in non-standalone mode.
+        # state_p in the physics-metrics evaluator (see :meth:`step`), which
+        # the solver may otherwise mutate via state_in during step().
+        # Only needed in non-standalone mode.
         self.state_out = self.model.state()
         self.state_in = self.model.state()
         self.control = self.model.control()
         self.contacts = self.model.contacts()
         if not self.standalone:
             self._state_in_snapshot = self.model.state()
-
-        # Finalise the metrics and logger. Opt-in via ``with_solution_metrics``:
-        # the ``SolutionMetricsNewton`` front-end wraps Kamino's converters and
-        # is not maintained in sync with the geometry / solver APIs — paper
-        # setups turn it off and rely on ``PhysicsMetrics`` (see below) for the
-        # cross-solver comparison.
-        if with_solution_metrics:
-            # NOTE: A dedicated builder finalize call is used because ``ModelKamino``
-            # currently modifies the source model in-place, which would otherwise
-            # break the assumptions of the primary solver's own model.
-            if kwargs_builder is None:
-                kwargs_builder = {"skip_validation_joints": True}
-            metrics_model = self.builder.finalize(**kwargs_builder)
-            metrics_model.rigid_contact_max = rigid_contact_max
-            self.metrics = SolutionMetricsNewton(
-                model=metrics_model,
-                dt=self.dt,
-                sparse=False,
-            )
-            if kwargs_logger is None:
-                kwargs_logger = {
-                    "max_frames": 5000,
-                    "mode": SolutionMetricsLogger.Mode.BOUNDED,
-                    "dt": self.dt,
-                }
-            self.logger = SolutionMetricsLogger(metrics=self.metrics, **kwargs_logger)
 
     ###
     # Operations
@@ -322,21 +277,6 @@ class SolverSetup:
         if self.contacts.force is not None:
             msg.info("[%s] contacts.force:\n%s", self.name, self.contacts.force[:nc])
 
-    def _log_verbose_metrics(self) -> None:
-        """Dump the active slice of ``metrics._contacts`` (ContactsKamino). No-op unless ``verbose``."""
-        if not self.verbose or self.metrics is None:
-            return
-        # ``_contacts`` is private but stable enough for diagnostic logging;
-        # mirrors the sandbox comparison-example access path.
-        kcontacts = self.metrics._contacts
-        nc = int(kcontacts.model_active_contacts.numpy()[0])
-        msg.info("[%s] metrics.contacts.count: %s", self.name, nc)
-        msg.info("[%s] metrics.contacts.margins:\n%s", self.name, kcontacts.data.margins[:nc])
-        msg.info("[%s] metrics.contacts.position_A:\n%s", self.name, kcontacts.data.position_A[:nc])
-        msg.info("[%s] metrics.contacts.position_B:\n%s", self.name, kcontacts.data.position_B[:nc])
-        msg.info("[%s] metrics.contacts.gapfunc:\n%s", self.name, kcontacts.data.gapfunc[:nc])
-        msg.info("[%s] metrics.contacts.reaction:\n%s", self.name, kcontacts.data.reaction[:nc])
-
     def step(
         self,
         state_in: State | None = None,
@@ -358,11 +298,11 @@ class SolverSetup:
             if contacts_in is None or not isinstance(contacts_in, Contacts):
                 raise ValueError("contacts_in must be a Contacts object")
 
-            # Non-standalone mode: snapshot the (typically shared) inputs into the
-            # setup's private buffers so the solver step / update_contacts /
-            # metrics.evaluate operate on a copy that's isolated from other setups
-            # in the runner. ``_state_in_snapshot`` is the frozen ``state_p`` for
-            # the metrics evaluator.
+            # Non-standalone mode: snapshot the (typically shared) inputs into
+            # the setup's private buffers so the solver step / update_contacts
+            # / physics metrics operate on a copy isolated from other setups
+            # in the runner. ``_state_in_snapshot`` is the frozen ``state_p``
+            # passed to the physics-metrics evaluator.
             _copy_state(state_in, self.state_in)
             _copy_state(state_in, self._state_in_snapshot)
             _copy_control(control_in, self.control)
@@ -383,23 +323,9 @@ class SolverSetup:
 
         self._log_verbose_contacts()
 
-        if self.metrics is not None:
-            self.metrics.evaluate(
-                state=self.state_out,
-                state_p=state_p,
-                control=self.control,
-                contacts=self.contacts,
-            )
-
-        self._log_verbose_metrics()
-
         if self.physics_metrics is not None:
             self._evaluate_physics_metrics(state_p=state_p)
 
-        if self.logger is not None:
-            self.logger.log()
-        if self.solver_logger is not None:
-            self.solver_logger.log()
         if self.physics_metrics_logger is not None:
             self.physics_metrics_logger.log()
         if self.aux_logger is not None:
@@ -758,15 +684,8 @@ class SetupRunner:
     def test_final(self, problem_name: str = "comparison", output_path: str | None = None) -> None:
         """Emit end-of-run comparison plots and tables for every attached logger.
 
-        Always emits ``<problem_name>_solvers.pdf`` comparing the front-end
-        :class:`SolutionMetricsNewton` of every setup. For any setup whose
-        ``solver_logger`` is populated (i.e. the solver exposes an internal
-        metrics object), also emits ``<problem_name>_<setup_name>.pdf``
-        comparing that solver's internal metrics against its own front-end
-        evaluator.
-
         When at least one setup carries a populated
-        :class:`PhysicsMetricsLogger`, additionally emits
+        :class:`PhysicsMetricsLogger`, emits
         ``<problem_name>_physics_metrics{,_logscale}.pdf`` overlay plots and a
         ``<problem_name>_physics_metrics_table.csv`` (also rendered to console
         with color rankings). Per-setup ``aux_logger.plot(...)`` outputs are
@@ -782,24 +701,6 @@ class SetupRunner:
         if output_path is None:
             output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output", problem_name)
         os.makedirs(output_path, exist_ok=True)
-
-        front_end_loggers = {name: setup.logger for name, setup in self.setups.items() if setup.logger is not None}
-        if front_end_loggers:
-            SolutionMetricsLogger.plot_comparison(
-                front_end_loggers, filename=f"{problem_name}_solvers", path=output_path, ext="pdf", grid=True
-            )
-
-        for name, setup in self.setups.items():
-            if setup.solver_logger is None or setup.logger is None:
-                continue
-            internal_vs_front_end = {"solver": setup.solver_logger, name: setup.logger}
-            SolutionMetricsLogger.plot_comparison(
-                internal_vs_front_end,
-                filename=f"{problem_name}_{name}",
-                path=output_path,
-                ext="pdf",
-                grid=True,
-            )
 
         physics_loggers = {
             name: setup.physics_metrics_logger

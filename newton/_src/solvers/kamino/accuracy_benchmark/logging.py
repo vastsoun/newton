@@ -20,9 +20,7 @@ kernel launches that can be safely captured into a CUDA graph alongside the
 solver's ``step`` and the metrics evaluation pipeline.
 
 It also exposes utilities to extract the recorded data as numpy arrays in
-chronological order, and to render per-metric matplotlib plots that follow the
-equation-subtitled format used by
-:class:`newton._src.solvers.kamino._src.metrics.SolutionMetricsLogger`.
+chronological order, and to render per-metric matplotlib plots.
 
 Usage
 -----
@@ -33,7 +31,7 @@ A typical example for using this module is::
         PhysicsMetrics,
         PhysicsMetricsLogger,
         compute_contact_constraint_metrics,
-        compute_contact_velocities,
+        compute_joint_constraint_metrics,
         compute_per_world_contact_constraint_summary,
         compute_per_world_joint_constraint_summary,
     )
@@ -49,9 +47,9 @@ A typical example for using this module is::
 
     for _ in range(num_steps):
         # ... advance the simulation ...
-        compute_contact_velocities(model, state, contacts)
-        compute_contact_constraint_metrics(model, state, contacts, metrics)
+        compute_contact_constraint_metrics(model, state_minus, state_plus, contacts, metrics, dt)
         compute_per_world_contact_constraint_summary(model, contacts, metrics)
+        compute_joint_constraint_metrics(model, state_minus, state_plus, metrics)
         compute_per_world_joint_constraint_summary(model, metrics)
         logger.log()
 

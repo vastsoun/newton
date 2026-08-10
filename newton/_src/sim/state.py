@@ -75,7 +75,6 @@ class State:
     EXTENDED_ATTRIBUTE_TEMPLATES: ClassVar[dict[str, ExtendedAttributeTemplate]] = {
         "body_qdd": ExtendedAttributeTemplate("BODY", wp.spatial_vector),
         "body_parent_f": ExtendedAttributeTemplate("BODY", wp.spatial_vector),
-        "joint_parent_f": ExtendedAttributeTemplate("JOINT", wp.spatial_vector),
         "mujoco:qfrc_actuator": ExtendedAttributeTemplate("JOINT_DOF", wp.float32),
     }
     """Optional extended state attributes and their allocation metadata."""
@@ -171,16 +170,6 @@ class State:
         """Generalized joint velocity coordinates [m/s or rad/s, depending on joint type], shape (joint_dof_count,), dtype float.
         For FREE and DISTANCE joints, the linear entries are child-COM velocity in the joint parent frame and the angular entries are angular velocity in that same frame."""
 
-        self.joint_parent_f: wp.array | None = None
-        """Parent interaction forces [N, N·m], shape (joint_count,), dtype :class:`spatial_vector`.
-        First three entries: linear force [N]; last three: torque [N·m].
-
-        This is an extended state attribute; see :ref:`extended_state_attributes` for more information.
-
-        .. note::
-            :attr:`joint_parent_f` represents incoming joint wrenches in world frame, referenced to the body's center of mass (COM).
-        """
-
     @property
     def body_q_prev(self) -> wp.array | None:
         """Previous rigid body transforms [m, unitless quaternion].
@@ -271,19 +260,6 @@ class State:
                 continue
 
             _copy_arrays(dst_ns, src_ns, prefix=f"{ns_name}.")
-
-    @property
-    def device(self):
-        """
-        Returns the device on which the state arrays are allocated.
-        """
-        if self.particle_q is not None:
-            return self.particle_q.device
-        if self.body_q is not None:
-            return self.body_q.device
-        if self.joint_q is not None:
-            return self.joint_q.device
-        return None
 
     @property
     def requires_grad(self) -> bool:

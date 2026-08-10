@@ -62,16 +62,6 @@ class StateKamino:
     """
 
     ###
-    # Meta-data
-    ###
-
-    src: State | None = None
-    """
-    A source :class:`newton.State` object that this :class:`StateKamino` object is wrapping.
-    If ``None``, the :class:`StateKamino` object is not associated with a :class:`newton.State` object.
-    """
-
-    ###
     # Attributes
     ###
 
@@ -125,26 +115,6 @@ class StateKamino:
     """
     Array of generalized joint constraint forces.
     Shape of ``(sum_of_num_joint_cts,)``.
-    """
-
-    ###
-    # Auxiliary
-    ###
-
-    w_i_F_com: wp.array[wp.spatial_vectorf] | None = None
-    """
-    Array of per-body wrenches applied by associated joints, expressed in
-    world coordinates, and referenced w.r.t. the body's center of mass (COM).
-    First three entries: linear force [N]; last three: torque [N.m].
-    Shape is ``(num_bodies,)`` and dtype is :class:`wp.spatial_vectorf`.
-    """
-
-    w_j_F_com: wp.array[wp.spatial_vectorf] | None = None
-    """
-    Array of per-joint wrenches applied by the associated base/parent body onto the respective
-    child/follower, expressed in world coordinates, and referenced w.r.t. the joint frame.
-    First three entries: linear force [N]; last three: torque [N.m].
-    Shape is ``(num_joints,)`` and dtype is :class:`wp.spatial_vectorf`.
     """
 
     ###
@@ -324,17 +294,14 @@ class StateKamino:
 
         # Create a new StateKamino object, aliasing the relevant data from the input newton.State
         state_kamino = StateKamino(
-            src=state,
             q_i=state.body_q,
-            u_i=state.body_qd,
-            w_i=body_f_total,
-            w_i_e=state.body_f,
+            u_i=state.body_qd.view(dtype=wp.spatial_vectorf),
+            w_i=body_f_total.view(dtype=wp.spatial_vectorf),
+            w_i_e=state.body_f.view(dtype=wp.spatial_vectorf),
             q_j=state.joint_q,
             q_j_p=joint_q_prev,
             dq_j=state.joint_qd,
             lambda_j=joint_lambdas,
-            w_i_F_com=state.body_parent_f,
-            w_j_F_com=state.joint_parent_f,
         )
 
         # Optionally convert body poses to CoM frame
@@ -381,13 +348,13 @@ class StateKamino:
         # data from the input kamino.StateKamino
         state_newton = State()
         state_newton.body_q = state.q_i
-        state_newton.body_qd = state.u_i
-        state_newton.body_f = state.w_i_e
+        state_newton.body_qd = state.u_i.view(dtype=wp.spatial_vectorf)
+        state_newton.body_f = state.w_i_e.view(dtype=wp.spatial_vectorf)
         state_newton.joint_q = state.q_j
         state_newton.joint_qd = state.dq_j
 
         # Add Kamino-specific custom attributes to the newton.State object
-        state_newton.body_f_total = state.w_i
+        state_newton.body_f_total = state.w_i.view(dtype=wp.spatial_vectorf)
         state_newton.joint_q_prev = state.q_j_p
         state_newton.joint_lambdas = state.lambda_j
 

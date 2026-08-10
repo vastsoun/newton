@@ -4,17 +4,17 @@
 """
 Unit tests for the `kamino.accuracy_benchmark.metrics` module.
 
-The tests fall into three groups:
+The tests fall into two groups:
 
 * Coordinate-transform sanity tests on the sphere-on-plane, box-on-plane and
   boxes-nunchaku scenes from :mod:`newton.tests.utils.basics`. These exercise
-  ``metrics.compute_contact_velocities`` and the per-residual closed-form
-  outputs of ``metrics.compute_contact_constraint_metrics`` (rotation
-  invariance, gap/margin states, NCP primal/dual/complementarity/VI natural
-  map sign matrix, off-COM moment arms).
+  the per-residual closed-form outputs of
+  ``metrics.compute_contact_constraint_metrics`` (rotation invariance,
+  gap/margin states, NCP primal/dual/complementarity/VI natural map sign
+  matrix, off-COM moment arms).
 
-* Per-world max+argmax reduction tests for the new
-  ``metrics.compute_per_world_contact_constraint_summary`` launcher, including
+* Per-world max+argmax reduction tests for
+  ``metrics.compute_per_world_contact_constraint_summary``, including
   inactive-contact masking and global-shape skipping.
 
 To keep the tests independent of the solver's actual contact populator, a
@@ -79,7 +79,7 @@ class TestSetup:
         self.device = device
         self.num_worlds = int(num_worlds)
         self.builder: ModelBuilder = ModelBuilder()
-        self.builder.request_contact_attributes("force", "velocity")
+        self.builder.request_contact_attributes("force")
         self.builder.default_shape_cfg.margin = margin
         self.builder.default_shape_cfg.gap = gap
         self.builder.default_shape_cfg.mu = friction
@@ -109,8 +109,6 @@ class TestSetup:
         self.contacts.rigid_contact_margin1.zero_()
         if self.contacts.force is not None:
             self.contacts.force.zero_()
-        if self.contacts.velocity is not None:
-            self.contacts.velocity.zero_()
 
     def manual_contact(
         self,
@@ -343,10 +341,8 @@ def _evaluate_metrics(setup: TestSetup, *, dt: float = 1.0) -> dict[str, np.ndar
     ``state_minus == state_plus``.
     """
     container = metrics.PhysicsMetrics(model=setup.model)
-    metrics.compute_contact_velocities(setup.model, setup.state, setup.contacts)
     metrics.compute_contact_constraint_metrics(setup.model, setup.state, setup.state, setup.contacts, container, dt)
     return {
-        "velocity": setup.contacts.velocity.numpy(),
         "r_cts_penetration": container.contacts.r_cts_penetration.numpy(),
         "r_cts_velocity": container.contacts.r_cts_velocity.numpy(),
         "r_ncp_primal": container.contacts.r_ncp_primal.numpy(),
@@ -419,56 +415,6 @@ class TestSphereOnPlane(_BenchmarkMetricsTestBase):
     def _collide(self, setup: TestSetup) -> int:
         setup.model.collide(setup.state, setup.contacts)
         return int(setup.contacts.rigid_contact_count.numpy()[0])
-
-    def test_contact_velocity_zero_when_static(self):
-        """Sphere at rest on the plane yields a zero contact twist."""
-        setup = self._build()
-        self.assertEqual(self._collide(setup), 1)
-        snap = _evaluate_metrics(setup)
-        np.testing.assert_allclose(snap["velocity"][0], np.zeros(6, dtype=np.float32), atol=1.0e-6)
-
-    def test_contact_velocity_approaching_vs_separating(self):
-        """Pure vertical sphere velocity flips sign in the contact twist."""
-        setup = self._build()
-        self.assertEqual(self._collide(setup), 1)
-
-        # Approach (-z) ⇒ relative velocity of body1 wrt body0 at COM_0 is -z.
-        # Newton's contact normal points from shape0 (ground) toward shape1
-        # (sphere), i.e. +z; so the normal component of the relative velocity
-        # should be the sphere's -z component (negative when approaching).
-        setup.set_body_state(0, lin_vel=np.array([0.0, 0.0, -2.5], dtype=np.float32))
-        snap_approach = _evaluate_metrics(setup)
-        np.testing.assert_allclose(snap_approach["velocity"][0, 0:3], np.array([0.0, 0.0, -2.5]), atol=1.0e-6)
-
-        setup.set_body_state(0, lin_vel=np.array([0.0, 0.0, +2.5], dtype=np.float32))
-        snap_separate = _evaluate_metrics(setup)
-        np.testing.assert_allclose(snap_separate["velocity"][0, 0:3], np.array([0.0, 0.0, +2.5]), atol=1.0e-6)
-
-    def test_contact_velocity_with_offset_com(self):
-        """A non-zero ``body_com`` must be accounted for in the moment arm.
-
-        ``contacts.velocity`` reports the relative spatial twist at body0's COM.
-        Body0 here is the ground (static at the origin), so the linear part
-        equals ``omega_sphere x (r_com_body0 - r_com_sphere)`` where
-        ``r_com_sphere = sphere_origin + body_com_local`` in world coordinates.
-        """
-        setup = self._build()
-        self.assertEqual(self._collide(setup), 1)
-
-        body_com_offset = 0.5 * self.RADIUS
-        com_np = setup.model.body_com.numpy()
-        com_np[0] = np.array([0.0, 0.0, body_com_offset], dtype=np.float32)
-        setup.model.body_com.assign(com_np)
-        omega = np.array([0.0, 3.0, 0.0], dtype=np.float32)
-        setup.set_body_state(0, ang_vel=omega)
-
-        snap = _evaluate_metrics(setup)
-
-        sphere_pos_z = float(setup.state.body_q.numpy()[0, 2])
-        com_z = sphere_pos_z + body_com_offset
-        expected_lin = np.array([-omega[1] * com_z, 0.0, 0.0], dtype=np.float32)
-        np.testing.assert_allclose(snap["velocity"][0, 0:3], expected_lin, atol=1.0e-5)
-        np.testing.assert_allclose(snap["velocity"][0, 3:6], omega, atol=1.0e-6)
 
     def test_gap_state_apart_no_contact(self):
         """Bodies separated by more than (margin + gap) per shape yield no contact."""
@@ -767,53 +713,6 @@ class TestBoxOnPlane(_BenchmarkMetricsTestBase):
             device=self.default_device,
         )
 
-    def test_box_corner_contacts_velocity(self):
-        """Per-contact reported twists match the body-pair spatial twist at body0's COM.
-
-        ``contacts.velocity`` is a *spatial* twist referenced at body0's COM, so
-        every contact in a single body-pair must report the same value. This
-        test injects a non-trivial box motion and checks both the closed-form
-        spatial twist value and the consistency across every collider-emitted
-        contact slot.
-        """
-        setup = self._build(z_offset=-1.0e-3)
-        setup.model.collide(setup.state, setup.contacts)
-        nc = int(setup.contacts.rigid_contact_count.numpy()[0])
-        self.assertGreater(nc, 0)
-
-        omega = np.array([0.5, -0.7, 2.0], dtype=np.float32)
-        v_com = np.array([0.1, -0.2, -0.3], dtype=np.float32)
-        setup.set_body_state(0, lin_vel=v_com, ang_vel=omega)
-        snap = _evaluate_metrics(setup)
-
-        body_q = setup.state.body_q.numpy()[0]
-        body_com = setup.model.body_com.numpy()[0]
-        X = wp.transformf(*body_q)
-        r_box_com_world = np.array(wp.transform_point(X, wp.vec3f(*body_com)), dtype=np.float32)
-
-        shape_body = setup.model.shape_body.numpy()
-        shape0 = setup.contacts.rigid_contact_shape0.numpy()
-        shape1 = setup.contacts.rigid_contact_shape1.numpy()
-        velocity = snap["velocity"]
-        for c in range(nc):
-            bid_0 = int(shape_body[shape0[c]])
-            bid_1 = int(shape_body[shape1[c]])
-            # Resolve which side is the box (the static ground returns -1).
-            if bid_0 < 0 and bid_1 == 0:
-                # body0 = ground at origin ⇒ arm = (0,0,0) - r_box_com_world.
-                arm = -r_box_com_world
-                expected_lin = v_com + np.cross(omega, arm)
-                expected_ang = omega
-            elif bid_1 < 0 and bid_0 == 0:
-                # body0 = box ⇒ v_01 = v_ground - v_box; ground at origin and
-                # the reference point is the box COM, so v_at_box_com = v_com.
-                expected_lin = -v_com
-                expected_ang = -omega
-            else:
-                continue
-            np.testing.assert_allclose(velocity[c, 0:3], expected_lin, atol=1.0e-4)
-            np.testing.assert_allclose(velocity[c, 3:6], expected_ang, atol=1.0e-6)
-
     def test_box_multi_contact_residuals_independence(self):
         """Each corner contact's residuals depend only on its own injected force."""
         setup = self._build(z_offset=-1.0e-3)
@@ -898,58 +797,6 @@ class TestBoxesNunchaku(_BenchmarkMetricsTestBase):
         if wid < 0:
             wid = int(shape_world[s1])
         return wid
-
-    def test_nunchaku_contact_velocity_floating_base(self):
-        """Per-contact reported twists match the body-pair spatial twist at body0's COM.
-
-        ``contacts.velocity`` carries the relative spatial twist of body1 with
-        respect to body0 at body0's COM (linear + angular). For a non-trivially
-        positioned scene this is sensitive to ``body_com`` and to the actual
-        body transforms, so it exercises the same coordinate transformations
-        as the constraint-residual kernel.
-        """
-        setup = self._build(z_offset=-1.0e-3)
-        setup.model.collide(setup.state, setup.contacts)
-        nc = int(setup.contacts.rigid_contact_count.numpy()[0])
-        self.assertGreater(nc, 0)
-
-        omega = np.array([0.0, 1.5, 0.0], dtype=np.float32)
-        v_com = np.array([0.5, 0.0, 0.0], dtype=np.float32)
-        setup.set_body_state(0, lin_vel=v_com, ang_vel=omega)
-        snap = _evaluate_metrics(setup)
-
-        shape_body = setup.model.shape_body.numpy()
-        shape0 = setup.contacts.rigid_contact_shape0.numpy()
-        shape1 = setup.contacts.rigid_contact_shape1.numpy()
-        body_q = setup.state.body_q.numpy()
-        body_com = setup.model.body_com.numpy()
-        body_qd = setup.state.body_qd.numpy()
-        velocity = snap["velocity"]
-
-        def _com_world(bid: int) -> np.ndarray:
-            if bid < 0:
-                return np.zeros(3, dtype=np.float32)
-            X = wp.transformf(*body_q[bid])
-            return np.array(wp.transform_point(X, wp.vec3f(*body_com[bid])), dtype=np.float32)
-
-        def _twist_at(bid: int, ref_world: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-            if bid < 0:
-                return np.zeros(3, dtype=np.float32), np.zeros(3, dtype=np.float32)
-            v_com_world = body_qd[bid, 0:3].astype(np.float32)
-            w_world = body_qd[bid, 3:6].astype(np.float32)
-            com_world = _com_world(bid)
-            return v_com_world + np.cross(w_world, ref_world - com_world), w_world
-
-        for c in range(nc):
-            bid_0 = int(shape_body[shape0[c]])
-            bid_1 = int(shape_body[shape1[c]])
-            r_ref = _com_world(bid_0)
-            v_body0, w_body0 = _twist_at(bid_0, r_ref)
-            v_body1, w_body1 = _twist_at(bid_1, r_ref)
-            expected_lin = v_body1 - v_body0
-            expected_ang = w_body1 - w_body0
-            np.testing.assert_allclose(velocity[c, 0:3], expected_lin, atol=1.0e-4)
-            np.testing.assert_allclose(velocity[c, 3:6], expected_ang, atol=1.0e-6)
 
     def test_nunchaku_residual_sign_under_internal_force(self):
         """An in-cone force on a nunchaku contact yields a non-negative residual."""
@@ -1159,7 +1006,7 @@ class TestPerWorldContactMetricsSummary(_BenchmarkMetricsTestBase):
         # scenario where both shapes are global by referencing the sphere's
         # builder twice with a global ground).
         builder = ModelBuilder()
-        builder.request_contact_attributes("force", "velocity")
+        builder.request_contact_attributes("force")
         builder.default_shape_cfg.margin = 0.0
         builder.default_shape_cfg.gap = 0.0
         builder.default_shape_cfg.mu = 0.5

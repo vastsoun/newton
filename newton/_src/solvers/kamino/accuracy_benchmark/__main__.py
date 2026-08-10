@@ -1,18 +1,18 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
 
-"""Kamino accuracy-benchmark entry point. Dispatches a ``--problem`` selection to one of the
-:class:`ProblemRun` factories in :mod:`problems` / :mod:`paper_problems` and hands the
-result to :class:`SetupRunner` (the example object passed to :func:`newton.examples.run`).
+"""Kamino accuracy-benchmark entry point.
+
+Dispatches a ``--problem`` selection to one of the :class:`ProblemRun`
+factories in :mod:`problems` and hands the result to :class:`SetupRunner`
+(the example object passed to :func:`newton.examples.run`).
 
 Run with: python -m newton._src.solvers.kamino.accuracy_benchmark [--problem <name>]
 
-Supported problems:
-
-- ``box_on_plane`` / ``fourbar`` — validation examples (see :mod:`.problems`).
-- ``ironman`` / ``olaf`` / ``bdx`` / ``dr_legs`` — paper robot benchmarks (see
-  :mod:`.paper_problems`). These depend on USD assets under the path returned by
-  :func:`assets.paper_assets_root` (override via ``$NEWTON_KAMINO_PAPER_ASSETS_ROOT``).
+Supported problems: ``ironman`` / ``olaf`` / ``bdx`` / ``dr_legs``. All four
+depend on USD assets under the path returned by
+:func:`assets.paper_assets_root` (override via
+``$NEWTON_KAMINO_PAPER_ASSETS_ROOT``).
 """
 
 import argparse
@@ -22,30 +22,25 @@ import numpy as np
 import newton
 import newton.examples
 from newton._src.solvers.kamino._src.utils import logger as msg
-from newton._src.solvers.kamino.accuracy_benchmark.paper_problems import (
+from newton._src.solvers.kamino.accuracy_benchmark.problems import (
     build_bdx_run,
     build_dr_legs_run,
     build_ironman_run,
     build_olaf_run,
     make_dr_legs_animation_cb,
 )
-from newton._src.solvers.kamino.accuracy_benchmark.problems import (
-    build_box_on_plane_run,
-    build_fourbar_run,
-)
 from newton._src.solvers.kamino.accuracy_benchmark.setup import SetupRunner
 
 _PAPER_PROBLEMS = ("ironman", "olaf", "bdx", "dr_legs")
-_ALL_PROBLEMS = ("box_on_plane", "fourbar", *_PAPER_PROBLEMS)
 
 
 def create_parser():
     parser = newton.examples.create_parser()
     parser.add_argument(
         "--problem",
-        choices=_ALL_PROBLEMS,
-        default="box_on_plane",
-        help="Which benchmark problem to run.",
+        choices=_PAPER_PROBLEMS,
+        default="ironman",
+        help="Which paper problem to run.",
     )
     parser.add_argument(
         "--independent",
@@ -60,7 +55,7 @@ def create_parser():
         "--use-external-force",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Apply a time-dependent external force. Ignored by ``fourbar`` and ``ironman``.",
+        help="Apply a time-dependent external force. Ignored by ``ironman``.",
     )
     parser.add_argument(
         "--animation",
@@ -72,7 +67,7 @@ def create_parser():
         "--verbose",
         action="store_true",
         help=(
-            "Log per-sub-step state, contact, and metrics diagnostics for every setup. "
+            "Log per-sub-step state and contact diagnostics for every setup. "
             "Very noisy with the default sim_substeps=20; pair with a small --num-frames."
         ),
     )
@@ -93,15 +88,7 @@ if __name__ == "__main__":
     max_log_frames = args.num_frames * sim_substeps
 
     animation_cb = None
-    if args.problem == "box_on_plane":
-        run = build_box_on_plane_run(
-            dt=sim_dt,
-            max_log_frames=max_log_frames,
-            use_external_force=args.use_external_force,
-        )
-    elif args.problem == "fourbar":
-        run = build_fourbar_run(dt=sim_dt, max_log_frames=max_log_frames)
-    elif args.problem == "ironman":
+    if args.problem == "ironman":
         run = build_ironman_run(dt=sim_dt, max_log_frames=max_log_frames)
     elif args.problem == "olaf":
         run = build_olaf_run(dt=sim_dt, max_log_frames=max_log_frames)

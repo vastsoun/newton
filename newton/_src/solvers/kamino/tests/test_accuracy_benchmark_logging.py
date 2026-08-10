@@ -101,7 +101,7 @@ class _LoggerTestSetup:
         self.device = device
 
         self.builder: ModelBuilder = ModelBuilder()
-        self.builder.request_contact_attributes("force", "velocity")
+        self.builder.request_contact_attributes("force")
         for w in range(self.num_worlds):
             if w == 0:
                 basics.build_sphere_on_plane(

@@ -1,8 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
 
-"""
-TODO
+"""Cross-solver constraint-residual metrics driven from the Newton state.
+
+Exposes :class:`PhysicsMetrics` and closed-form ``compute_*`` kernels producing
+per-contact / per-joint constraint residuals that :class:`PhysicsMetricsLogger`
+snapshots on every step. Unlike Kamino's own :class:`SolutionMetrics`, the
+kernels here only need Newton native fields plus the extended
+:attr:`Contacts.force` attribute, so they apply uniformly to any solver
+(Kamino / MuJoCo / XPBD).
 """
 
 from functools import cache
@@ -29,10 +35,8 @@ from .._src.utils import logger as msg
 
 __all__ = [
     "ConstraintMetrics",
-    "JointData",
     "PhysicsMetrics",
     "compute_contact_constraint_metrics",
-    "compute_contact_velocities",
     "compute_joint_constraint_metrics",
     "compute_per_world_contact_constraint_summary",
     "compute_per_world_joint_constraint_summary",
@@ -49,38 +53,6 @@ wp.set_module_options({"enable_backward": False})
 ###
 # Types
 ###
-
-
-class JointData:
-    """TODO"""
-
-    def __init__(self, model: Model):
-        """
-        Initializes the container with the given model.
-
-        Args:
-            model: The model containing the time-invariant data of the simulation.
-        """
-        self.q_j = wp.array(shape=(model.joint_coord_count,), dtype=wp.float32)
-        """The joint coordinates."""
-
-        self.dq_j = wp.array(shape=(model.joint_dof_count,), dtype=wp.float32)
-        """The joint DoF velocities."""
-
-        self.r_j = wp.array(shape=(model.joint_constraint_count,), dtype=wp.float32)
-        """The joint constraint residual."""
-
-        self.dr_j = wp.array(shape=(model.joint_constraint_count,), dtype=wp.float32)
-        """The joint constraint residual time-derivative."""
-
-    def clear(self):
-        """
-        Clears the joints data to zeros.
-        """
-        self.q_j.zero_()
-        self.dq_j.zero_()
-        self.r_j.zero_()
-        self.dr_j.zero_()
 
 
 class ConstraintMetrics:
@@ -451,96 +423,6 @@ def atomic_max_with_argmax(
 ###
 # Kernels
 ###
-
-
-# TODO: FIX THIS: needs body_q_mins and body_qd_plus
-@wp.kernel
-def _compute_contact_velocities(
-    # Constants:
-    rigid_contact_max: int,
-    # Inputs:
-    shape_body: wp.array[wp.int32],
-    body_com: wp.array[wp.vec3f],
-    body_q: wp.array[wp.transformf],
-    body_qd: wp.array[wp.spatial_vectorf],
-    contact_count: wp.array[wp.int32],
-    contact_shape0: wp.array[wp.int32],
-    contact_shape1: wp.array[wp.int32],
-    # Outputs:
-    contact_velocity: wp.array[wp.spatial_vectorf],
-):
-    """
-    Computes the relative spatial twist of body1 with respect to body0 for each
-    contact pair, referenced at body0's COM in world frame.
-
-    The output is a spatial vector ``(v, omega)`` where ``v`` is the linear component of
-    body1's twist measured at body0's COM expressed in world coordinates, and ``omega``
-    is the relative angular velocity ``omega_body1 - omega_body0`` (reference-point
-    invariant). The contact-point relative velocity is recovered as:
-    ``v + omega x (r_contact - r_com_body0_world)``.
-
-    Contact-frame residuals (handled by ``_compute_contact_constraint_metrics``)
-    instead recompute the relative velocity at the actual contact point.
-    """
-    # Retrieve the contact index from the thread grid
-    cid = wp.tid()
-
-    # Retrieve the active contact count
-    num_active = contact_count[0]
-
-    # Skip if the contact index is greater than
-    # the active or the maximum contact count
-    if cid >= wp.min(num_active, rigid_contact_max):
-        return
-
-    # Retrieve the shape and body indices for this contact
-    sid_0 = contact_shape0[cid]
-    sid_1 = contact_shape1[cid]
-    bid_0 = shape_body[sid_0]
-    bid_1 = shape_body[sid_1]
-
-    # Retrieve the body transforms for this contact.
-    # The body-local COM offset defaults to zero for static bodies so that
-    # the world-frame COM reduces to the identity transform's origin.
-    r_body_to_com_0 = wp.vec3f(0.0)
-    u_body_0 = wp.spatial_vectorf(0.0)
-    X_body_0 = wp.transform_identity(dtype=wp.float32)
-    if bid_0 >= 0:
-        r_body_to_com_0 = body_com[bid_0]
-        u_body_0 = body_qd[bid_0]
-        X_body_0 = body_q[bid_0]
-    r_body_to_com_1 = wp.vec3f(0.0)
-    u_body_1 = wp.spatial_vectorf(0.0)
-    X_body_1 = wp.transform_identity(dtype=wp.float32)
-    if bid_1 >= 0:
-        r_body_to_com_1 = body_com[bid_1]
-        u_body_1 = body_qd[bid_1]
-        X_body_1 = body_q[bid_1]
-
-    # Compute the world-frame COM positions of both bodies. Newton stores
-    # `body_qd` linear components at the COM, so the moment-arm shift for the
-    # relative twist must be measured between COMs in world coordinates.
-    # Fixes B2: previously this kernel used `wp.transform_get_translation(X_body_i)`
-    # (body-frame origin in world), which mishandles any body whose `body_com`
-    # offset is non-zero (e.g. free-jointed assemblies with off-COM body frames).
-    r_com_0_world = wp.transform_point(X_body_0, r_body_to_com_0)
-    r_com_1_world = wp.transform_point(X_body_1, r_body_to_com_1)
-
-    # Extract linear and angular parts
-    v_body_1 = wp.spatial_top(u_body_1)
-    omega_body_1 = wp.spatial_bottom(u_body_1)
-
-    # Compute the spatial twist of body1 with respect to body0 COM reference point
-    v_1_ref_to_0 = v_body_1 + wp.cross(omega_body_1, r_com_0_world - r_com_1_world)
-    u_1_ref_to_0 = wp.spatial_vector(v_1_ref_to_0, omega_body_1)
-
-    # Compute the relative spatial twist of body1 with
-    # respect to body0 at the body0 COM reference point
-    u_01_ref_to_0 = u_1_ref_to_0 - u_body_0
-
-    # Store the relative twist of the contacting
-    # bodies as the contact spatial twist
-    contact_velocity[cid] = u_01_ref_to_0
 
 
 @wp.kernel
@@ -1167,45 +1049,6 @@ def make_compute_joint_constraint_residuals_kernel():
 ###
 
 
-def compute_contact_velocities(
-    model: Model,
-    state: State,
-    contacts: Contacts,
-):
-    """
-    Computes the contact velocities for the given model and state.
-    """
-    # Ensure that the contact velocity extended attribute is present
-    if contacts.velocity is None:
-        raise ValueError("Contact velocity extended attribute is not present.")
-
-    # Ensure all containers are on the same device
-    if model.device != contacts.device:
-        raise ValueError(
-            f"Model and contacts must be on the same device but are on {model.device} and {contacts.device}."
-        )
-    if model.device != state.device:
-        raise ValueError(f"Model and state must be on the same device but are on {model.device} and {state.device}.")
-
-    # Launch the kernel to compute the contact velocities
-    wp.launch(
-        kernel=_compute_contact_velocities,
-        dim=contacts.rigid_contact_max,
-        inputs=[
-            wp.int32(contacts.rigid_contact_max),
-            model.shape_body,
-            model.body_com,
-            state.body_q,
-            state.body_qd,
-            contacts.rigid_contact_count,
-            contacts.rigid_contact_shape0,
-            contacts.rigid_contact_shape1,
-        ],
-        outputs=[contacts.velocity],
-        device=model.device,
-    )
-
-
 def compute_contact_constraint_metrics(
     model: Model,
     state_minus: State,
@@ -1217,20 +1060,6 @@ def compute_contact_constraint_metrics(
     """
     Computes the contact constraint residuals for the given model and state.
     """
-    # Ensure all containers are on the same device
-    if model.device != contacts.device:
-        raise ValueError(
-            f"Model and contacts must be on the same device but are on {model.device} and {contacts.device}."
-        )
-    if model.device != state_minus.device:
-        raise ValueError(
-            f"Model and state_minus must be on the same device but are on {model.device} and {state_minus.device}."
-        )
-    if model.device != state_plus.device:
-        raise ValueError(
-            f"Model and state_plus must be on the same device but are on {model.device} and {state_plus.device}."
-        )
-
     # Ensure the contacts force array is present
     if contacts.force is None:
         raise ValueError("Contacts force array is not allocated. Please request it using `request_contact_attributes`.")
@@ -1469,17 +1298,8 @@ def compute_joint_constraint_metrics(
             joint context cached at init is reused on every call.
 
     Raises:
-        ValueError: If any container lives on a different device than
-            ``model``, or if the Kamino joint context was not initialized.
+        ValueError: If the Kamino joint context was not initialized.
     """
-    if model.device != state_minus.device:
-        raise ValueError(
-            f"Model and state_minus must be on the same device but are on {model.device} and {state_minus.device}."
-        )
-    if model.device != state_plus.device:
-        raise ValueError(
-            f"Model and state_plus must be on the same device but are on {model.device} and {state_plus.device}."
-        )
     if metrics.joints is None:
         raise ValueError(
             "Metrics container does not contain a `joints` attribute. Ensure the model has joints "

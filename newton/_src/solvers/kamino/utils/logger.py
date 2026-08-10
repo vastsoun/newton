@@ -7,11 +7,11 @@ status and active-constraint counts on the same device as the solver.
 
 The :class:`SolverKaminoLogger` class allocates per-frame Warp buffers for each
 recorded metric, with an optional fixed-size rolling window or bounded
-early-exit overflow policy and a configurable sample-decimation rate. Unlike
-:class:`SolutionMetricsLogger`, the per-frame counters and rollover/bounding
-logic live on the target device, so a single :meth:`SolverKaminoLogger.log`
-call expands to a fixed sequence of Warp kernel launches that can be safely
-captured into a CUDA graph alongside :meth:`SolverKamino.step`.
+early-exit overflow policy and a configurable sample-decimation rate. The
+per-frame counters and rollover/bounding logic live on the target device, so
+a single :meth:`SolverKaminoLogger.log` call expands to a fixed sequence of
+Warp kernel launches that can be safely captured into a CUDA graph alongside
+:meth:`SolverKamino.step`.
 
 It also exposes utilities to extract the recorded data as numpy arrays in
 chronological order, and to render a single matplotlib figure with one
@@ -384,13 +384,12 @@ class SolverKaminoLogger:
     The optional ``decimation`` argument skips intermediate calls so only every
     ``decimation``-th call actually writes a new frame.
 
-    Unlike :class:`SolutionMetricsLogger`, every host-side decision in
-    :meth:`log` (decimation gate, overflow check, write-index computation,
-    counter increments) is performed on-device through dedicated Warp kernels.
-    This makes a single :meth:`log` invocation a fixed sequence of kernel
-    launches whose data dependencies live entirely in device memory, and it
-    can be safely included inside :class:`wp.ScopedCapture` blocks alongside
-    :meth:`SolverKamino.step`.
+    Every host-side decision in :meth:`log` (decimation gate, overflow check,
+    write-index computation, counter increments) is performed on-device
+    through dedicated Warp kernels. This makes a single :meth:`log`
+    invocation a fixed sequence of kernel launches whose data dependencies
+    live entirely in device memory, and it can be safely included inside
+    :class:`wp.ScopedCapture` blocks alongside :meth:`SolverKamino.step`.
 
     The recorded metrics are:
 

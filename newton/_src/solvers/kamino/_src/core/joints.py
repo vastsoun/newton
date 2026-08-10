@@ -1721,8 +1721,8 @@ class JointsModel:
     # Meta-Data
     ###
 
-    num_joints: int = -1
-    """Total number of joints in the model (host-side). Defaults to `-1` which means the container is not finalized."""
+    num_joints: int = 0
+    """Total number of joints in the model (host-side)."""
 
     label: list[str] | None = None
     """
@@ -2288,87 +2288,48 @@ class JointsData:
     # Per-Body Wrenches
     ###
 
-    w_j_F_com: wp.array[wp.spatial_vectorf] | None = None
-    """
-    Total wrench applied by each joint onto the corresponding follower
-    body, computed at body CoM and expressed in world coordinates.
-    Shape of ``(num_joints,)``.
-    """
-
     j_w_j: wp.array[wp.spatial_vectorf] | None = None
     """
-    Total wrench applied by each joint onto the corresponding
-    follower body, expressed in and about the corresponding joint frame.
+    Total wrench applied by each joint, expressed
+    in and about the corresponding joint frame.
+    Its direction follows the convention that
+    joints act on the follower by the base body.
     Shape of ``(num_joints,)``.
     """
 
-    j_w_j_dof_act: wp.array[wp.spatial_vectorf] | None = None
+    j_w_a_j: wp.array[wp.spatial_vectorf] | None = None
     """
-    Actuation wrench applied by each joint onto the corresponding
-    follower body, expressed in and about the corresponding joint frame.
+    Actuation wrench applied by each joint, expressed
+    in and about the corresponding joint frame.
+    Its direction is defined by the convention that positive wrenches
+    in the joint frame are those inducing a positive change in the
+    twist of the follower body relative to the base body.
     Shape of ``(num_joints,)``.
     """
 
-    j_w_j_cts_dyn: wp.array[wp.spatial_vectorf] | None = None
+    j_w_c_j: wp.array[wp.spatial_vectorf] | None = None
     """
-    Dynamic constraint wrench applied by each joint onto the corresponding
-    follower body, expressed in and about the corresponding joint frame.
+    Constraint wrench applied by each joint, expressed
+    in and about the corresponding joint frame.
+    Its direction is defined by the convention that positive wrenches
+    in the joint frame are those inducing a positive change in the
+    twist of the follower body relative to the base body.
     Shape of ``(num_joints,)``.
     """
 
-    j_w_j_cts_kin: wp.array[wp.spatial_vectorf] | None = None
+    j_w_l_j: wp.array[wp.spatial_vectorf] | None = None
     """
-    Kinematic constraint wrench applied by each joint onto the corresponding
-    follower body, expressed in and about the corresponding joint frame.
-    Shape of ``(num_joints,)``.
-    """
-
-    j_w_j_cts_lim: wp.array[wp.spatial_vectorf] | None = None
-    """
-    Limit constraint wrench applied by each joint onto the corresponding
-    follower body, expressed in and about the corresponding joint frame.
+    Joint-limit wrench applied by each joint, expressed
+    in and about the corresponding joint frame.
+    Its direction is defined by the convention that positive wrenches
+    in the joint frame are those inducing a positive change in the
+    twist of the follower body relative to the base body.
     Shape of ``(num_joints,)``.
     """
 
     ###
     # Operations
     ###
-
-    def has_wrenches(self) -> bool:
-        """
-        Checks if the per-joint wrenches data arrays are allocated.
-        """
-        return (
-            self.w_j_F_com is not None
-            and self.j_w_j is not None
-            and self.j_w_j_dof_act is not None
-            and self.j_w_j_cts_dyn is not None
-            and self.j_w_j_cts_kin is not None
-            and self.j_w_j_cts_lim is not None
-        )
-
-    def finalize_wrenches(self):
-        """
-        Finalizes the per-joint wrenches data arrays.
-        """
-        # Deduce the target device from the generalized joint
-        # coordinates, which is always guaranteed to be allocated.
-        device = self.q_j.device
-
-        # Allocate the per-joint wrenches data arrays on the target device
-        with wp.ScopedDevice(device):
-            if self.w_j_F_com is None:
-                self.w_j_F_com = wp.zeros((self.num_joints,), dtype=wp.spatial_vectorf)
-            if self.j_w_j is None:
-                self.j_w_j = wp.zeros((self.num_joints,), dtype=wp.spatial_vectorf)
-            if self.j_w_j_dof_act is None:
-                self.j_w_j_dof_act = wp.zeros((self.num_joints,), dtype=wp.spatial_vectorf)
-            if self.j_w_j_cts_dyn is None:
-                self.j_w_j_cts_dyn = wp.zeros((self.num_joints,), dtype=wp.spatial_vectorf)
-            if self.j_w_j_cts_kin is None:
-                self.j_w_j_cts_kin = wp.zeros((self.num_joints,), dtype=wp.spatial_vectorf)
-            if self.j_w_j_cts_lim is None:
-                self.j_w_j_cts_lim = wp.zeros((self.num_joints,), dtype=wp.spatial_vectorf)
 
     def reset_state(self, q_j_0: wp.array[wp.float32] | None = None):
         """
@@ -2442,12 +2403,11 @@ class JointsData:
         """
         Resets all joint wrenches to zero.
         """
-        if self.has_wrenches():
-            self.w_j_F_com.zero_()
-            self.j_w_j_dof_act.zero_()
-            self.j_w_j_cts_dyn.zero_()
-            self.j_w_j_cts_kin.zero_()
-            self.j_w_j_cts_lim.zero_()
+        if self.j_w_j is not None:
+            self.j_w_j.zero_()
+            self.j_w_c_j.zero_()
+            self.j_w_a_j.zero_()
+            self.j_w_l_j.zero_()
 
     def clear_all(self):
         """

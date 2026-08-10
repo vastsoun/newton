@@ -2,19 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Benchmark utilities for the Kamino solver package.
+Cross-solver accuracy benchmark for the Kamino paper experiments.
 
 This subpackage exposes:
 
-* :class:`SolverSetup` — turn-key construction of a Newton model/state/solver
-  trio for benchmark sweeps.
-* :class:`PhysicsMetrics` and the ``compute_*`` helpers — closed-form contact
-  constraint residuals and per-world summaries computed directly from the
-  Newton :class:`Contacts` container.
+* :class:`SolverSetup` and :class:`SetupRunner` — per-solver simulation
+  containers and their multi-solver driver.
+* :class:`PhysicsMetrics` and the ``compute_*`` helpers — closed-form
+  contact / joint constraint residuals computed directly from the Newton
+  :class:`State` and :class:`Contacts`.
 * :class:`PhysicsMetricsLogger` — on-device rolling/bounded history logger
-  for the per-world summary fields produced by
-  :func:`compute_per_world_contact_constraint_summary` and
-  :func:`compute_per_world_joint_constraint_summary`.
+  for the per-world summary fields, with ``plot_comparison`` /
+  ``table_comparison`` classmethods that emit the paper's PDFs and CSV.
 """
 
 from .assets import paper_assets_root, resolve_asset
@@ -23,7 +22,6 @@ from .metrics import (
     ConstraintMetrics,
     PhysicsMetrics,
     compute_contact_constraint_metrics,
-    compute_contact_velocities,
     compute_joint_constraint_metrics,
     compute_per_world_contact_constraint_summary,
     compute_per_world_joint_constraint_summary,
@@ -41,7 +39,6 @@ __all__ = [
     "SetupRunner",
     "SolverSetup",
     "compute_contact_constraint_metrics",
-    "compute_contact_velocities",
     "compute_joint_constraint_metrics",
     "compute_per_world_contact_constraint_summary",
     "compute_per_world_joint_constraint_summary",

@@ -27,7 +27,7 @@ import newton
 import newton.examples
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.accuracy_benchmark import SetupRunner
-from newton._src.solvers.kamino.accuracy_benchmark.paper_problems import build_ironman_run
+from newton._src.solvers.kamino.accuracy_benchmark.problems import build_ironman_run
 
 SIM_DT: float = 0.001
 VIZ_FPS: int = 50

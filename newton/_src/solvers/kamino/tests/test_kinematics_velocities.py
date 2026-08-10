@@ -41,9 +41,9 @@ class TestSetup:
 
     The Newton-side fields drive the reference :class:`SolverKamino` step that produces a
     realistic post-event state. The Kamino-side containers (``model_kamino``, ``data_kamino``,
-    ``limits_kamino``, ``contacts_kamino``, ``jacobians_dense``, ``jacobians_sparse``) are used
-    by tests to exercise lower-level Kamino primitives directly without going through
-    :class:`SolutionMetricsNewton`.
+    ``limits_kamino``, ``contacts_kamino``, ``jacobians_dense``, ``jacobians_sparse``) are
+    used by tests to exercise :func:`compute_constraint_space_velocities` against a
+    Newton-driven reference state.
     """
 
     def __init__(
@@ -86,9 +86,8 @@ class TestSetup:
         # Create a Kamino solver from the model
         self.solver = newton.solvers.SolverKamino(model=self.model)
 
-        # Build a parallel set of Kamino containers, mirroring the allocation order
-        # used by SolutionMetricsNewton.finalize so we can exercise the same
-        # constraint-space computations without going through the metrics wrapper.
+        # Build a parallel set of Kamino containers used to exercise the
+        # constraint-space velocity computation against a Newton-driven state.
         self.model_kamino: ModelKamino = ModelKamino.from_newton(model=self.model)
         self.model_kamino.time.dt.fill_(wp.float32(dt))
         self.model_kamino.time.inv_dt.fill_(wp.float32(1.0 / dt))
@@ -118,9 +117,10 @@ class TestSetup:
     def build_jacobians(self, state_p: State, contacts: Contacts) -> StateKamino:
         """Populate :attr:`data_kamino` from ``state_p`` and rebuild both Jacobian backends.
 
-        Mirrors the data-population sequence from :meth:`SolutionMetricsNewton.evaluate`
-        up to and including the Jacobian assembly step. Returns the :class:`StateKamino`
-        view aliased over ``state_p`` for callers that need to read its arrays directly.
+        Executes the same data-population sequence a metrics evaluator would run
+        up to and including the Jacobian assembly step. Returns the
+        :class:`StateKamino` view aliased over ``state_p`` for callers that need
+        to read its arrays directly.
         """
         # Reset limits and contacts containers so prior contents do not bleed in
         self.limits_kamino.reset()

@@ -135,12 +135,22 @@ def make_setup_xpbd(*, dt: float, max_log_frames: int, rigid_contact_max: int) -
     )
 
 
-def make_reference_leader(*, solver_name: str, dt: float, rigid_contact_max: int) -> ReferenceLeader:
+def make_reference_leader(
+    *,
+    solver_name: str,
+    dt: float,
+    rigid_contact_max: int,
+    max_log_frames: int | None = None,
+    log_dt: float | None = None,
+) -> ReferenceLeader:
     """Build a fine-dt :class:`ReferenceLeader` on the Iron Man scene.
 
     Reuses the same solver configs as the coarse ``make_setup_*`` factories so
     the fine leader and the corresponding coarse follower are identical apart
-    from their integration step size.
+    from their integration step size. When both ``max_log_frames`` and
+    ``log_dt`` are provided, attaches a :class:`PhysicsMetricsLogger` so the
+    reference's single-step residuals overlay the followers' in the CSV/PDF
+    outputs.
     """
     if solver_name == "kamino":
         _, model = build_benchmark_model(solvers.SolverKamino, _scene_ironman, rigid_contact_max=rigid_contact_max)
@@ -158,7 +168,10 @@ def make_reference_leader(*, solver_name: str, dt: float, rigid_contact_max: int
         reset_cb = make_fk_reset_cb(model)
     else:
         raise ValueError(f"unknown solver_name {solver_name!r}, expected kamino / mujoco / xpbd")
-    return ReferenceLeader(name=f"{solver_name}_ref", model=model, solver=solver, dt=dt, reset_cb=reset_cb)
+    leader = ReferenceLeader(name=f"{solver_name}_ref", model=model, solver=solver, dt=dt, reset_cb=reset_cb)
+    if max_log_frames is not None and log_dt is not None:
+        leader.attach_metrics(max_log_frames=max_log_frames, log_dt=log_dt)
+    return leader
 
 
 def build_ironman_run(
@@ -198,6 +211,8 @@ def build_ironman_run(
             solver_name=reference_leader_solver,
             dt=dt / reference_leader_fine_substeps,
             rigid_contact_max=rigid_contact_max,
+            max_log_frames=max_log_frames,
+            log_dt=dt,
         )
     return ProblemRun(
         setups=setups,

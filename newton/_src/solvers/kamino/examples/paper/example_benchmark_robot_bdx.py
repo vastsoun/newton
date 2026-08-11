@@ -179,8 +179,15 @@ def make_reference_leader(
     dt: float,
     rigid_contact_max: int,
     usd_stage: Usd.Stage,
+    max_log_frames: int | None = None,
+    log_dt: float | None = None,
 ) -> ReferenceLeader:
-    """Build a fine-dt :class:`ReferenceLeader` on the BDX scene."""
+    """Build a fine-dt :class:`ReferenceLeader` on the BDX scene.
+
+    When both ``max_log_frames`` and ``log_dt`` are provided, attaches a
+    :class:`PhysicsMetricsLogger` so the reference's fine-dt single-step
+    residuals overlay the followers' in the CSV/PDF outputs.
+    """
     scene_kwargs = {"usd_stage": usd_stage}
     if solver_name == "kamino":
         _, model = build_benchmark_model(
@@ -202,7 +209,10 @@ def make_reference_leader(
         reset_cb = make_fk_reset_cb(model)
     else:
         raise ValueError(f"unknown solver_name {solver_name!r}, expected kamino / mujoco / xpbd")
-    return ReferenceLeader(name=f"{solver_name}_ref", model=model, solver=solver, dt=dt, reset_cb=reset_cb)
+    leader = ReferenceLeader(name=f"{solver_name}_ref", model=model, solver=solver, dt=dt, reset_cb=reset_cb)
+    if max_log_frames is not None and log_dt is not None:
+        leader.attach_metrics(max_log_frames=max_log_frames, log_dt=log_dt)
+    return leader
 
 
 def build_bdx_run(
@@ -246,6 +256,8 @@ def build_bdx_run(
             dt=dt / reference_leader_fine_substeps,
             rigid_contact_max=rigid_contact_max,
             usd_stage=usd_stage,
+            max_log_frames=max_log_frames,
+            log_dt=dt,
         )
     return ProblemRun(
         setups=setups,

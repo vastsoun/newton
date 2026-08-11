@@ -869,6 +869,17 @@ class SetupRunner:
             for name, setup in self.setups.items()
             if setup.physics_metrics_logger is not None and setup.physics_metrics_logger.num_logged_frames > 0
         }
+        # In tied_reference mode the fine-dt reference leader also logs its
+        # own single-step residuals (subsampled at coarse cadence); surface
+        # them as an extra "reference" column / curve so the plots and CSV
+        # let a user visually confirm the reference's residuals are much
+        # smaller than any coarse follower's.
+        if (
+            self.reference_leader is not None
+            and self.reference_leader.physics_metrics_logger is not None
+            and self.reference_leader.physics_metrics_logger.num_logged_frames > 0
+        ):
+            physics_loggers["reference"] = self.reference_leader.physics_metrics_logger
         if physics_loggers:
             PhysicsMetricsLogger.plot_comparison(
                 physics_loggers, filename=f"{problem_name}_physics_metrics", path=output_path, ext="pdf", grid=True

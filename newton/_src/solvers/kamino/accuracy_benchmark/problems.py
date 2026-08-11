@@ -28,7 +28,13 @@ from newton import solvers
 from newton._src.core import Axis
 from newton._src.sim import ModelBuilder
 from newton._src.solvers.kamino.accuracy_benchmark.logging import PhysicsMetricsLogger
-from newton._src.solvers.kamino.accuracy_benchmark.metrics import PhysicsMetrics
+from newton._src.solvers.kamino.accuracy_benchmark.metrics import (
+    PhysicsMetrics,
+    compute_contact_constraint_metrics,
+    compute_joint_constraint_metrics,
+    compute_per_world_contact_constraint_summary,
+    compute_per_world_joint_constraint_summary,
+)
 from newton._src.solvers.kamino.accuracy_benchmark.setup import SolverSetup
 from newton._src.solvers.kamino.utils import SolverKaminoLogger
 from newton._src.solvers.mujoco.kernels import reset_world_buffers_kernel
@@ -571,16 +577,16 @@ class ReferenceLeader:
 
     Owns its own :class:`~newton.Model` / :class:`~newton.solvers.SolverBase` /
     :class:`~newton.State` / :class:`~newton.Control` / :class:`~newton.Contacts`
-    (built by a per-example factory) and only exposes :meth:`step_n`; no
-    metrics, no snapshots. The trajectory it produces seeds
-    :attr:`SetupRunner.state_in` at every coarse substep of the tied_reference
-    loop.
+    (built by a per-example factory) plus an optional :class:`PhysicsMetrics`
+    + :class:`PhysicsMetricsLogger` pair populated at coarse-substep cadence
+    (see :meth:`attach_metrics`).
 
-    Because the leader runs at ``coarse_dt / fine_substeps_per_coarse``, its
-    integration error is much smaller than the coarse followers'. The point is
-    to give every coarse follower a *shared* physically-consistent state at
-    the start of each coarse substep, decoupled from any single solver's
-    coarse-dt behaviour.
+    The trajectory it produces seeds :attr:`SetupRunner.state_in` at every
+    coarse substep of the tied_reference loop. Because the leader runs at
+    ``coarse_dt / fine_substeps_per_coarse``, its integration error is much
+    smaller than the coarse followers'. The point is to give every coarse
+    follower a *shared* physically-consistent state at the start of each
+    coarse substep, decoupled from any single solver's coarse-dt behaviour.
     """
 
     def __init__(
@@ -601,6 +607,39 @@ class ReferenceLeader:
         self.state_out: newton.State = model.state()
         self.control: newton.Control = model.control()
         self.contacts: newton.Contacts = model.contacts()
+        # Metrics are attached lazily via ``attach_metrics`` so the reference
+        # leader stays lightweight when metrics collection isn't needed
+        # (e.g. quick smoke tests, or interactive viewer runs).
+        self.physics_metrics: PhysicsMetrics | None = None
+        self.physics_metrics_logger: PhysicsMetricsLogger | None = None
+
+    def attach_metrics(self, *, max_log_frames: int, log_dt: float) -> None:
+        """Attach a :class:`PhysicsMetrics` + :class:`PhysicsMetricsLogger` pair.
+
+        The reference leader evaluates the same cross-solver residuals used by
+        the followers, but on the *fine-dt* single-step transition at each
+        coarse sub-step boundary (i.e. the state jump over the last fine
+        integration step out of the ``fine_substeps_per_coarse`` batch —
+        :meth:`step_n` handles this).
+
+        Args:
+            max_log_frames: Bound on the number of frames buffered by
+                :class:`PhysicsMetricsLogger`. Must match the followers'
+                bound so the CSV / PDF outputs have aligned lengths;
+                typically ``num_frames * sim_substeps``.
+            log_dt: Time axis step passed to :class:`PhysicsMetricsLogger`.
+                Set to the *coarse* sim_dt (not the reference's own fine dt)
+                so the reference's curve overlays cleanly on the followers'
+                — logs happen exactly once per coarse sub-step.
+        """
+        self.physics_metrics = PhysicsMetrics(model=self.model)
+        self.physics_metrics_logger = PhysicsMetricsLogger(
+            metrics=self.physics_metrics,
+            max_frames=max_log_frames,
+            mode=PhysicsMetricsLogger.Mode.BOUNDED,
+            decimation=1,
+            dt=log_dt,
+        )
 
     def reset(self) -> None:
         """Populate :attr:`state_in` from the reset callback."""
@@ -620,6 +659,14 @@ class ReferenceLeader:
         with the correct sub-step ``sim_time``, runs collision detection into
         :attr:`contacts`, steps the solver into :attr:`state_out`, then swaps
         the two buffers so :attr:`state_in` holds the newest state on return.
+
+        If :attr:`physics_metrics` is attached, the residuals for the *last*
+        fine sub-step are computed and logged after that step (before the
+        swap) so exactly one log entry is produced per coarse sub-step. The
+        metric ``dt`` passed to the constraint-metric kernels is the fine
+        :attr:`dt` — those residuals therefore reflect the reference's
+        single-step accuracy at fine dt, which is the whole point of using it
+        as a reference.
         """
         for k in range(n_substeps):
             t = sim_time_start + k * self.dt
@@ -636,4 +683,25 @@ class ReferenceLeader:
                 contacts=self.contacts,
                 dt=self.dt,
             )
+            if self.physics_metrics is not None and k == n_substeps - 1:
+                self._evaluate_physics_metrics()
+                if self.physics_metrics_logger is not None:
+                    self.physics_metrics_logger.log()
             self.state_in, self.state_out = self.state_out, self.state_in
+
+    def _evaluate_physics_metrics(self) -> None:
+        """Populate ``physics_metrics`` from the current fine-step transition.
+
+        Called at the end of :meth:`step_n`'s last iteration, before the
+        pre/post state swap: ``self.state_in`` is the pre-step state and
+        ``self.state_out`` is the post-step state.
+        """
+        pm = self.physics_metrics
+        state_p = self.state_in  # pre-step (pre-swap)
+        state_out = self.state_out  # post-step (pre-swap)
+        if pm.contacts is not None:
+            compute_contact_constraint_metrics(self.model, state_p, state_out, self.contacts, pm, self.dt)
+            compute_per_world_contact_constraint_summary(self.model, self.contacts, pm)
+        if pm.joints is not None:
+            compute_joint_constraint_metrics(self.model, state_p, state_out, pm)
+            compute_per_world_joint_constraint_summary(self.model, pm)

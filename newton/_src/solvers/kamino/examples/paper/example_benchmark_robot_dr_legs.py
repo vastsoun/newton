@@ -385,11 +385,16 @@ def make_reference_leader(
     animation_passive_damping: float,
     joint_armature: float,
     xpbd_body_armature: float,
+    max_log_frames: int | None = None,
+    log_dt: float | None = None,
 ) -> ReferenceLeader:
     """Build a fine-dt :class:`ReferenceLeader` on the DR Legs scene.
 
     Every per-solver knob available for the coarse follower is honored so the
     fine leader and its matching coarse follower agree apart from step size.
+    When both ``max_log_frames`` and ``log_dt`` are provided, attaches a
+    :class:`PhysicsMetricsLogger` so the reference's fine-dt single-step
+    residuals overlay the followers' in the CSV/PDF outputs.
     """
     kp_scale = animation_gain_scale if animation else 1.0
     kd_scale = animation_kd_scale if animation else 1.0
@@ -429,7 +434,10 @@ def make_reference_leader(
     else:
         raise ValueError(f"unknown solver_name {solver_name!r}, expected kamino / mujoco / xpbd")
 
-    return ReferenceLeader(name=f"{solver_name}_ref", model=model, solver=solver, dt=dt, reset_cb=reset_cb)
+    leader = ReferenceLeader(name=f"{solver_name}_ref", model=model, solver=solver, dt=dt, reset_cb=reset_cb)
+    if max_log_frames is not None and log_dt is not None:
+        leader.attach_metrics(max_log_frames=max_log_frames, log_dt=log_dt)
+    return leader
 
 
 def build_dr_legs_run(
@@ -518,6 +526,8 @@ def build_dr_legs_run(
             animation_passive_damping=animation_passive_damping,
             joint_armature=joint_armature,
             xpbd_body_armature=xpbd_body_armature,
+            max_log_frames=max_log_frames,
+            log_dt=dt,
         )
 
     return ProblemRun(

@@ -33,12 +33,13 @@ import newton.examples
 from newton import solvers
 from newton._src.sim import ModelBuilder
 from newton._src.solvers.kamino._src.utils import logger as msg
-from newton._src.solvers.kamino.accuracy_benchmark import SetupRunner
+from newton._src.solvers.kamino.accuracy_benchmark import MODE_TIED_REFERENCE, SetupRunner
 from newton._src.solvers.kamino.accuracy_benchmark.problems import (
     FRICTION,
     RESTITUTION,
     ExampleSpec,
     ProblemRun,
+    ReferenceLeader,
     add_ground_defaults,
     apply_default_builder_cfg,
     attach_kamino_aux_logger,
@@ -59,6 +60,14 @@ from newton._src.solvers.kamino.accuracy_benchmark.problems import (
     xpbd_default_kwargs,
 )
 from newton._src.solvers.kamino.accuracy_benchmark.setup import SolverSetup
+
+
+def _kamino_config_dr_legs() -> solvers.SolverKamino.Config:
+    """Kamino config shared by DR Legs coarse-follower and reference-leader instances."""
+    cfg = kamino_default_config()
+    cfg.constraints.gamma = 0.1
+    return cfg
+
 
 SIM_DT: float = 0.001
 VIZ_FPS: int = 50
@@ -283,9 +292,7 @@ def make_setup_kamino(
         scale_pd_gains(builder, kp_scale, kd_scale)
 
     builder, model = build_benchmark_model(solvers.SolverKamino, scene, rigid_contact_max=rigid_contact_max)
-    cfg = kamino_default_config()
-    cfg.constraints.gamma = 0.1
-    solver = solvers.SolverKamino(model=model, config=cfg)
+    solver = solvers.SolverKamino(model=model, config=_kamino_config_dr_legs())
     set_kamino_joint_armature_damping(solver, armature=joint_armature, damping=animation_passive_damping)
     setup = make_paper_setup(
         name="kamino",
@@ -366,6 +373,65 @@ def make_setup_xpbd(
     )
 
 
+def make_reference_leader(
+    *,
+    solver_name: str,
+    dt: float,
+    rigid_contact_max: int,
+    usd_stage: Usd.Stage,
+    animation: bool,
+    animation_gain_scale: float,
+    animation_kd_scale: float,
+    animation_passive_damping: float,
+    joint_armature: float,
+    xpbd_body_armature: float,
+) -> ReferenceLeader:
+    """Build a fine-dt :class:`ReferenceLeader` on the DR Legs scene.
+
+    Every per-solver knob available for the coarse follower is honored so the
+    fine leader and its matching coarse follower agree apart from step size.
+    """
+    kp_scale = animation_gain_scale if animation else 1.0
+    kd_scale = animation_kd_scale if animation else 1.0
+
+    if solver_name == "kamino":
+
+        def scene(builder: ModelBuilder) -> None:
+            solvers.SolverMuJoCo.register_custom_attributes(builder)
+            _scene_dr_legs(builder, usd_stage)
+            scale_pd_gains(builder, kp_scale, kd_scale)
+
+        _, model = build_benchmark_model(solvers.SolverKamino, scene, rigid_contact_max=rigid_contact_max)
+        solver = solvers.SolverKamino(model=model, config=_kamino_config_dr_legs())
+        set_kamino_joint_armature_damping(solver, armature=joint_armature, damping=animation_passive_damping)
+        reset_cb = make_kamino_reset_cb(solver)
+    elif solver_name == "mujoco":
+
+        def scene(builder: ModelBuilder) -> None:
+            _scene_dr_legs(builder, usd_stage)
+            scale_pd_gains(builder, kp_scale, kd_scale)
+
+        _, model = build_benchmark_model(solvers.SolverMuJoCo, scene, rigid_contact_max=rigid_contact_max)
+        if animation:
+            set_mujoco_passive_damping(model, animation_passive_damping)
+        solver = solvers.SolverMuJoCo(model, nconmax=rigid_contact_max, **mujoco_default_kwargs())
+        reset_cb = make_fk_reset_cb(model)
+    elif solver_name == "xpbd":
+
+        def scene(builder: ModelBuilder) -> None:
+            _scene_dr_legs(builder, usd_stage)
+            _set_xpbd_pd_gains(builder, kp_scale, kd_scale)
+            inflate_body_inertia(builder, xpbd_body_armature)
+
+        _, model = build_benchmark_model(solvers.SolverXPBD, scene, rigid_contact_max=rigid_contact_max)
+        solver = solvers.SolverXPBD(model, **xpbd_default_kwargs())
+        reset_cb = make_fk_reset_cb(model)
+    else:
+        raise ValueError(f"unknown solver_name {solver_name!r}, expected kamino / mujoco / xpbd")
+
+    return ReferenceLeader(name=f"{solver_name}_ref", model=model, solver=solver, dt=dt, reset_cb=reset_cb)
+
+
 def build_dr_legs_run(
     *,
     dt: float,
@@ -379,6 +445,8 @@ def build_dr_legs_run(
     animation_passive_damping: float = 0.5,
     joint_armature: float = 0.001,
     xpbd_body_armature: float = 0.05,
+    reference_leader_solver: str | None = None,
+    reference_leader_fine_substeps: int | None = None,
 ) -> ProblemRun:
     """Build the floating-base DR Legs :class:`ProblemRun`.
 
@@ -386,6 +454,9 @@ def build_dr_legs_run(
     (``animation=True``). The animation is applied by a
     :class:`SetupRunner`-level ``control_cb`` closure so all setups share the
     same coord-space PD targets.
+
+    See :func:`example_benchmark_robot_ironman.build_ironman_run` for the
+    ``reference_leader_*`` kwarg semantics.
     """
     usd_stage = _get_usd_stage()
 
@@ -432,10 +503,28 @@ def build_dr_legs_run(
         force_stop_time=_FORCE_WINDOW[1],
     )
 
+    reference_leader = None
+    if reference_leader_solver is not None:
+        if reference_leader_fine_substeps is None or reference_leader_fine_substeps < 1:
+            raise ValueError("reference_leader_solver requires reference_leader_fine_substeps >= 1")
+        reference_leader = make_reference_leader(
+            solver_name=reference_leader_solver,
+            dt=dt / reference_leader_fine_substeps,
+            rigid_contact_max=rigid_contact_max,
+            usd_stage=usd_stage,
+            animation=animation,
+            animation_gain_scale=animation_gain_scale,
+            animation_kd_scale=animation_kd_scale,
+            animation_passive_damping=animation_passive_damping,
+            joint_armature=joint_armature,
+            xpbd_body_armature=xpbd_body_armature,
+        )
+
     return ProblemRun(
         setups=setups,
         force_cb=force_cb,
         camera=(wp.vec3(5.0, 5.0, 1.0), -5.0, 180.0 + 48.0),
+        reference_leader=reference_leader,
     )
 
 
@@ -454,15 +543,26 @@ SPEC = ExampleSpec(
 
 def create_parser() -> argparse.ArgumentParser:
     parser = newton.examples.create_parser()
-    parser.add_argument("--leader", type=str, default="kamino", help="Leader solver name (tied mode only).")
+    parser.add_argument("--leader", type=str, default="kamino", help="Leader solver name (tied / tied_reference mode).")
     parser.add_argument(
-        "--independent",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help=(
-            "Run each solver on its own trajectory (position-level residual accumulation). "
-            "Pass --no-independent to run all solvers tied to the leader (single-step accuracy)."
-        ),
+        "--mode",
+        type=str,
+        choices=("tied", "independent", "tied_reference"),
+        default="independent",
+        help="Runner comparison mode.",
+    )
+    parser.add_argument(
+        "--reference-leader",
+        type=str,
+        choices=("kamino", "mujoco", "xpbd"),
+        default="kamino",
+        help="Solver used as the fine-dt reference leader (tied_reference mode only).",
+    )
+    parser.add_argument(
+        "--fine-substeps",
+        type=int,
+        default=10,
+        help="Fine-dt reference-leader substep count per coarse sub-step (tied_reference mode only).",
     )
     parser.add_argument(
         "--use-external-force",
@@ -517,13 +617,16 @@ if __name__ == "__main__":
     num_frames = args.num_frames if args.num_frames is not None else max(1, math.ceil(SIM_STOP_TIME * VIZ_FPS))
     max_log_frames = num_frames * sim_substeps
     msg.notif(
-        "DR Legs: num_frames=%s, sim_substeps=%s, sim_dt=%.6fs, total_sim_time=%.3fs",
+        "DR Legs: num_frames=%s, sim_substeps=%s, sim_dt=%.6fs, total_sim_time=%.3fs, mode=%s",
         num_frames,
         sim_substeps,
         sim_dt,
         num_frames * frame_dt,
+        args.mode,
     )
 
+    reference_leader_solver = args.reference_leader if args.mode == MODE_TIED_REFERENCE else None
+    reference_leader_fine_substeps = args.fine_substeps if args.mode == MODE_TIED_REFERENCE else None
     run = build_dr_legs_run(
         dt=sim_dt,
         max_log_frames=max_log_frames,
@@ -533,6 +636,8 @@ if __name__ == "__main__":
         animation_gain_scale=args.animation_gain_scale,
         animation_kd_scale=args.animation_kd_scale,
         animation_passive_damping=args.animation_passive_damping,
+        reference_leader_solver=reference_leader_solver,
+        reference_leader_fine_substeps=reference_leader_fine_substeps,
     )
     animation_cb = None
     if args.animation:
@@ -551,7 +656,9 @@ if __name__ == "__main__":
         fps=VIZ_FPS,
         sim_substeps=sim_substeps,
         verbose=args.verbose,
-        independent=args.independent,
+        mode=args.mode,
+        reference_leader=run.reference_leader,
+        fine_substeps_per_coarse=args.fine_substeps,
     )
 
     if run.camera is not None and hasattr(viewer, "set_camera"):

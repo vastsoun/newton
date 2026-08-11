@@ -31,6 +31,7 @@ from newton._src.solvers.kamino.accuracy_benchmark.logging import PhysicsMetrics
 from newton._src.solvers.kamino.accuracy_benchmark.metrics import PhysicsMetrics
 from newton._src.solvers.kamino.accuracy_benchmark.setup import SolverSetup
 from newton._src.solvers.kamino.utils import SolverKaminoLogger
+from newton._src.solvers.mujoco.kernels import reset_world_buffers_kernel
 
 ###
 # Module interface
@@ -39,11 +40,14 @@ from newton._src.solvers.kamino.utils import SolverKaminoLogger
 __all__ = [
     "ExampleSpec",
     "ProblemRun",
+    "ReferenceLeader",
     "add_ground_defaults",
     "apply_default_builder_cfg",
+    "assert_warmstart_disabled",
     "attach_kamino_aux_logger",
     "attach_physics_metrics",
     "build_benchmark_model",
+    "clear_mujoco_warmstart",
     "exclude_from_articulation",
     "flip_joint",
     "get_prim",
@@ -72,11 +76,16 @@ class ProblemRun(NamedTuple):
             an external body force (e.g. Iron Man).
         camera: Optional ``(position, pitch, yaw)`` triple; ``None`` leaves the
             viewer's default camera in place.
+        reference_leader: Optional :class:`ReferenceLeader` used only by
+            :class:`SetupRunner` in ``mode="tied_reference"``. Owns the
+            canonical fine-dt trajectory that every coarse follower reads
+            from each substep. ``None`` in the other modes.
     """
 
     setups: dict[str, SolverSetup]
     force_cb: Callable | None
     camera: tuple[wp.vec3, float, float] | None
+    reference_leader: ReferenceLeader | None = None
 
 
 class ExampleSpec(NamedTuple):
@@ -490,3 +499,141 @@ def set_kamino_joint_armature_damping(solver: solvers.SolverKamino, armature: fl
     b_j_np = solver._model_kamino.joints.b_j.numpy().copy()
     b_j_np[act_dof_indices] = damping
     solver._model_kamino.joints.b_j.assign(b_j_np)
+
+
+###
+# Warmstart handling (tied / tied_reference)
+###
+
+
+def assert_warmstart_disabled(solver: solvers.SolverBase, *, context: str) -> None:
+    """Verify a solver is (or will be) run without cross-substep warmstart pollution.
+
+    Called by :class:`SetupRunner` in ``tied`` / ``tied_reference`` modes where
+    every coarse substep is meant to be an independent single-step problem, so
+    inheriting the previous substep's solution as a warmstart is semantically
+    wrong. The check is:
+
+    * :class:`~newton.solvers.SolverKamino`: assert
+      ``config.padmm.warmstart_mode == "none"`` (the default in
+      :func:`kamino_default_config`). Raises if a caller has overridden it.
+    * :class:`~newton.solvers.SolverMuJoCo`: no-op — MuJoCo's ``qacc_warmstart``
+      is unavoidable at the backend level and the runner clears it per
+      substep via :func:`clear_mujoco_warmstart` instead.
+    * :class:`~newton.solvers.SolverXPBD`: no-op — no persistent warmstart.
+    """
+    if isinstance(solver, solvers.SolverKamino):
+        # SolverKamino stashes its resolved Config on the private ``_config``
+        # attribute; there is no public accessor at the time of writing.
+        mode = str(solver._config.padmm.warmstart_mode)
+        if mode.lower() != "none":
+            raise ValueError(
+                f"{context}: SolverKamino must have padmm.warmstart_mode='none' "
+                f"(got {mode!r}); tied / tied_reference modes need a cold-started "
+                f"solve every substep."
+            )
+
+
+def clear_mujoco_warmstart(solver: solvers.SolverBase) -> None:
+    """Zero ``SolverMuJoCo``'s per-step warmstart / applied-force buffers via a capturable kernel.
+
+    Wraps :data:`~newton._src.solvers.mujoco.kernels.reset_world_buffers_kernel`,
+    the same kernel :meth:`SolverMuJoCo.reset` uses on the warp path, so this
+    is a single kernel launch that plays nicely with CUDA-graph capture (unlike
+    the full ``.reset()``, which also runs host-side branches and can touch
+    joint state / sleeping bookkeeping we don't want to disturb here).
+
+    No-op for non-MuJoCo solvers or when the solver's warp data has not been
+    initialized yet (e.g. before the first step).
+    """
+    if not isinstance(solver, solvers.SolverMuJoCo):
+        return
+    d = solver.mjw_data
+    if d is None:
+        return  # warp data not yet initialized; nothing to clear
+    buffers = (d.qacc_warmstart, d.qfrc_applied, d.ctrl, d.act, d.xfrc_applied)
+    buffer_dim = max(buffer.shape[1] for buffer in buffers)
+    wp.launch(
+        reset_world_buffers_kernel,
+        dim=(d.nworld, buffer_dim),
+        inputs=[None, *buffers],
+        device=solver.model.device,
+    )
+
+
+###
+# Reference leader (canonical fine-dt trajectory for tied_reference mode)
+###
+
+
+class ReferenceLeader:
+    """Fine-dt trajectory driver used by :class:`SetupRunner` in ``tied_reference`` mode.
+
+    Owns its own :class:`~newton.Model` / :class:`~newton.solvers.SolverBase` /
+    :class:`~newton.State` / :class:`~newton.Control` / :class:`~newton.Contacts`
+    (built by a per-example factory) and only exposes :meth:`step_n`; no
+    metrics, no snapshots. The trajectory it produces seeds
+    :attr:`SetupRunner.state_in` at every coarse substep of the tied_reference
+    loop.
+
+    Because the leader runs at ``coarse_dt / fine_substeps_per_coarse``, its
+    integration error is much smaller than the coarse followers'. The point is
+    to give every coarse follower a *shared* physically-consistent state at
+    the start of each coarse substep, decoupled from any single solver's
+    coarse-dt behaviour.
+    """
+
+    def __init__(
+        self,
+        *,
+        name: str,
+        model: newton.Model,
+        solver: solvers.SolverBase,
+        dt: float,
+        reset_cb: Callable,
+    ):
+        self.name: str = name
+        self.model: newton.Model = model
+        self.solver: solvers.SolverBase = solver
+        self.dt: float = float(dt)
+        self.reset_cb: Callable = reset_cb
+        self.state_in: newton.State = model.state()
+        self.state_out: newton.State = model.state()
+        self.control: newton.Control = model.control()
+        self.contacts: newton.Contacts = model.contacts()
+
+    def reset(self) -> None:
+        """Populate :attr:`state_in` from the reset callback."""
+        self.reset_cb(state_out=self.state_in)
+
+    def step_n(
+        self,
+        *,
+        n_substeps: int,
+        sim_time_start: float,
+        force_cb: Callable | None,
+        control_cb: Callable | None,
+    ) -> None:
+        """Advance :attr:`state_in` by ``n_substeps`` fine sub-steps of size :attr:`dt`.
+
+        Each fine sub-step clears forces, applies the (optional) callbacks
+        with the correct sub-step ``sim_time``, runs collision detection into
+        :attr:`contacts`, steps the solver into :attr:`state_out`, then swaps
+        the two buffers so :attr:`state_in` holds the newest state on return.
+        """
+        for k in range(n_substeps):
+            t = sim_time_start + k * self.dt
+            self.state_in.clear_forces()
+            if control_cb is not None:
+                control_cb(control=self.control, sim_time=t)
+            if force_cb is not None:
+                force_cb(state=self.state_in, contacts=self.contacts, sim_time=t)
+            self.model.collide(self.state_in, self.contacts)
+            self.solver.step(
+                state_in=self.state_in,
+                state_out=self.state_out,
+                control=self.control,
+                contacts=self.contacts,
+                dt=self.dt,
+            )
+            self.state_in, self.state_out = self.state_out, self.state_in

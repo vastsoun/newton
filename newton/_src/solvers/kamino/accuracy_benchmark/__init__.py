@@ -26,13 +26,16 @@ from .metrics import (
     compute_per_world_contact_constraint_summary,
     compute_per_world_joint_constraint_summary,
 )
-from .setup import SetupRunner, SolverSetup
+from .setup import MODE_INDEPENDENT, MODE_TIED, MODE_TIED_REFERENCE, SetupRunner, SolverSetup
 
 ###
 # Module interface
 ###
 
 __all__ = [
+    "MODE_INDEPENDENT",
+    "MODE_TIED",
+    "MODE_TIED_REFERENCE",
     "ConstraintMetrics",
     "PhysicsMetrics",
     "PhysicsMetricsLogger",

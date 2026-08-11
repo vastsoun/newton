@@ -22,7 +22,7 @@ import numpy as np
 import newton
 import newton.examples
 from newton._src.solvers.kamino._src.utils import logger as msg
-from newton._src.solvers.kamino.accuracy_benchmark.setup import SetupRunner
+from newton._src.solvers.kamino.accuracy_benchmark.setup import MODE_TIED_REFERENCE, SetupRunner
 from newton._src.solvers.kamino.examples.paper.example_benchmark_robot_bdx import build_bdx_run
 from newton._src.solvers.kamino.examples.paper.example_benchmark_robot_dr_legs import (
     build_dr_legs_run,
@@ -43,13 +43,24 @@ def create_parser():
         help="Which paper problem to run.",
     )
     parser.add_argument(
-        "--independent",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help=(
-            "Run each solver on its own trajectory (position-level residual accumulation). "
-            "Pass --no-independent to run all solvers tied to the leader (single-step accuracy)."
-        ),
+        "--mode",
+        type=str,
+        choices=("tied", "independent", "tied_reference"),
+        default="independent",
+        help="Runner comparison mode.",
+    )
+    parser.add_argument(
+        "--reference-leader",
+        type=str,
+        choices=("kamino", "mujoco", "xpbd"),
+        default="kamino",
+        help="Solver used as the fine-dt reference leader (tied_reference mode only).",
+    )
+    parser.add_argument(
+        "--fine-substeps",
+        type=int,
+        default=10,
+        help="Fine-dt reference-leader substep count per coarse sub-step (tied_reference mode only).",
     )
     parser.add_argument(
         "--use-external-force",
@@ -87,18 +98,26 @@ if __name__ == "__main__":
     sim_dt = (1.0 / fps) / sim_substeps
     max_log_frames = args.num_frames * sim_substeps
 
+    tied_ref = args.mode == MODE_TIED_REFERENCE
+    ref_kwargs = (
+        {"reference_leader_solver": args.reference_leader, "reference_leader_fine_substeps": args.fine_substeps}
+        if tied_ref
+        else {}
+    )
+
     animation_cb = None
     if args.problem == "ironman":
-        run = build_ironman_run(dt=sim_dt, max_log_frames=max_log_frames)
+        run = build_ironman_run(dt=sim_dt, max_log_frames=max_log_frames, **ref_kwargs)
     elif args.problem == "olaf":
-        run = build_olaf_run(dt=sim_dt, max_log_frames=max_log_frames)
+        run = build_olaf_run(dt=sim_dt, max_log_frames=max_log_frames, **ref_kwargs)
     elif args.problem == "bdx":
-        run = build_bdx_run(dt=sim_dt, max_log_frames=max_log_frames)
+        run = build_bdx_run(dt=sim_dt, max_log_frames=max_log_frames, **ref_kwargs)
     elif args.problem == "dr_legs":
         run = build_dr_legs_run(
             dt=sim_dt,
             max_log_frames=max_log_frames,
             animation=args.animation,
+            **ref_kwargs,
         )
         if args.animation:
             animation_cb = make_dr_legs_animation_cb(run.setups)
@@ -112,7 +131,9 @@ if __name__ == "__main__":
         fps=fps,
         sim_substeps=sim_substeps,
         verbose=args.verbose,
-        independent=args.independent,
+        mode=args.mode,
+        reference_leader=run.reference_leader,
+        fine_substeps_per_coarse=args.fine_substeps,
     )
 
     if run.camera is not None and hasattr(viewer, "set_camera"):

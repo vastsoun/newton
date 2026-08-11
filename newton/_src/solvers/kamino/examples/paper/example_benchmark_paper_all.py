@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
 
-"""Batch runner: all four paper problems, both comparison modes.
+"""Batch runner: all four paper problems, all three comparison modes.
 
-Runs Iron Man / DR Legs / BDX / Olaf back-to-back in *tied* and *independent*
-mode and writes the per-run CSV / PDF exports into a mode-segregated directory
-tree so a downstream table-builder can pick per-metric results from whichever
-mode is more appropriate.
+Runs Iron Man / DR Legs / BDX / Olaf back-to-back in *tied*, *independent*, and
+*tied_reference* modes and writes the per-run CSV / PDF exports into a
+mode-segregated directory tree so a downstream table-builder can pick per-metric
+results from whichever mode is most appropriate.
 
 Output layout (``--output-dir`` defaults to ``<this_file>/output/paper_all``)::
 
@@ -20,9 +20,8 @@ Output layout (``--output-dir`` defaults to ``<this_file>/output/paper_all``)::
         olaf/     ...
       independent/
         ironman/  ...
-        dr_legs/  ...
-        bdx/      ...
-        olaf/     ...
+      tied_reference/
+        ironman/  ...
 
 Toggle individual runs via ``EXAMPLES_ENABLED`` / ``MODES_ENABLED`` below (edit
 the file to overwrite only the outputs you need after tweaking one example),
@@ -31,7 +30,7 @@ or override on the CLI::
     python -m newton._src.solvers.kamino.examples.paper.example_benchmark_paper_all
     python -m newton._src.solvers.kamino.examples.paper.example_benchmark_paper_all --examples ironman
     python -m newton._src.solvers.kamino.examples.paper.example_benchmark_paper_all --modes tied
-    python -m newton._src.solvers.kamino.examples.paper.example_benchmark_paper_all --examples bdx olaf --modes independent
+    python -m newton._src.solvers.kamino.examples.paper.example_benchmark_paper_all --examples bdx olaf --modes tied_reference
 
 Each ``(mode, example)`` pair is built and run in a single Python process; the
 model / solver / runner are dropped and ``gc.collect()`` is called between
@@ -49,7 +48,7 @@ import time
 import numpy as np
 
 from newton._src.solvers.kamino._src.utils import logger as msg
-from newton._src.solvers.kamino.accuracy_benchmark import SetupRunner
+from newton._src.solvers.kamino.accuracy_benchmark import MODE_TIED_REFERENCE, SetupRunner
 from newton._src.solvers.kamino.examples.paper.example_benchmark_robot_bdx import SPEC as BDX_SPEC
 from newton._src.solvers.kamino.examples.paper.example_benchmark_robot_dr_legs import SPEC as DR_LEGS_SPEC
 from newton._src.solvers.kamino.examples.paper.example_benchmark_robot_ironman import SPEC as IRONMAN_SPEC
@@ -62,6 +61,10 @@ from newton._src.solvers.kamino.examples.paper.example_benchmark_robot_olaf impo
 SIM_DT: float = 0.001
 VIZ_FPS: int = 50
 
+# Tied_reference-only defaults. CLI can override.
+REFERENCE_LEADER: str = "kamino"
+FINE_SUBSTEPS_PER_COARSE: int = 10
+
 # Toggle any (example, mode) pair by flipping the value below to ``False``.
 # The CLI ``--examples`` / ``--modes`` flags further restrict this selection.
 EXAMPLES_ENABLED: dict[str, bool] = {
@@ -73,6 +76,7 @@ EXAMPLES_ENABLED: dict[str, bool] = {
 MODES_ENABLED: dict[str, bool] = {
     "tied": True,
     "independent": True,
+    "tied_reference": True,
 }
 
 
@@ -112,6 +116,8 @@ def _run_one(
     base_output_dir: str,
     *,
     num_frames_override: int | None = None,
+    reference_leader_solver: str = REFERENCE_LEADER,
+    fine_substeps_per_coarse: int = FINE_SUBSTEPS_PER_COARSE,
 ) -> None:
     """Build and drive one ``(example, mode)`` pair, writing artifacts to disk.
 
@@ -120,7 +126,6 @@ def _run_one(
     warp / kamino allocations do not accumulate across the batch.
     """
     spec = _EXAMPLE_SPECS[name]
-    independent = mode == "independent"
 
     frame_dt = 1.0 / VIZ_FPS
     sim_substeps = max(1, round(frame_dt / SIM_DT))
@@ -140,7 +145,12 @@ def _run_one(
         num_frames * frame_dt,
     )
 
-    run = spec.build_fn(dt=sim_dt, max_log_frames=max_log_frames, **spec.build_kwargs)
+    build_kwargs = dict(spec.build_kwargs)
+    if mode == MODE_TIED_REFERENCE:
+        build_kwargs["reference_leader_solver"] = reference_leader_solver
+        build_kwargs["reference_leader_fine_substeps"] = fine_substeps_per_coarse
+
+    run = spec.build_fn(dt=sim_dt, max_log_frames=max_log_frames, **build_kwargs)
 
     runner = SetupRunner(
         setups=run.setups,
@@ -150,7 +160,9 @@ def _run_one(
         fps=VIZ_FPS,
         sim_substeps=sim_substeps,
         verbose=False,
-        independent=independent,
+        mode=mode,
+        reference_leader=run.reference_leader,
+        fine_substeps_per_coarse=fine_substeps_per_coarse,
     )
     runner.run_headless(num_frames=num_frames)
 
@@ -192,6 +204,19 @@ def _create_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override the per-example frame count (useful for smoke tests). Applies to every run.",
     )
+    parser.add_argument(
+        "--reference-leader",
+        type=str,
+        choices=("kamino", "mujoco", "xpbd"),
+        default=REFERENCE_LEADER,
+        help="Solver used as the fine-dt reference leader (tied_reference mode only).",
+    )
+    parser.add_argument(
+        "--fine-substeps",
+        type=int,
+        default=FINE_SUBSTEPS_PER_COARSE,
+        help="Fine-dt reference-leader substep count per coarse sub-step (tied_reference mode only).",
+    )
     return parser
 
 
@@ -207,6 +232,12 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(f"nothing to run: examples={examples}, modes={modes}")
 
     msg.notif("Batch plan: modes=%s x examples=%s -> %s", modes, examples, output_dir)
+    if MODE_TIED_REFERENCE in modes:
+        msg.notif(
+            "tied_reference config: reference_leader=%s fine_substeps=%s",
+            args.reference_leader,
+            args.fine_substeps,
+        )
     total = len(modes) * len(examples)
     started = time.time()
 
@@ -214,7 +245,14 @@ def main(argv: list[str] | None = None) -> None:
         for j, name in enumerate(examples):
             index = i * len(examples) + j
             msg.notif("=== [%d/%d] %s / %s ===", index + 1, total, name, mode)
-            _run_one(name, mode, output_dir, num_frames_override=args.num_frames)
+            _run_one(
+                name,
+                mode,
+                output_dir,
+                num_frames_override=args.num_frames,
+                reference_leader_solver=args.reference_leader,
+                fine_substeps_per_coarse=args.fine_substeps,
+            )
             # Drop everything the run allocated before starting the next pair.
             gc.collect()
 

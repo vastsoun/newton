@@ -16,6 +16,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+import numpy as np
 import warp as wp
 
 from ....sim import Contacts, Control, Model, ModelBuilder, State
@@ -32,11 +33,24 @@ from .metrics import (
     compute_per_world_joint_constraint_summary,
 )
 
+# Runner mode names — keep in sync with the CLI ``--mode`` choices exposed by
+# the per-example scripts and by ``example_benchmark_paper_all``.
+MODE_TIED: str = "tied"
+MODE_INDEPENDENT: str = "independent"
+MODE_TIED_REFERENCE: str = "tied_reference"
+_ALLOWED_MODES: frozenset[str] = frozenset({MODE_TIED, MODE_INDEPENDENT, MODE_TIED_REFERENCE})
+
 ###
 # Module interface
 ###
 
-__all__ = ["SetupRunner", "SolverSetup"]
+__all__ = [
+    "MODE_INDEPENDENT",
+    "MODE_TIED",
+    "MODE_TIED_REFERENCE",
+    "SetupRunner",
+    "SolverSetup",
+]
 
 
 ###
@@ -373,25 +387,39 @@ class SolverSetup:
 
 
 class SetupRunner:
-    """Drives one or more :class:`SolverSetup` instances in one of two comparison modes.
+    """Drives one or more :class:`SolverSetup` instances in one of three comparison modes.
 
-    Two modes are exposed via the ``independent`` flag:
+    Three modes are selected via the ``mode`` string:
 
-    - **Tied** (``independent=False``): the runner owns a single canonical
-      ``state_in`` / ``control`` / ``contacts`` triplet, steps every setup from
-      those same inputs each sub-step, and propagates the leader's post-step
-      state as the next canonical state. Best for **single-step accuracy**
-      metrics (every solver sees the same per-step problem).
-    - **Independent** (``independent=True``): each setup keeps its own
-      trajectory in its private ``state_in`` / ``state_out`` / ``contacts``
-      buffers; the runner still applies the shared ``force_cb`` / ``control_cb``
-      inputs to each setup's canonical state but does not propagate any leader.
-      Best for **position-level residual accumulation** — solvers diverge along
-      their own trajectories rather than tracking the leader.
+    - ``"tied"``: the runner owns a single canonical ``state_in`` / ``control``
+      / ``contacts`` triplet, steps every setup from those same inputs each
+      sub-step, and propagates the leader's post-step state as the next
+      canonical state. Best for **single-step accuracy** metrics (every solver
+      sees the same per-step problem).
+    - ``"independent"``: each setup keeps its own trajectory in its private
+      ``state_in`` / ``state_out`` / ``contacts`` buffers; the runner still
+      applies the shared ``force_cb`` / ``control_cb`` inputs to each setup's
+      canonical state but does not propagate any leader. Best for
+      **position-level residual accumulation** — solvers diverge along their
+      own trajectories rather than tracking the leader.
+    - ``"tied_reference"``: like ``"tied"``, but the canonical trajectory is
+      driven by a dedicated :class:`~newton._src.solvers.kamino.accuracy_benchmark.problems.ReferenceLeader`
+      running at ``sim_dt / fine_substeps_per_coarse`` (default 10x tighter).
+      Coarse followers solve a single-step problem at the paper's ``sim_dt``
+      from the canonical state produced by the fine trajectory; their
+      ``state_out`` goes to metrics and is discarded. Decouples the shared
+      per-step problem from any single coarse solver's bias — best for
+      **cross-solver comparison of single-step accuracy** where the current
+      tied mode's leader dependence is a concern.
 
-    In both modes setups must be constructed with ``standalone=False`` — the
-    runner handles state cycling for independent mode via an explicit
-    ``state_in`` ↔ ``state_out`` swap on each setup.
+    In every mode setups must be constructed with ``standalone=False`` — the
+    runner handles state cycling.
+
+    Tied / tied_reference modes zero MuJoCo's ``qacc_warmstart`` before every
+    coarse-comparison substep so each substep is a true cold-start
+    single-step solve (see
+    :func:`~newton._src.solvers.kamino.accuracy_benchmark.problems.clear_mujoco_warmstart`);
+    the check-and-clear is a no-op for non-MuJoCo solvers.
 
     Conforms to the ``example`` interface expected by :func:`newton.examples.run`
     so it can be passed directly as the example object. For headless
@@ -409,7 +437,9 @@ class SetupRunner:
         fps: float = 50.0,
         sim_substeps: int = 20,
         verbose: bool = False,
-        independent: bool = False,
+        mode: str = MODE_TIED,
+        reference_leader: Any = None,
+        fine_substeps_per_coarse: int = 10,
         use_cuda_graph: bool = True,
     ):
         """Construct a runner around a dict of solver setups.
@@ -417,24 +447,29 @@ class SetupRunner:
         Args:
             setups: Mapping of name to :class:`SolverSetup`. All setups must be
                 non-standalone (``standalone=False``).
-            leader: Key of the leader setup. In tied mode drives state propagation;
-                in independent mode used only to pick the model backing the
-                runner's shared ``control`` buffer (for ``control_cb``) and the
-                viewer's ``set_model`` call.
+            leader: Key of the leader setup. In tied mode drives state
+                propagation; in independent / tied_reference mode used only to
+                pick the model backing the runner's shared ``control`` buffer
+                (for ``control_cb``) and the viewer's ``set_model`` call.
             viewer: Optional viewer. When ``None``, ``render()`` is a no-op and the
                 runner skips the default ``viewer.apply_forces`` fallback.
             force_cb: Optional callable ``force_cb(state, contacts, sim_time)``
                 applied to ``state_in`` at the start of every sub-step (after
                 ``clear_forces``). ``sim_time`` is the substep's physical time
                 (``self.sim_time + i * self.sim_dt``); passing it explicitly
-                keeps the callback stateless so tied and independent modes are
-                equivalent for the leader — in independent mode the runner fans
-                ``force_cb`` out over every setup per sub-step.
+                keeps the callback stateless so all three modes are equivalent
+                for the leader — in independent mode the runner fans
+                ``force_cb`` out over every setup per sub-step, and in
+                tied_reference mode both the coarse comparison step and the
+                fine trajectory read the correct sub-step time.
                 When set, replaces the default ``viewer.apply_forces`` fallback.
             control_cb: Optional callable ``control_cb(control, sim_time)`` invoked
                 at the start of every sub-step to update the shared canonical
-                :class:`Control`. In independent mode the shared control is fanned
-                out to every setup via ``_copy_control``.
+                :class:`Control`. In independent mode the shared control is
+                fanned out to every setup via ``_copy_control``. In
+                tied_reference mode the reference leader uses its own dedicated
+                :class:`Control` buffer so fine-dt updates don't clobber the
+                coarse follower's control between coarse substeps.
             fps: Viewer/render frame rate. ``frame_dt = 1/fps`` is the per-call
                 advance of ``self.sim_time``.
             sim_substeps: Number of physics sub-steps per ``step()`` call.
@@ -444,9 +479,16 @@ class SetupRunner:
             verbose: When ``True``, sets ``setup.verbose = True`` on every setup so
                 every sub-step dumps state / contact / metrics diagnostics. Noisy;
                 pair with a low ``--num-frames`` value.
-            independent: When ``True``, run each setup on its own trajectory (no
-                leader propagation). See class docstring for when to pick which
-                mode.
+            mode: One of ``"tied"`` / ``"independent"`` / ``"tied_reference"``
+                — see class docstring.
+            reference_leader: Required when ``mode == "tied_reference"``: a
+                :class:`~newton._src.solvers.kamino.accuracy_benchmark.problems.ReferenceLeader`
+                built by the per-example ``build_*_run`` factory. Ignored in
+                other modes.
+            fine_substeps_per_coarse: Only used in tied_reference mode. Number
+                of fine sub-steps the reference leader advances per coarse
+                sub-step; must equal ``sim_dt / reference_leader.dt`` (validated
+                at construction time). Defaults to 10.
             use_cuda_graph: When ``True`` (and running on CUDA), capture the
                 per-frame substep loop into a CUDA graph on the first call to
                 :meth:`step` and replay it on subsequent calls. Automatically
@@ -460,10 +502,17 @@ class SetupRunner:
             if setup.standalone:
                 raise ValueError(
                     f"setup {name!r} must be standalone=False when used inside SetupRunner; "
-                    f"the runner manages state cycling in both tied and independent modes"
+                    f"the runner manages state cycling in every mode"
                 )
         if sim_substeps < 1:
             raise ValueError(f"sim_substeps must be >= 1, got {sim_substeps}")
+        if mode not in _ALLOWED_MODES:
+            raise ValueError(f"mode must be one of {sorted(_ALLOWED_MODES)}, got {mode!r}")
+        if mode == MODE_TIED_REFERENCE:
+            if reference_leader is None:
+                raise ValueError("mode='tied_reference' requires a reference_leader")
+            if fine_substeps_per_coarse < 1:
+                raise ValueError(f"fine_substeps_per_coarse must be >= 1, got {fine_substeps_per_coarse}")
 
         if verbose:
             for setup in setups.values():
@@ -475,7 +524,9 @@ class SetupRunner:
         self.viewer: ViewerBase | None = viewer
         self.force_cb: Callable | None = force_cb
         self.control_cb: Callable | None = control_cb
-        self.independent: bool = independent
+        self.mode: str = mode
+        self.reference_leader: Any = reference_leader if mode == MODE_TIED_REFERENCE else None
+        self.fine_substeps_per_coarse: int = fine_substeps_per_coarse
 
         self.fps: float = fps
         self.sim_substeps: int = sim_substeps
@@ -483,10 +534,43 @@ class SetupRunner:
         self.sim_dt: float = self.frame_dt / sim_substeps
         self.sim_time: float = 0.0
 
+        # Consistency check: reference leader dt must divide sim_dt exactly (up
+        # to floating-point round-off) — otherwise the fine trajectory would
+        # not reach the next coarse sub-step boundary in an integer number of
+        # substeps.
+        if self.reference_leader is not None:
+            expected_fine_dt = self.sim_dt / self.fine_substeps_per_coarse
+            if not np.isclose(self.reference_leader.dt, expected_fine_dt, rtol=1e-6):
+                raise ValueError(
+                    f"reference_leader.dt={self.reference_leader.dt} does not match "
+                    f"sim_dt / fine_substeps_per_coarse = {self.sim_dt} / "
+                    f"{self.fine_substeps_per_coarse} = {expected_fine_dt}"
+                )
+
+        # In tied / tied_reference mode, warn-loudly if a follower's Kamino
+        # solver has warmstart on: each coarse substep is meant to be a cold
+        # single-step problem. MuJoCo's own warmstart is unavoidable at the
+        # backend level and is neutralised per-substep via clear_mujoco_warmstart.
+        if mode in (MODE_TIED, MODE_TIED_REFERENCE):
+            # Deferred import to avoid a circular dependency (problems.py
+            # imports SolverSetup from this module).
+            from .problems import assert_warmstart_disabled  # noqa: PLC0415
+
+            for name, setup in setups.items():
+                assert_warmstart_disabled(setup.solver, context=f"setup {name!r}")
+            if self.reference_leader is not None:
+                assert_warmstart_disabled(
+                    self.reference_leader.solver,
+                    context=f"reference_leader {self.reference_leader.name!r}",
+                )
+
         # Shared canonical buffers. In tied mode these hold the live state
         # every setup steps from. In independent mode ``state_in`` / ``contacts``
         # are unused (each setup owns its own) but ``control`` is still used
         # as the ``control_cb`` scratch buffer, fanned out to every setup.
+        # In tied_reference mode ``state_in`` is unused (the canonical state
+        # lives on the reference leader) but ``control`` and ``contacts`` are
+        # still owned by the runner and used per coarse sub-step.
         self.model: Model = self.leader.model
         self.state_in: State = self.model.state()
         self.control: Control = self.model.control()
@@ -522,11 +606,20 @@ class SetupRunner:
 
         In **independent** mode, each setup resets its own private ``state_in``
         buffer instead. There is no cross-setup ordering constraint.
+
+        In **tied_reference** mode, every follower resets its private
+        ``state_in`` (its buffer is overwritten each sub-step, but we still
+        need to reset any solver-internal state), then the reference leader
+        resets its own canonical ``state_in``.
         """
-        if self.independent:
+        if self.mode == MODE_INDEPENDENT:
             for setup in self.setups.values():
                 setup.reset(state_out=setup.state_in)
-        else:
+        elif self.mode == MODE_TIED_REFERENCE:
+            for setup in self.setups.values():
+                setup.reset(state_out=setup.state_in)
+            self.reference_leader.reset()
+        else:  # MODE_TIED
             for name, setup in self.setups.items():
                 if name == self.leader_name:
                     continue
@@ -536,8 +629,7 @@ class SetupRunner:
     def step(self) -> None:
         """Run ``sim_substeps`` physics sub-steps and advance ``sim_time`` by ``frame_dt``.
 
-        Dispatches to :meth:`_step_tied` or :meth:`_step_independent` based on
-        ``self.independent``. See class docstring for the difference. When
+        Dispatches to the mode-specific ``_step_*`` method. When
         ``use_cuda_graph`` is enabled (default on CUDA without ``control_cb`` /
         ``viewer``), the first call captures the substep loop into a graph and
         subsequent calls replay it via :func:`wp.capture_launch`.
@@ -549,11 +641,16 @@ class SetupRunner:
                 wp.capture_launch(self._graph)
                 self.sim_time += self.frame_dt
                 return
-        if self.independent:
-            self._step_independent()
-        else:
-            self._step_tied()
+        self._step_fn()()
         self.sim_time += self.frame_dt
+
+    def _step_fn(self) -> Callable[[], None]:
+        """Return the substep function for the active mode."""
+        if self.mode == MODE_INDEPENDENT:
+            return self._step_independent
+        if self.mode == MODE_TIED_REFERENCE:
+            return self._step_tied_reference
+        return self._step_tied
 
     def _capture_step_graph(self):
         """Capture the current mode's substep loop into a reusable CUDA graph.
@@ -563,33 +660,49 @@ class SetupRunner:
         we can't work around here. The failed capture attempt is logged so the
         first-frame slowdown is diagnosable.
         """
-        step_fn = self._step_independent if self.independent else self._step_tied
+        step_fn = self._step_fn()
         try:
             with wp.ScopedCapture() as capture:
                 step_fn()
-            msg.notif("CUDA graph captured (%s substeps)", self.sim_substeps)
+            msg.notif("CUDA graph captured (%s substeps, mode=%s)", self.sim_substeps, self.mode)
             return capture.graph
         except Exception as exc:
             msg.warning("CUDA graph capture failed (%s); falling back to eager step", exc)
             self._use_cuda_graph = False
             return None
 
+    def _clear_follower_warmstart(self) -> None:
+        """Zero MuJoCo's per-step warmstart on every follower for the next coarse step.
+
+        Called in tied / tied_reference modes so every coarse sub-step is a true
+        cold-start single-step problem. Kamino has warmstart disabled at config
+        level (asserted in ``__init__``) and XPBD has no persistent warmstart,
+        so this is a no-op for those solvers.
+        """
+        # Deferred import: problems.py imports SolverSetup from this module.
+        from .problems import clear_mujoco_warmstart  # noqa: PLC0415
+
+        for setup in self.setups.values():
+            clear_mujoco_warmstart(setup.solver)
+
     def _step_tied(self) -> None:
         """Run ``sim_substeps`` physics sub-steps against the shared canonical state.
 
         Per sub-step:
-            1. Clear forces on ``state_in``.
-            2. Apply external forces (via ``force_cb`` if set, else ``viewer.apply_forces``).
-            3. Run collision detection into ``contacts``.
-            4. Step every setup from ``(state_in, control, contacts)`` — each writes to
+            1. Clear MuJoCo warmstart so the coarse step is a cold-start solve.
+            2. Clear forces on ``state_in``.
+            3. Apply external forces (via ``force_cb`` if set, else ``viewer.apply_forces``).
+            4. Run collision detection into ``contacts``.
+            5. Step every setup from ``(state_in, control, contacts)`` — each writes to
                its own ``state_out``.
-            5. Swap ``self.state_in`` with ``self.leader.state_out`` so the next sub-step
+            6. Swap ``self.state_in`` with ``self.leader.state_out`` so the next sub-step
                reads from the new post-step state. After the swap, ``state_in`` holds
                the post-step state and ``self.leader.state_out`` holds the pre-step
                state (matching the contact geometry).
         """
         for i in range(self.sim_substeps):
             substep_time = self.sim_time + i * self.sim_dt
+            self._clear_follower_warmstart()
             self.state_in.clear_forces()
             if self.control_cb is not None:
                 self.control_cb(control=self.control, sim_time=substep_time)
@@ -604,6 +717,44 @@ class SetupRunner:
                 setup.step(state_in=self.state_in, control_in=self.control, contacts_in=self.contacts)
 
             self.state_in, self.leader.state_out = self.leader.state_out, self.state_in
+
+    def _step_tied_reference(self) -> None:
+        """Run ``sim_substeps`` coarse sub-steps against a fine-dt canonical trajectory.
+
+        Per coarse sub-step at coarse time ``t``:
+            1. Take ``canonical = reference_leader.state_in`` (state at ``t``).
+            2. Clear its ``body_f`` (leftover from the last fine sub-step) and
+               apply the coarse-tick force / control (both sampled at ``t``).
+            3. Coarse collide from ``canonical`` into ``self.contacts``.
+            4. Clear MuJoCo warmstart on every follower and step each of them
+               once from ``(canonical, self.control, self.contacts)`` at coarse
+               dt. ``setup.state_out`` feeds ``physics_metrics``; the state is
+               otherwise discarded.
+            5. Advance the reference leader by ``fine_substeps_per_coarse`` fine
+               sub-steps to reach ``t + coarse_dt``. This is where the canonical
+               trajectory actually advances.
+        """
+        for i in range(self.sim_substeps):
+            substep_time = self.sim_time + i * self.sim_dt
+            canonical = self.reference_leader.state_in
+            canonical.clear_forces()
+            if self.control_cb is not None:
+                self.control_cb(control=self.control, sim_time=substep_time)
+            if self.force_cb is not None:
+                self.force_cb(state=canonical, contacts=self.contacts, sim_time=substep_time)
+
+            self.model.collide(canonical, self.contacts)
+
+            self._clear_follower_warmstart()
+            for setup in self.setups.values():
+                setup.step(state_in=canonical, control_in=self.control, contacts_in=self.contacts)
+
+            self.reference_leader.step_n(
+                n_substeps=self.fine_substeps_per_coarse,
+                sim_time_start=substep_time,
+                force_cb=self.force_cb,
+                control_cb=self.control_cb,
+            )
 
     def _step_independent(self) -> None:
         """Run ``sim_substeps`` physics sub-steps with each setup on its own trajectory.
@@ -638,15 +789,21 @@ class SetupRunner:
     def render(self) -> None:
         """Log the canonical post-step state and pre-step contact geometry to the viewer.
 
-        In tied mode uses the shared ``self.state_in`` (post-swap: holds the leader's
-        post-step state) together with ``self.leader.contacts``. In independent mode
-        uses the leader's private ``state_in`` (post-swap: also post-step) so the
-        viewer shows the leader's trajectory; the follower trajectories diverge on
-        their own private buffers but are not currently multiplexed in the viewer.
+        In tied mode uses the shared ``self.state_in`` (post-swap: holds the
+        leader's post-step state) together with ``self.leader.contacts``. In
+        independent mode uses the leader's private ``state_in`` (post-swap:
+        also post-step) so the viewer shows the leader's trajectory. In
+        tied_reference mode displays the reference leader's canonical state
+        (the fine-dt trajectory driving every follower).
         """
         if self.viewer is None:
             return
-        state_display = self.state_in if not self.independent else self.leader.state_in
+        if self.mode == MODE_INDEPENDENT:
+            state_display = self.leader.state_in
+        elif self.mode == MODE_TIED_REFERENCE:
+            state_display = self.reference_leader.state_in
+        else:
+            state_display = self.state_in
         self.viewer.begin_frame(self.sim_time)
         self.viewer.log_state(state_display)
         self.viewer.log_contacts(self.leader.contacts, self.leader.state_out)
@@ -670,7 +827,7 @@ class SetupRunner:
             "Running %s frames (%s sub-steps each, mode=%s, leader=%s, cuda_graph=%s)",
             num_frames,
             self.sim_substeps,
-            "independent" if self.independent else "tied",
+            self.mode,
             self.leader_name,
             self._use_cuda_graph,
         )

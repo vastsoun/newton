@@ -423,11 +423,14 @@ class SetupRunner:
                 viewer's ``set_model`` call.
             viewer: Optional viewer. When ``None``, ``render()`` is a no-op and the
                 runner skips the default ``viewer.apply_forces`` fallback.
-            force_cb: Optional callable ``force_cb(state, contacts)`` applied to
-                ``state_in`` at the start of every sub-step (after ``clear_forces``).
+            force_cb: Optional callable ``force_cb(state, contacts, sim_time)``
+                applied to ``state_in`` at the start of every sub-step (after
+                ``clear_forces``). ``sim_time`` is the substep's physical time
+                (``self.sim_time + i * self.sim_dt``); passing it explicitly
+                keeps the callback stateless so tied and independent modes are
+                equivalent for the leader — in independent mode the runner fans
+                ``force_cb`` out over every setup per sub-step.
                 When set, replaces the default ``viewer.apply_forces`` fallback.
-                In independent mode, invoked once per setup with that setup's own
-                ``state_in`` / ``contacts``.
             control_cb: Optional callable ``control_cb(control, sim_time)`` invoked
                 at the start of every sub-step to update the shared canonical
                 :class:`Control`. In independent mode the shared control is fanned
@@ -585,12 +588,13 @@ class SetupRunner:
                the post-step state and ``self.leader.state_out`` holds the pre-step
                state (matching the contact geometry).
         """
-        for _ in range(self.sim_substeps):
+        for i in range(self.sim_substeps):
+            substep_time = self.sim_time + i * self.sim_dt
             self.state_in.clear_forces()
             if self.control_cb is not None:
-                self.control_cb(control=self.control, sim_time=self.sim_time)
+                self.control_cb(control=self.control, sim_time=substep_time)
             if self.force_cb is not None:
-                self.force_cb(state=self.state_in, contacts=self.contacts)
+                self.force_cb(state=self.state_in, contacts=self.contacts, sim_time=substep_time)
             elif self.viewer is not None:
                 self.viewer.apply_forces(self.state_in)
 
@@ -616,14 +620,15 @@ class SetupRunner:
         sub-step, then setup.step's internal ``_copy_control`` fans it out to each
         setup — every solver sees the same PD targets even when trajectories diverge.
         """
-        for _ in range(self.sim_substeps):
+        for i in range(self.sim_substeps):
+            substep_time = self.sim_time + i * self.sim_dt
             if self.control_cb is not None:
-                self.control_cb(control=self.control, sim_time=self.sim_time)
+                self.control_cb(control=self.control, sim_time=substep_time)
             for setup in self.setups.values():
                 state_in = setup.state_in
                 state_in.clear_forces()
                 if self.force_cb is not None:
-                    self.force_cb(state=state_in, contacts=setup.contacts)
+                    self.force_cb(state=state_in, contacts=setup.contacts, sim_time=substep_time)
                 elif self.viewer is not None:
                     self.viewer.apply_forces(state_in)
                 setup.model.collide(state_in, setup.contacts)

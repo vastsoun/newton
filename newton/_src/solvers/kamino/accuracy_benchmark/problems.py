@@ -52,7 +52,7 @@ class ProblemRun(NamedTuple):
     Attributes:
         setups: Mapping of solver name to its :class:`SolverSetup`. ``"kamino"``
             is always present and used as the runner leader.
-        force_cb: Optional ``force_cb(state, contacts)`` passed to
+        force_cb: Optional ``force_cb(state, contacts, sim_time)`` passed to
             :class:`SetupRunner`; ``None`` when the problem is not excited by
             an external body force (e.g. Iron Man).
         camera: Optional ``(position, pitch, yaw)`` triple; ``None`` leaves the
@@ -286,20 +286,17 @@ def _make_paper_setup(
 @wp.kernel
 def _apply_pelvis_push(
     body_index: wp.int32,
-    dt: wp.float32,
+    sim_time: wp.float32,
     force_scale: wp.float32,
     force_start_time: wp.float32,
     force_stop_time: wp.float32,
-    time: wp.array[wp.float32],
     state_body_f: wp.array[wp.spatial_vectorf],
 ):
-    """Push ``body_index`` along +X while ``time`` is inside the active window."""
-    t = time[0]
-    if t > force_start_time and t < force_stop_time:
+    """Push ``body_index`` along +X while ``sim_time`` is inside the active window."""
+    if sim_time > force_start_time and sim_time < force_stop_time:
         state_body_f[body_index] = wp.spatial_vectorf(force_scale, 0.0, 0.0, 0.0, 0.0, 0.0)
     else:
         state_body_f[body_index] = wp.spatial_vectorf()
-    time[0] += dt
 
 
 def make_pelvis_push_cb(
@@ -310,28 +307,28 @@ def make_pelvis_push_cb(
     force_start_time: float,
     force_stop_time: float,
 ) -> Callable:
-    """Return a ``force_cb(state, contacts)`` closure that pushes a labeled body along +X.
+    """Return a ``force_cb(state, contacts, sim_time)`` closure that pushes a labeled body along +X.
 
-    Resolves ``body_label`` to a body index against ``setup.model``, allocates a
-    device-side one-element ``time`` counter that the kernel advances per call,
-    and returns a closure conforming to :class:`SetupRunner`'s ``force_cb``
-    signature.
+    Resolves ``body_label`` to a body index against ``setup.model`` and returns a
+    closure conforming to :class:`SetupRunner`'s ``force_cb`` signature. The
+    activation window is checked against ``sim_time`` supplied by the runner
+    (rather than an internal counter), so the closure is stateless and
+    invocation-count independent — this matters in ``independent=True`` mode
+    where the runner fans ``force_cb`` out over every setup per sub-step.
     """
     body_index = int(setup.model.body_label.index(body_label))
-    time_arr = wp.zeros(shape=(1,), dtype=wp.float32)
 
-    def force_cb(state, contacts):
+    def force_cb(state, contacts, sim_time):
         del contacts
         wp.launch(
             kernel=_apply_pelvis_push,
             dim=1,
             inputs=[
                 wp.int32(body_index),
-                wp.float32(setup.dt),
+                wp.float32(sim_time),
                 wp.float32(force_scale),
                 wp.float32(force_start_time),
                 wp.float32(force_stop_time),
-                time_arr,
             ],
             outputs=[state.body_f],
             device=setup.model.device,

@@ -395,7 +395,9 @@ def make_setup_ironman_mujoco(*, dt: float, max_log_frames: int, rigid_contact_m
 
 def make_setup_ironman_xpbd(*, dt: float, max_log_frames: int, rigid_contact_max: int) -> SolverSetup:
     builder, model = _build_articulated_model(solvers.SolverXPBD, _scene_ironman, rigid_contact_max=rigid_contact_max)
-    solver = solvers.SolverXPBD(model, **_XPBD_KWARGS_ARTICULATED)
+    xpbd_args = _XPBD_KWARGS_ARTICULATED.copy()
+    xpbd_args["iterations"] = 200
+    solver = solvers.SolverXPBD(model, **xpbd_args)
     return _make_paper_setup(
         name="xpbd",
         builder=builder,

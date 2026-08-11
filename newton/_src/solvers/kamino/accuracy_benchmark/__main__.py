@@ -3,9 +3,9 @@
 
 """Kamino accuracy-benchmark entry point.
 
-Dispatches a ``--problem`` selection to one of the :class:`ProblemRun`
-factories in :mod:`problems` and hands the result to :class:`SetupRunner`
-(the example object passed to :func:`newton.examples.run`).
+Dispatches a ``--problem`` selection to one of the per-example ``build_*_run``
+factories hosted in the ``examples/paper/`` scripts and hands the result to
+:class:`SetupRunner` (the example object passed to :func:`newton.examples.run`).
 
 Run with: python -m newton._src.solvers.kamino.accuracy_benchmark [--problem <name>]
 
@@ -22,14 +22,14 @@ import numpy as np
 import newton
 import newton.examples
 from newton._src.solvers.kamino._src.utils import logger as msg
-from newton._src.solvers.kamino.accuracy_benchmark.problems import (
-    build_bdx_run,
+from newton._src.solvers.kamino.accuracy_benchmark.setup import SetupRunner
+from newton._src.solvers.kamino.examples.paper.example_benchmark_robot_bdx import build_bdx_run
+from newton._src.solvers.kamino.examples.paper.example_benchmark_robot_dr_legs import (
     build_dr_legs_run,
-    build_ironman_run,
-    build_olaf_run,
     make_dr_legs_animation_cb,
 )
-from newton._src.solvers.kamino.accuracy_benchmark.setup import SetupRunner
+from newton._src.solvers.kamino.examples.paper.example_benchmark_robot_ironman import build_ironman_run
+from newton._src.solvers.kamino.examples.paper.example_benchmark_robot_olaf import build_olaf_run
 
 _PAPER_PROBLEMS = ("ironman", "olaf", "bdx", "dr_legs")
 

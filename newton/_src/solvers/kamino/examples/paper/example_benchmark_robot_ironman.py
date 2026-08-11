@@ -3,11 +3,11 @@
 
 """Accuracy-benchmark entry point: fixed-base Iron Man articulation.
 
-Wires the shared :mod:`accuracy_benchmark` scaffolding to a :func:`build_ironman_run`
-:class:`ProblemRun`. Every setup carries a :class:`PhysicsMetricsLogger`
-(cross-solver residuals) and the Kamino setup additionally carries a
-:class:`SolverKaminoLogger` (PADMM diagnostics); both are surfaced by
-:meth:`SetupRunner.test_final`.
+Builds Kamino / MuJoCo / XPBD :class:`SolverSetup` triplets for the fixed-base
+Iron Man articulation and drives them through the shared :class:`SetupRunner`.
+Every setup carries a :class:`PhysicsMetricsLogger` (cross-solver residuals)
+and the Kamino setup additionally carries a :class:`SolverKaminoLogger` (PADMM
+diagnostics); both are surfaced by :meth:`SetupRunner.test_final`.
 
 The default configuration is headless data collection (progress bar +
 csv / pdf export + console summary). Pass ``--no-headless`` (and typically
@@ -18,20 +18,144 @@ Run with::
     python -m newton._src.solvers.kamino.examples.paper.example_benchmark_robot_ironman
 """
 
+from __future__ import annotations
+
 import argparse
 import math
 
 import numpy as np
+import warp as wp
 
 import newton
 import newton.examples
+from newton import solvers
+from newton._src.sim import ModelBuilder
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.accuracy_benchmark import SetupRunner
-from newton._src.solvers.kamino.accuracy_benchmark.problems import build_ironman_run
+from newton._src.solvers.kamino.accuracy_benchmark.assets import resolve_asset
+from newton._src.solvers.kamino.accuracy_benchmark.problems import (
+    FRICTION,
+    RESTITUTION,
+    ExampleSpec,
+    ProblemRun,
+    apply_default_builder_cfg,
+    attach_kamino_aux_logger,
+    build_benchmark_model,
+    kamino_default_config,
+    make_fk_reset_cb,
+    make_kamino_reset_cb,
+    make_paper_setup,
+    mujoco_default_kwargs,
+    xpbd_default_kwargs,
+)
+from newton._src.solvers.kamino.accuracy_benchmark.setup import SolverSetup
 
 SIM_DT: float = 0.001
 VIZ_FPS: int = 50
 SIM_STOP_TIME: float = 5.0
+
+_ASSET_RELPATH = "usda/iron_man_fixed_hands_no_shell/iron_man_fixed_hands_no_shell_articulation.usda"
+
+
+###
+# Scene / setup factories
+###
+
+
+def _scene_ironman(builder: ModelBuilder) -> None:
+    """Populate ``builder`` with the fixed-base Iron Man articulation.
+
+    No ``floating=True`` and no ground plane: gravity acts on the articulated
+    parts while the base stays clamped to the world.
+    """
+    apply_default_builder_cfg(builder, FRICTION, RESTITUTION)
+    builder.add_usd(
+        resolve_asset(_ASSET_RELPATH),
+        xform=wp.transform(wp.vec3(0.0, 0.0, 0.0), wp.quatf(0.0, 0.0, 0.0, 1.0)),
+        collapse_fixed_joints=False,
+        enable_self_collisions=False,
+        hide_collision_shapes=True,
+    )
+
+
+def make_setup_kamino(*, dt: float, max_log_frames: int, rigid_contact_max: int) -> SolverSetup:
+    builder, model = build_benchmark_model(solvers.SolverKamino, _scene_ironman, rigid_contact_max=rigid_contact_max)
+    cfg = kamino_default_config()
+    solver = solvers.SolverKamino(model=model, config=cfg)
+    setup = make_paper_setup(
+        name="kamino",
+        builder=builder,
+        model=model,
+        solver=solver,
+        dt=dt,
+        rigid_contact_max=rigid_contact_max,
+        max_log_frames=max_log_frames,
+        reset_cb=make_kamino_reset_cb(solver),
+    )
+    attach_kamino_aux_logger(setup, dt, max_log_frames)
+    return setup
+
+
+def make_setup_mujoco(*, dt: float, max_log_frames: int, rigid_contact_max: int) -> SolverSetup:
+    builder, model = build_benchmark_model(solvers.SolverMuJoCo, _scene_ironman, rigid_contact_max=rigid_contact_max)
+    solver = solvers.SolverMuJoCo(model, nconmax=rigid_contact_max, **mujoco_default_kwargs())
+    return make_paper_setup(
+        name="mujoco",
+        builder=builder,
+        model=model,
+        solver=solver,
+        dt=dt,
+        rigid_contact_max=rigid_contact_max,
+        max_log_frames=max_log_frames,
+        reset_cb=make_fk_reset_cb(model),
+    )
+
+
+def make_setup_xpbd(*, dt: float, max_log_frames: int, rigid_contact_max: int) -> SolverSetup:
+    builder, model = build_benchmark_model(solvers.SolverXPBD, _scene_ironman, rigid_contact_max=rigid_contact_max)
+    xpbd_kwargs = xpbd_default_kwargs()
+    # Iron Man is unusually stiff; the paper uses 200 XPBD iterations to make
+    # its residuals comparable to the other solvers rather than the default 2.
+    xpbd_kwargs["iterations"] = 200
+    solver = solvers.SolverXPBD(model, **xpbd_kwargs)
+    return make_paper_setup(
+        name="xpbd",
+        builder=builder,
+        model=model,
+        solver=solver,
+        dt=dt,
+        rigid_contact_max=rigid_contact_max,
+        max_log_frames=max_log_frames,
+        reset_cb=make_fk_reset_cb(model),
+    )
+
+
+def build_ironman_run(*, dt: float, max_log_frames: int, rigid_contact_max: int = 128) -> ProblemRun:
+    """Build the fixed-base Iron Man :class:`ProblemRun` (Kamino / MuJoCo / XPBD)."""
+    kwargs = {"dt": dt, "max_log_frames": max_log_frames, "rigid_contact_max": rigid_contact_max}
+    setups = {
+        "kamino": make_setup_kamino(**kwargs),
+        "mujoco": make_setup_mujoco(**kwargs),
+        "xpbd": make_setup_xpbd(**kwargs),
+    }
+    return ProblemRun(
+        setups=setups,
+        force_cb=None,
+        camera=(wp.vec3(5.0, 5.0, 1.0), -5.0, 180.0 + 48.0),
+    )
+
+
+SPEC = ExampleSpec(
+    build_fn=build_ironman_run,
+    build_kwargs={},
+    sim_stop_time=SIM_STOP_TIME,
+    problem_name="benchmark_robot_ironman",
+)
+
+
+###
+# Standalone entry point
+###
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -101,4 +225,4 @@ if __name__ == "__main__":
             viewer._paused = True
         newton.examples.run(runner, args)
 
-    runner.test_final(problem_name="benchmark_robot_ironman")
+    runner.test_final(problem_name=SPEC.problem_name)

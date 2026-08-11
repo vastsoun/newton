@@ -3,9 +3,8 @@
 
 """Accuracy-benchmark entry point: floating-base Olaf articulation on a ground plane.
 
-Applies a time-windowed pelvis push (see :func:`make_pelvis_push_cb` in
-:mod:`paper_problems`) and compares Kamino / MuJoCo / XPBD residuals through
-the shared :class:`SetupRunner` scaffolding.
+Applies a time-windowed pelvis push and compares Kamino / MuJoCo / XPBD
+residuals through the shared :class:`SetupRunner` scaffolding.
 
 The default configuration is headless data collection (progress bar + csv / pdf
 export + console summary). Pass ``--no-headless`` to open a viewer.
@@ -15,20 +14,196 @@ Run with::
     python -m newton._src.solvers.kamino.examples.paper.example_benchmark_robot_olaf
 """
 
+from __future__ import annotations
+
 import argparse
 import math
 
 import numpy as np
+import warp as wp
+from pxr import Usd, UsdPhysics  # noqa TID253
 
 import newton
 import newton.examples
+from newton import solvers
+from newton._src.sim import ModelBuilder
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.accuracy_benchmark import SetupRunner
-from newton._src.solvers.kamino.accuracy_benchmark.problems import build_olaf_run
+from newton._src.solvers.kamino.accuracy_benchmark.assets import resolve_asset
+from newton._src.solvers.kamino.accuracy_benchmark.problems import (
+    FRICTION,
+    RESTITUTION,
+    ExampleSpec,
+    ProblemRun,
+    add_ground_defaults,
+    apply_default_builder_cfg,
+    attach_kamino_aux_logger,
+    build_benchmark_model,
+    get_prim,
+    kamino_default_config,
+    make_fk_reset_cb,
+    make_kamino_reset_cb,
+    make_paper_setup,
+    make_pelvis_push_cb,
+    mujoco_default_kwargs,
+    xpbd_default_kwargs,
+)
+from newton._src.solvers.kamino.accuracy_benchmark.setup import SolverSetup
 
 SIM_DT: float = 0.001
 VIZ_FPS: int = 50
 SIM_STOP_TIME: float = 4.0
+
+_ASSET_RELPATH = "usda/Olaf/olaf_articulated.usda"
+_ARTICULATION_ROOT_PATH = "/olaf_v6/PELVIS"
+_FORCED_BODY_LABEL = _ARTICULATION_ROOT_PATH
+_FORCE_SCALE = 20.0
+_FORCE_WINDOW = (1.0, 2.0)
+_START_Z = 0.5
+
+
+###
+# Scene / setup factories
+###
+
+
+def _get_usd_stage() -> Usd.Stage:
+    """Open the Olaf USD and mark the pelvis as the articulation root.
+
+    Upstream ``olaf_articulated.usda`` has no ``PhysicsArticulationRootAPI``
+    authored, so ``add_usd`` would import every body as a free-flying root
+    connected by orphan joints. Applying the API here promotes the whole
+    tree to a single articulation rooted at the pelvis. The USD is already
+    a joint tree (no loop closures) so no ``excludeFromArticulation`` markers
+    are needed.
+    """
+    stage = Usd.Stage.Open(resolve_asset(_ASSET_RELPATH))
+    if stage is None:
+        raise RuntimeError(f"Failed to open Olaf USD stage: {_ASSET_RELPATH}")
+    UsdPhysics.ArticulationRootAPI.Apply(get_prim(stage, _ARTICULATION_ROOT_PATH))
+    return stage
+
+
+def _scene_olaf(builder: ModelBuilder, usd_stage: Usd.Stage) -> None:
+    """Populate ``builder`` with a floating-base Olaf on a ground plane."""
+    apply_default_builder_cfg(builder, FRICTION, RESTITUTION)
+    builder.add_usd(
+        usd_stage,
+        xform=wp.transform(wp.vec3(0.0, 0.0, _START_Z), wp.quatf(0.0, 0.0, 0.0, 1.0)),
+        floating=True,
+        collapse_fixed_joints=False,
+        enable_self_collisions=True,
+        hide_collision_shapes=True,
+    )
+    add_ground_defaults(builder, FRICTION, RESTITUTION)
+
+
+def make_setup_kamino(*, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage) -> SolverSetup:
+    builder, model = build_benchmark_model(
+        solvers.SolverKamino,
+        _scene_olaf,
+        rigid_contact_max=rigid_contact_max,
+        scene_kwargs={"usd_stage": usd_stage},
+    )
+    cfg = kamino_default_config()
+    cfg.padmm.max_iterations = 400
+    solver = solvers.SolverKamino(model=model, config=cfg)
+    setup = make_paper_setup(
+        name="kamino",
+        builder=builder,
+        model=model,
+        solver=solver,
+        dt=dt,
+        rigid_contact_max=rigid_contact_max,
+        max_log_frames=max_log_frames,
+        reset_cb=make_kamino_reset_cb(solver),
+    )
+    attach_kamino_aux_logger(setup, dt, max_log_frames)
+    return setup
+
+
+def make_setup_mujoco(*, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage) -> SolverSetup:
+    builder, model = build_benchmark_model(
+        solvers.SolverMuJoCo,
+        _scene_olaf,
+        rigid_contact_max=rigid_contact_max,
+        scene_kwargs={"usd_stage": usd_stage},
+    )
+    solver = solvers.SolverMuJoCo(model, nconmax=rigid_contact_max, **mujoco_default_kwargs())
+    return make_paper_setup(
+        name="mujoco",
+        builder=builder,
+        model=model,
+        solver=solver,
+        dt=dt,
+        rigid_contact_max=rigid_contact_max,
+        max_log_frames=max_log_frames,
+        reset_cb=make_fk_reset_cb(model),
+    )
+
+
+def make_setup_xpbd(*, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage) -> SolverSetup:
+    builder, model = build_benchmark_model(
+        solvers.SolverXPBD,
+        _scene_olaf,
+        rigid_contact_max=rigid_contact_max,
+        scene_kwargs={"usd_stage": usd_stage},
+    )
+    # Small joint compliance keeps the light Olaf articulation stable under
+    # XPBD's default 2 iterations.
+    xpbd_kwargs = {**xpbd_default_kwargs(), "joint_linear_compliance": 1e-6, "joint_angular_compliance": 1e-6}
+    solver = solvers.SolverXPBD(model, **xpbd_kwargs)
+    return make_paper_setup(
+        name="xpbd",
+        builder=builder,
+        model=model,
+        solver=solver,
+        dt=dt,
+        rigid_contact_max=rigid_contact_max,
+        max_log_frames=max_log_frames,
+        reset_cb=make_fk_reset_cb(model),
+    )
+
+
+def build_olaf_run(*, dt: float, max_log_frames: int, rigid_contact_max: int = 128) -> ProblemRun:
+    """Build the floating-base Olaf :class:`ProblemRun` (with a pelvis push)."""
+    usd_stage = _get_usd_stage()
+    kwargs = {
+        "dt": dt,
+        "max_log_frames": max_log_frames,
+        "rigid_contact_max": rigid_contact_max,
+        "usd_stage": usd_stage,
+    }
+    setups = {
+        "kamino": make_setup_kamino(**kwargs),
+        "mujoco": make_setup_mujoco(**kwargs),
+        "xpbd": make_setup_xpbd(**kwargs),
+    }
+    force_cb = make_pelvis_push_cb(
+        setups["kamino"],
+        body_label=_FORCED_BODY_LABEL,
+        force_scale=_FORCE_SCALE,
+        force_start_time=_FORCE_WINDOW[0],
+        force_stop_time=_FORCE_WINDOW[1],
+    )
+    return ProblemRun(
+        setups=setups,
+        force_cb=force_cb,
+        camera=(wp.vec3(5.0, 5.0, 1.0), -5.0, 180.0 + 48.0),
+    )
+
+
+SPEC = ExampleSpec(
+    build_fn=build_olaf_run,
+    build_kwargs={},
+    sim_stop_time=SIM_STOP_TIME,
+    problem_name="benchmark_robot_olaf",
+)
+
+
+###
+# Standalone entry point
+###
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -97,4 +272,4 @@ if __name__ == "__main__":
             viewer._paused = True
         newton.examples.run(runner, args)
 
-    runner.test_final(problem_name="benchmark_robot_olaf")
+    runner.test_final(problem_name=SPEC.problem_name)

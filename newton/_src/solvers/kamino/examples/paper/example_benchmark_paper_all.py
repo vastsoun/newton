@@ -45,20 +45,15 @@ import gc
 import math
 import os
 import time
-from collections.abc import Callable
-from typing import NamedTuple
 
 import numpy as np
 
 from newton._src.solvers.kamino._src.utils import logger as msg
 from newton._src.solvers.kamino.accuracy_benchmark import SetupRunner
-from newton._src.solvers.kamino.accuracy_benchmark.problems import (
-    ProblemRun,
-    build_bdx_run,
-    build_dr_legs_run,
-    build_ironman_run,
-    build_olaf_run,
-)
+from newton._src.solvers.kamino.examples.paper.example_benchmark_robot_bdx import SPEC as BDX_SPEC
+from newton._src.solvers.kamino.examples.paper.example_benchmark_robot_dr_legs import SPEC as DR_LEGS_SPEC
+from newton._src.solvers.kamino.examples.paper.example_benchmark_robot_ironman import SPEC as IRONMAN_SPEC
+from newton._src.solvers.kamino.examples.paper.example_benchmark_robot_olaf import SPEC as OLAF_SPEC
 
 ###
 # Configuration
@@ -81,28 +76,13 @@ MODES_ENABLED: dict[str, bool] = {
 }
 
 
-class _ExampleSpec(NamedTuple):
-    """Per-example builder + simulation-window config used by :func:`_run_one`."""
-
-    build_fn: Callable[..., ProblemRun]
-    build_kwargs: dict
-    sim_stop_time: float
-    problem_name: str
-
-
-# ``sim_stop_time`` and ``problem_name`` match the per-example scripts in this
-# folder. Keep them in sync when the individual scripts are re-tuned.
-_EXAMPLE_SPECS: dict[str, _ExampleSpec] = {
-    "ironman": _ExampleSpec(
-        build_fn=build_ironman_run, build_kwargs={}, sim_stop_time=5.0, problem_name="benchmark_robot_ironman"
-    ),
-    "dr_legs": _ExampleSpec(
-        build_fn=build_dr_legs_run, build_kwargs={}, sim_stop_time=4.0, problem_name="benchmark_robot_dr_legs"
-    ),
-    "bdx": _ExampleSpec(build_fn=build_bdx_run, build_kwargs={}, sim_stop_time=5.0, problem_name="benchmark_robot_bdx"),
-    "olaf": _ExampleSpec(
-        build_fn=build_olaf_run, build_kwargs={}, sim_stop_time=4.0, problem_name="benchmark_robot_olaf"
-    ),
+# Per-example specs come from the individual ``example_benchmark_robot_*.py``
+# scripts, so ``sim_stop_time`` and ``problem_name`` live in a single place.
+_EXAMPLE_SPECS = {
+    "ironman": IRONMAN_SPEC,
+    "dr_legs": DR_LEGS_SPEC,
+    "bdx": BDX_SPEC,
+    "olaf": OLAF_SPEC,
 }
 
 

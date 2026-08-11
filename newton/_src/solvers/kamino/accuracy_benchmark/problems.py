@@ -1,32 +1,32 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The Newton Developers
 # SPDX-License-Identifier: Apache-2.0
 
-"""Per-(problem, solver) factories for the accuracy-benchmark paper experiments.
+"""Shared infrastructure for the accuracy-benchmark paper experiments.
 
-Each articulated-robot problem (Iron Man, DR Legs, BDX, Olaf) instantiates a
-Kamino / MuJoCo / XPBD :class:`SolverSetup` triplet and attaches a
-:class:`PhysicsMetrics` + :class:`PhysicsMetricsLogger` pair so
-:class:`SetupRunner.test_final` can render cross-solver residual plots and
-tables. The Kamino setups additionally carry a :class:`SolverKaminoLogger` for
-per-step PADMM diagnostics.
+Provides the :class:`ProblemRun` / :class:`ExampleSpec` containers plus the
+scaffolding every per-example script under ``examples/paper/`` builds on:
+default solver configs, shared model/scene builders, reset callbacks, the
+:class:`PhysicsMetrics` + :class:`PhysicsMetricsLogger` attachment, the pelvis-
+push :attr:`SetupRunner.force_cb` factory, and a few USD / actuator tuning
+helpers whose logic is generic enough to be reused across scenes.
+
+Per-scene code (asset paths, custom preprocessing, per-solver factories, the
+``build_*_run`` function) lives in each ``example_benchmark_robot_*.py``.
 """
 
 from __future__ import annotations
 
-import functools
 from collections.abc import Callable
 from typing import NamedTuple
 
 import numpy as np
 import warp as wp
-from pxr import Sdf, Usd, UsdPhysics  # noqa TID253
+from pxr import Sdf, Usd  # noqa TID253
 
 import newton
 from newton import solvers
 from newton._src.core import Axis
 from newton._src.sim import ModelBuilder
-from newton._src.solvers.kamino._src.utils import logger as msg
-from newton._src.solvers.kamino.accuracy_benchmark.assets import resolve_asset
 from newton._src.solvers.kamino.accuracy_benchmark.logging import PhysicsMetricsLogger
 from newton._src.solvers.kamino.accuracy_benchmark.metrics import PhysicsMetrics
 from newton._src.solvers.kamino.accuracy_benchmark.setup import SolverSetup
@@ -37,12 +37,27 @@ from newton._src.solvers.kamino.utils import SolverKaminoLogger
 ###
 
 __all__ = [
+    "ExampleSpec",
     "ProblemRun",
-    "build_bdx_run",
-    "build_dr_legs_run",
-    "build_ironman_run",
-    "build_olaf_run",
+    "add_ground_defaults",
+    "apply_default_builder_cfg",
+    "attach_kamino_aux_logger",
+    "attach_physics_metrics",
+    "build_benchmark_model",
+    "exclude_from_articulation",
+    "flip_joint",
+    "get_prim",
+    "inflate_body_inertia",
+    "kamino_default_config",
+    "make_fk_reset_cb",
+    "make_kamino_reset_cb",
+    "make_paper_setup",
     "make_pelvis_push_cb",
+    "mujoco_default_kwargs",
+    "scale_pd_gains",
+    "set_kamino_joint_armature_damping",
+    "set_mujoco_passive_damping",
+    "xpbd_default_kwargs",
 ]
 
 
@@ -64,18 +79,42 @@ class ProblemRun(NamedTuple):
     camera: tuple[wp.vec3, float, float] | None
 
 
+class ExampleSpec(NamedTuple):
+    """Batch-runner-facing descriptor for one paper example.
+
+    Each ``example_benchmark_robot_*.py`` exposes a module-level ``SPEC`` of
+    this type so :mod:`example_benchmark_paper_all` (and the accuracy-benchmark
+    dispatcher) can iterate the four examples uniformly.
+    """
+
+    build_fn: Callable[..., ProblemRun]
+    """Callable returning a fully-wired :class:`ProblemRun`."""
+
+    build_kwargs: dict
+    """Static extra kwargs merged into ``build_fn(dt=..., max_log_frames=..., **build_kwargs)``."""
+
+    sim_stop_time: float
+    """Total simulated wall-time (seconds) for the example."""
+
+    problem_name: str
+    """Output stem passed to :meth:`SetupRunner.test_final`."""
+
+
 ###
-# Constants
+# Shared defaults
 ###
 
-# Shared friction / restitution used by every paper robot scene.
-_FRICTION: float = 0.7
-_RESTITUTION: float = 0.0
+# Friction / restitution used by every paper robot scene.
+FRICTION: float = 0.7
+RESTITUTION: float = 0.0
 
 
-# Base Kamino config for articulated systems. Callers tweak specific fields
-# (e.g. ``linear_solver_type``, ``padmm.max_iterations``) after copying.
-def _kamino_articulated_config() -> solvers.SolverKamino.Config:
+def kamino_default_config() -> solvers.SolverKamino.Config:
+    """Base Kamino config for benchmark problems.
+
+    Callers copy this and tweak specific fields (e.g. ``linear_solver_type``,
+    ``padmm.max_iterations``, ``constraints.gamma``).
+    """
     cfg = solvers.SolverKamino.Config()
     cfg.sparse_jacobian = False
     cfg.sparse_dynamics = False
@@ -102,35 +141,40 @@ def _kamino_articulated_config() -> solvers.SolverKamino.Config:
     return cfg
 
 
-# Default MuJoCo config for articulated systems.
-_MUJOCO_KWARGS_ARTICULATED = {
-    "cone": "elliptic",
-    "impratio": 1.0,
-    "iterations": 100,
-    "ls_iterations": 50,
-    "tolerance": 1e-8,
-    "ls_tolerance": 1e-6,
-    "njmax": 512,
-    "use_mujoco_contacts": False,
-}
+def mujoco_default_kwargs() -> dict:
+    """Default MuJoCo kwargs for benchmark problems (fresh dict every call)."""
+    return {
+        "cone": "elliptic",
+        "impratio": 1.0,
+        "iterations": 100,
+        "ls_iterations": 50,
+        "tolerance": 1e-8,
+        "ls_tolerance": 1e-6,
+        "njmax": 512,
+        "use_mujoco_contacts": False,
+    }
 
 
-# Default XPBD kwargs for articulated systems. ``iterations=2`` is the SolverXPBD
-# default and is used intentionally here so the cross-solver comparison uses each
-# solver at its documented default cost profile.
-_XPBD_KWARGS_ARTICULATED = {
-    "iterations": 2,
-    "soft_body_relaxation": 0.9,
-    "soft_contact_relaxation": 0.9,
-    "joint_linear_relaxation": 0.7,
-    "joint_angular_relaxation": 0.4,
-    "joint_linear_compliance": 0.0,
-    "joint_angular_compliance": 0.0,
-    "rigid_contact_relaxation": 0.8,
-    "rigid_contact_con_weighting": True,
-    "angular_damping": 0.0,
-    "enable_restitution": True,
-}
+def xpbd_default_kwargs() -> dict:
+    """Default XPBD kwargs for benchmark problems (fresh dict every call).
+
+    ``iterations=2`` is the ``SolverXPBD`` default and is used intentionally so
+    the cross-solver comparison uses each solver at its documented default cost
+    profile.
+    """
+    return {
+        "iterations": 2,
+        "soft_body_relaxation": 0.9,
+        "soft_contact_relaxation": 0.9,
+        "joint_linear_relaxation": 0.7,
+        "joint_angular_relaxation": 0.4,
+        "joint_linear_compliance": 0.0,
+        "joint_angular_compliance": 0.0,
+        "rigid_contact_relaxation": 0.8,
+        "rigid_contact_con_weighting": True,
+        "angular_damping": 0.0,
+        "enable_restitution": True,
+    }
 
 
 ###
@@ -138,11 +182,10 @@ _XPBD_KWARGS_ARTICULATED = {
 ###
 
 
-def _apply_articulated_defaults(builder: ModelBuilder, friction: float, restitution: float) -> None:
-    """Set the joint / shape defaults shared by every articulated paper scene.
+def apply_default_builder_cfg(builder: ModelBuilder, friction: float, restitution: float) -> None:
+    """Set joint / shape defaults shared by every benchmark paper scene.
 
-    These match the values previously duplicated across the paper scripts:
-    tight limits, small margin/gap, contact-material stiffness / damping /
+    Tight limits, small margin/gap, contact-material stiffness / damping /
     friction. Applied before ``add_usd`` so every added shape/joint inherits
     them.
     """
@@ -158,7 +201,7 @@ def _apply_articulated_defaults(builder: ModelBuilder, friction: float, restitut
     builder.default_shape_cfg.restitution = restitution
 
 
-def _add_ground_defaults(builder: ModelBuilder, friction: float, restitution: float) -> None:
+def add_ground_defaults(builder: ModelBuilder, friction: float, restitution: float) -> None:
     """Loosen the shape defaults for the ground plane and add it.
 
     Only used by scenes with a floating base; keeping the ground softer than
@@ -172,14 +215,14 @@ def _add_ground_defaults(builder: ModelBuilder, friction: float, restitution: fl
     builder.add_ground_plane()
 
 
-def _build_articulated_model(
+def build_benchmark_model(
     solver_type: type[solvers.SolverBase],
     scene_builder_fn: Callable,
     *,
     rigid_contact_max: int,
     scene_kwargs: dict | None = None,
 ):
-    """Build a (builder, model) pair for an articulated paper scene.
+    """Build a (builder, model) pair for a benchmark paper scene.
 
     Registers the solver's custom attributes on the inner scene builder, wraps
     the scene in a world with the extended ``contacts.force`` attribute (read
@@ -203,7 +246,7 @@ def _build_articulated_model(
     return builder, model
 
 
-def _make_fk_reset_cb(model: newton.Model) -> Callable:
+def make_fk_reset_cb(model: newton.Model) -> Callable:
     """Reset callback used by non-Kamino solvers: reload joint_q / joint_qd + FK."""
 
     def reset_cb(state_out):
@@ -214,7 +257,7 @@ def _make_fk_reset_cb(model: newton.Model) -> Callable:
     return reset_cb
 
 
-def _make_kamino_reset_cb(solver: solvers.SolverKamino) -> Callable:
+def make_kamino_reset_cb(solver: solvers.SolverKamino) -> Callable:
     """Reset callback used by Kamino: delegate to its solver-native reset op."""
 
     def reset_cb(state_out):
@@ -223,7 +266,7 @@ def _make_kamino_reset_cb(solver: solvers.SolverKamino) -> Callable:
     return reset_cb
 
 
-def _attach_physics_metrics(setup: SolverSetup, model: newton.Model, dt: float, max_log_frames: int) -> None:
+def attach_physics_metrics(setup: SolverSetup, model: newton.Model, dt: float, max_log_frames: int) -> None:
     """Allocate a bounded ``PhysicsMetrics`` + ``PhysicsMetricsLogger`` on the setup."""
     setup.physics_metrics = PhysicsMetrics(model=model)
     setup.physics_metrics_logger = PhysicsMetricsLogger(
@@ -235,7 +278,7 @@ def _attach_physics_metrics(setup: SolverSetup, model: newton.Model, dt: float, 
     )
 
 
-def _attach_kamino_aux_logger(setup: SolverSetup, dt: float, max_log_frames: int) -> None:
+def attach_kamino_aux_logger(setup: SolverSetup, dt: float, max_log_frames: int) -> None:
     """Attach a :class:`SolverKaminoLogger` capturing PADMM iteration diagnostics."""
     setup.aux_logger = SolverKaminoLogger(
         solver=setup.solver,
@@ -247,7 +290,7 @@ def _attach_kamino_aux_logger(setup: SolverSetup, dt: float, max_log_frames: int
     )
 
 
-def _make_paper_setup(
+def make_paper_setup(
     *,
     name: str,
     builder: ModelBuilder,
@@ -274,7 +317,7 @@ def _make_paper_setup(
         standalone=False,
     )
     setup.reset_cb = reset_cb
-    _attach_physics_metrics(setup, model, dt, max_log_frames)
+    attach_physics_metrics(setup, model, dt, max_log_frames)
     return setup
 
 
@@ -338,434 +381,12 @@ def make_pelvis_push_cb(
 
 
 ###
-# Iron Man
+# Reusable USD-prep utilities
 ###
 
-_IRONMAN_ASSET_RELPATH = "usda/iron_man_fixed_hands_no_shell/iron_man_fixed_hands_no_shell_articulation.usda"
 
-
-def _scene_ironman(builder: ModelBuilder) -> None:
-    """Populate ``builder`` with the fixed-base Iron Man articulation.
-
-    No ``floating=True`` and no ground plane: gravity acts on the articulated
-    parts while the base stays clamped to the world.
-    """
-    _apply_articulated_defaults(builder, _FRICTION, _RESTITUTION)
-    builder.add_usd(
-        resolve_asset(_IRONMAN_ASSET_RELPATH),
-        xform=wp.transform(wp.vec3(0.0, 0.0, 0.0), wp.quatf(0.0, 0.0, 0.0, 1.0)),
-        collapse_fixed_joints=False,
-        enable_self_collisions=False,
-        hide_collision_shapes=True,
-    )
-
-
-def make_setup_ironman_kamino(*, dt: float, max_log_frames: int, rigid_contact_max: int) -> SolverSetup:
-    builder, model = _build_articulated_model(solvers.SolverKamino, _scene_ironman, rigid_contact_max=rigid_contact_max)
-    cfg = _kamino_articulated_config()
-    solver = solvers.SolverKamino(model=model, config=cfg)
-    setup = _make_paper_setup(
-        name="kamino",
-        builder=builder,
-        model=model,
-        solver=solver,
-        dt=dt,
-        rigid_contact_max=rigid_contact_max,
-        max_log_frames=max_log_frames,
-        reset_cb=_make_kamino_reset_cb(solver),
-    )
-    _attach_kamino_aux_logger(setup, dt, max_log_frames)
-    return setup
-
-
-def make_setup_ironman_mujoco(*, dt: float, max_log_frames: int, rigid_contact_max: int) -> SolverSetup:
-    builder, model = _build_articulated_model(solvers.SolverMuJoCo, _scene_ironman, rigid_contact_max=rigid_contact_max)
-    solver = solvers.SolverMuJoCo(model, nconmax=rigid_contact_max, **_MUJOCO_KWARGS_ARTICULATED)
-    return _make_paper_setup(
-        name="mujoco",
-        builder=builder,
-        model=model,
-        solver=solver,
-        dt=dt,
-        rigid_contact_max=rigid_contact_max,
-        max_log_frames=max_log_frames,
-        reset_cb=_make_fk_reset_cb(model),
-    )
-
-
-def make_setup_ironman_xpbd(*, dt: float, max_log_frames: int, rigid_contact_max: int) -> SolverSetup:
-    builder, model = _build_articulated_model(solvers.SolverXPBD, _scene_ironman, rigid_contact_max=rigid_contact_max)
-    xpbd_args = _XPBD_KWARGS_ARTICULATED.copy()
-    xpbd_args["iterations"] = 200
-    solver = solvers.SolverXPBD(model, **xpbd_args)
-    return _make_paper_setup(
-        name="xpbd",
-        builder=builder,
-        model=model,
-        solver=solver,
-        dt=dt,
-        rigid_contact_max=rigid_contact_max,
-        max_log_frames=max_log_frames,
-        reset_cb=_make_fk_reset_cb(model),
-    )
-
-
-def build_ironman_run(*, dt: float, max_log_frames: int, rigid_contact_max: int = 128) -> ProblemRun:
-    """Build the fixed-base Iron Man :class:`ProblemRun` (Kamino / MuJoCo / XPBD)."""
-    kwargs = {"dt": dt, "max_log_frames": max_log_frames, "rigid_contact_max": rigid_contact_max}
-    setups = {
-        "kamino": make_setup_ironman_kamino(**kwargs),
-        "mujoco": make_setup_ironman_mujoco(**kwargs),
-        "xpbd": make_setup_ironman_xpbd(**kwargs),
-    }
-    return ProblemRun(
-        setups=setups,
-        force_cb=None,
-        camera=(wp.vec3(5.0, 5.0, 1.0), -5.0, 180.0 + 48.0),
-    )
-
-
-###
-# Olaf
-###
-
-_OLAF_ASSET_RELPATH = "usda/Olaf/olaf_articulated.usda"
-_OLAF_ARTICULATION_ROOT_PATH = "/olaf_v6/PELVIS"
-_OLAF_FORCED_BODY_LABEL = _OLAF_ARTICULATION_ROOT_PATH
-_OLAF_FORCE_SCALE = 20.0
-_OLAF_FORCE_WINDOW = (1.0, 2.0)
-_OLAF_START_Z = 0.5
-
-
-def _get_olaf_usd_stage() -> Usd.Stage:
-    """Open the Olaf USD and mark the pelvis as the articulation root.
-
-    Upstream ``olaf_articulated.usda`` has no ``PhysicsArticulationRootAPI``
-    authored, so ``add_usd`` would import every body as a free-flying root
-    connected by orphan joints. Applying the API here promotes the whole
-    tree to a single articulation rooted at the pelvis. The USD is already
-    a joint tree (no loop closures) so no ``excludeFromArticulation`` markers
-    are needed.
-    """
-    stage = Usd.Stage.Open(resolve_asset(_OLAF_ASSET_RELPATH))
-    if stage is None:
-        raise RuntimeError(f"Failed to open Olaf USD stage: {_OLAF_ASSET_RELPATH}")
-    UsdPhysics.ArticulationRootAPI.Apply(_get_prim(stage, _OLAF_ARTICULATION_ROOT_PATH))
-    return stage
-
-
-def _scene_olaf(builder: ModelBuilder, usd_stage: Usd.Stage) -> None:
-    """Populate ``builder`` with a floating-base Olaf on a ground plane."""
-    _apply_articulated_defaults(builder, _FRICTION, _RESTITUTION)
-    builder.add_usd(
-        usd_stage,
-        xform=wp.transform(wp.vec3(0.0, 0.0, _OLAF_START_Z), wp.quatf(0.0, 0.0, 0.0, 1.0)),
-        floating=True,
-        collapse_fixed_joints=False,
-        enable_self_collisions=True,
-        hide_collision_shapes=True,
-    )
-    _add_ground_defaults(builder, _FRICTION, _RESTITUTION)
-
-
-def make_setup_olaf_kamino(
-    *, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage
-) -> SolverSetup:
-    builder, model = _build_articulated_model(
-        solvers.SolverKamino,
-        _scene_olaf,
-        rigid_contact_max=rigid_contact_max,
-        scene_kwargs={"usd_stage": usd_stage},
-    )
-    cfg = _kamino_articulated_config()
-    cfg.padmm.max_iterations = 400
-    solver = solvers.SolverKamino(model=model, config=cfg)
-    setup = _make_paper_setup(
-        name="kamino",
-        builder=builder,
-        model=model,
-        solver=solver,
-        dt=dt,
-        rigid_contact_max=rigid_contact_max,
-        max_log_frames=max_log_frames,
-        reset_cb=_make_kamino_reset_cb(solver),
-    )
-    _attach_kamino_aux_logger(setup, dt, max_log_frames)
-    return setup
-
-
-def make_setup_olaf_mujoco(
-    *, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage
-) -> SolverSetup:
-    builder, model = _build_articulated_model(
-        solvers.SolverMuJoCo,
-        _scene_olaf,
-        rigid_contact_max=rigid_contact_max,
-        scene_kwargs={"usd_stage": usd_stage},
-    )
-    solver = solvers.SolverMuJoCo(model, nconmax=rigid_contact_max, **_MUJOCO_KWARGS_ARTICULATED)
-    return _make_paper_setup(
-        name="mujoco",
-        builder=builder,
-        model=model,
-        solver=solver,
-        dt=dt,
-        rigid_contact_max=rigid_contact_max,
-        max_log_frames=max_log_frames,
-        reset_cb=_make_fk_reset_cb(model),
-    )
-
-
-def make_setup_olaf_xpbd(
-    *, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage
-) -> SolverSetup:
-    builder, model = _build_articulated_model(
-        solvers.SolverXPBD,
-        _scene_olaf,
-        rigid_contact_max=rigid_contact_max,
-        scene_kwargs={"usd_stage": usd_stage},
-    )
-    # Small joint compliance keeps the light Olaf articulation stable under
-    # XPBD's default 2 iterations.
-    xpbd_kwargs = {**_XPBD_KWARGS_ARTICULATED, "joint_linear_compliance": 1e-6, "joint_angular_compliance": 1e-6}
-    solver = solvers.SolverXPBD(model, **xpbd_kwargs)
-    return _make_paper_setup(
-        name="xpbd",
-        builder=builder,
-        model=model,
-        solver=solver,
-        dt=dt,
-        rigid_contact_max=rigid_contact_max,
-        max_log_frames=max_log_frames,
-        reset_cb=_make_fk_reset_cb(model),
-    )
-
-
-def build_olaf_run(*, dt: float, max_log_frames: int, rigid_contact_max: int = 128) -> ProblemRun:
-    """Build the floating-base Olaf :class:`ProblemRun` (with a pelvis push)."""
-    usd_stage = _get_olaf_usd_stage()
-    kwargs = {
-        "dt": dt,
-        "max_log_frames": max_log_frames,
-        "rigid_contact_max": rigid_contact_max,
-        "usd_stage": usd_stage,
-    }
-    setups = {
-        "kamino": make_setup_olaf_kamino(**kwargs),
-        "mujoco": make_setup_olaf_mujoco(**kwargs),
-        "xpbd": make_setup_olaf_xpbd(**kwargs),
-    }
-    force_cb = make_pelvis_push_cb(
-        setups["kamino"],
-        body_label=_OLAF_FORCED_BODY_LABEL,
-        force_scale=_OLAF_FORCE_SCALE,
-        force_start_time=_OLAF_FORCE_WINDOW[0],
-        force_stop_time=_OLAF_FORCE_WINDOW[1],
-    )
-    return ProblemRun(
-        setups=setups,
-        force_cb=force_cb,
-        camera=(wp.vec3(5.0, 5.0, 1.0), -5.0, 180.0 + 48.0),
-    )
-
-
-###
-# BDX
-###
-
-_BDX_ASSET_RELPATH = "usda/bdx/bipedal.usda"
-_BDX_ARTICULATION_ROOT_PATH = "/BD_9002_001209/PELVIS"
-_BDX_FORCED_BODY_LABEL = _BDX_ARTICULATION_ROOT_PATH
-_BDX_FORCE_SCALE = 120.0
-_BDX_FORCE_WINDOW = (1.0, 3.0)
-_BDX_START_Z = 0.5
-
-
-def _get_bdx_usd_stage() -> Usd.Stage:
-    """Open the BDX USD and mark the pelvis as the articulation root.
-
-    Same rationale as :func:`_get_olaf_usd_stage`: the asset ships without
-    ``PhysicsArticulationRootAPI`` and is already a joint tree (no loop
-    closures), so a single Apply on the pelvis promotes the whole tree to a
-    single articulation on import.
-    """
-    stage = Usd.Stage.Open(resolve_asset(_BDX_ASSET_RELPATH))
-    if stage is None:
-        raise RuntimeError(f"Failed to open BDX USD stage: {_BDX_ASSET_RELPATH}")
-    UsdPhysics.ArticulationRootAPI.Apply(_get_prim(stage, _BDX_ARTICULATION_ROOT_PATH))
-    return stage
-
-
-def _scene_bdx(builder: ModelBuilder, usd_stage: Usd.Stage) -> None:
-    """Populate ``builder`` with a floating-base BDX bipedal on a ground plane."""
-    _apply_articulated_defaults(builder, _FRICTION, _RESTITUTION)
-    builder.add_usd(
-        usd_stage,
-        xform=wp.transform(wp.vec3(0.0, 0.0, _BDX_START_Z), wp.quatf(0.0, 0.0, 0.0, 1.0)),
-        floating=True,
-        collapse_fixed_joints=False,
-        enable_self_collisions=True,
-        hide_collision_shapes=True,
-    )
-    _add_ground_defaults(builder, _FRICTION, _RESTITUTION)
-
-
-def make_setup_bdx_kamino(
-    *, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage
-) -> SolverSetup:
-    builder, model = _build_articulated_model(
-        solvers.SolverKamino,
-        _scene_bdx,
-        rigid_contact_max=rigid_contact_max,
-        scene_kwargs={"usd_stage": usd_stage},
-    )
-    cfg = _kamino_articulated_config()
-    # BDX uses the reverse-Cuthill-McKee ordering for the LLT-blocked solver
-    # and a tighter iteration budget.
-    cfg.dynamics.linear_solver_type = "LLTBRCM"
-    cfg.padmm.max_iterations = 200
-    solver = solvers.SolverKamino(model=model, config=cfg)
-    setup = _make_paper_setup(
-        name="kamino",
-        builder=builder,
-        model=model,
-        solver=solver,
-        dt=dt,
-        rigid_contact_max=rigid_contact_max,
-        max_log_frames=max_log_frames,
-        reset_cb=_make_kamino_reset_cb(solver),
-    )
-    # BDX intentionally skips the Kamino aux logger (matches the original
-    # paper script; PADMM diagnostics not needed for BDX write-up).
-    return setup
-
-
-def make_setup_bdx_mujoco(
-    *, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage
-) -> SolverSetup:
-    builder, model = _build_articulated_model(
-        solvers.SolverMuJoCo,
-        _scene_bdx,
-        rigid_contact_max=rigid_contact_max,
-        scene_kwargs={"usd_stage": usd_stage},
-    )
-    solver = solvers.SolverMuJoCo(model, nconmax=rigid_contact_max, **_MUJOCO_KWARGS_ARTICULATED)
-    return _make_paper_setup(
-        name="mujoco",
-        builder=builder,
-        model=model,
-        solver=solver,
-        dt=dt,
-        rigid_contact_max=rigid_contact_max,
-        max_log_frames=max_log_frames,
-        reset_cb=_make_fk_reset_cb(model),
-    )
-
-
-def make_setup_bdx_xpbd(*, dt: float, max_log_frames: int, rigid_contact_max: int, usd_stage: Usd.Stage) -> SolverSetup:
-    builder, model = _build_articulated_model(
-        solvers.SolverXPBD,
-        _scene_bdx,
-        rigid_contact_max=rigid_contact_max,
-        scene_kwargs={"usd_stage": usd_stage},
-    )
-    solver = solvers.SolverXPBD(model, **_XPBD_KWARGS_ARTICULATED)
-    return _make_paper_setup(
-        name="xpbd",
-        builder=builder,
-        model=model,
-        solver=solver,
-        dt=dt,
-        rigid_contact_max=rigid_contact_max,
-        max_log_frames=max_log_frames,
-        reset_cb=_make_fk_reset_cb(model),
-    )
-
-
-def build_bdx_run(*, dt: float, max_log_frames: int, rigid_contact_max: int = 128) -> ProblemRun:
-    """Build the floating-base BDX :class:`ProblemRun` (with a pelvis push)."""
-    usd_stage = _get_bdx_usd_stage()
-    kwargs = {
-        "dt": dt,
-        "max_log_frames": max_log_frames,
-        "rigid_contact_max": rigid_contact_max,
-        "usd_stage": usd_stage,
-    }
-    setups = {
-        "kamino": make_setup_bdx_kamino(**kwargs),
-        "mujoco": make_setup_bdx_mujoco(**kwargs),
-        "xpbd": make_setup_bdx_xpbd(**kwargs),
-    }
-    force_cb = make_pelvis_push_cb(
-        setups["kamino"],
-        body_label=_BDX_FORCED_BODY_LABEL,
-        force_scale=_BDX_FORCE_SCALE,
-        force_start_time=_BDX_FORCE_WINDOW[0],
-        force_stop_time=_BDX_FORCE_WINDOW[1],
-    )
-    return ProblemRun(
-        setups=setups,
-        force_cb=force_cb,
-        camera=(wp.vec3(5.0, 5.0, 1.0), -5.0, 180.0 + 48.0),
-    )
-
-
-###
-# DR Legs
-###
-
-_DR_LEGS_FORCED_BODY_LABEL = "/DR_Legs/RigidBodies/pelvis"
-_DR_LEGS_FORCE_SCALE = 20.0
-_DR_LEGS_FORCE_WINDOW = (1.0, 2.0)
-_DR_LEGS_START_Z = 0.5
-
-# USD joints whose body0/body1 (and local-pose attrs) are swapped in the stage
-# before ``add_usd`` so every hinge shares a body0=parent convention.
-_DR_LEGS_FLIPPED_JOINTS = (
-    "/DR_Legs/Joints/j1_l_i",
-    "/DR_Legs/Joints/j2_l_i",
-    "/DR_Legs/Joints/j3_l_i",
-    "/DR_Legs/Joints/j4_l_i",
-    "/DR_Legs/Joints/j6_l_i",
-    "/DR_Legs/Joints/j6_r_i",
-    "/DR_Legs/Joints/j9_l_i",
-    "/DR_Legs/Joints/j9_l_o",
-    "/DR_Legs/Joints/j9_r_i",
-    "/DR_Legs/Joints/j9_r_o",
-)
-
-# Joints excluded from the articulation tree; MuJoCo encodes them as
-# ``mjEQ_CONNECT`` loop closures (two outer foot closers + four parallel-rod
-# closers).
-_DR_LEGS_LOOP_CLOSURE_JOINTS = (
-    "/DR_Legs/Joints/j6_l_o",
-    "/DR_Legs/Joints/j6_r_o",
-    "/DR_Legs/Joints/j8_l_i",
-    "/DR_Legs/Joints/j8_l_o",
-    "/DR_Legs/Joints/j8_r_i",
-    "/DR_Legs/Joints/j8_r_o",
-)
-
-# Animation channel -> joint path. The bundled 12-column .npy file follows
-# this order. Channel signs are corrected for the flip applied above.
-_DR_LEGS_ANIMATION_JOINT_PATHS = (
-    "/DR_Legs/Joints/j1_l_i",
-    "/DR_Legs/Joints/j2_l_i",
-    "/DR_Legs/Joints/j6_l_i",
-    "/DR_Legs/Joints/j7_l_i",
-    "/DR_Legs/Joints/j2_l_o",
-    "/DR_Legs/Joints/j7_l_o",
-    "/DR_Legs/Joints/j1_r_i",
-    "/DR_Legs/Joints/j2_r_i",
-    "/DR_Legs/Joints/j6_r_i",
-    "/DR_Legs/Joints/j7_r_i",
-    "/DR_Legs/Joints/j2_r_o",
-    "/DR_Legs/Joints/j7_r_o",
-)
-_DR_LEGS_ANIMATION_CHANNEL_SIGN = np.array([-1, -1, -1, +1, +1, +1, +1, +1, -1, +1, +1, +1], dtype=np.float32)
-
-
-def _get_prim(stage: Usd.Stage, path: str):
+def get_prim(stage: Usd.Stage, path: str):
+    """Fetch a prim by path or raise if missing / invalid."""
     prim = stage.GetPrimAtPath(path)
     if not prim or not prim.IsValid():
         raise RuntimeError(f"Expected prim at {path}")
@@ -780,8 +401,13 @@ def _swap_attr_pair(prim, name_a: str, name_b: str) -> None:
     b.Set(va)
 
 
-def _flip_joint(stage: Usd.Stage, joint_path: str) -> None:
-    joint = _get_prim(stage, joint_path)
+def flip_joint(stage: Usd.Stage, joint_path: str) -> None:
+    """Swap ``body0``/``body1`` (and matching ``localPos``/``localRot``) on a USD joint.
+
+    Used to normalize inconsistent parent/child conventions on hand-authored
+    USD assets before ``add_usd`` infers the articulation tree.
+    """
+    joint = get_prim(stage, joint_path)
     body0 = joint.GetRelationship("physics:body0")
     body1 = joint.GetRelationship("physics:body1")
     t0, t1 = list(body0.GetTargets()), list(body1.GetTargets())
@@ -791,49 +417,27 @@ def _flip_joint(stage: Usd.Stage, joint_path: str) -> None:
     _swap_attr_pair(joint, "physics:localRot0", "physics:localRot1")
 
 
-def _exclude_from_articulation(stage: Usd.Stage, joint_path: str) -> None:
-    attr = _get_prim(stage, joint_path).CreateAttribute("physics:excludeFromArticulation", Sdf.ValueTypeNames.Bool)
+def exclude_from_articulation(stage: Usd.Stage, joint_path: str) -> None:
+    """Mark a USD joint as excluded from the articulation tree.
+
+    MuJoCo picks these up as ``mjEQ_CONNECT`` equality constraints (loop
+    closures); other solvers get no tree edge for them.
+    """
+    attr = get_prim(stage, joint_path).CreateAttribute("physics:excludeFromArticulation", Sdf.ValueTypeNames.Bool)
     attr.Set(True)
 
 
-def _get_dr_legs_usd_stage() -> Usd.Stage:
-    """Fetch the DR Legs USD asset and apply the in-memory preprocessing.
+###
+# Reusable per-solver tuning helpers
+###
 
-    The upstream USD has inconsistent body0/body1 orientation on several
-    joints and encodes six loop-closure joints as regular articulation
-    joints. We flip the former (so add_usd() infers a consistent parent/child
-    tree) and exclude the latter (so MuJoCo picks them up as ``mjEQ_CONNECT``
-    equality constraints rather than tree edges).
+
+def scale_pd_gains(builder: ModelBuilder, kp_scale: float, kd_scale: float) -> None:
+    """Multiply the USD-authored kp/kd on every actuated DoF by the given scales.
+
+    No-op when both scales are ``1.0``. Skips DoFs whose target mode is
+    :attr:`newton.JointTargetMode.NONE`.
     """
-    asset_path = newton.utils.download_asset("disneyresearch")
-    asset_file = str(asset_path / "dr_legs/usd" / "dr_legs_with_meshes_and_boxes.usda")
-    stage = Usd.Stage.Open(asset_file)
-    if stage is None:
-        raise RuntimeError(f"Failed to open dr_legs USD stage: {asset_file}")
-    UsdPhysics.ArticulationRootAPI.Apply(_get_prim(stage, "/DR_Legs/RigidBodies/pelvis"))
-    for jp in _DR_LEGS_FLIPPED_JOINTS:
-        _flip_joint(stage, jp)
-    for jp in _DR_LEGS_LOOP_CLOSURE_JOINTS:
-        _exclude_from_articulation(stage, jp)
-    return stage
-
-
-def _scene_dr_legs(builder: ModelBuilder, usd_stage: Usd.Stage) -> None:
-    """Populate ``builder`` with a floating-base DR Legs on a ground plane."""
-    _apply_articulated_defaults(builder, _FRICTION, _RESTITUTION)
-    builder.add_usd(
-        usd_stage,
-        xform=wp.transform(wp.vec3(0.0, 0.0, _DR_LEGS_START_Z), wp.quatf(0.0, 0.0, 0.0, 1.0)),
-        floating=True,
-        collapse_fixed_joints=False,
-        enable_self_collisions=True,
-        hide_collision_shapes=True,
-    )
-    _add_ground_defaults(builder, _FRICTION, _RESTITUTION)
-
-
-def _scale_pd_gains(builder: ModelBuilder, kp_scale: float, kd_scale: float) -> None:
-    """Multiply the USD-authored kp/kd on every actuated DoF by the given scales."""
     if kp_scale == 1.0 and kd_scale == 1.0:
         return
     none_mode = int(newton.JointTargetMode.NONE)
@@ -843,26 +447,12 @@ def _scale_pd_gains(builder: ModelBuilder, kp_scale: float, kd_scale: float) -> 
             builder.joint_target_kd[dof_i] *= kd_scale
 
 
-def _set_xpbd_pd_gains(builder: ModelBuilder, kp_scale: float, kd_scale: float) -> None:
-    """Overwrite (rather than scale) the PD gains for the XPBD DR Legs setup.
-
-    XPBD's position-drive is much stiffer than MuJoCo/Kamino at the same
-    numeric gain, so the paper uses a fixed absolute gain of 500 * scale
-    (proportional) and 200 * scale (derivative) on every actuated DoF.
-    """
-    none_mode = int(newton.JointTargetMode.NONE)
-    for dof_i, mode in enumerate(builder.joint_target_mode):
-        if mode != none_mode:
-            builder.joint_target_ke[dof_i] = 500.0 * kp_scale
-            builder.joint_target_kd[dof_i] = 200.0 * kd_scale
-
-
-def _inflate_body_inertia(builder: ModelBuilder, body_armature: float) -> None:
+def inflate_body_inertia(builder: ModelBuilder, body_armature: float) -> None:
     """Add ``body_armature`` * I to every body's inertia tensor.
 
-    XPBD ignores per-joint armature, so light parallel-rod bodies (~6 g) feeding
-    into much heavier legs (~600 g) explode at the loop-closure constraints.
-    Diagonally inflating each body's inertia regularizes the mass ratio.
+    XPBD ignores per-joint armature, so mass-ratio-heavy articulations
+    (e.g. light parallel-rod bodies feeding into much heavier legs) can be
+    stabilized by diagonally inflating each body's inertia.
     """
     for body in range(builder.body_count):
         inertia_np = np.asarray(builder.body_inertia[body], dtype=np.float32).reshape(3, 3)
@@ -870,26 +460,27 @@ def _inflate_body_inertia(builder: ModelBuilder, body_armature: float) -> None:
         builder.body_inertia[body] = wp.mat33(inertia_np)
 
 
-def _set_mujoco_passive_damping(model: newton.Model, damping: float) -> None:
-    """Set passive damping on every non-base DoF of every world."""
+def set_mujoco_passive_damping(model: newton.Model, damping: float) -> None:
+    """Set MuJoCo passive damping on every non-base DoF of every world.
+
+    No-op when ``damping <= 0``. Skips the leading 6 DoFs per world (floating-
+    base FREE joint) so the base doesn't get dragged against the world.
+    """
     if damping <= 0.0:
         return
     pd = model.mujoco.dof_passive_damping.numpy()
     n_dof_per_world = pd.size // model.world_count
-    # Skip the leading 6 DoFs per world (floating-base FREE joint); damping
-    # those would drag the base against the world.
     pd.reshape(model.world_count, n_dof_per_world)[:, 6:] = damping
     model.mujoco.dof_passive_damping.assign(pd)
 
 
-def _set_kamino_joint_armature_damping(solver: solvers.SolverKamino, armature: float, damping: float) -> None:
-    """Overwrite ``a_j`` (armature) and ``b_j`` (damping) on every actuated DoF.
+def set_kamino_joint_armature_damping(solver: solvers.SolverKamino, armature: float, damping: float) -> None:
+    """Overwrite ``a_j`` (armature) and ``b_j`` (damping) on every actuated Kamino DoF.
 
     Kamino's joint model exposes per-DoF armature and viscous damping as
-    ``JointsModel.a_j`` / ``JointsModel.b_j``. The paper DR Legs run tunes
-    these to values not directly authored in the USD; done here rather than
-    on the Newton builder because Kamino reads from its own ``JointsModel``
-    copy at solve time.
+    ``JointsModel.a_j`` / ``JointsModel.b_j``. Handy when a paper run needs
+    values not directly authored in the USD, since Kamino reads from its own
+    ``JointsModel`` copy at solve time.
     """
     none_mode = int(newton.JointTargetMode.NONE)
     act_dof_indices = np.where(solver.model.joint_target_mode.numpy() != none_mode)
@@ -899,267 +490,3 @@ def _set_kamino_joint_armature_damping(solver: solvers.SolverKamino, armature: f
     b_j_np = solver._model_kamino.joints.b_j.numpy().copy()
     b_j_np[act_dof_indices] = damping
     solver._model_kamino.joints.b_j.assign(b_j_np)
-
-
-class _DrLegsAnimation:
-    """Coord-layout PD-target driver for the DR Legs gait.
-
-    Reads the bundled 100 Hz .npy animation buffer, resolves the 12 animated
-    joint paths against ``model.joint_label`` into coord-space indices via
-    ``model.joint_q_start``, and applies the sign correction that matches the
-    joints flipped by :func:`_flip_joint`. Every ``__call__(control, sim_time)``
-    writes the current frame's targets into ``control.joint_target_q``.
-
-    Requires :data:`newton.use_coord_layout_targets = True` (the paper
-    accuracy-benchmark scaffolding sets this in :func:`_build_articulated_model`).
-    """
-
-    def __init__(
-        self,
-        model: newton.Model,
-        control: newton.Control,
-        *,
-        animation_dt: float,
-        animation_speed: float,
-    ):
-        asset_path = newton.utils.download_asset("disneyresearch")
-        anim_file = str(asset_path / "dr_legs/animation" / "dr_legs_animation_100fps.npy")
-        anim = np.load(anim_file).astype(np.float32)
-        if anim.shape[1] != len(_DR_LEGS_ANIMATION_JOINT_PATHS):
-            raise RuntimeError(
-                f"animation has {anim.shape[1]} channels, expected {len(_DR_LEGS_ANIMATION_JOINT_PATHS)}"
-            )
-        joint_label = list(model.joint_label)
-        joint_q_start = model.joint_q_start.numpy()
-        try:
-            channel_coords = np.array(
-                [joint_q_start[joint_label.index(path)] for path in _DR_LEGS_ANIMATION_JOINT_PATHS],
-                dtype=np.int64,
-            )
-        except ValueError as e:
-            raise RuntimeError(f"animation joint not found in model.joint_label: {e}") from e
-        n_coord_per_world = model.joint_coord_count // model.world_count
-        world_offsets = np.arange(model.world_count, dtype=np.int64) * n_coord_per_world
-        # 2-D fancy-index assignment broadcasts a (12,) RHS across worlds.
-        self._indices = channel_coords[None, :] + world_offsets[:, None]
-        self._data = anim * _DR_LEGS_ANIMATION_CHANNEL_SIGN[None, :]
-        self._target_q_host = control.joint_target_q.numpy()
-        self._animation_dt = float(animation_dt)
-        self._animation_speed = float(animation_speed)
-
-    def __call__(self, control: newton.Control, sim_time: float) -> None:
-        n_frames = self._data.shape[0]
-        frame = min(int(sim_time * self._animation_speed / self._animation_dt), n_frames - 1)
-        self._target_q_host[self._indices] = self._data[frame]
-        control.joint_target_q.assign(self._target_q_host)
-
-
-def make_setup_dr_legs_kamino(
-    *,
-    dt: float,
-    max_log_frames: int,
-    rigid_contact_max: int,
-    usd_stage: Usd.Stage,
-    animation: bool,
-    animation_gain_scale: float,
-    animation_kd_scale: float,
-    animation_passive_damping: float,
-    joint_armature: float,
-) -> SolverSetup:
-    def scene(builder: ModelBuilder) -> None:
-        # SolverKamino path shares the MuJoCo custom attributes: DR Legs mixes
-        # tree joints and MuJoCo-only equality constraints, and both solvers
-        # need to see the loop-closure metadata to reproduce the same physics.
-        solvers.SolverMuJoCo.register_custom_attributes(builder)
-        _scene_dr_legs(builder, usd_stage)
-        kp_scale = animation_gain_scale if animation else 1.0
-        kd_scale = animation_kd_scale if animation else 1.0
-        _scale_pd_gains(builder, kp_scale, kd_scale)
-
-    builder, model = _build_articulated_model(solvers.SolverKamino, scene, rigid_contact_max=rigid_contact_max)
-    cfg = _kamino_articulated_config()
-    cfg.constraints.gamma = 0.1
-    solver = solvers.SolverKamino(model=model, config=cfg)
-    _set_kamino_joint_armature_damping(solver, armature=joint_armature, damping=animation_passive_damping)
-    setup = _make_paper_setup(
-        name="kamino",
-        builder=builder,
-        model=model,
-        solver=solver,
-        dt=dt,
-        rigid_contact_max=rigid_contact_max,
-        max_log_frames=max_log_frames,
-        reset_cb=_make_kamino_reset_cb(solver),
-    )
-    _attach_kamino_aux_logger(setup, dt, max_log_frames)
-    return setup
-
-
-def make_setup_dr_legs_mujoco(
-    *,
-    dt: float,
-    max_log_frames: int,
-    rigid_contact_max: int,
-    usd_stage: Usd.Stage,
-    animation: bool,
-    animation_gain_scale: float,
-    animation_kd_scale: float,
-    animation_passive_damping: float,
-) -> SolverSetup:
-    def scene(builder: ModelBuilder) -> None:
-        _scene_dr_legs(builder, usd_stage)
-        kp_scale = animation_gain_scale if animation else 1.0
-        kd_scale = animation_kd_scale if animation else 1.0
-        _scale_pd_gains(builder, kp_scale, kd_scale)
-
-    builder, model = _build_articulated_model(solvers.SolverMuJoCo, scene, rigid_contact_max=rigid_contact_max)
-    if animation:
-        _set_mujoco_passive_damping(model, animation_passive_damping)
-    solver = solvers.SolverMuJoCo(model, nconmax=rigid_contact_max, **_MUJOCO_KWARGS_ARTICULATED)
-    return _make_paper_setup(
-        name="mujoco",
-        builder=builder,
-        model=model,
-        solver=solver,
-        dt=dt,
-        rigid_contact_max=rigid_contact_max,
-        max_log_frames=max_log_frames,
-        reset_cb=_make_fk_reset_cb(model),
-    )
-
-
-def make_setup_dr_legs_xpbd(
-    *,
-    dt: float,
-    max_log_frames: int,
-    rigid_contact_max: int,
-    usd_stage: Usd.Stage,
-    animation: bool,
-    animation_gain_scale: float,
-    animation_kd_scale: float,
-    xpbd_body_armature: float,
-) -> SolverSetup:
-    def scene(builder: ModelBuilder) -> None:
-        _scene_dr_legs(builder, usd_stage)
-        kp_scale = animation_gain_scale if animation else 1.0
-        kd_scale = animation_kd_scale if animation else 1.0
-        _set_xpbd_pd_gains(builder, kp_scale, kd_scale)
-        _inflate_body_inertia(builder, xpbd_body_armature)
-
-    builder, model = _build_articulated_model(solvers.SolverXPBD, scene, rigid_contact_max=rigid_contact_max)
-    solver = solvers.SolverXPBD(model, **_XPBD_KWARGS_ARTICULATED)
-    return _make_paper_setup(
-        name="xpbd",
-        builder=builder,
-        model=model,
-        solver=solver,
-        dt=dt,
-        rigid_contact_max=rigid_contact_max,
-        max_log_frames=max_log_frames,
-        reset_cb=_make_fk_reset_cb(model),
-    )
-
-
-def build_dr_legs_run(
-    *,
-    dt: float,
-    max_log_frames: int,
-    rigid_contact_max: int = 128,
-    animation: bool = False,
-    animation_dt: float = 0.01,
-    animation_speed: float = 0.5,
-    animation_gain_scale: float = 1.2,
-    animation_kd_scale: float = 1.0,
-    animation_passive_damping: float = 0.5,
-    joint_armature: float = 0.001,
-    xpbd_body_armature: float = 0.05,
-) -> ProblemRun:
-    """Build the floating-base DR Legs :class:`ProblemRun`.
-
-    Optionally drives 12 USD-actuated joints from the bundled 100 Hz animation
-    (``animation=True``). The animation is applied by a
-    :class:`SetupRunner`-level ``control_cb`` closure so all setups share the
-    same coord-space PD targets.
-    """
-    usd_stage = _get_dr_legs_usd_stage()
-
-    def _run_msg():
-        # DR Legs' XPBD path is tuned separately from the others; log the
-        # applied scales once so the paper runs are self-describing.
-        msg.notif("DR Legs: animation=%s speed=%s dt=%s", animation, animation_speed, animation_dt)
-        msg.notif(
-            "DR Legs: gain_scale=%s kd_scale=%s passive_damping=%s",
-            animation_gain_scale,
-            animation_kd_scale,
-            animation_passive_damping,
-        )
-
-    _run_msg()
-
-    kwargs_common = {
-        "dt": dt,
-        "max_log_frames": max_log_frames,
-        "rigid_contact_max": rigid_contact_max,
-        "usd_stage": usd_stage,
-        "animation": animation,
-        "animation_gain_scale": animation_gain_scale,
-        "animation_kd_scale": animation_kd_scale,
-    }
-    setups = {
-        "kamino": make_setup_dr_legs_kamino(
-            **kwargs_common,
-            animation_passive_damping=animation_passive_damping,
-            joint_armature=joint_armature,
-        ),
-        "mujoco": make_setup_dr_legs_mujoco(
-            **kwargs_common,
-            animation_passive_damping=animation_passive_damping,
-        ),
-        "xpbd": make_setup_dr_legs_xpbd(
-            **kwargs_common,
-            xpbd_body_armature=xpbd_body_armature,
-        ),
-    }
-
-    force_cb = make_pelvis_push_cb(
-        setups["kamino"],
-        body_label=_DR_LEGS_FORCED_BODY_LABEL,
-        force_scale=_DR_LEGS_FORCE_SCALE,
-        force_start_time=_DR_LEGS_FORCE_WINDOW[0],
-        force_stop_time=_DR_LEGS_FORCE_WINDOW[1],
-    )
-
-    return ProblemRun(
-        setups=setups,
-        force_cb=force_cb,
-        camera=(wp.vec3(5.0, 5.0, 1.0), -5.0, 180.0 + 48.0),
-    )
-
-
-def make_dr_legs_animation_cb(
-    setups: dict[str, SolverSetup],
-    *,
-    animation_dt: float = 0.01,
-    animation_speed: float = 0.5,
-) -> Callable:
-    """Return a ``control_cb(control, sim_time)`` closure driving the DR Legs gait.
-
-    Uses the leader setup's model/control to resolve joint indices; the runner
-    reuses these buffers for every follower via ``_copy_control`` inside
-    :meth:`SolverSetup.step`.
-    """
-    # Any setup will do — they all share the same joint layout. We take
-    # kamino as canonical because it's the leader in the paper runs.
-    leader = setups["kamino"]
-    animation = _DrLegsAnimation(
-        model=leader.model,
-        control=leader.control,
-        animation_dt=animation_dt,
-        animation_speed=animation_speed,
-    )
-    return functools.partial(_call_animation, animation=animation)
-
-
-def _call_animation(*, control, sim_time, animation: _DrLegsAnimation) -> None:
-    """Adapter matching :class:`SetupRunner`'s ``control_cb`` signature."""
-    animation(control, sim_time)

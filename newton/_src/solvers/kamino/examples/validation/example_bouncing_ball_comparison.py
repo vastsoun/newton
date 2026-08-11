@@ -94,7 +94,9 @@ class SolverSetup:
         self.solver.step(state_in, self.state_1, self.control, self.contacts, sim_dt)
         # Pull per-contact forces back into self.contacts.force (when allocated) so
         # the viewer's "Show Contacts -> Forces" / "Modes" layers have data to draw.
-        self.solver.update_contacts(self.contacts, self.state_1)
+        # Not supported by SolverMuJoCo's MuJoCo-C CPU backend.
+        if not getattr(self.solver, "use_mujoco_cpu", False):
+            self.solver.update_contacts(self.contacts, self.state_1)
         # self.metrics.evaluate(self.state_1, self.state_0, self.control, self.contacts)
         # self.logger.log()
         wp.launch(_step_time, dim=1, inputs=[sim_dt, self.time])
@@ -289,7 +291,9 @@ def make_setup_solver_kamino(dt: float, max_frames: int, use_box: bool = False) 
     return setup
 
 
-def make_setup_solver_mujoco(dt: float, max_frames: int, use_box: bool = False) -> SolverSetup:
+def make_setup_solver_mujoco(
+    dt: float, max_frames: int, use_box: bool = False, use_mujoco_cpu: bool = False
+) -> SolverSetup:
     builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
     newton.solvers.SolverMuJoCo.register_custom_attributes(builder)
     builder.default_joint_cfg = newton.ModelBuilder.JointDofConfig(limit_ke=1.0e3, limit_kd=1.0e1, friction=1e-5)
@@ -322,6 +326,7 @@ def make_setup_solver_mujoco(dt: float, max_frames: int, use_box: bool = False) 
         nconmax=46,
         njmax=100,
         use_mujoco_contacts=False,
+        use_mujoco_cpu=use_mujoco_cpu,
     )
     # metrics = SolutionMetricsNewton(
     #    dt=dt,
@@ -334,7 +339,7 @@ def make_setup_solver_mujoco(dt: float, max_frames: int, use_box: bool = False) 
     #    mode=SolutionMetricsLogger.Mode.ROLLING,
     # )
     setup = SolverSetup(
-        name="mujoco",
+        name="mujoco_cpu" if use_mujoco_cpu else "mujoco",
         builder=builder,
         model=model,
         solver=solver,
@@ -449,6 +454,7 @@ class Example:
         # Create the solver setups
         self.setup_kamino = make_setup_solver_kamino(self.sim_dt, 5000, use_box=use_box)
         self.setup_mujoco = make_setup_solver_mujoco(self.sim_dt, 5000, use_box=use_box)
+        self.setup_mujoco_cpu = make_setup_solver_mujoco(self.sim_dt, 5000, use_box=use_box, use_mujoco_cpu=True)
         self.setup_xpbd = make_setup_solver_xpbd(self.sim_dt, 5000, use_box=use_box)
 
         # Load reference trajectory
@@ -457,8 +463,8 @@ class Example:
         self.body_q_ref = np.load(os.path.join(ref_folder, "body_q_ref_bouncing_ball.npy"))
 
         # Solver setup choice
-        self.setup_names = ["Kamino", "MuJoCo", "XPBD", "Reference"]
-        self.setups = [self.setup_kamino, self.setup_mujoco, self.setup_xpbd, self.setup_kamino]
+        self.setup_names = ["Kamino", "MuJoCo", "MuJoCo_CPU", "XPBD", "Reference"]
+        self.setups = [self.setup_kamino, self.setup_mujoco, self.setup_mujoco_cpu, self.setup_xpbd, self.setup_kamino]
         self.current_setup_id = 0
         self.init_setup(reset_viewer=True, first=True)
 
@@ -468,7 +474,9 @@ class Example:
 
     def capture(self):
         self.graph = None
-        if self.device.is_cuda and not wp.config.verify_cuda:
+        # MuJoCo's CPU backend calls into host code and cannot be graph-captured.
+        use_mujoco_cpu = getattr(self.setup.solver, "use_mujoco_cpu", False)
+        if self.device.is_cuda and not wp.config.verify_cuda and not use_mujoco_cpu:
             with wp.ScopedCapture() as capture:
                 self.simulate()
             self.graph = capture.graph

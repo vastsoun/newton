@@ -80,7 +80,9 @@ class SolverSetup:
         self.solver.step(state_in, self.state_1, self.control, self.contacts, sim_dt)
         # Pull per-contact forces back into self.contacts.force (when allocated) so
         # the viewer's "Show Contacts -> Forces" / "Modes" layers have data to draw.
-        self.solver.update_contacts(self.contacts, self.state_1)
+        # Not supported by SolverMuJoCo's MuJoCo-C CPU backend.
+        if not getattr(self.solver, "use_mujoco_cpu", False):
+            self.solver.update_contacts(self.contacts, self.state_1)
         # self.metrics.evaluate(self.state_1, self.state_0, self.control, self.contacts)
         # self.logger.log()
         wp.launch(_step_time, dim=1, inputs=[sim_dt, self.time])
@@ -169,7 +171,9 @@ def make_setup_solver_kamino(asset_file: str, dt: float, max_frames: int, alpha:
     return setup
 
 
-def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int, T: float) -> SolverSetup:
+def make_setup_solver_mujoco(
+    asset_file: str, dt: float, max_frames: int, T: float, use_mujoco_cpu: bool = False
+) -> SolverSetup:
     articulation_builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
     newton.solvers.SolverMuJoCo.register_custom_attributes(articulation_builder)
     articulation_builder.default_joint_cfg = newton.ModelBuilder.JointDofConfig(
@@ -209,13 +213,18 @@ def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int, T: flo
         nconmax=46,
         njmax=100,
         use_mujoco_contacts=False,
+        use_mujoco_cpu=use_mujoco_cpu,
     )
 
     # Set equality constraint stiffness
     eq_solref_np = np.array([[T, 1.0]])
     eq_solimp_np = np.array([[0.99, 0.999, 0.001, 0.5, 2.0]])
-    solver.mjw_model.eq_solref.assign(eq_solref_np)
-    solver.mjw_model.eq_solimp.assign(eq_solimp_np)
+    if use_mujoco_cpu:
+        solver.mj_model.eq_solref[:, :] = eq_solref_np
+        solver.mj_model.eq_solimp[:, :] = eq_solimp_np
+    else:
+        solver.mjw_model.eq_solref.assign(eq_solref_np)
+        solver.mjw_model.eq_solimp.assign(eq_solimp_np)
 
     # metrics = SolutionMetricsNewton(
     #    dt=dt,
@@ -228,7 +237,7 @@ def make_setup_solver_mujoco(asset_file: str, dt: float, max_frames: int, T: flo
     #    mode=SolutionMetricsLogger.Mode.ROLLING,
     # )
     setup = SolverSetup(
-        name="mujoco",
+        name="mujoco_cpu" if use_mujoco_cpu else "mujoco",
         builder=builder,
         model=model,
         solver=solver,
@@ -350,8 +359,15 @@ class Example:
         self.setup_kamino_soft = make_setup_solver_kamino(asset_file, self.sim_dt, 5000, 0.01)
         self.setup_kamino_stiff = make_setup_solver_kamino(asset_file, self.sim_dt, 5000, 0.1)
         self.setup_mujoco_soft = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000, 0.1)
+        self.setup_mujoco_cpu_soft = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000, 0.1, use_mujoco_cpu=True)
         self.setup_mujoco_medium = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000, 0.01)
+        self.setup_mujoco_cpu_medium = make_setup_solver_mujoco(
+            asset_file, self.sim_dt, 5000, 0.01, use_mujoco_cpu=True
+        )
         self.setup_mujoco_stiff = make_setup_solver_mujoco(asset_file, self.sim_dt, 5000, 0.001)
+        self.setup_mujoco_cpu_stiff = make_setup_solver_mujoco(
+            asset_file, self.sim_dt, 5000, 0.001, use_mujoco_cpu=True
+        )
         self.setup_xpbd = make_setup_solver_xpbd(asset_file, self.sim_dt, 5000)
 
         # Load reference trajectory
@@ -364,8 +380,11 @@ class Example:
             "Kamino_soft",
             "Kamino_stiff",
             "MuJoCo_soft",
+            "MuJoCo_CPU_soft",
             "MuJoCo_medium",
+            "MuJoCo_CPU_medium",
             "MuJoCo_stiff",
+            "MuJoCo_CPU_stiff",
             "XPBD",
             "Reference",
         ]
@@ -373,8 +392,11 @@ class Example:
             self.setup_kamino_soft,
             self.setup_kamino_stiff,
             self.setup_mujoco_soft,
+            self.setup_mujoco_cpu_soft,
             self.setup_mujoco_medium,
+            self.setup_mujoco_cpu_medium,
             self.setup_mujoco_stiff,
+            self.setup_mujoco_cpu_stiff,
             self.setup_xpbd,
             self.setup_kamino_stiff,
         ]
@@ -387,7 +409,9 @@ class Example:
 
     def capture(self):
         self.graph = None
-        if self.device.is_cuda and not wp.config.verify_cuda:
+        # MuJoCo's CPU backend calls into host code and cannot be graph-captured.
+        use_mujoco_cpu = getattr(self.setup.solver, "use_mujoco_cpu", False)
+        if self.device.is_cuda and not wp.config.verify_cuda and not use_mujoco_cpu:
             with wp.ScopedCapture() as capture:
                 self.simulate()
             self.graph = capture.graph

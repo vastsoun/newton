@@ -5299,6 +5299,34 @@ class ModelBuilder:
             **kwargs,
         )
 
+    def _set_joint_cable_stiffnesses(
+        self,
+        joint: int,
+        *,
+        stretch_stiffness: float | None,
+        shear_stiffness: float | None,
+        bend_stiffness: float | None,
+        twist_stiffness: float | None,
+    ) -> None:
+        """Overwrite each non-None stiffness and its inferred target mode, in :meth:`add_joint_cable` axis order."""
+        joint_type = self.joint_type[joint]
+        joint_dof_dim = self.joint_dof_dim[joint]
+        if joint_type != JointType.CABLE or joint_dof_dim != (2, 2):
+            raise ValueError(
+                "_set_joint_cable_stiffnesses() expected the four-DOF CABLE layout "
+                f"(2 linear, 2 angular); got joint type {JointType(joint_type).name} with dimensions "
+                f"{joint_dof_dim}. Update the CABLE material-slot mapping when changing its DOF layout."
+            )
+        dof_start = self.joint_qd_start[joint]
+        for offset, stiffness in enumerate((stretch_stiffness, shear_stiffness, bend_stiffness, twist_stiffness)):
+            if stiffness is not None:
+                dof = dof_start + offset
+                damping = self.joint_target_kd[dof]
+                self.joint_target_ke[dof] = stiffness
+                self.joint_target_mode[dof] = int(
+                    JointTargetMode.from_gains(stiffness, damping, has_drive=stiffness != 0.0 or damping != 0.0)
+                )
+
     def add_constraint_mimic(
         self,
         joint0: int,

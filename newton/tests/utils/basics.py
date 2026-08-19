@@ -63,7 +63,7 @@ def _shape_cfg_basic() -> ModelBuilder.ShapeConfig:
     dimensions map one-to-one to the original Kamino ``BoxShape`` / ``SphereShape``
     half-extents.
     """
-    return ModelBuilder.ShapeConfig(margin=0.0, gap=0.0)
+    return ModelBuilder.ShapeConfig(margin=0.0, gap=0.0, mu=0.7)
 
 
 def _add_ground_box(builder: ModelBuilder) -> None:
@@ -1284,6 +1284,7 @@ def build_boxes_fourbar(
     friction: float | None = None,
     restitution: float | None = None,
     use_custom_shape_cfg: bool = False,
+    spherical_joints: list[int] | None = None,
 ) -> ModelBuilder:
     """
     Constructs a basic model of a four-bar linkage.
@@ -1330,6 +1331,21 @@ def build_boxes_fourbar(
             the free-base joint; Newton's free joint does not expose an analogous flag
             and the value is currently ignored for the base joint.\n
             If `None`, defaults to `[1, 3]`.
+        friction:
+            Friction parameter set on all shape configs if ``use_custom_shape_cfg`` is
+            ``True``. If ``None``, friction will be set to the builder's default.
+        restitution:
+            Restitution parameters set on all shape configs if ``use_custom_shape_cfg`` is
+            ``True``. If ``None``, restitution will be set to the builder's default.
+        use_custom_shape_cfg:
+            Whether to use a custom shape config, using the specified ``friction`` and
+            ``restitution`` parameters, instead of the builder's default config.
+        spherical_joints:
+            1-based indices of the revolute joints (``2`` or ``3``) to instead build as
+            ball (spherical) joints, turning the linkage into a "tie rod" mechanism.\n
+            Joints ``1`` and ``4`` (the actuated base joint and the loop-closing joint)
+            are always revolute.\n
+            If `None`, all four joints are revolute.
 
     Returns:
         ModelBuilder: A model builder containing the four-bar linkage.
@@ -1351,6 +1367,12 @@ def build_boxes_fourbar(
         actuator_ids = [1, 3]
     elif not isinstance(actuator_ids, list):
         raise TypeError("actuator_ids, if specified, must be provided as a list of integers.")
+
+    # Set default spherical joint IDs if none are provided
+    if spherical_joints is None:
+        spherical_joints = []
+    elif not isinstance(spherical_joints, list):
+        raise TypeError("spherical_joints, if specified, must be provided as a list of integers.")
 
     ###
     # Base Parameters
@@ -1615,25 +1637,43 @@ def build_boxes_fourbar(
         child_xform=wp.transformf(r_j1 - r_b2, wp.quat_identity(dtype=wp.float32)),
     )
 
-    # Add a revolute joint between link 2 and link 3
-    j2 = _builder.add_joint_revolute(
-        label="link2_to_link3",
-        parent=bid2,
-        child=bid3,
-        axis=effort_joint_other if 2 in actuator_ids else passive_joint_dof_config,
-        parent_xform=wp.transformf(r_j2 - r_b2, wp.quat_identity(dtype=wp.float32)),
-        child_xform=wp.transformf(r_j2 - r_b3, wp.quat_identity(dtype=wp.float32)),
-    )
+    # Add a joint between link 2 and link 3 (ball if requested, otherwise revolute)
+    if 2 in spherical_joints:
+        j2 = _builder.add_joint_ball(
+            label="link2_to_link3",
+            parent=bid2,
+            child=bid3,
+            parent_xform=wp.transformf(r_j2 - r_b2, wp.quat_identity(dtype=wp.float32)),
+            child_xform=wp.transformf(r_j2 - r_b3, wp.quat_identity(dtype=wp.float32)),
+        )
+    else:
+        j2 = _builder.add_joint_revolute(
+            label="link2_to_link3",
+            parent=bid2,
+            child=bid3,
+            axis=effort_joint_other if 2 in actuator_ids else passive_joint_dof_config,
+            parent_xform=wp.transformf(r_j2 - r_b2, wp.quat_identity(dtype=wp.float32)),
+            child_xform=wp.transformf(r_j2 - r_b3, wp.quat_identity(dtype=wp.float32)),
+        )
 
-    # Add a revolute joint between link 3 and link 4
-    j3 = _builder.add_joint_revolute(
-        label="link3_to_link4",
-        parent=bid3,
-        child=bid4,
-        axis=effort_joint_other if 3 in actuator_ids else passive_joint_dof_config,
-        parent_xform=wp.transformf(r_j3 - r_b3, wp.quat_identity(dtype=wp.float32)),
-        child_xform=wp.transformf(r_j3 - r_b4, wp.quat_identity(dtype=wp.float32)),
-    )
+    # Add a joint between link 3 and link 4 (ball if requested, otherwise revolute)
+    if 3 in spherical_joints:
+        j3 = _builder.add_joint_ball(
+            label="link3_to_link4",
+            parent=bid3,
+            child=bid4,
+            parent_xform=wp.transformf(r_j3 - r_b3, wp.quat_identity(dtype=wp.float32)),
+            child_xform=wp.transformf(r_j3 - r_b4, wp.quat_identity(dtype=wp.float32)),
+        )
+    else:
+        j3 = _builder.add_joint_revolute(
+            label="link3_to_link4",
+            parent=bid3,
+            child=bid4,
+            axis=effort_joint_other if 3 in actuator_ids else passive_joint_dof_config,
+            parent_xform=wp.transformf(r_j3 - r_b3, wp.quat_identity(dtype=wp.float32)),
+            child_xform=wp.transformf(r_j3 - r_b4, wp.quat_identity(dtype=wp.float32)),
+        )
 
     # Add a revolute joint between link 4 and link 1 (closes the loop)
     _builder.add_joint_revolute(

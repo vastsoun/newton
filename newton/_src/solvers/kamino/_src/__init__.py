@@ -23,6 +23,11 @@ from .core.conversions import (
 from .core.joints import JOINT_QMAX, JOINT_QMIN, JointActuationType
 from .core.model import ModelKamino
 from .core.state import StateKamino
+from .geometry.contact_capacity import (
+    ContactCapacity,
+    ContactCapacityPolicy,
+    resolve_contact_capacity,
+)
 from .geometry.contacts import (
     ContactsKamino,
     convert_contacts_kamino_to_newton,
@@ -40,6 +45,8 @@ __all__ = [
     "JOINT_QMAX",
     "JOINT_QMIN",
     "CollisionDetector",
+    "ContactCapacity",
+    "ContactCapacityPolicy",
     "ContactsKamino",
     "ControlKamino",
     "JointActuationType",
@@ -58,5 +65,6 @@ __all__ = [
     "convert_model_joint_transforms",
     "convert_model_materials",
     "msg",
+    "resolve_contact_capacity",
     "validate_model_structural_updates",
 ]

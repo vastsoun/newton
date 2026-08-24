@@ -1939,13 +1939,13 @@ def convert_geometries(
         device=model.device,
     )
 
-    # Compute total number of required contacts per world
-    if model.rigid_contact_max > 0:
-        model_min_contacts = int(model.rigid_contact_max)
-        min_contacts_per_world = model.rigid_contact_max // model.world_count
-        world_min_contacts = [min_contacts_per_world] * model.world_count
-    else:
-        model_min_contacts, world_min_contacts = compute_required_contact_capacity(model)
+    # Compute total number of required contacts per world from shape-pair
+    # geometry so the resulting metadata invariant is independent of
+    # ``model.rigid_contact_max``. Sizing knobs live in the contact-capacity
+    # resolver (:func:`resolve_contact_capacity`) and take
+    # ``model.rigid_contact_max`` into account only for the external-Newton
+    # policy.
+    model_min_contacts, world_min_contacts = compute_required_contact_capacity(model)
 
     # Convert shape offsets from body-frame-relative to COM-relative
     offset = wp.zeros_like(model.shape_transform)

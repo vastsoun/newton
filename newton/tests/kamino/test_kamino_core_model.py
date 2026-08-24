@@ -1155,6 +1155,39 @@ class TestModelConversions(unittest.TestCase):
         #       runtime material resolution system (see :class:`MaterialMixMode`).
         # test_util_checks.assert_model_material_pairs_equal(self, model_kamino_converted.material_pairs, model_kamino.material_pairs)
 
+    def test_23_model_conversions_geometry_metadata_ignores_rigid_contact_max(self):
+        """Newton->Kamino conversion derives geometry metadata from pair tables only.
+
+        The value of ``model.rigid_contact_max`` is not an input to the conversion,
+        so pre-populating it must not influence
+        :attr:`GeometriesModel.model_minimum_contacts` or
+        :attr:`GeometriesModel.world_minimum_contacts`.
+        """
+        # Build a multi-world Newton model that has collidable geometry.
+        source_builder = ModelBuilder(up_axis=newton.Axis.Z)
+        SolverKamino.register_custom_attributes(source_builder)
+        basics_newton.build_sphere_on_plane(builder=source_builder, z_offset=0.5)
+
+        def build_model(rigid_contact_max: int) -> Model:
+            builder = ModelBuilder(up_axis=newton.Axis.Z)
+            SolverKamino.register_custom_attributes(builder)
+            builder.replicate(source_builder, world_count=3)
+            model = builder.finalize(device=self.default_device, skip_validation_joints=True)
+            model.rigid_contact_max = rigid_contact_max
+            return model
+
+        base_model = ModelKamino.from_newton(build_model(rigid_contact_max=0))
+        primed_model = ModelKamino.from_newton(build_model(rigid_contact_max=54321))
+
+        self.assertEqual(
+            list(base_model.geoms.world_minimum_contacts),
+            list(primed_model.geoms.world_minimum_contacts),
+        )
+        self.assertEqual(
+            base_model.geoms.model_minimum_contacts,
+            primed_model.geoms.model_minimum_contacts,
+        )
+
     def test_30_state_conversions(self):
         """
         Test the conversion operations between newton.State and kamino.StateKamino.

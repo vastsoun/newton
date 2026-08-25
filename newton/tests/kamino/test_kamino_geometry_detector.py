@@ -12,11 +12,11 @@ from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino._src.geometry import (
     CollisionDetector,
 )
-from newton._src.solvers.kamino._src.geometry.contact_capacity import (
+from newton._src.solvers.kamino._src.geometry.capacity import (
     ContactCapacity,
     ContactCapacityPolicy,
     _estimate_fallback_world_max_contacts,
-    distribute_total_by_weights,
+    _distribute_total_by_weights,
     resolve_contact_capacity,
 )
 from newton._src.solvers.kamino._src.models.builders import basics
@@ -219,7 +219,7 @@ class TestCollisionDetectorContactCapacity(unittest.TestCase):
 
     def test_00_cap_world_contacts_at_total(self):
         """Verify proportional capping preserves the configured model total."""
-        capped = distribute_total_by_weights([100, 50, 50], 120)
+        capped = _distribute_total_by_weights([100, 50, 50], 120)
         self.assertEqual(sum(capped), 120)
         self.assertEqual(capped[0], 60)
 

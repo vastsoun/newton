@@ -23,7 +23,7 @@ from .core.conversions import (
 from .core.joints import JOINT_QMAX, JOINT_QMIN, JointActuationType
 from .core.model import ModelKamino
 from .core.state import StateKamino
-from .geometry.contact_capacity import (
+from .geometry.capacity import (
     ContactCapacity,
     ContactCapacityPolicy,
     resolve_contact_capacity,

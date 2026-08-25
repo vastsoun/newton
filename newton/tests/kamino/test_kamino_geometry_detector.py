@@ -17,7 +17,6 @@ from newton._src.solvers.kamino._src.geometry.capacity import (
     ContactCapacityPolicy,
     _estimate_fallback_world_max_contacts,
     _distribute_total_by_weights,
-    resolve_contact_capacity,
 )
 from newton._src.solvers.kamino._src.models.builders import basics
 from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
@@ -240,8 +239,8 @@ class TestCollisionDetectorContactCapacity(unittest.TestCase):
         model = builder.finalize(self.default_device)
         config = CollisionDetector.Config()
 
-        capacity = resolve_contact_capacity(
-            model,
+        capacity = ContactCapacity.resolve_from(
+            model=model,
             config=config,
             policy=ContactCapacityPolicy.INTERNAL_FULL,
         )

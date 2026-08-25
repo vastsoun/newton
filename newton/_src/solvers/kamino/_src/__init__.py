@@ -26,7 +26,6 @@ from .core.state import StateKamino
 from .geometry.capacity import (
     ContactCapacity,
     ContactCapacityPolicy,
-    resolve_contact_capacity,
 )
 from .geometry.contacts import (
     ContactsKamino,
@@ -65,6 +64,5 @@ __all__ = [
     "convert_model_joint_transforms",
     "convert_model_materials",
     "msg",
-    "resolve_contact_capacity",
     "validate_model_structural_updates",
 ]

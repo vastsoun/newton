@@ -323,7 +323,6 @@ class CollisionDetector:
         if capacity is None:
             capacity = resolve_contact_capacity(
                 self._model,
-                newton_model=None,
                 config=self._config,
                 policy=ContactCapacityPolicy.INTERNAL_FULL,
             )

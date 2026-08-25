@@ -242,7 +242,6 @@ class TestCollisionDetectorContactCapacity(unittest.TestCase):
 
         capacity = resolve_contact_capacity(
             model,
-            newton_model=None,
             config=config,
             policy=ContactCapacityPolicy.INTERNAL_FULL,
         )

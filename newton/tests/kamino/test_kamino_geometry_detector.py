@@ -9,15 +9,8 @@ import numpy as np
 import warp as wp
 
 from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
-from newton._src.solvers.kamino._src.geometry import (
-    CollisionDetector,
-)
-from newton._src.solvers.kamino._src.geometry.capacity import (
-    ContactCapacity,
-    ContactCapacityPolicy,
-    _estimate_fallback_world_max_contacts,
-    _distribute_total_by_weights,
-)
+from newton._src.solvers.kamino._src.geometry import CollisionDetector
+from newton._src.solvers.kamino._src.geometry.capacity import ContactCapacity, ContactCapacityPolicy
 from newton._src.solvers.kamino._src.models.builders import basics
 from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino._src.utils import logger as msg
@@ -218,7 +211,7 @@ class TestCollisionDetectorContactCapacity(unittest.TestCase):
 
     def test_00_cap_world_contacts_at_total(self):
         """Verify proportional capping preserves the configured model total."""
-        capped = _distribute_total_by_weights([100, 50, 50], 120)
+        capped = ContactCapacity._distribute_total_by_weights([100, 50, 50], 120)
         self.assertEqual(sum(capped), 120)
         self.assertEqual(capped[0], 60)
 
@@ -228,7 +221,7 @@ class TestCollisionDetectorContactCapacity(unittest.TestCase):
         model = builder.finalize(self.default_device)
         config = CollisionDetector.Config(broadphase="explicit")
 
-        world_max = _estimate_fallback_world_max_contacts(model, config)
+        world_max = ContactCapacity._estimate_fallback_world_max_contacts(model, config)
         self.assertEqual(len(world_max), 2)
         self.assertGreater(world_max[0], 0)
         self.assertEqual(world_max[0], world_max[1])

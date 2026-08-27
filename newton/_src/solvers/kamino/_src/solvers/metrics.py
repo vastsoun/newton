@@ -917,12 +917,12 @@ def _compute_cts_joints_residual(
     wid = model_joint_wid[jid]
     num_cts_j = model_joint_num_kinematic_cts[jid]
     cio_j = model_joint_kinematic_cts_offset[jid]
+    # Early return for free joints
+    if num_cts_j == 0:
+        return
 
     # Compute the per-joint constraint residual (infinity-norm) and local argmax row
-    r_cts_joints_j = wp.float32(0.0)
-    argmax_j = wp.int32(0)
-    if num_cts_j > 0:
-        r_cts_joints_j, argmax_j = _vector_segment_abs_infnorm(num_cts_j, cio_j, data_joints_r_j)
+    r_cts_joints_j, argmax_j = _vector_segment_abs_infnorm(num_cts_j, cio_j, data_joints_r_j)
 
     cio_j_loc = cio_j - model_info_joint_kinematic_cts_offset[wid]
 

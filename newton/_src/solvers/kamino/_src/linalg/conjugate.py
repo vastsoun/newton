@@ -236,6 +236,8 @@ def _cg_kernel_1(
     resid: wp.array[Any],
     rz_old: wp.array[Any],
     p_Ap: wp.array[Any],
+    stop_on_breakdown: wp.int32,
+    world_condition: wp.array[wp.int32],
     p: wp.array[Any],
     Ap: wp.array[Any],
     x: wp.array[Any],
@@ -247,7 +249,10 @@ def _cg_kernel_1(
     if i >= dim[e]:
         return
 
-    alpha = wp.where(resid[e] > tol[e] and p_Ap[e] > 0.0, rz_old[e] / p_Ap[e], rz_old.dtype(0.0))
+    denominator_valid = p_Ap[e] > 0.0
+    if i == 0 and stop_on_breakdown != 0 and resid[e] > tol[e] and not denominator_valid:
+        world_condition[e] = 0
+    alpha = wp.where(resid[e] > tol[e] and denominator_valid, rz_old[e] / p_Ap[e], rz_old.dtype(0.0))
 
     idx = vio[e] + i
     x[idx] = x[idx] + alpha * p[idx]
@@ -283,6 +288,7 @@ def _cr_kernel_1(
     resid: wp.array[Any],
     zAz_old: wp.array[Any],
     y_Ap: wp.array[Any],
+    world_condition: wp.array[wp.int32],
     p: wp.array[Any],
     Ap: wp.array[Any],
     y: wp.array[Any],
@@ -296,7 +302,10 @@ def _cr_kernel_1(
     if i >= dim[e]:
         return
 
-    alpha = wp.where(resid[e] > tol[e] and y_Ap[e] > 0.0, zAz_old[e] / y_Ap[e], zAz_old.dtype(0.0))
+    denominator_valid = y_Ap[e] > 0.0
+    if i == 0 and resid[e] > tol[e] and not denominator_valid:
+        world_condition[e] = 0
+    alpha = wp.where(resid[e] > tol[e] and denominator_valid, zAz_old[e] / y_Ap[e], zAz_old.dtype(0.0))
 
     idx = vio[e] + i
     x[idx] = x[idx] + alpha * p[idx]
@@ -773,7 +782,20 @@ class CGSolver(ConjugateSolver[ScalarType, IndexType]):
         wp.launch(
             kernel=_cg_kernel_1,
             dim=(self.n_worlds, self.maxdims),
-            inputs=[self.atol_sq, r_norm_sq, rz_old, p_Ap, p, Ap, x, r, self.vio, self.active_dims],
+            inputs=[
+                self.atol_sq,
+                r_norm_sq,
+                rz_old,
+                p_Ap,
+                wp.int32(0),
+                self.conditions,
+                p,
+                Ap,
+                x,
+                r,
+                self.vio,
+                self.active_dims,
+            ],
             device=self.device,
         )
 
@@ -896,6 +918,33 @@ class CRSolver(ConjugateSolver[ScalarType, IndexType]):
             loop_granularity=min(self.loop_granularity, self.maxiter_host),
         )
 
+    def project_rhs(
+        self,
+        b: wp.array[ScalarType],
+        x: wp.array[ScalarType],
+        projected_rhs: wp.array[ScalarType],
+        active_dims: wp.array[IndexType] | None = None,
+        world_active: wp.array[wp.bool] | None = None,
+    ):
+        """Project a right-hand side onto the operator range with CR.
+
+        The input ``x`` is used as the initial least-squares estimate and updated
+        in place. A final operator application computes the projected right-hand
+        side without relying on the recursively updated residual.
+        """
+        if projected_rhs.shape[0] != self.total_vec_size:
+            raise ValueError(
+                f"projected_rhs has size {projected_rhs.shape[0]} "
+                f"but solver expects total_vec_size={self.total_vec_size}"
+            )
+        if active_dims is None:
+            active_dims = self.active_dims
+        if world_active is None:
+            world_active = self.world_active
+        result = self.solve(b=b, x=x, active_dims=active_dims, world_active=world_active)
+        self.A.matvec(x, projected_rhs, world_active)
+        return result
+
     def do_iteration(self, p, Ap, Az, zAz_old, zAz_new, z, y, x, r, r_copy, r_norm_sq, active_dims, world_active):
         zAz_old.assign(zAz_new)
 
@@ -909,7 +958,20 @@ class CRSolver(ConjugateSolver[ScalarType, IndexType]):
             wp.launch(
                 kernel=_cg_kernel_1,
                 dim=(self.n_worlds, self.maxdims),
-                inputs=[self.atol_sq, r_norm_sq, zAz_old, y_Ap, p, Ap, x, r, self.vio, self.active_dims],
+                inputs=[
+                    self.atol_sq,
+                    r_norm_sq,
+                    zAz_old,
+                    y_Ap,
+                    wp.int32(1),
+                    self.conditions,
+                    p,
+                    Ap,
+                    x,
+                    r,
+                    self.vio,
+                    self.active_dims,
+                ],
                 device=self.device,
             )
         else:
@@ -917,7 +979,21 @@ class CRSolver(ConjugateSolver[ScalarType, IndexType]):
             wp.launch(
                 kernel=_cr_kernel_1,
                 dim=(self.n_worlds, self.maxdims),
-                inputs=[self.atol_sq, r_norm_sq, zAz_old, y_Ap, p, Ap, y, x, r, z, self.vio, self.active_dims],
+                inputs=[
+                    self.atol_sq,
+                    r_norm_sq,
+                    zAz_old,
+                    y_Ap,
+                    self.conditions,
+                    p,
+                    Ap,
+                    y,
+                    x,
+                    r,
+                    z,
+                    self.vio,
+                    self.active_dims,
+                ],
                 device=self.device,
             )
 

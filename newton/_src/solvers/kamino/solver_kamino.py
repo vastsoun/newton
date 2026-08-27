@@ -741,6 +741,8 @@ class SolverKamino(SolverBase, CouplingInterface):
             config.validate()
         self._config = config
 
+        # The internal problem and PADMM buffers snapshot allocation-relevant configuration below.
+        # Reconfigure by constructing a new solver, then reset it against the intended state.
         # Create a Kamino model from the Newton model
         self._model_kamino = self._kamino.ModelKamino.from_newton(model)
 

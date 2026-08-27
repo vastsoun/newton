@@ -511,9 +511,11 @@ def make_fused_cr_kernel(max_rows: int, max_cols: int, max_blocks: int, block_di
         maxiter: wp.array[wp.int32],
         atol: wp.array[wp.float32],
         rtol: wp.array[wp.float32],
+        write_projected_rhs: wp.int32,
         # Outputs:
         out_iters: wp.array[wp.int32],
         out_resid: wp.array[wp.float32],
+        projected_rhs: wp.array[wp.float32],
     ):
         w, t = wp.tid()
         if not world_active[w]:
@@ -622,7 +624,6 @@ def make_fused_cr_kernel(max_rows: int, max_cols: int, max_blocks: int, block_di
         for _it in range(mi):
             if r_norm_sq <= atol_sq:
                 break
-            it += 1
 
             denom_local = wp.float32(0.0)
             for i in range(wp.static(rows_per_thread)):
@@ -630,9 +631,10 @@ def make_fused_cr_kernel(max_rows: int, max_cols: int, max_blocks: int, block_di
                     break
                 denom_local += ap_rowv[i] * ap_rowv[i]
             denom = _rsum(denom_local, t)
-            alpha = wp.float32(0.0)
-            if denom > wp.float32(0.0):
-                alpha = rAr / denom
+            if denom <= wp.float32(0.0):
+                break
+            it += 1
+            alpha = rAr / denom
 
             for i in range(wp.static(rows_per_thread)):
                 if t + i * _block_dim >= n:
@@ -682,11 +684,36 @@ def make_fused_cr_kernel(max_rows: int, max_cols: int, max_blocks: int, block_di
                 ap_rowv[i] = ar_rowv[i] + beta * ap_rowv[i]
             rAr = rAr_new
 
+        projected_rowv = ThreadRowsVector()
+        if write_projected_rhs != 0:
+            projected_rowv = _apply_A(
+                x_rowv,
+                p_rowv,
+                eta_rowv,
+                w,
+                t,
+                n,
+                nb,
+                nze,
+                roff,
+                nzb_values,
+                row_blk,
+                sort_key,
+                sort_val,
+                row_idx_sorted,
+                cursor,
+                inv_m,
+                inv_I,
+                bodies_offset,
+            )
+
         for i in range(wp.static(rows_per_thread)):
             row = t + i * _block_dim
             if row >= n:
                 break
             x[voff + row] = x_rowv[i]
+            if write_projected_rhs != 0:
+                projected_rhs[voff + row] = projected_rowv[i]
         if t == 0:
             out_iters[w] = it
             out_resid[w] = r_norm_sq  # squared residual norm, matching ConjugateResidualSolver

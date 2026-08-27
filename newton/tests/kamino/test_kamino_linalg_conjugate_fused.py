@@ -143,6 +143,7 @@ def _solve_fused(worlds, use_precond, device, rng):
     maxiter = wp.full(W, 1000, dtype=wp.int32, device=device)
     atol = wp.full(W, 1e-10, dtype=wp.float32, device=device)
     rtol = wp.full(W, 1e-10, dtype=wp.float32, device=device)
+    projected_rhs = wp.empty(W * R, dtype=wp.float32, device=device)
     # block_dim < R so each thread owns NR = R / block_dim > 1 rows (multi-row-per-thread path).
     block_dim = 64
     kernel = make_fused_cr_kernel(R, C, MB, block_dim)
@@ -174,8 +175,9 @@ def _solve_fused(worlds, use_precond, device, rng):
             maxiter,
             atol,
             rtol,
+            wp.int32(0),
         ],
-        outputs=[iters, resid],
+        outputs=[iters, resid, projected_rhs],
         block_dim=block_dim,
         device=device,
     )
@@ -252,6 +254,7 @@ def _run_padmm_sparse(solver_cls, device):
     return {
         "lambdas": solver.data.solution.lambdas.numpy().copy(),
         "v_plus": solver.data.solution.v_plus.numpy().copy(),
+        "v_f": problem.data.v_f.numpy().copy(),
         "status": solver.data.status.numpy().copy(),
     }
 
@@ -275,8 +278,10 @@ class TestFusedCRIntegration(unittest.TestCase):
 
         lam_err = np.linalg.norm(ref["lambdas"] - got["lambdas"]) / (np.linalg.norm(ref["lambdas"]) + 1e-12)
         vp_err = np.linalg.norm(ref["v_plus"] - got["v_plus"]) / (np.linalg.norm(ref["v_plus"]) + 1e-12)
+        vf_err = np.linalg.norm(ref["v_f"] - got["v_f"]) / (np.linalg.norm(ref["v_f"]) + 1e-12)
         self.assertLess(lam_err, 1e-3, f"lambda mismatch CR vs CRF: rel {lam_err:.2e}")
         self.assertLess(vp_err, 1e-3, f"v_plus mismatch CR vs CRF: rel {vp_err:.2e}")
+        self.assertLess(vf_err, 1e-4, f"projected v_f mismatch CR vs CRF: rel {vf_err:.2e}")
 
 
 if __name__ == "__main__":

@@ -261,6 +261,7 @@ class SolverKaminoImpl(SolverBase):
                 use_acceleration=self._config.padmm.use_acceleration,
                 use_graph_conditionals=self._config.padmm.use_graph_conditionals,
                 collect_info=self._config.collect_solver_info,
+                problem=self._problem_fd,
             )
         elif self._config.dynamics_solver == "dvi":
             # DVI consumes Kamino's unified joint, limit, and contact

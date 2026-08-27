@@ -58,9 +58,11 @@ __all__ = [
     "_compute_velocity_bias",
     "_make_compute_infnorm_residuals_kernel",
     "_make_project_dual_convergence_accel_kernel",
+    "_prepare_range_projection",
     "_project_to_feasible_cone",
     "_reset_solver_data",
     "_scale_warmstart_forces",
+    "_store_range_projection",
     "_update_delassus_proximal_regularization",
     "_update_delassus_proximal_regularization_sparse",
     "_warmstart_contact_constraints",
@@ -200,6 +202,41 @@ def _scale_warmstart_forces(
     solver_y[index] *= scale
 
 
+@wp.kernel
+def _prepare_range_projection(
+    problem_dim: wp.array[wp.int32],
+    problem_vio: wp.array[wp.int32],
+    world_active: wp.array[wp.bool],
+    problem_v_f: wp.array[wp.float32],
+    solver_x_p: wp.array[wp.float32],
+    solver_rhs: wp.array[wp.float32],
+    solver_x: wp.array[wp.float32],
+):
+    """Prepare ``D x = -v_f`` without modifying the PADMM warm start."""
+    world, row = wp.tid()
+    if not world_active[world] or row >= problem_dim[world]:
+        return
+    index = problem_vio[world] + row
+    solver_rhs[index] = -problem_v_f[index]
+    solver_x[index] = solver_x_p[index]
+
+
+@wp.kernel
+def _store_range_projection(
+    problem_dim: wp.array[wp.int32],
+    problem_vio: wp.array[wp.int32],
+    world_active: wp.array[wp.bool],
+    projected_rhs: wp.array[wp.float32],
+    problem_v_f: wp.array[wp.float32],
+):
+    """Store ``v_f = -D x`` for worlds with range projection enabled."""
+    world, row = wp.tid()
+    if not world_active[world] or row >= problem_dim[world]:
+        return
+    index = problem_vio[world] + row
+    problem_v_f[index] = -projected_rhs[index]
+
+
 def make_initialize_solver_kernel(use_acceleration: bool = False):
     """
     Creates a kernel to initialize the PADMM solver state, status, and penalty parameters.
@@ -238,6 +275,7 @@ def make_initialize_solver_kernel(use_acceleration: bool = False):
         status.converged = wp.int32(0)
         status.r_p = wp.float32(0.0)
         status.r_d = wp.float32(0.0)
+        status.r_d_unscaled = wp.float32(0.0)
         status.r_c = wp.float32(0.0)
         # NOTE: We initialize acceleration-related
         # entries only if acceleration is enabled
@@ -875,6 +913,7 @@ def _make_project_dual_convergence_accel_kernel(reduction_size: int):
 
         r_p_local = wp.float32(0.0)
         r_d_local = wp.float32(0.0)
+        r_d_unscaled_local = wp.float32(0.0)
         r_c_local = wp.float32(0.0)
         r_dx_local = wp.float32(0.0)
         r_dy_local = wp.float32(0.0)
@@ -920,13 +959,15 @@ def _make_project_dual_convergence_accel_kernel(reduction_size: int):
                             solver_state_z[idx] = z
 
                             r_p = p_i * (x - y)
-                            r_d = (1.0 / p_i) * (eta * (x - x_p) + rho * (y - y_p))
+                            r_d_unscaled = eta * (x - x_p) + rho * (y - y_p)
+                            r_d = (1.0 / p_i) * r_d_unscaled
                             r_dx = p_i * (x - x_p)
                             r_dy = p_i * (y - y_p)
                             r_dz = (1.0 / p_i) * (z - z_p)
 
                             r_p_local = wp.max(r_p_local, wp.abs(r_p))
                             r_d_local = wp.max(r_d_local, wp.abs(r_d))
+                            r_d_unscaled_local = wp.max(r_d_unscaled_local, wp.abs(r_d_unscaled))
                             r_dx_local += r_dx * r_dx
                             r_dy_local += r_dy * r_dy
                             r_dz_local += r_dz * r_dz
@@ -957,13 +998,15 @@ def _make_project_dual_convergence_accel_kernel(reduction_size: int):
                     solver_state_z[thread_offset] = z
 
                     r_p = p_i * (x - y)
-                    r_d = (1.0 / p_i) * (eta * (x - x_p) + rho * (y - y_p))
+                    r_d_unscaled = eta * (x - x_p) + rho * (y - y_p)
+                    r_d = (1.0 / p_i) * r_d_unscaled
                     r_dx = p_i * (x - x_p)
                     r_dy = p_i * (y - y_p)
                     r_dz = (1.0 / p_i) * (z - z_prev)
 
                     r_p_local = wp.max(r_p_local, wp.abs(r_p))
                     r_d_local = wp.max(r_d_local, wp.abs(r_d))
+                    r_d_unscaled_local = wp.max(r_d_unscaled_local, wp.abs(r_d_unscaled))
                     r_dx_local += r_dx * r_dx
                     r_dy_local += r_dy * r_dy
                     r_dz_local += r_dz * r_dz
@@ -982,6 +1025,7 @@ def _make_project_dual_convergence_accel_kernel(reduction_size: int):
         # Reduce per-thread residual contributions to world-level metrics.
         r_p_tile = wp.tile_zeros(shape=reduction_size, dtype=wp.float32, storage="shared")
         r_d_tile = wp.tile_zeros(shape=reduction_size, dtype=wp.float32, storage="shared")
+        r_d_unscaled_tile = wp.tile_zeros(shape=reduction_size, dtype=wp.float32, storage="shared")
         r_c_tile = wp.tile_zeros(shape=reduction_size, dtype=wp.float32, storage="shared")
         r_dx_tile = wp.tile_zeros(shape=reduction_size, dtype=wp.float32, storage="shared")
         r_dy_tile = wp.tile_zeros(shape=reduction_size, dtype=wp.float32, storage="shared")
@@ -990,6 +1034,7 @@ def _make_project_dual_convergence_accel_kernel(reduction_size: int):
         active_thread = tid < num_threads_per_block
         wp.tile_scatter_masked(r_p_tile, tid, r_p_local, active_thread)
         wp.tile_scatter_masked(r_d_tile, tid, r_d_local, active_thread)
+        wp.tile_scatter_masked(r_d_unscaled_tile, tid, r_d_unscaled_local, active_thread)
         wp.tile_scatter_masked(r_c_tile, tid, r_c_local, active_thread)
         wp.tile_scatter_masked(r_dx_tile, tid, r_dx_local, active_thread)
         wp.tile_scatter_masked(r_dy_tile, tid, r_dy_local, active_thread)
@@ -997,6 +1042,7 @@ def _make_project_dual_convergence_accel_kernel(reduction_size: int):
 
         r_p_max = wp.tile_max(r_p_tile)[0]
         r_d_max = wp.tile_max(r_d_tile)[0]
+        r_d_unscaled_max = wp.tile_max(r_d_unscaled_tile)[0]
         r_c_max = wp.tile_max(r_c_tile)[0]
         r_dx_l2_sum = wp.tile_sum(r_dx_tile)[0]
         r_dy_l2_sum = wp.tile_sum(r_dy_tile)[0]
@@ -1007,6 +1053,7 @@ def _make_project_dual_convergence_accel_kernel(reduction_size: int):
             status.iterations += 1
             status.r_p = r_p_max
             status.r_d = r_d_max
+            status.r_d_unscaled = r_d_unscaled_max
             status.r_c = r_c_max
 
             # Inexact-ADMM: schedule the inner linear-solver tolerance from the primal residual
@@ -1233,6 +1280,7 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_com
         problem_iio: wp.array[wp.int32],
         problem_dim: wp.array[wp.int32],
         problem_vio: wp.array[wp.int32],
+        problem_P: wp.array[wp.float32],
         solver_config: wp.array[PADMMConfigStruct],
         solver_r_p: wp.array[wp.float32],
         solver_r_d: wp.array[wp.float32],
@@ -1280,9 +1328,11 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_com
         # Compute element-wise max over each residual vector to compute the infinity-norm
         r_p_max = wp.float32(0.0)
         r_d_max = wp.float32(0.0)
+        r_d_unscaled_max = wp.float32(0.0)
         if wp.static(num_tiles_cts > 1):
             r_p_max_acc = wp.tile_zeros(num_tiles_cts, dtype=wp.float32, storage="shared")
             r_d_max_acc = wp.tile_zeros(num_tiles_cts, dtype=wp.float32, storage="shared")
+            r_d_unscaled_max_acc = wp.tile_zeros(num_tiles_cts, dtype=wp.float32, storage="shared")
         for tile_id in range(num_tiles_cts):
             ct_id_tile = tile_id * tile_size
             if ct_id_tile >= ncts:
@@ -1311,9 +1361,20 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_com
                 r_d_max_acc[tile_id] = wp.tile_max(tile)[0]
             else:
                 r_d_max = wp.tile_max(tile)[0]
+
+            tile = wp.tile_load(solver_r_d, shape=tile_size, offset=rio_tile)
+            preconditioner = wp.tile_load(problem_P, shape=tile_size, offset=rio_tile)
+            tile = wp.tile_map(wp.abs, tile * preconditioner)
+            if need_mask:
+                tile = wp.tile_map(mul_mask, mask, tile)
+            if wp.static(num_tiles_cts > 1):
+                r_d_unscaled_max_acc[tile_id] = wp.tile_max(tile)[0]
+            else:
+                r_d_unscaled_max = wp.tile_max(tile)[0]
         if wp.static(num_tiles_cts > 1):
             r_p_max = wp.tile_max(r_p_max_acc)[0]
             r_d_max = wp.tile_max(r_d_max_acc)[0]
+            r_d_unscaled_max = wp.tile_max(r_d_unscaled_max_acc)[0]
 
         # Compute the infinity-norm of the complementarity residuals.
         ni = nbc + nl + nc
@@ -1346,6 +1407,7 @@ def _make_compute_infnorm_residuals_kernel(tile_size: int, n_cts_max: int, n_com
             # Store the scalar metric residuals in the solver status
             status.r_p = r_p_max
             status.r_d = r_d_max
+            status.r_d_unscaled = r_d_unscaled_max
             status.r_c = r_c_max
 
             # Inexact-ADMM: schedule the inner linear-solver tolerance from the primal residual

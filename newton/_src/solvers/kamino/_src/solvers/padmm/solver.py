@@ -11,6 +11,7 @@ See the :mod:`newton._src.solvers.kamino.solvers.padmm` module for a detailed de
 
 from __future__ import annotations
 
+import numpy as np
 import warp as wp
 
 from ....config import PADMMSolverConfig
@@ -20,6 +21,7 @@ from ...core.size import SizeKamino
 from ...dynamics.dual import DualProblem
 from ...geometry.contacts import ContactsKamino
 from ...kinematics.limits import LimitsKamino
+from ...linalg import ConjugateResidualSolver, ConjugateResidualSolverFused
 from ...utils.tile import get_block_dim, get_tile_size
 from .kernels import (
     _apply_dual_preconditioner_to_solution,
@@ -32,9 +34,11 @@ from .kernels import (
     _compute_velocity_bias,
     _make_compute_infnorm_residuals_kernel,
     _make_project_dual_convergence_accel_kernel,
+    _prepare_range_projection,
     _project_to_feasible_cone,
     _reset_solver_data,
     _scale_warmstart_forces,
+    _store_range_projection,
     _update_delassus_proximal_regularization,
     _update_delassus_proximal_regularization_sparse,
     _warmstart_contact_constraints,
@@ -105,6 +109,7 @@ class PADMMSolver:
         use_acceleration: bool = True,
         use_graph_conditionals: bool = True,
         collect_info: bool = False,
+        problem: DualProblem | None = None,
     ):
         """
         Initializes a PADMM solver.
@@ -124,6 +129,8 @@ class PADMMSolver:
             collect_info: Set to `True` to enable collection of solver convergence info.
                 This setting is intended only for analysis and debugging purposes, as it
                 will increase memory consumption and reduce wall-clock time.
+            problem: The dual problem whose Delassus operator is used for range projection.
+                If omitted, the projector is allocated lazily on the first solve.
         """
 
         # Declare the internal solver config cache
@@ -133,12 +140,19 @@ class PADMMSolver:
         self._use_adaptive_penalty: bool = False
         self._use_graph_conditionals: bool = True
         self._collect_info: bool = False
+        self._use_range_projection: bool = False
 
         # Declare the model size cache
         self._size: SizeKamino | None = None
 
         # Declare the solver data container
         self._data: PADMMData | None = None
+        self._range_projector: ConjugateResidualSolver | ConjugateResidualSolverFused | None = None
+        self._range_projection_world_active: wp.array[wp.bool] | None = None
+        self._range_projection_atol: wp.array[wp.float32] | None = None
+        self._range_projection_rtol: wp.array[wp.float32] | None = None
+        self._range_projection_rhs: wp.array[wp.float32] | None = None
+        self._range_projection_x: wp.array[wp.float32] | None = None
 
         # Declare the device cache
         self._device: wp.DeviceLike = None
@@ -152,6 +166,7 @@ class PADMMSolver:
                 use_acceleration=use_acceleration,
                 use_graph_conditionals=use_graph_conditionals,
                 collect_info=collect_info,
+                problem=problem,
             )
 
     ###
@@ -201,6 +216,7 @@ class PADMMSolver:
         use_acceleration: bool = True,
         use_graph_conditionals: bool = True,
         collect_info: bool = False,
+        problem: DualProblem | None = None,
     ):
         """
         Allocates the solver data structures on the specified device.
@@ -217,6 +233,8 @@ class PADMMSolver:
             collect_info: Set to `True` to enable collection of solver convergence info.
                 This setting is intended only for analysis and debugging purposes, as it
                 will increase memory consumption and reduce wall-clock time.
+            problem: The dual problem whose Delassus operator is used for range projection.
+                If omitted, the projector is allocated lazily on the first solve.
         """
 
         # Ensure the model is valid
@@ -244,6 +262,7 @@ class PADMMSolver:
         self._use_acceleration = use_acceleration
         self._use_graph_conditionals = use_graph_conditionals
         self._collect_info = collect_info
+        self._use_range_projection = any(c.use_range_projection for c in self._config)
 
         # Check if any world uses adaptive penalty updates (requiring per-step regularization updates)
         self._use_adaptive_penalty = any(
@@ -269,6 +288,22 @@ class PADMMSolver:
         configs = [convert_config_to_struct(c) for c in self._config]
         with wp.ScopedDevice(self._device):
             self._data.config = wp.array(configs, dtype=PADMMConfigStruct)
+            self._range_projection_world_active = wp.array(
+                [c.use_range_projection for c in self._config],
+                dtype=wp.bool,
+            )
+            self._range_projection_atol = wp.full(
+                self._size.num_worlds,
+                float(np.finfo(np.float32).eps),
+                dtype=wp.float32,
+            )
+            self._range_projection_rtol = wp.zeros(self._size.num_worlds, dtype=wp.float32)
+            self._range_projection_rhs = wp.empty_like(self._data.state.v)
+            self._range_projection_x = wp.empty_like(self._data.state.x)
+
+        self._range_projector = None
+        if problem is not None:
+            self._finalize_range_projector(problem)
 
         # Specialize certain solver kernels depending on whether acceleration is enabled
         self._initialize_solver_kernel = make_initialize_solver_kernel(self._use_acceleration)
@@ -280,6 +315,30 @@ class PADMMSolver:
         tile_size = get_tile_size(self._size.max_of_max_total_cts)
         block_dim = get_block_dim(tile_size, ratio=2, min_size=1)
         self._project_dual_convergence_accel_kernel = _make_project_dual_convergence_accel_kernel(block_dim)
+
+    def _finalize_range_projector(self, problem: DualProblem) -> None:
+        """Allocate the CR range projector before graph capture."""
+        if not self._use_range_projection:
+            return
+        if problem.device != self.device:
+            raise ValueError("PADMM range projection requires the dual problem on the solver device.")
+
+        primary_solver = problem.delassus._solver
+        if isinstance(primary_solver, ConjugateResidualSolverFused):
+            # The fused solver owns matrix-free indices tied to the operator dirty flags.
+            self._range_projector = primary_solver
+            return
+
+        operator = problem.delassus if problem.sparse else problem.delassus._operator
+        self._range_projector = ConjugateResidualSolver(
+            operator=operator,
+            device=self.device,
+            atol=self._range_projection_atol,
+            rtol=self._range_projection_rtol,
+            maxiter=problem.data.maxdim,
+            world_active=self._range_projection_world_active,
+            use_graph_conditionals=self._use_graph_conditionals,
+        )
 
     def reset(self, problem: DualProblem | None = None, world_mask: wp.array[wp.bool] | None = None):
         """
@@ -385,6 +444,11 @@ class PADMMSolver:
         Args:
             problem: The dual forward dynamics problem to be solved.
         """
+        if self._use_range_projection:
+            if self._range_projector is None:
+                self._finalize_range_projector(problem)
+            self._project_free_velocity(problem)
+
         # Pass the PADMM-owned tolerance array to the iterative linear solver (if present), so the
         # inexact-ADMM tolerance schedule (set in the convergence kernel) drives the inner solve.
         inner = getattr(problem._delassus._solver, "solver", None)
@@ -416,6 +480,67 @@ class PADMMSolver:
 
         # Update the final solution from the terminal PADMM state
         self._update_solution(problem)
+
+    def _project_free_velocity(self, problem: DualProblem) -> None:
+        """Project the assembled free velocity into the Delassus range."""
+        projector = self._range_projector
+        world_active = self._range_projection_world_active
+        projection_rhs = self._range_projection_rhs
+        projection_x = self._range_projection_x
+        if projector is None or world_active is None or projection_rhs is None or projection_x is None:
+            raise RuntimeError("PADMM range projector has not been allocated.")
+
+        # Sparse PADMM leaves its previous proximal shift in the operator array.
+        # Remove only that shift; physical armature terms are rebuilt by the operator.
+        if problem.sparse:
+            problem.delassus._eta.zero_()
+            problem.delassus.set_regularization_needs_update()
+
+        wp.launch(
+            kernel=_prepare_range_projection,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                problem.data.dim,
+                problem.data.vio,
+                world_active,
+                problem.data.v_f,
+                self._data.state.x_p,
+            ],
+            outputs=[
+                projection_rhs,
+                projection_x,
+            ],
+            device=self.device,
+        )
+
+        if isinstance(projector, ConjugateResidualSolverFused):
+            projected_rhs = projector.project_rhs(
+                b=projection_rhs,
+                x=projection_x,
+                world_active=world_active,
+                maxiter=problem.data.dim,
+                atol=self._range_projection_atol,
+                rtol=self._range_projection_rtol,
+            )
+        else:
+            projected_rhs = projector.project_rhs(
+                b=projection_rhs,
+                x=projection_x,
+                world_active=world_active,
+            )
+
+        wp.launch(
+            kernel=_store_range_projection,
+            dim=(self._size.num_worlds, self._size.max_of_max_total_cts),
+            inputs=[
+                problem.data.dim,
+                problem.data.vio,
+                world_active,
+                projected_rhs,
+            ],
+            outputs=[problem.data.v_f],
+            device=self.device,
+        )
 
     ###
     # Internals - High-Level Operations
@@ -1226,6 +1351,7 @@ class PADMMSolver:
                 problem.data.iio,
                 problem.data.dim,
                 problem.data.vio,
+                problem.data.P,
                 self._data.config,
                 self._data.residuals.r_primal,
                 self._data.residuals.r_dual,

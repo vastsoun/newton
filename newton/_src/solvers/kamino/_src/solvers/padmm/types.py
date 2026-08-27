@@ -293,6 +293,8 @@ class PADMMStatus:
             Computed using the L-inf norm as `r_primal := || x - y ||_inf`.
         r_d: The total dual residual.
             Computed using the L-inf norm as `r_dual := || eta * (x - x_p) + rho * (y - y_p) ||_inf`.
+        r_d_unscaled: The unscaled total dual-residual numerator.
+            Computed using the L-inf norm before division by the diagonal preconditioner.
         r_c: The complementarity residual used by the convergence test.
             For each bounded-multiplier row `b`, the residual is the directional
             box complementarity between its velocity and lower/upper box faces,
@@ -340,6 +342,12 @@ class PADMMStatus:
     """
     The total dual residual.
     Computed using the L-inf norm as `r_dual := || eta * (x - x_p) + rho * (y - y_p) ||_inf`.
+    """
+
+    r_d_unscaled: wp.float32
+    """
+    The unscaled total dual-residual numerator.
+    Computed using the L-inf norm before division by the diagonal preconditioner.
     """
 
     r_c: wp.float32

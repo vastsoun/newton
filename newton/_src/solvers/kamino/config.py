@@ -577,6 +577,14 @@ class PADMMSolverConfig:
     Defaults to `True`.
     """
 
+    use_range_projection: bool = True
+    """
+    Enables a Conjugate Residual preprocessing pass that projects the assembled
+    free-velocity vector into the range of the Delassus operator before PADMM
+    regularization is applied.\n
+    Defaults to `True`.
+    """
+
     use_graph_conditionals: bool = True
     """
     Enables use of CUDA graph conditional nodes in iterative solvers.\n

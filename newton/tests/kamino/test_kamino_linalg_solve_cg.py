@@ -139,6 +139,42 @@ class TestLinalgConjugate(unittest.TestCase):
             with self.subTest(problem=problem_name, solver=solver_cls.__name__):
                 self._test_solve(solver_cls, problem_params, device)
 
+    def test_cr_projects_inconsistent_rhs_to_operator_range(self):
+        """Project an inconsistent right-hand side onto a singular operator range."""
+        devices = ["cpu", *wp.get_cuda_devices()]
+        for device in devices:
+            with self.subTest(device=device):
+                info = DenseSquareMultiLinearInfo()
+                info.finalize(dimensions=[2], dtype=wp.float32, device=device)
+                operator = DenseLinearOperatorData(
+                    info=info,
+                    mat=wp.array([1.0, 0.0, 0.0, 0.0], dtype=wp.float32, device=device),
+                )
+                world_active = wp.full(1, True, dtype=wp.bool, device=device)
+                tolerance = wp.full(1, np.finfo(np.float32).eps, dtype=wp.float32, device=device)
+                solver = CRSolver(
+                    A=BatchedLinearOperator.from_dense(operator),
+                    world_active=world_active,
+                    maxiter=info.dim,
+                    atol=tolerance,
+                    rtol=wp.zeros(1, dtype=wp.float32, device=device),
+                    use_graph=False,
+                )
+                rhs = wp.array([2.0, -3.0], dtype=wp.float32, device=device)
+                initial_x = wp.array([0.0, 1.0], dtype=wp.float32, device=device)
+                projected_rhs = wp.empty(2, dtype=wp.float32, device=device)
+
+                iterations, residual_norm, _tolerance = solver.project_rhs(
+                    rhs,
+                    initial_x,
+                    projected_rhs,
+                )
+
+                np.testing.assert_allclose(projected_rhs.numpy(), [2.0, 0.0], atol=1.0e-6)
+                np.testing.assert_allclose(initial_x.numpy(), [2.0, -2.0], atol=1.0e-6)
+                self.assertEqual(int(iterations.numpy()[0]), 1)
+                self.assertAlmostEqual(float(residual_norm.numpy()[0]), 9.0)
+
     def _test_capture_replay_matches_eager(self, solver_cls, device):
         """Regression: capture-and-replay must match an eager solve.
 

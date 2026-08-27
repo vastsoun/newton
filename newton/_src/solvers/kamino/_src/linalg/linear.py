@@ -867,6 +867,7 @@ class ConjugateResidualSolver(IterativeSolver[ScalarType, IndexType]):
         self._Mi: conjugate.BatchedLinearOperator[ScalarType, IndexType] | None = None
         self._jacobi_preconditioner: wp.array[ScalarType] | None = None
         self.solver: conjugate.CRSolver[ScalarType, IndexType] | None = None
+        self._projected_rhs: wp.array[ScalarType] | None = None
         super().__init__(**kwargs)
 
     @override
@@ -890,6 +891,11 @@ class ConjugateResidualSolver(IterativeSolver[ScalarType, IndexType]):
         else:
             self._Mi = None
 
+        self._projected_rhs = wp.empty(
+            shape=(self._total_vec_size,),
+            dtype=self._dtype,
+            device=self._device,
+        )
         self.solver = conjugate.CRSolver(
             A=self._batched_operator,
             world_active=self._world_active,
@@ -945,7 +951,27 @@ class ConjugateResidualSolver(IterativeSolver[ScalarType, IndexType]):
         self._solve_iterations, self._solve_residual_norm, _ = solver.solve(
             b=b,
             x=x,
+            active_dims=kwargs.get("active_dims"),
+            world_active=kwargs.get("world_active"),
         )
+
+    def project_rhs(
+        self,
+        b: wp.array[ScalarType],
+        x: wp.array[ScalarType],
+        world_active: wp.array[wp.bool] | None = None,
+    ) -> wp.array[ScalarType]:
+        """Project ``b`` onto the operator range with a least-squares CR solve."""
+        solver = self._sparse_solver or self.solver
+        if solver is None or self._projected_rhs is None:
+            raise ValueError("ConjugateResidualSolver.allocate() must be called before project_rhs().")
+        self._solve_iterations, self._solve_residual_norm, _ = solver.project_rhs(
+            b=b,
+            x=x,
+            projected_rhs=self._projected_rhs,
+            world_active=world_active,
+        )
+        return self._projected_rhs
 
     def _update_preconditioner(self):
         if self._operator is None:
@@ -1066,6 +1092,7 @@ class ConjugateResidualSolverFused(IterativeSolver[wp.float32, wp.int32]):
             self._cursor = wp.empty((n_worlds, self._max_major_cols), dtype=wp.int32)
             self._iters = wp.zeros((n_worlds,), dtype=wp.int32)
             self._resid = wp.zeros((n_worlds,), dtype=wp.float32)
+            self._projected_rhs = wp.empty((self._total_rows,), dtype=wp.float32)
             bodies_offset = model.info.bodies_offset.numpy()
             self._nbd = wp.array((np.diff(bodies_offset) * 6).astype(np.int32), dtype=wp.int32)
             self._precond_dummy = wp.zeros((1,), dtype=wp.float32)
@@ -1254,13 +1281,19 @@ class ConjugateResidualSolverFused(IterativeSolver[wp.float32, wp.int32]):
         # Resolve per-world stopping controls to device arrays. A wp.array (e.g. PADMM's adaptive
         # ``linear_solver_atol``) is used directly so the kernel reads its live contents; a scalar
         # is written into the cached fallback array; None keeps the 1e-8 default.
-        maxiter = self._maxiter
-        atol = self.atol if isinstance(self.atol, wp.array) else self._atol_arr
-        rtol = self.rtol if isinstance(self.rtol, wp.array) else self._rtol_arr
-        if isinstance(self.atol, (int, float)):
-            self._atol_arr.fill_(float(self.atol))
-        if isinstance(self.rtol, (int, float)):
-            self._rtol_arr.fill_(float(self.rtol))
+        maxiter = kwargs.get("maxiter", self._maxiter)
+        atol_override = kwargs.get("atol")
+        rtol_override = kwargs.get("rtol")
+        atol_value = self.atol if atol_override is None else atol_override
+        rtol_value = self.rtol if rtol_override is None else rtol_override
+        atol = atol_value if isinstance(atol_value, wp.array) else self._atol_arr
+        rtol = rtol_value if isinstance(rtol_value, wp.array) else self._rtol_arr
+        if isinstance(atol_value, (int, float)):
+            self._atol_arr.fill_(float(atol_value))
+        if isinstance(rtol_value, (int, float)):
+            self._rtol_arr.fill_(float(rtol_value))
+        world_active = kwargs.get("world_active", self._world_active)
+        write_projected_rhs = bool(kwargs.get("write_projected_rhs", False))
 
         wp.launch_tiled(
             self._kernel,
@@ -1270,7 +1303,7 @@ class ConjugateResidualSolverFused(IterativeSolver[wp.float32, wp.int32]):
                 self._nbd,
                 op._info.vio,
                 op._info.vio,
-                self._world_active,
+                world_active,
                 cj.num_nzb,
                 cj.nzb_start,
                 cj.nzb_values,
@@ -1290,13 +1323,35 @@ class ConjugateResidualSolverFused(IterativeSolver[wp.float32, wp.int32]):
                 maxiter,
                 atol,
                 rtol,
+                wp.int32(write_projected_rhs),
             ],
-            outputs=[self._iters, self._resid],
+            outputs=[self._iters, self._resid, self._projected_rhs],
             block_dim=self._block_dim,
             device=device,
         )
         self._solve_iterations = self._iters
         self._solve_residual_norm = self._resid
+
+    def project_rhs(
+        self,
+        b: wp.array[wp.float32],
+        x: wp.array[wp.float32],
+        world_active: wp.array[wp.bool] | None = None,
+        maxiter: wp.array[wp.int32] | None = None,
+        atol: wp.array[wp.float32] | float | None = None,
+        rtol: wp.array[wp.float32] | float | None = None,
+    ) -> wp.array[wp.float32]:
+        """Project ``b`` onto the matrix-free operator range with CR."""
+        self._solve_impl(
+            b=b,
+            x=x,
+            world_active=world_active,
+            maxiter=self._maxiter if maxiter is None else maxiter,
+            atol=atol,
+            rtol=rtol,
+            write_projected_rhs=True,
+        )
+        return self._projected_rhs
 
 
 ###

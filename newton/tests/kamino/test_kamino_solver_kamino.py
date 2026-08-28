@@ -395,6 +395,10 @@ class TestSolverKaminoConfig(unittest.TestCase):
         self.assertEqual(config.padmm.warmstart_mode, "containers")
         self.assertEqual(config.padmm.warmstart_scale, 0.9)
         self.assertTrue(config.padmm.use_range_projection)
+        self.assertEqual(config.padmm.range_projection_weight_kinematic, 100.0)
+        self.assertEqual(config.padmm.range_projection_weight_friction, 1.0)
+        self.assertEqual(config.padmm.range_projection_weight_limit, 1.0)
+        self.assertEqual(config.padmm.range_projection_weight_contact, 1.0)
 
     def test_01_make_explicit(self):
         config = SolverKaminoImpl.Config(
@@ -418,6 +422,17 @@ class TestSolverKaminoConfig(unittest.TestCase):
         for scale in (-0.1, 1.1):
             with self.assertRaises(ValueError):
                 kamino_config.PADMMSolverConfig(warmstart_scale=scale)
+
+    def test_03_validate_range_projection_weights(self):
+        """Reject non-positive and non-finite physical projection weights."""
+        for name, value in (
+            ("range_projection_weight_kinematic", 0.0),
+            ("range_projection_weight_friction", -1.0),
+            ("range_projection_weight_limit", float("nan")),
+            ("range_projection_weight_contact", float("inf")),
+        ):
+            with self.subTest(name=name, value=value), self.assertRaisesRegex(ValueError, "positive and finite"):
+                kamino_config.PADMMSolverConfig(**{name: value})
 
     def test_02_reject_dense_adaptive_padmm_penalty(self):
         """Reject adaptive PADMM penalties with dense dynamics."""

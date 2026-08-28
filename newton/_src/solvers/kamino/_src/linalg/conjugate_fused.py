@@ -504,6 +504,7 @@ def make_fused_cr_kernel(max_rows: int, max_cols: int, max_blocks: int, block_di
         precond: wp.array[wp.float32],
         use_precond: wp.int32,
         eta: wp.array[wp.float32],
+        projection_scale: wp.array[wp.float32],
         # RHS / solution:
         b: wp.array[wp.float32],
         x: wp.array[wp.float32],
@@ -545,8 +546,9 @@ def make_fused_cr_kernel(max_rows: int, max_cols: int, max_blocks: int, block_di
             pr = wp.float32(1.0)
             if use_precond != 0:
                 pr = precond[voff + row]
-            p_rowv[i] = pr
-            eta_rowv[i] = eta[voff + row]
+            q = projection_scale[voff + row]
+            p_rowv[i] = pr * q
+            eta_rowv[i] = eta[voff + row] * q * q
             b_rowv[i] = b[voff + row]
             x_rowv[i] = x[voff + row]
 

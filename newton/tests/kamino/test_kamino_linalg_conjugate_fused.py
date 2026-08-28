@@ -170,6 +170,7 @@ def _solve_fused(worlds, use_precond, device, rng):
             d(P, wp.float32),
             int(use_precond),
             d(eta, wp.float32),
+            d(np.ones(W * R, np.float32), wp.float32),
             d(b, wp.float32),
             x,
             maxiter,
@@ -217,7 +218,7 @@ class TestFusedCRKernel(unittest.TestCase):
         self._check(use_precond=True)
 
 
-def _run_padmm_sparse(solver_cls, device):
+def _run_padmm_sparse(solver_cls, device, *, kinematic_weight=100.0, contact_weight=1.0):
     """Run a box-on-plane contact PADMM solve with the given sparse linear solver."""
     builder = basics.build_box_on_plane()
     builder.gravity[0].enabled = True
@@ -236,7 +237,10 @@ def _run_padmm_sparse(solver_cls, device):
     )
     update_containers(model=model, data=data, state=state, limits=limits, detector=detector, jacobians=jacobians)
 
-    config = PADMMSolver.Config()
+    config = PADMMSolver.Config(
+        range_projection_weight_kinematic=kinematic_weight,
+        range_projection_weight_contact=contact_weight,
+    )
     config.primal_tolerance = 1e-6
     config.dual_tolerance = 1e-6
     config.compl_tolerance = 1e-6
@@ -282,6 +286,18 @@ class TestFusedCRIntegration(unittest.TestCase):
         self.assertLess(lam_err, 1e-3, f"lambda mismatch CR vs CRF: rel {lam_err:.2e}")
         self.assertLess(vp_err, 1e-3, f"v_plus mismatch CR vs CRF: rel {vp_err:.2e}")
         self.assertLess(vf_err, 1e-4, f"projected v_f mismatch CR vs CRF: rel {vf_err:.2e}")
+
+    def test_padmm_weighted_projection_cr_vs_crf(self):
+        """Fused and multi-launch CR must agree for non-unit physical weights."""
+        if not self.device.is_cuda:
+            self.skipTest("requires CUDA")
+        ref = _run_padmm_sparse(ConjugateResidualSolver, self.device, kinematic_weight=25.0, contact_weight=4.0)
+        got = _run_padmm_sparse(ConjugateResidualSolverFused, self.device, kinematic_weight=25.0, contact_weight=4.0)
+
+        self.assertTrue(bool(ref["status"][0][0]), "multi-launch CR did not converge")
+        self.assertTrue(bool(got["status"][0][0]), "fused CRF did not converge")
+        vf_err = np.linalg.norm(ref["v_f"] - got["v_f"]) / (np.linalg.norm(ref["v_f"]) + 1e-12)
+        self.assertLess(vf_err, 1e-4, f"weighted projected v_f mismatch CR vs CRF: rel {vf_err:.2e}")
 
 
 if __name__ == "__main__":

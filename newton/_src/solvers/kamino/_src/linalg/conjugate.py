@@ -181,6 +181,47 @@ class BatchedLinearOperator(Generic[ScalarType, IndexType]):
             total_vec_size=total_vec_size,
         )
 
+    @classmethod
+    def with_symmetric_diagonal_scaling(
+        cls, A: BatchedLinearOperator[wp.float32, IndexType], scale: wp.array[wp.float32]
+    ) -> BatchedLinearOperator[wp.float32, IndexType]:
+        """Return the congruence-transformed operator ``diag(scale) A diag(scale)``."""
+        if A.dtype is not wp.float32:
+            raise TypeError("Symmetric diagonal scaling currently requires a float32 operator.")
+        if scale.shape[0] != A.total_vec_size:
+            raise ValueError("Scale vector size must match the operator vector size.")
+        with wp.ScopedDevice(A.device):
+            scaled_input = wp.empty_like(scale)
+            product = wp.empty_like(scale)
+
+        def gemv_fn(x, y, world_active, alpha, beta):
+            wp.launch(
+                _scale_vector,
+                dim=(A.n_worlds, A.max_dim),
+                inputs=[A.active_dims, A.vio, world_active, scale, x],
+                outputs=[scaled_input],
+                device=A.device,
+            )
+            A.matvec(scaled_input, product, world_active)
+            wp.launch(
+                _scaled_axpby,
+                dim=(A.n_worlds, A.max_dim),
+                inputs=[A.active_dims, A.vio, world_active, scale, product, alpha, beta],
+                outputs=[y],
+                device=A.device,
+            )
+
+        return cls(
+            gemv_fn,
+            A.n_worlds,
+            A.max_dim,
+            A.active_dims,
+            A.device,
+            wp.float32,
+            vio=A.vio,
+            total_vec_size=A.total_vec_size,
+        )
+
     def gemv(
         self,
         x: wp.array[ScalarType],
@@ -200,6 +241,38 @@ class BatchedLinearOperator(Generic[ScalarType, IndexType]):
 
 # Implementations
 # ---------------
+
+
+@wp.kernel
+def _scale_vector(
+    active_dims: wp.array[wp.int32],
+    vio: wp.array[wp.int32],
+    world_active: wp.array[wp.bool],
+    scale: wp.array[wp.float32],
+    x: wp.array[wp.float32],
+    scaled_x: wp.array[wp.float32],
+):
+    world, row = wp.tid()
+    if world_active[world] and row < active_dims[world]:
+        index = vio[world] + row
+        scaled_x[index] = scale[index] * x[index]
+
+
+@wp.kernel
+def _scaled_axpby(
+    active_dims: wp.array[wp.int32],
+    vio: wp.array[wp.int32],
+    world_active: wp.array[wp.bool],
+    scale: wp.array[wp.float32],
+    x: wp.array[wp.float32],
+    alpha: wp.float32,
+    beta: wp.float32,
+    y: wp.array[wp.float32],
+):
+    world, row = wp.tid()
+    if world_active[world] and row < active_dims[world]:
+        index = vio[world] + row
+        y[index] = alpha * scale[index] * x[index] + beta * y[index]
 
 
 @wp.kernel

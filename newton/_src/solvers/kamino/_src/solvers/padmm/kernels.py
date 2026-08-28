@@ -207,18 +207,41 @@ def _prepare_range_projection(
     problem_dim: wp.array[wp.int32],
     problem_vio: wp.array[wp.int32],
     world_active: wp.array[wp.bool],
+    problem_config: wp.array[PADMMConfigStruct],
+    problem_P: wp.array[wp.float32],
+    problem_njc: wp.array[wp.int32],
+    problem_lcgo: wp.array[wp.int32],
+    problem_ccgo: wp.array[wp.int32],
+    model_num_dynamic_cts: wp.array[wp.int32],
+    model_num_friction_cts: wp.array[wp.int32],
     problem_v_f: wp.array[wp.float32],
     solver_x_p: wp.array[wp.float32],
     solver_rhs: wp.array[wp.float32],
     solver_x: wp.array[wp.float32],
+    projection_scale: wp.array[wp.float32],
 ):
-    """Prepare ``D x = -v_f`` without modifying the PADMM warm start."""
+    """Prepare the physically weighted, congruence-transformed range projection."""
     world, row = wp.tid()
     if not world_active[world] or row >= problem_dim[world]:
         return
     index = problem_vio[world] + row
-    solver_rhs[index] = -problem_v_f[index]
-    solver_x[index] = solver_x_p[index]
+    config = problem_config[world]
+    weight = wp.float32(1.0)
+    if row >= model_num_dynamic_cts[world] and row < problem_njc[world]:
+        weight = config.range_projection_weight_kinematic
+    elif row >= problem_njc[world] and row < problem_njc[world] + model_num_friction_cts[world]:
+        weight = config.range_projection_weight_friction
+    elif row >= problem_lcgo[world] and row < problem_ccgo[world]:
+        weight = config.range_projection_weight_limit
+    elif row >= problem_ccgo[world]:
+        weight = config.range_projection_weight_contact
+
+    # Solver coordinates use A = P D P. Q = sqrt(W) P^-1 gives
+    # Q A Q = sqrt(W) D sqrt(W), the physical weighted objective.
+    q = wp.sqrt(weight) / problem_P[index]
+    projection_scale[index] = q
+    solver_rhs[index] = -q * problem_v_f[index]
+    solver_x[index] = solver_x_p[index] / q
 
 
 @wp.kernel
@@ -227,14 +250,15 @@ def _store_range_projection(
     problem_vio: wp.array[wp.int32],
     world_active: wp.array[wp.bool],
     projected_rhs: wp.array[wp.float32],
+    projection_scale: wp.array[wp.float32],
     problem_v_f: wp.array[wp.float32],
 ):
-    """Store ``v_f = -D x`` for worlds with range projection enabled."""
+    """Store the physical weighted projection in solver coordinates."""
     world, row = wp.tid()
     if not world_active[world] or row >= problem_dim[world]:
         return
     index = problem_vio[world] + row
-    problem_v_f[index] = -projected_rhs[index]
+    problem_v_f[index] = -projected_rhs[index] / projection_scale[index]
 
 
 def make_initialize_solver_kernel(use_acceleration: bool = False):

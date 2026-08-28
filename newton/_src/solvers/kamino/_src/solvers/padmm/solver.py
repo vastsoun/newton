@@ -153,6 +153,9 @@ class PADMMSolver:
         self._range_projection_rtol: wp.array[wp.float32] | None = None
         self._range_projection_rhs: wp.array[wp.float32] | None = None
         self._range_projection_x: wp.array[wp.float32] | None = None
+        self._range_projection_scale: wp.array[wp.float32] | None = None
+        self._model_num_dynamic_cts: wp.array[wp.int32] | None = None
+        self._model_num_friction_cts: wp.array[wp.int32] | None = None
 
         # Declare the device cache
         self._device: wp.DeviceLike = None
@@ -245,6 +248,8 @@ class PADMMSolver:
 
         # Cache a reference to the model size meta-data container
         self._size = model.size
+        self._model_num_dynamic_cts = model.info.num_joint_dynamic_cts
+        self._model_num_friction_cts = model.info.num_joint_friction_cts
 
         # Use the model's device
         self._device = model.device
@@ -300,6 +305,7 @@ class PADMMSolver:
             self._range_projection_rtol = wp.zeros(self._size.num_worlds, dtype=wp.float32)
             self._range_projection_rhs = wp.empty_like(self._data.state.v)
             self._range_projection_x = wp.empty_like(self._data.state.x)
+            self._range_projection_scale = wp.empty_like(self._data.state.x)
 
         self._range_projector = None
         if problem is not None:
@@ -338,6 +344,7 @@ class PADMMSolver:
             maxiter=problem.data.maxdim,
             world_active=self._range_projection_world_active,
             use_graph_conditionals=self._use_graph_conditionals,
+            projection_scale=self._range_projection_scale,
         )
 
     def reset(self, problem: DualProblem | None = None, world_mask: wp.array[wp.bool] | None = None):
@@ -487,7 +494,16 @@ class PADMMSolver:
         world_active = self._range_projection_world_active
         projection_rhs = self._range_projection_rhs
         projection_x = self._range_projection_x
-        if projector is None or world_active is None or projection_rhs is None or projection_x is None:
+        projection_scale = self._range_projection_scale
+        if (
+            projector is None
+            or world_active is None
+            or projection_rhs is None
+            or projection_x is None
+            or projection_scale is None
+            or self._model_num_dynamic_cts is None
+            or self._model_num_friction_cts is None
+        ):
             raise RuntimeError("PADMM range projector has not been allocated.")
 
         # Sparse PADMM leaves its previous proximal shift in the operator array.
@@ -503,12 +519,20 @@ class PADMMSolver:
                 problem.data.dim,
                 problem.data.vio,
                 world_active,
+                self._data.config,
+                problem.data.P,
+                problem.data.njc,
+                problem.data.lcgo,
+                problem.data.ccgo,
+                self._model_num_dynamic_cts,
+                self._model_num_friction_cts,
                 problem.data.v_f,
                 self._data.state.x_p,
             ],
             outputs=[
                 projection_rhs,
                 projection_x,
+                projection_scale,
             ],
             device=self.device,
         )
@@ -521,6 +545,7 @@ class PADMMSolver:
                 maxiter=problem.data.dim,
                 atol=self._range_projection_atol,
                 rtol=self._range_projection_rtol,
+                projection_scale=projection_scale,
             )
         else:
             projected_rhs = projector.project_rhs(
@@ -537,6 +562,7 @@ class PADMMSolver:
                 problem.data.vio,
                 world_active,
                 projected_rhs,
+                projection_scale,
             ],
             outputs=[problem.data.v_f],
             device=self.device,

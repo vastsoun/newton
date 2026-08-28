@@ -175,6 +175,41 @@ class TestLinalgConjugate(unittest.TestCase):
                 self.assertEqual(int(iterations.numpy()[0]), 1)
                 self.assertAlmostEqual(float(residual_norm.numpy()[0]), 9.0)
 
+    def test_cr_physically_weighted_projection_is_preconditioner_invariant(self):
+        """Congruence scaling must minimize physical, not solver-coordinate, residuals."""
+        for device in ["cpu", *wp.get_cuda_devices()]:
+            with self.subTest(device=device):
+                info = DenseSquareMultiLinearInfo()
+                info.finalize(dimensions=[2], dtype=wp.float32, device=device)
+                physical_D = np.array([[1.0, 1.0], [1.0, 1.0]], dtype=np.float32)
+                preconditioner = np.array([2.0, 3.0], dtype=np.float32)
+                solver_D = np.diag(preconditioner) @ physical_D @ np.diag(preconditioner)
+                weights = np.array([100.0, 1.0], dtype=np.float32)
+                scale = np.sqrt(weights) / preconditioner
+                operator = DenseLinearOperatorData(
+                    info=info, mat=wp.array(solver_D.flatten(), dtype=wp.float32, device=device)
+                )
+                world_active = wp.full(1, True, dtype=wp.bool, device=device)
+                solver = CRSolver(
+                    A=BatchedLinearOperator.with_symmetric_diagonal_scaling(
+                        BatchedLinearOperator.from_dense(operator), wp.array(scale, dtype=wp.float32, device=device)
+                    ),
+                    world_active=world_active,
+                    maxiter=info.dim,
+                    atol=wp.full(1, 1e-7, dtype=wp.float32, device=device),
+                    rtol=wp.zeros(1, dtype=wp.float32, device=device),
+                    use_graph=False,
+                )
+                physical_rhs = np.array([1.0, -1.0], dtype=np.float32)
+                rhs = wp.array(scale * (preconditioner * physical_rhs), dtype=wp.float32, device=device)
+                x = wp.zeros(2, dtype=wp.float32, device=device)
+                projected_rhs = wp.empty(2, dtype=wp.float32, device=device)
+
+                solver.project_rhs(rhs, x, projected_rhs)
+                physical_projection = projected_rhs.numpy() / scale / preconditioner
+                expected = np.full(2, 99.0 / 101.0, dtype=np.float32)
+                np.testing.assert_allclose(physical_projection, expected, atol=2e-3)
+
     def _test_capture_replay_matches_eager(self, solver_cls, device):
         """Regression: capture-and-replay must match an eager solve.
 

@@ -579,10 +579,34 @@ class PADMMSolverConfig:
 
     use_range_projection: bool = True
     """
-    Enables a Conjugate Residual preprocessing pass that projects the assembled
-    free-velocity vector into the range of the Delassus operator before PADMM
-    regularization is applied.\n
+    Enables a physically weighted Conjugate Residual preprocessing pass that
+    projects the assembled free-velocity vector into the range of the Delassus
+    operator before PADMM regularization is applied.\n
     Defaults to `True`.
+    """
+
+    range_projection_weight_kinematic: float = 100.0
+    """
+    Physical least-squares objective coefficient for kinematic joint rows
+    during range projection. Must be positive and finite. Defaults to `100.0`.
+    """
+
+    range_projection_weight_friction: float = 1.0
+    """
+    Physical least-squares objective coefficient for joint-friction rows
+    during range projection. Must be positive and finite. Defaults to `1.0`.
+    """
+
+    range_projection_weight_limit: float = 1.0
+    """
+    Physical least-squares objective coefficient for joint-limit rows during
+    range projection. Must be positive and finite. Defaults to `1.0`.
+    """
+
+    range_projection_weight_contact: float = 1.0
+    """
+    Physical least-squares objective coefficient for contact rows during range
+    projection. Must be positive and finite. Defaults to `1.0`.
     """
 
     use_graph_conditionals: bool = True
@@ -787,6 +811,14 @@ class PADMMSolverConfig:
             )
         if not 0.0 <= self.warmstart_scale <= 1.0:
             raise ValueError(f"Invalid warmstart scale: {self.warmstart_scale}. Must be in the range [0, 1].")
+        for name, weight in (
+            ("range projection kinematic weight", self.range_projection_weight_kinematic),
+            ("range projection friction weight", self.range_projection_weight_friction),
+            ("range projection limit weight", self.range_projection_weight_limit),
+            ("range projection contact weight", self.range_projection_weight_contact),
+        ):
+            if not math.isfinite(weight) or weight <= 0.0:
+                raise ValueError(f"Invalid {name}: {weight}. Must be positive and finite.")
 
         # Ensure that the enum-valued parameters are valid options
         # Conversion to enum-type configs will raise an error

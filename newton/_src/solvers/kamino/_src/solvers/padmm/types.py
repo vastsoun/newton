@@ -273,6 +273,18 @@ class PADMMConfigStruct:
     warmstart_scale: wp.float32
     """Scale applied to cached constraint forces during warm-starting. Defaults to `0.9`."""
 
+    range_projection_weight_kinematic: wp.float32
+    """Physical least-squares objective coefficient for kinematic range-projection rows."""
+
+    range_projection_weight_friction: wp.float32
+    """Physical least-squares objective coefficient for joint-friction range-projection rows."""
+
+    range_projection_weight_limit: wp.float32
+    """Physical least-squares objective coefficient for joint-limit range-projection rows."""
+
+    range_projection_weight_contact: wp.float32
+    """Physical least-squares objective coefficient for contact range-projection rows."""
+
 
 @wp.struct
 class PADMMStatus:
@@ -1291,4 +1303,8 @@ def convert_config_to_struct(config: PADMMSolverConfig) -> PADMMConfigStruct:
     config_struct.linear_solver_tolerance = config.linear_solver_tolerance
     config_struct.linear_solver_tolerance_ratio = config.linear_solver_tolerance_ratio
     config_struct.warmstart_scale = config.warmstart_scale
+    config_struct.range_projection_weight_kinematic = config.range_projection_weight_kinematic
+    config_struct.range_projection_weight_friction = config.range_projection_weight_friction
+    config_struct.range_projection_weight_limit = config.range_projection_weight_limit
+    config_struct.range_projection_weight_contact = config.range_projection_weight_contact
     return config_struct

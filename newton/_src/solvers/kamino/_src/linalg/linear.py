@@ -864,6 +864,7 @@ class ConjugateResidualSolver(IterativeSolver[ScalarType, IndexType]):
         self,
         **kwargs: dict[str, Any],
     ):
+        self._projection_scale: wp.array[wp.float32] | None = kwargs.pop("projection_scale", None)
         self._Mi: conjugate.BatchedLinearOperator[ScalarType, IndexType] | None = None
         self._jacobi_preconditioner: wp.array[ScalarType] | None = None
         self.solver: conjugate.CRSolver[ScalarType, IndexType] | None = None
@@ -896,8 +897,13 @@ class ConjugateResidualSolver(IterativeSolver[ScalarType, IndexType]):
             dtype=self._dtype,
             device=self._device,
         )
+        batched_operator = self._batched_operator
+        if self._projection_scale is not None:
+            batched_operator = conjugate.BatchedLinearOperator.with_symmetric_diagonal_scaling(
+                batched_operator, self._projection_scale
+            )
         self.solver = conjugate.CRSolver(
-            A=self._batched_operator,
+            A=batched_operator,
             world_active=self._world_active,
             atol=self.atol,
             rtol=self.rtol,
@@ -910,8 +916,13 @@ class ConjugateResidualSolver(IterativeSolver[ScalarType, IndexType]):
         )
 
         if self._discover_sparse and self._sparse_operator is not None:
+            sparse_operator = self._sparse_operator
+            if self._projection_scale is not None:
+                sparse_operator = conjugate.BatchedLinearOperator.with_symmetric_diagonal_scaling(
+                    sparse_operator, self._projection_scale
+                )
             self._sparse_solver = conjugate.CRSolver(
-                A=self._sparse_operator,
+                A=sparse_operator,
                 world_active=self._world_active,
                 atol=self.atol,
                 rtol=self.rtol,
@@ -1098,6 +1109,7 @@ class ConjugateResidualSolverFused(IterativeSolver[wp.float32, wp.int32]):
             self._precond_dummy = wp.zeros((1,), dtype=wp.float32)
             # Full-length zero eta fallback (the fused kernel reads eta[voff + row] for every active row).
             self._eta_dummy = wp.zeros((self._total_rows,), dtype=wp.float32)
+            self._projection_scale_dummy = wp.ones((self._total_rows,), dtype=wp.float32)
         # Combined regularization, refreshed together with the index structures (see _solve_impl).
         self._cached_eta = self._eta_dummy
 
@@ -1277,6 +1289,7 @@ class ConjugateResidualSolverFused(IterativeSolver[wp.float32, wp.int32]):
         eta = self._cached_eta
         use_precond = 1 if op._preconditioner is not None else 0
         precond = op._preconditioner if op._preconditioner is not None else self._precond_dummy
+        projection_scale = kwargs.get("projection_scale", self._projection_scale_dummy)
 
         # Resolve per-world stopping controls to device arrays. A wp.array (e.g. PADMM's adaptive
         # ``linear_solver_atol``) is used directly so the kernel reads its live contents; a scalar
@@ -1318,6 +1331,7 @@ class ConjugateResidualSolverFused(IterativeSolver[wp.float32, wp.int32]):
                 precond,
                 use_precond,
                 eta,
+                projection_scale,
                 b,
                 x,
                 maxiter,
@@ -1340,6 +1354,7 @@ class ConjugateResidualSolverFused(IterativeSolver[wp.float32, wp.int32]):
         maxiter: wp.array[wp.int32] | None = None,
         atol: wp.array[wp.float32] | float | None = None,
         rtol: wp.array[wp.float32] | float | None = None,
+        projection_scale: wp.array[wp.float32] | None = None,
     ) -> wp.array[wp.float32]:
         """Project ``b`` onto the matrix-free operator range with CR."""
         self._solve_impl(
@@ -1349,6 +1364,7 @@ class ConjugateResidualSolverFused(IterativeSolver[wp.float32, wp.int32]):
             maxiter=self._maxiter if maxiter is None else maxiter,
             atol=atol,
             rtol=rtol,
+            projection_scale=projection_scale,
             write_projected_rhs=True,
         )
         return self._projected_rhs

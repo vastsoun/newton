@@ -340,6 +340,7 @@ class Example:
             solver_config.dynamics.linear_solver_kwargs = {"maxiter": 9}
             if solver_config.padmm is None:
                 raise RuntimeError("Kamino PADMM configuration is unavailable")
+            solver_config.padmm.rho_0 = 0.1
             solver_config.padmm.max_iterations = 50
             self.solver = newton.solvers.SolverKamino(self.model, config=solver_config)
         else:

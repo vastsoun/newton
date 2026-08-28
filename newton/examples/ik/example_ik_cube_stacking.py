@@ -121,6 +121,8 @@ def set_target_pose_kernel(
     task_offset_retract: wp.vec3,
     task_drop_off_pos: wp.vec3,
     cube_size: float,
+    gripper_open_position: float,
+    gripper_closed_position: float,
     home_pos: wp.vec3,
     task_init_body_q: wp.array[wp.transform],
     body_q: wp.array[wp.transform],
@@ -201,7 +203,7 @@ def set_target_pose_kernel(
     ee_rot_target_interpolated[tid] = ee_quat_interpolated[:4]
 
     # Set the gripper target position
-    gripper_pos = 0.06 * (1.0 - t_gripper)
+    gripper_pos = gripper_open_position * (1.0 - t_gripper) + gripper_closed_position * t_gripper
     gripper_target[tid, 0] = gripper_pos
     gripper_target[tid, 1] = gripper_pos
 
@@ -209,6 +211,7 @@ def set_target_pose_kernel(
 @wp.kernel(enable_backward=False)
 def advance_task_kernel(
     task_time_soft_limits: wp.array[float],
+    task_position_tolerance: float,
     ee_pos_target: wp.array[wp.vec3],
     ee_rot_target: wp.array[wp.vec4],
     body_q: wp.array[wp.transform],
@@ -236,15 +239,16 @@ def advance_task_kernel(
     ee_quat_target = wp.quaternion(ee_rot_target[tid][:3], ee_rot_target[tid][3])
 
     quat_rel = ee_quat_current * wp.quat_inverse(ee_quat_target)
-    rot_err = wp.abs(wp.degrees(2.0 * wp.atan2(wp.length(quat_rel[:3]), quat_rel[3])))
+    # Quaternion q and -q encode the same rotation, so use the shortest arc.
+    rot_err = wp.degrees(2.0 * wp.atan2(wp.length(quat_rel[:3]), wp.abs(quat_rel[3])))
 
     # Advance the task if the time elapsed is greater than the soft limit,
-    # the end-effector position error is less than 0.001 meters,
+    # the end-effector position error is within the configured tolerance,
     # the rotation error is less than 0.5 degrees, and the task index is not the last one.
     # These tolerances rely on the solver-specific gravity compensation setup.
     if (
         task_time_elapsed[tid] >= task_time_soft_limit
-        and pos_err < 0.001
+        and pos_err < task_position_tolerance
         and rot_err < 0.5
         and task_idx[tid] < wp.len(task_time_soft_limits) - 1
     ):
@@ -738,6 +742,9 @@ class Example:
 
         self.task_dt = self.frame_dt
         self.task_time_elapsed = wp.zeros(self.world_count, dtype=wp.float32)
+        self.task_position_tolerance = 0.001
+        self.gripper_open_position = 0.06
+        self.gripper_closed_position = 0.0
 
         # Initialize the target positions and rotations
         self.ee_pos_target = wp.zeros(self.world_count, dtype=wp.vec3)
@@ -764,6 +771,8 @@ class Example:
                 self.task_offset_retract,
                 self.task_drop_off_pos,
                 self.cube_size,
+                self.gripper_open_position,
+                self.gripper_closed_position,
                 self.home_pos,
                 self.task_init_body_q,
                 self.state_0.body_q,
@@ -802,6 +811,7 @@ class Example:
             dim=self.world_count,
             inputs=[
                 self.task_time_soft_limits,
+                self.task_position_tolerance,
                 self.ee_pos_target,
                 self.ee_rot_target,
                 self.state_0.body_q,

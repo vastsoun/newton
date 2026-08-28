@@ -8,12 +8,14 @@
 # worlds using inverse kinematics to set joint target position references
 # for the Franka Emika Franka Panda robot arm.
 #
-# Command: python -m newton.examples ik_cube_stacking --world-count 16
-#
+# Command: python -m newton.examples ik_cube_stacking --solver kamino --world-count 16
+# or: uv run -m newton.examples ik_cube_stacking   --solver kamino --world-count 16   --viewer gl --headless --num-frames 2000   --video-path cube_stacking_kamino.mp4
 ###########################################################################
 
 import enum
+import subprocess
 import time
+from pathlib import Path
 
 import numpy as np
 import warp as wp
@@ -21,6 +23,77 @@ import warp as wp
 import newton
 import newton.examples
 import newton.ik as ik
+
+SOLVER_CHOICES = ("mujoco", "kamino")
+KAMINO_CONTACT_MAX = 16384
+
+
+class VideoWriter:
+    """Encode rendered RGB frames to a video with FFmpeg."""
+
+    def __init__(self, path: str, fps: int):
+        self.path = Path(path)
+        self.fps = fps
+        self.process = None
+        self.closed = False
+
+    def write(self, frame):
+        """Write a rendered RGB frame to the video stream."""
+        if self.closed:
+            return
+        if self.process is None:
+            height, width, channels = frame.shape
+            if channels != 3:
+                raise ValueError(f"Expected RGB frame with 3 channels, got {channels}")
+            if not self.path.parent.is_dir():
+                raise ValueError(f"Video output directory does not exist: {self.path.parent}")
+
+            # SECURITY-REVIEW: The output path originates from a CLI argument.
+            # Use an argument vector rather than a shell command to prevent injection.
+            try:
+                self.process = subprocess.Popen(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-f",
+                        "rawvideo",
+                        "-pixel_format",
+                        "rgb24",
+                        "-video_size",
+                        f"{width}x{height}",
+                        "-framerate",
+                        str(self.fps),
+                        "-i",
+                        "-",
+                        "-an",
+                        "-c:v",
+                        "libx264",
+                        "-pix_fmt",
+                        "yuv420p",
+                        str(self.path),
+                    ],
+                    stdin=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                )
+            except FileNotFoundError as error:
+                raise RuntimeError("FFmpeg is required to record video") from error
+
+        if self.process.stdin is None:
+            raise RuntimeError("FFmpeg input stream is unavailable")
+        self.process.stdin.write(frame.numpy().tobytes())
+
+    def close(self):
+        """Finish encoding the video stream."""
+        if self.closed:
+            return
+        self.closed = True
+        if self.process is None:
+            return
+        if self.process.stdin is not None:
+            self.process.stdin.close()
+        if self.process.wait() != 0:
+            raise RuntimeError("FFmpeg failed to encode the video")
+        self.process = None
 
 
 class TaskType(enum.IntEnum):
@@ -52,6 +125,7 @@ def set_target_pose_kernel(
     task_init_body_q: wp.array[wp.transform],
     body_q: wp.array[wp.transform],
     ee_index: int,
+    ee_local_xform: wp.transform,
     robot_body_count: int,
     num_bodies_per_world: int,
     # outputs
@@ -76,8 +150,9 @@ def set_target_pose_kernel(
 
     # Get the end-effector position and rotation at the start of the task
     ee_body_id = tid * num_bodies_per_world + ee_index
-    ee_pos_prev = wp.transform_get_translation(task_init_body_q[ee_body_id])
-    ee_quat_prev = wp.transform_get_rotation(task_init_body_q[ee_body_id])
+    ee_q_prev = wp.transform_multiply(task_init_body_q[ee_body_id], ee_local_xform)
+    ee_pos_prev = wp.transform_get_translation(ee_q_prev)
+    ee_quat_prev = wp.transform_get_rotation(ee_q_prev)
     ee_quat_target = wp.quat_from_axis_angle(wp.vec3(1.0, 0.0, 0.0), wp.pi)
 
     # Get the current position of the object
@@ -139,6 +214,7 @@ def advance_task_kernel(
     body_q: wp.array[wp.transform],
     num_bodies_per_world: int,
     ee_index: int,
+    ee_local_xform: wp.transform,
     # outputs
     task_idx: wp.array[int],
     task_time_elapsed: wp.array[float],
@@ -150,8 +226,9 @@ def advance_task_kernel(
 
     # Get the current position of the end-effector
     ee_body_id = tid * num_bodies_per_world + ee_index
-    ee_pos_current = wp.transform_get_translation(body_q[ee_body_id])
-    ee_quat_current = wp.transform_get_rotation(body_q[ee_body_id])
+    ee_q_current = wp.transform_multiply(body_q[ee_body_id], ee_local_xform)
+    ee_pos_current = wp.transform_get_translation(ee_q_current)
+    ee_quat_current = wp.transform_get_rotation(ee_q_current)
 
     # Calculate the end-effector position error
     pos_err = wp.length(ee_pos_target[tid] - ee_pos_current)
@@ -164,8 +241,7 @@ def advance_task_kernel(
     # Advance the task if the time elapsed is greater than the soft limit,
     # the end-effector position error is less than 0.001 meters,
     # the rotation error is less than 0.5 degrees, and the task index is not the last one.
-    # NOTE: These tolerances can be achieved thanks to the gravity compensation enabled via
-    # mujoco:gravcomp and mujoco:jnt_actgravcomp custom attributes.
+    # These tolerances rely on the solver-specific gravity compensation setup.
     if (
         task_time_elapsed[tid] >= task_time_soft_limit
         and pos_err < 0.001
@@ -195,8 +271,15 @@ class Example:
         self.world_count = args.world_count
         self.headless = args.headless
         self.verbose = args.verbose
+        self.solver_name = str(getattr(args, "solver", "mujoco")).lower()
+        self.num_frames = int(getattr(args, "num_frames", 0))
+        self.rendered_frames = 0
 
         self.viewer = viewer
+        video_path = getattr(args, "video_path", None)
+        if video_path is not None and (not isinstance(self.viewer, newton.viewer.ViewerGL) or not self.headless):
+            raise ValueError("--video-path requires --viewer gl --headless")
+        self.video_writer = VideoWriter(video_path, self.fps) if video_path is not None else None
 
         self.cube_count = 3
         self.cube_size = 0.05
@@ -223,18 +306,39 @@ class Example:
         self.model = scene.finalize()
         self.num_bodies_per_world = self.model.body_count // self.world_count
 
-        self.solver = newton.solvers.SolverMuJoCo(
-            self.model,
-            solver="newton",
-            integrator="implicitfast",
-            iterations=20,
-            ls_iterations=100,
-            nconmax=1000,
-            njmax=2000,
-            cone="elliptic",
-            impratio=1000.0,
-            use_mujoco_contacts=self.use_mujoco_contacts,
-        )
+        contact_max = KAMINO_CONTACT_MAX if self.solver_name == "kamino" else 1000
+        self.model.rigid_contact_max = contact_max
+        if self.solver_name == "mujoco":
+            self.solver = newton.solvers.SolverMuJoCo(
+                self.model,
+                solver="newton",
+                integrator="implicitfast",
+                iterations=20,
+                ls_iterations=100,
+                nconmax=contact_max,
+                njmax=contact_max * 2,
+                cone="elliptic",
+                impratio=1000.0,
+                use_mujoco_contacts=self.use_mujoco_contacts,
+            )
+        elif self.solver_name == "kamino":
+            solver_config = newton.solvers.SolverKamino.Config.from_model(self.model)
+            solver_config.use_collision_detector = False
+            if solver_config.materials is None:
+                raise RuntimeError("Kamino material configuration is unavailable")
+            solver_config.materials.friction_mix_mode = "max"
+            solver_config.sparse_jacobian = True
+            solver_config.sparse_dynamics = True
+            if solver_config.dynamics is None:
+                raise RuntimeError("Kamino dynamics configuration is unavailable")
+            solver_config.dynamics.linear_solver_type = "CR"
+            solver_config.dynamics.linear_solver_kwargs = {"maxiter": 9}
+            if solver_config.padmm is None:
+                raise RuntimeError("Kamino PADMM configuration is unavailable")
+            solver_config.padmm.max_iterations = 50
+            self.solver = newton.solvers.SolverKamino(self.model, config=solver_config)
+        else:
+            raise ValueError(f"Unknown solver: {self.solver_name}")
 
         self.state_0 = self.model.state()
         self.state_1 = self.model.state()
@@ -245,8 +349,21 @@ class Example:
         # Evaluate forward kinematics for collision detection
         newton.eval_fk(self.model, self.model.joint_q, self.model.joint_qd, self.state_0)
 
-        self.collision_pipeline = newton.CollisionPipeline(self.model)
+        if self.solver_name == "kamino":
+            self.collision_pipeline = newton.CollisionPipeline(
+                self.model,
+                reduce_contacts=True,
+                rigid_contact_max=contact_max,
+                broad_phase="nxn",
+            )
+        else:
+            self.collision_pipeline = newton.CollisionPipeline(self.model)
         self.contacts = self.collision_pipeline.contacts()
+        self.gravity_force = (
+            wp.zeros(self.model.joint_dof_count, dtype=wp.float32, device=self.model.device)
+            if self.solver_name == "kamino"
+            else None
+        )
 
         # Setup ik and tasks
         self.state = self.model.state()
@@ -254,7 +371,7 @@ class Example:
         self.setup_ik()
         self.setup_tasks()
 
-        if self.headless:
+        if self.headless and self.video_writer is None:
             self.viewer = newton.viewer.ViewerNull()
 
         self.viewer.set_model(self.model)
@@ -262,6 +379,10 @@ class Example:
 
         if hasattr(self.viewer, "renderer"):
             self.viewer.set_world_offsets(wp.vec3(1.5, 1.5, 0.0))
+            if self.world_count > 1:
+                # Frame the centered grid of worlds rather than a single robot.
+                self.viewer.set_camera(pos=wp.vec3(3.8, -5.6, 2.0), pitch=-25.0, yaw=125.0)
+                self.viewer.camera.look_at(wp.vec3(0.0, 0.0, 0.0))
 
         self.capture()
 
@@ -293,6 +414,15 @@ class Example:
                 self.collision_pipeline.collide(self.state_0, self.contacts)
 
             self.state_0.clear_forces()
+            if self.gravity_force is not None:
+                newton.eval_inverse_dynamics_passive(
+                    self.model,
+                    self.state_0,
+                    gravity_force=self.gravity_force,
+                )
+                joint_force_view = self.control.joint_f.reshape((self.world_count, -1))
+                gravity_force_view = self.gravity_force.reshape((self.world_count, -1))
+                wp.copy(dest=joint_force_view[:, :7], src=gravity_force_view[:, :7])
 
             self.solver.step(self.state_0, self.state_1, self.control, self.contacts, self.sim_dt)
 
@@ -325,6 +455,14 @@ class Example:
         self.viewer.log_state(self.state_0)
         self.viewer.log_contacts(self.contacts, self.state_0)
         self.viewer.end_frame()
+        self.rendered_frames += 1
+        if self.video_writer is not None and not self.video_writer.closed:
+            self.video_writer.write(self.viewer.get_frame())
+            if self.rendered_frames >= self.num_frames:
+                self.video_writer.close()
+                # ViewerGL normally runs until its window is closed; stop once
+                # the requested number of video frames has been encoded.
+                self.viewer.renderer.window.close()
 
     def build_franka_with_table(self):
         builder = newton.ModelBuilder()
@@ -339,7 +477,14 @@ class Example:
             floating=False,
             enable_self_collisions=False,
             parse_visuals_as_colliders=False,
+            collapse_fixed_joints=False,
         )
+
+        ee_index = builder.body_label.index("fr3/fr3_hand_tcp")
+        collapse_results = builder.collapse_fixed_joints()
+        ee_parent = collapse_results["body_merged_parent"][ee_index]
+        self.ee_index = collapse_results["body_remap"][ee_parent]
+        self.ee_local_xform = collapse_results["body_merged_transform"][ee_index]
 
         builder.joint_q[:9] = [
             -3.6802115e-03,
@@ -367,7 +512,7 @@ class Example:
 
         builder.joint_target_ke[:9] = [4500, 4500, 3500, 3500, 2000, 2000, 2000, 100, 100]
         builder.joint_target_kd[:9] = [450, 450, 350, 350, 200, 200, 200, 10, 10]
-        builder.joint_effort_limit[:9] = [87, 87, 87, 87, 12, 12, 12, 100, 100]
+        builder.joint_effort_limit[:9] = [np.inf] * 9
         builder.joint_armature[:9] = [0.3] * 4 + [0.11] * 3 + [0.15] * 2
 
         # Enable gravity compensation for the 7 arm joint DOFs
@@ -379,15 +524,12 @@ class Example:
 
         # Enable body gravcomp on the arm links and hand assembly so MuJoCo
         # cancels their gravitational load.
-        # Body 0 = base (root), body 1 = fr3_link0 (fixed to world).
-        # Bodies 2-8 = fr3_link1-7 (revolute arm joints).
-        # Bodies 9-11 = fr3_link8, fr3_hand, fr3_hand_tcp (hand assembly).
-        # Bodies 12-13 = fr3_leftfinger, fr3_rightfinger (gripper).
         gravcomp_body = builder.custom_attributes["mujoco:gravcomp"]
         if gravcomp_body.values is None:
             gravcomp_body.values = {}
-        for body_idx in range(2, 14):
-            gravcomp_body.values[body_idx] = 1.0
+        for body_idx, body_label in enumerate(builder.body_label):
+            if body_label.startswith("fr3/") and body_label not in ("fr3/base", "fr3/fr3_link0"):
+                gravcomp_body.values[body_idx] = 1.0
 
         shape_cfg = newton.ModelBuilder.ShapeConfig(margin=0.0, density=1000.0)
         shape_cfg.ke = 5.0e4
@@ -410,8 +552,12 @@ class Example:
             condim_attr = builder.custom_attributes["mujoco:condim"]
             if condim_attr.values is None:
                 condim_attr.values = {}
+            finger_body_indices = {
+                builder.body_label.index("fr3/fr3_leftfinger"),
+                builder.body_label.index("fr3/fr3_rightfinger"),
+            }
             for shape_idx in range(builder.shape_count):
-                if builder.shape_body[shape_idx] in (12, 13):  # left/right finger bodies
+                if builder.shape_body[shape_idx] in finger_body_indices:
                     condim_attr.values[shape_idx] = 4
 
         return builder
@@ -519,24 +665,22 @@ class Example:
                 condim_attr.values[cube_shape_idx] = 4
 
     def setup_ik(self):
-        self.ee_index = 11
         body_q_np = self.state.body_q.numpy()
-        self.ee_tf = wp.transform(*body_q_np[self.ee_index])
+        self.ee_tf = wp.transform_multiply(wp.transform(*body_q_np[self.ee_index]), self.ee_local_xform)
 
-        init_ee_pos = body_q_np[self.ee_index][:3]
-        self.home_pos = wp.vec3(init_ee_pos)
+        self.home_pos = wp.transform_get_translation(self.ee_tf)
 
         # Position objective
         self.pos_obj = ik.IKObjectivePosition(
             link_index=self.ee_index,
-            link_offset=wp.vec3(0.0, 0.0, 0.0),
+            link_offset=wp.transform_get_translation(self.ee_local_xform),
             target_positions=wp.array([self.home_pos] * self.world_count, dtype=wp.vec3),
         )
 
         # Rotation objective
         self.rot_obj = ik.IKObjectiveRotation(
             link_index=self.ee_index,
-            link_offset_rotation=wp.quat_identity(),
+            link_offset_rotation=wp.transform_get_rotation(self.ee_local_xform),
             target_rotations=wp.array([wp.transform_get_rotation(self.ee_tf)[:4]] * self.world_count, dtype=wp.vec4),
         )
 
@@ -624,6 +768,7 @@ class Example:
                 self.task_init_body_q,
                 self.state_0.body_q,
                 self.ee_index,
+                self.ee_local_xform,
                 self.robot_body_count,
                 self.num_bodies_per_world,
             ],
@@ -662,6 +807,7 @@ class Example:
                 self.state_0.body_q,
                 self.num_bodies_per_world,
                 self.ee_index,
+                self.ee_local_xform,
             ],
             outputs=[
                 self.task_idx,
@@ -710,6 +856,17 @@ class Example:
         newton.examples.add_world_count_arg(parser)
         newton.examples.add_mujoco_contacts_arg(parser)
         parser.set_defaults(world_count=16)
+        parser.add_argument(
+            "--solver",
+            choices=SOLVER_CHOICES,
+            default="mujoco",
+            help="Rigid-body solver to use; kamino uses sparse dynamics and constraint Jacobians.",
+        )
+        parser.add_argument(
+            "--video-path",
+            metavar="PATH",
+            help="Record a headless GL render to PATH (requires FFmpeg, --viewer gl, and --headless).",
+        )
         parser.add_argument("--verbose", action="store_true", help="Enable verbose output.")
         return parser
 

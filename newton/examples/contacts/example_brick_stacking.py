@@ -5,15 +5,20 @@
 # Example Brick Stacking
 #
 # Demonstrates a Franka Panda robot picking up bricks from a table
-# and stacking them, using SDF-based mesh collision and the MuJoCo solver.
+# and stacking them, using SDF-based mesh collision. Select the MuJoCo or
+# Kamino solver with ``--solver``.
 # The arm is controlled with IK and a finite-state machine that sequences
 # approach, grasp, lift, move, place and release for each brick.
 #
-# Command: python -m newton.examples brick_stacking
+# Command: python -m newton.examples brick_stacking --solver mujoco
 #
 ###########################################################################
 
+import argparse
 import enum
+import subprocess
+import time
+from pathlib import Path
 
 import numpy as np
 import warp as wp
@@ -34,6 +39,144 @@ BRICK_MASS = BRICK_DENSITY * (4 * PITCH) * (2 * PITCH) * BRICK_HEIGHT
 BRICK_KE = 9.81 * BRICK_MASS / 1.25e-6
 BRICK_KD = 2.0 * np.sqrt(BRICK_KE * BRICK_MASS) * 10.0  # 10x critical damping for fast settling
 BRICK_MARGIN = 4.0e-5
+SOLVER_CHOICES = ("mujoco", "kamino", "kamino-dense")
+KAMINO_CONTACT_MAX = 16384
+KAMINO_DENSE_CONTACT_MAX = 256
+KAMINO_JOINT_TYPE_NAMES = (
+    "FREE",
+    "REVOLUTE",
+    "PRISMATIC",
+    "CYLINDRICAL",
+    "UNIVERSAL",
+    "SPHERICAL",
+    "CARTESIAN",
+    "FIXED",
+    "GIMBAL",
+    "GIMBAL_LEFT_HANDED",
+)
+KAMINO_JOINT_ACTUATION_TYPE_NAMES = (
+    "PASSIVE",
+    "FORCE",
+    "POSITION",
+    "VELOCITY",
+    "POSITION_VELOCITY",
+    "POSITION_VELOCITY_FORCE",
+)
+
+
+def _print_kamino_model_structure(solver):
+    """Print the body and joint topology of Kamino's converted model."""
+    model = solver._model_kamino
+    bodies = model.bodies
+    joints = model.joints
+    body_labels = bodies.label or [""] * bodies.num_bodies
+    joint_labels = joints.label or [""] * joints.num_joints
+
+    def body_name(body_index):
+        if body_index < 0:
+            return "world"
+        return f"{body_index} ({body_labels[body_index]})"
+
+    print("Kamino model structure:")
+    print("  Bodies:")
+    for body_index, body_label in enumerate(body_labels):
+        print(f"    {body_index}: {body_label}")
+
+    print("  Joints:")
+    joint_types = joints.dof_type.numpy()
+    joint_actuation_types = joints.act_type.numpy()
+    joint_parents = joints.bid_B.numpy()
+    joint_children = joints.bid_F.numpy()
+    for joint_index, joint_label in enumerate(joint_labels):
+        joint_type_id = int(joint_types[joint_index])
+        joint_actuation_type_id = int(joint_actuation_types[joint_index])
+        joint_type = (
+            KAMINO_JOINT_TYPE_NAMES[joint_type_id]
+            if 0 <= joint_type_id < len(KAMINO_JOINT_TYPE_NAMES)
+            else f"UNKNOWN({joint_type_id})"
+        )
+        joint_actuation_type = (
+            KAMINO_JOINT_ACTUATION_TYPE_NAMES[joint_actuation_type_id]
+            if 0 <= joint_actuation_type_id < len(KAMINO_JOINT_ACTUATION_TYPE_NAMES)
+            else f"UNKNOWN({joint_actuation_type_id})"
+        )
+        print(
+            f"    {joint_index}: {joint_label}, type={joint_type}, actuation={joint_actuation_type}, "
+            f"parent={body_name(joint_parents[joint_index])}, child={body_name(joint_children[joint_index])}"
+        )
+
+    for world_index, base_body_index in enumerate(model.info.base_body_index.numpy()):
+        if base_body_index >= 0:
+            print(f"  Base body (world {world_index}): {body_name(base_body_index)}")
+
+
+class VideoWriter:
+    """Encode rendered RGB frames to a video with FFmpeg."""
+
+    def __init__(self, path: str, fps: int):
+        self.path = Path(path)
+        self.fps = fps
+        self.process = None
+        self.closed = False
+
+    def write(self, frame):
+        """Write a rendered RGB frame to the video stream."""
+        if self.closed:
+            return
+        if self.process is None:
+            height, width, channels = frame.shape
+            if channels != 3:
+                raise ValueError(f"Expected RGB frame with 3 channels, got {channels}")
+            if not self.path.parent.is_dir():
+                raise ValueError(f"Video output directory does not exist: {self.path.parent}")
+
+            # SECURITY-REVIEW: The output path originates from a CLI argument.
+            # Use an argument vector rather than a shell command to prevent injection.
+            try:
+                self.process = subprocess.Popen(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-f",
+                        "rawvideo",
+                        "-pixel_format",
+                        "rgb24",
+                        "-video_size",
+                        f"{width}x{height}",
+                        "-framerate",
+                        str(self.fps),
+                        "-i",
+                        "-",
+                        "-an",
+                        "-c:v",
+                        "libx264",
+                        "-pix_fmt",
+                        "yuv420p",
+                        str(self.path),
+                    ],
+                    stdin=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                )
+            except FileNotFoundError as error:
+                raise RuntimeError("FFmpeg is required to record video") from error
+
+        if self.process.stdin is None:
+            raise RuntimeError("FFmpeg input stream is unavailable")
+        self.process.stdin.write(frame.numpy().tobytes())
+
+    def close(self):
+        """Finish encoding the video stream."""
+        if self.closed:
+            return
+        self.closed = True
+        if self.process is None:
+            return
+        if self.process.stdin is not None:
+            self.process.stdin.close()
+        if self.process.wait() != 0:
+            raise RuntimeError("FFmpeg failed to encode the video")
+        self.process = None
+
 
 # SDF mesh parameters
 SDF_RESOLUTION = 256
@@ -121,7 +264,7 @@ def _combine_meshes(mesh_list):
 STUD_RADIUS = 0.0024
 STUD_COLLIDER_RADIUS = STUD_RADIUS - 0.0002
 STUD_HEIGHT = 0.0017
-COLLIDER_INSET = 0.0001
+COLLIDER_INSET = 0.0002
 WALL_THICKNESS = 0.0012
 TOP_THICKNESS = 0.001
 TUBE_OUTER_RADIUS = 0.003255
@@ -257,6 +400,7 @@ def set_target_pose_kernel(
     task_init_body_q: wp.array[wp.transform],
     body_q: wp.array[wp.transform],
     ee_index: int,
+    ee_local_xform: wp.transform,
     # outputs
     ee_pos_target: wp.array[wp.vec3],
     ee_pos_interp: wp.array[wp.vec3],
@@ -278,8 +422,9 @@ def set_target_pose_kernel(
     # Smoothstep easing
     t = t_lin * t_lin * (3.0 - 2.0 * t_lin)
 
-    ee_pos_prev = wp.transform_get_translation(task_init_body_q[ee_index])
-    ee_quat_prev = wp.transform_get_rotation(task_init_body_q[ee_index])
+    ee_q_prev = wp.transform_multiply(task_init_body_q[ee_index], ee_local_xform)
+    ee_pos_prev = wp.transform_get_translation(ee_q_prev)
+    ee_quat_prev = wp.transform_get_rotation(ee_q_prev)
     ee_quat_down = wp.quat_from_axis_angle(wp.vec3(1.0, 0.0, 0.0), wp.pi)
 
     pick_pos = wp.transform_get_translation(task_init_body_q[pick_body])
@@ -328,7 +473,8 @@ def set_target_pose_kernel(
     interp_pos = ee_pos_prev * (1.0 - t) + target_pos * t
 
     # XY alignment correction for IK convergence
-    ee_pos_actual = wp.transform_get_translation(body_q[ee_index])
+    ee_q_actual = wp.transform_multiply(body_q[ee_index], ee_local_xform)
+    ee_pos_actual = wp.transform_get_translation(ee_q_actual)
     xy_err = wp.vec3(
         interp_pos[0] - ee_pos_actual[0],
         interp_pos[1] - ee_pos_actual[1],
@@ -357,6 +503,7 @@ def advance_task_kernel(
     ee_rot_target: wp.array[wp.vec4],
     body_q: wp.array[wp.transform],
     ee_index: int,
+    ee_local_xform: wp.transform,
     # outputs
     task_idx: wp.array[int],
     task_time_elapsed: wp.array[float],
@@ -366,8 +513,9 @@ def advance_task_kernel(
     idx = task_idx[tid]
     time_limit = task_time_limits[idx]
 
-    ee_pos_current = wp.transform_get_translation(body_q[ee_index])
-    ee_quat_current = wp.transform_get_rotation(body_q[ee_index])
+    ee_q_current = wp.transform_multiply(body_q[ee_index], ee_local_xform)
+    ee_pos_current = wp.transform_get_translation(ee_q_current)
+    ee_quat_current = wp.transform_get_rotation(ee_q_current)
 
     pos_err = wp.length(ee_pos_target[tid] - ee_pos_current)
 
@@ -392,12 +540,25 @@ class Example:
     def __init__(self, viewer, args=None):
         newton.use_coord_layout_targets = True
         self.viewer = viewer
+        self.solver_name = str(getattr(args, "solver", "mujoco")).lower()
+        self.print_kamino_stats = self.solver_name.startswith("kamino")
+        self.disable_contacts = bool(getattr(args, "disable_contacts", False))
         self.sim_time = 0.0
         self.fps = 60
         self.frame_dt = 1.0 / self.fps
+        self.num_frames = int(getattr(args, "num_frames", 0))
+        self.rendered_frames = 0
+        video_path = getattr(args, "video_path", None)
+        if video_path is not None and (
+            not isinstance(self.viewer, newton.viewer.ViewerGL) or not getattr(args, "headless", False)
+        ):
+            raise ValueError("--video-path requires --viewer gl --headless")
+        self.video_writer = VideoWriter(video_path, self.fps) if video_path is not None else None
         self.sim_substeps = 16
         self.sim_dt = self.frame_dt / self.sim_substeps
-        self.ee_index = 11
+        self.collapse_fixed_joints = bool(getattr(args, "collapse_fixed_joints", False))
+        self.ee_index = -1
+        self.ee_local_xform = wp.transform()
         self.brick_count = 3
 
         self.table_height = 0.1
@@ -425,7 +586,8 @@ class Example:
         # Record home EE position from the default URDF configuration
         state_tmp = self.model_ik.state()
         newton.eval_fk(self.model_ik, self.model_ik.joint_q, self.model_ik.joint_qd, state_tmp)
-        self.home_pos = wp.vec3(*state_tmp.body_q.numpy()[self.ee_index][:3])
+        ee_q = wp.transform_multiply(wp.transform(*state_tmp.body_q.numpy()[self.ee_index]), self.ee_local_xform)
+        self.home_pos = wp.transform_get_translation(ee_q)
 
         # Solve IK for the approach pose above the red brick so the gripper
         # starts there and the first visible motion is a smooth descent.
@@ -443,7 +605,12 @@ class Example:
 
         self.model = scene.finalize()
 
-        contact_max = 16384
+        if self.solver_name == "mujoco":
+            contact_max = 16384
+        elif self.solver_name == "kamino":
+            contact_max = KAMINO_CONTACT_MAX
+        else:
+            contact_max = KAMINO_DENSE_CONTACT_MAX
         self.model.rigid_contact_max = contact_max
 
         self.collision_pipeline = newton.CollisionPipeline(
@@ -453,23 +620,57 @@ class Example:
             broad_phase="nxn",
         )
 
-        self.solver = newton.solvers.SolverMuJoCo(
-            self.model,
-            solver="newton",
-            integrator="implicitfast",
-            iterations=15,
-            ls_iterations=100,
-            nconmax=contact_max,
-            njmax=contact_max * 2,
-            cone="elliptic",
-            impratio=50.0,
-            use_mujoco_contacts=False,
-        )
+        if self.solver_name == "mujoco":
+            self.solver = newton.solvers.SolverMuJoCo(
+                self.model,
+                solver="newton",
+                integrator="implicitfast",
+                iterations=15,
+                ls_iterations=100,
+                nconmax=contact_max,
+                njmax=contact_max * 2,
+                cone="elliptic",
+                impratio=50.0,
+                use_mujoco_contacts=False,
+            )
+        elif self.solver_name == "kamino":
+            solver_config = newton.solvers.SolverKamino.Config.from_model(self.model)
+            solver_config.use_collision_detector = False
+            if solver_config.materials is None:
+                raise RuntimeError("Kamino material configuration is unavailable")
+            solver_config.materials.friction_mix_mode = "max"
+            solver_config.sparse_jacobian = True
+            solver_config.sparse_dynamics = True
+            dynamics_config = solver_config.dynamics
+            if dynamics_config is None:
+                raise RuntimeError("Kamino dynamics configuration is unavailable")
+            dynamics_config.linear_solver_type = "CR"
+            dynamics_config.linear_solver_kwargs = {"maxiter": 9}
+            if solver_config.padmm is None:
+                raise RuntimeError("Kamino PADMM configuration is unavailable")
+            solver_config.padmm.max_iterations = 50
+            self.solver = newton.solvers.SolverKamino(self.model, config=solver_config)
+            self.kamino_max_iterations = solver_config.padmm.max_iterations
+        elif self.solver_name == "kamino-dense":
+            self.solver = newton.solvers.SolverKamino(self.model)
+            if self.solver._config.padmm is None:
+                raise RuntimeError("Kamino PADMM configuration is unavailable")
+            self.kamino_max_iterations = self.solver._config.padmm.max_iterations
+        else:
+            raise ValueError(f"Unknown solver: {self.solver_name}")
+
+        if self.print_kamino_stats:
+            _print_kamino_model_structure(self.solver)
 
         self.state_0 = self.model.state()
         self.state_1 = self.model.state()
         self.control = self.model.control()
         self.contacts = self.collision_pipeline.contacts()
+        self.gravity_force = (
+            wp.zeros(self.model.joint_dof_count, dtype=wp.float32, device=self.model.device)
+            if self.solver_name.startswith("kamino")
+            else None
+        )
 
         newton.eval_fk(self.model, self.model.joint_q, self.model.joint_qd, self.state_0)
         wp.copy(self.control.joint_target_q[:9], self.model.joint_q[:9])
@@ -478,11 +679,12 @@ class Example:
         self.setup_tasks()
 
         self.viewer.set_model(self.model)
-        if hasattr(self.viewer, "picking"):
-            ps = self.viewer.picking.pick_state.numpy()
+        picking = getattr(self.viewer, "picking", None)
+        if picking is not None:
+            ps = picking.pick_state.numpy()
             ps[0]["pick_stiffness"] = 0.1
             ps[0]["pick_damping"] = 0.01
-            self.viewer.picking.pick_state.assign(ps)
+            picking.pick_state.assign(ps)
 
         cam_pos = self.table_top_center + wp.vec3(0.22, -0.18, 0.15)
         self.viewer.set_camera(pos=cam_pos, pitch=-30.0, yaw=135.0)
@@ -502,7 +704,16 @@ class Example:
             floating=False,
             enable_self_collisions=False,
             parse_visuals_as_colliders=False,
+            collapse_fixed_joints=False,
         )
+        ee_index = builder.body_label.index("fr3/fr3_hand_tcp")
+        if self.collapse_fixed_joints:
+            collapse_results = builder.collapse_fixed_joints()
+            ee_parent = collapse_results["body_merged_parent"][ee_index]
+            self.ee_index = collapse_results["body_remap"][ee_parent]
+            self.ee_local_xform = collapse_results["body_merged_transform"][ee_index]
+        else:
+            self.ee_index = ee_index
 
         builder.joint_q[:9] = [
             -3.6802115e-03,
@@ -518,7 +729,7 @@ class Example:
         builder.joint_target_q[:9] = builder.joint_q[:9]
         builder.joint_target_ke[:9] = [400, 400, 400, 400, 400, 400, 400, 100, 100]
         builder.joint_target_kd[:9] = [40, 40, 40, 40, 40, 40, 40, 10, 10]
-        builder.joint_effort_limit[:9] = [87, 87, 87, 87, 12, 12, 12, 100, 100]
+        builder.joint_effort_limit[:9] = [np.inf] * 9
         builder.joint_armature[:9] = [0.3] * 4 + [0.11] * 3 + [0.15] * 2
 
         # Gravity compensation
@@ -531,18 +742,23 @@ class Example:
         gravcomp_body = builder.custom_attributes["mujoco:gravcomp"]
         if gravcomp_body.values is None:
             gravcomp_body.values = {}
-        for body_idx in range(2, 14):
-            gravcomp_body.values[body_idx] = 1.0
+        for body_idx, body_label in enumerate(builder.body_label):
+            if body_label.startswith("fr3/") and body_label not in ("fr3/base", "fr3/fr3_link0"):
+                gravcomp_body.values[body_idx] = 1.0
 
         solimp_attr = builder.custom_attributes.get("mujoco:geom_solimp")
         priority_attr = builder.custom_attributes.get("mujoco:geom_priority")
         if solimp_attr is not None and priority_attr is not None:
+            finger_bodies = {
+                builder.body_label.index("fr3/fr3_leftfinger"),
+                builder.body_label.index("fr3/fr3_rightfinger"),
+            }
             if solimp_attr.values is None:
                 solimp_attr.values = {}
             if priority_attr.values is None:
                 priority_attr.values = {}
             for s, b in enumerate(builder.shape_body):
-                if b in (12, 13):
+                if b in finger_bodies:
                     solimp_attr.values[s] = (0.7, 0.95, 0.0001, 0.5, 2.0)
                     priority_attr.values[s] = 1
 
@@ -652,12 +868,12 @@ class Example:
             mu=0.7,
             margin=BRICK_MARGIN,
             gap=SDF_MARGIN,
+            has_shape_collision=False,
         )
-        # Invisible primitive colliders (box walls, floor slab, stud cylinders)
-        # approximate the brick geometry to make brick-brick contacts more robust,
-        # i.e. reduce interpenetration that can occur with the compliant SDF model
-        # when bricks move quickly or collide violently, outside the gentle Franka
-        # pick-and-place regime this example is designed around.
+        # The visible SDF mesh supplies the brick's mass and inertia. Inset
+        # primitive colliders (box walls, floor slab, and stud cylinders)
+        # supply the contact geometry, leaving clearance for hard contacts to
+        # assemble the bricks.
         #
         # Keep the proxies collision-only with zero density so they do not add to
         # mass and inertia on top of the visible SDF mesh.
@@ -785,12 +1001,12 @@ class Example:
             objectives=[
                 ik.IKObjectivePosition(
                     link_index=self.ee_index,
-                    link_offset=wp.vec3(0.0, 0.0, 0.0),
+                    link_offset=wp.transform_get_translation(self.ee_local_xform),
                     target_positions=wp.array([wp.vec3(*target_pos.tolist())], dtype=wp.vec3),
                 ),
                 ik.IKObjectiveRotation(
                     link_index=self.ee_index,
-                    link_offset_rotation=wp.quat_identity(),
+                    link_offset_rotation=wp.transform_get_rotation(self.ee_local_xform),
                     target_rotations=wp.array([wp.vec4(*target_quat.tolist())], dtype=wp.vec4),
                 ),
                 ik.IKObjectiveJointLimit(
@@ -810,16 +1026,17 @@ class Example:
         state_ik = self.model.state()
         newton.eval_fk(self.model, self.model.joint_q, self.model.joint_qd, state_ik)
         body_q_np = state_ik.body_q.numpy()
+        ee_q = wp.transform_multiply(wp.transform(*body_q_np[self.ee_index]), self.ee_local_xform)
 
         self.pos_obj = ik.IKObjectivePosition(
             link_index=self.ee_index,
-            link_offset=wp.vec3(0.0, 0.0, 0.0),
+            link_offset=wp.transform_get_translation(self.ee_local_xform),
             target_positions=wp.array([self.home_pos], dtype=wp.vec3),
         )
         self.rot_obj = ik.IKObjectiveRotation(
             link_index=self.ee_index,
-            link_offset_rotation=wp.quat_identity(),
-            target_rotations=wp.array([body_q_np[self.ee_index][3:][:4]], dtype=wp.vec4),
+            link_offset_rotation=wp.transform_get_rotation(self.ee_local_xform),
+            target_rotations=wp.array([wp.transform_get_rotation(ee_q)], dtype=wp.vec4),
         )
 
         ik_dofs = self.model_ik.joint_coord_count
@@ -915,6 +1132,7 @@ class Example:
                 self.task_init_body_q,
                 self.state_0.body_q,
                 self.ee_index,
+                self.ee_local_xform,
             ],
             outputs=[
                 self.ee_pos_target,
@@ -945,6 +1163,7 @@ class Example:
                 self.ee_rot_target,
                 self.state_0.body_q,
                 self.ee_index,
+                self.ee_local_xform,
             ],
             outputs=[self.task_idx, self.task_time_elapsed, self.task_init_body_q],
         )
@@ -962,11 +1181,20 @@ class Example:
         self.graph_ik = capture.graph
 
     def simulate(self):
-        self.collision_pipeline.collide(self.state_0, self.contacts)
+        contacts = self.contacts
+        if not self.disable_contacts:
+            self.collision_pipeline.collide(self.state_0, self.contacts)
         for _ in range(self.sim_substeps):
             self.state_0.clear_forces()
             self.viewer.apply_forces(self.state_0)
-            self.solver.step(self.state_0, self.state_1, self.control, self.contacts, self.sim_dt)
+            if self.gravity_force is not None:
+                newton.eval_inverse_dynamics_passive(
+                    self.model,
+                    self.state_0,
+                    gravity_force=self.gravity_force,
+                )
+                wp.copy(self.control.joint_f[:7], self.gravity_force[:7])
+            self.solver.step(self.state_0, self.state_1, self.control, contacts, self.sim_dt)
             self.state_0, self.state_1 = self.state_1, self.state_0
 
     def reset(self):
@@ -980,12 +1208,35 @@ class Example:
         self.capture()
 
     def step(self):
+        frame_start_time = time.perf_counter()
         self.set_joint_targets()
 
         if self.graph:
             wp.capture_launch(self.graph)
         else:
             self.simulate()
+
+        if self.print_kamino_stats:
+            if not isinstance(self.solver, newton.solvers.SolverKamino):
+                raise RuntimeError("Kamino statistics require SolverKamino")
+            status_data = self.solver._solver_kamino._solver_fd.data.status
+            if status_data is None:
+                raise RuntimeError("Kamino PADMM status is unavailable")
+            status = status_data.numpy()[0]
+            kamino_contacts = self.solver._contacts_kamino
+            if kamino_contacts is None:
+                raise RuntimeError("Kamino contacts are unavailable")
+            active_contacts_data = kamino_contacts.model_active_contacts
+            if active_contacts_data is None:
+                raise RuntimeError("Kamino active-contact count is unavailable")
+            active_contacts = active_contacts_data.numpy()[0]
+            frame_time_ms = (time.perf_counter() - frame_start_time) * 1000.0
+            print(
+                f"Kamino frame {self.rendered_frames + 1}: {frame_time_ms:.1f} ms, active_contacts={active_contacts}, "
+                f"PADMM={status['iterations']}/{self.kamino_max_iterations}, "
+                f"converged={bool(status['converged'])}, "
+                f"r_p={status['r_p']:.2e}, r_d={status['r_d']:.2e}, r_c={status['r_c']:.2e}"
+            )
 
         self.sim_time += self.frame_dt
 
@@ -994,6 +1245,17 @@ class Example:
         self.viewer.log_state(self.state_0)
         self.viewer.log_contacts(self.contacts, self.state_0)
         self.viewer.end_frame()
+
+        self.rendered_frames += 1
+        if self.rendered_frames % 10 == 0:
+            print(f"Rendered frame {self.rendered_frames}/{self.num_frames}")
+        if self.video_writer is not None and not self.video_writer.closed:
+            self.video_writer.write(self.viewer.get_frame())
+            if self.rendered_frames >= self.num_frames:
+                self.video_writer.close()
+                # ViewerGL normally runs until its window is closed; stop once
+                # the requested number of video frames has been encoded.
+                self.viewer.renderer.window.close()
 
     def test_final(self):
         task_idx = self.task_idx.numpy()[0]
@@ -1042,6 +1304,28 @@ class Example:
 
 if __name__ == "__main__":
     parser = newton.examples.create_parser()
+    parser.add_argument(
+        "--solver",
+        choices=SOLVER_CHOICES,
+        default="mujoco",
+        help="Rigid-body solver to use; kamino-dense uses default Kamino settings with a lower contact limit.",
+    )
+    parser.add_argument(
+        "--video-path",
+        default=None,
+        help="Write a headless OpenGL recording to this MP4 path; requires FFmpeg.",
+    )
+    parser.add_argument(
+        "--disable-contacts",
+        action="store_true",
+        help="Disable all collision contacts for solver diagnostics.",
+    )
+    parser.add_argument(
+        "--collapse-fixed-joints",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Merge fixed links while preserving the Franka TCP control frame.",
+    )
 
     viewer, args = newton.examples.init(parser)
     newton.examples.run(Example(viewer, args), args)

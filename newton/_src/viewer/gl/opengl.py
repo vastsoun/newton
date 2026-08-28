@@ -1089,6 +1089,10 @@ class RendererGL:
 
             # disable error checking for performance
             pyglet.options["debug_gl"] = False
+            if headless:
+                # Configure pyglet before importing graphics, which otherwise
+                # creates a display-backed shadow window.
+                pyglet.options["headless"] = True
 
             # try imports
             from pyglet.graphics.shader import Shader, ShaderProgram  # noqa: F401

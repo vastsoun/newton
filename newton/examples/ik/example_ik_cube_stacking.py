@@ -9,7 +9,8 @@
 # for the Franka Emika Franka Panda robot arm.
 #
 # Command: python -m newton.examples ik_cube_stacking --solver kamino --world-count 16
-# or: uv run -m newton.examples ik_cube_stacking   --solver kamino --world-count 16   --viewer gl --headless --num-frames 2000   --video-path cube_stacking_kamino.mp4
+# or: PYGLET_HEADLESS=1 uv run -m newton.examples ik_cube_stacking --solver kamino --world-count 16 \
+#     --viewer gl --headless --num-frames 2000 --video-path cube_stacking_kamino.mp4
 ###########################################################################
 
 import enum
@@ -875,7 +876,7 @@ class Example:
         parser.add_argument(
             "--video-path",
             metavar="PATH",
-            help="Record a headless GL render to PATH (requires FFmpeg, --viewer gl, and --headless).",
+            help="Record a headless GL render to PATH (requires FFmpeg, PYGLET_HEADLESS=1, --viewer gl, and --headless).",
         )
         parser.add_argument("--verbose", action="store_true", help="Enable verbose output.")
         return parser

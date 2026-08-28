@@ -1313,7 +1313,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--video-path",
         default=None,
-        help="Write a headless OpenGL recording to this MP4 path; requires FFmpeg.",
+        help="Write a headless OpenGL recording to this MP4 path; requires FFmpeg and PYGLET_HEADLESS=1.",
     )
     parser.add_argument(
         "--disable-contacts",

@@ -4,7 +4,7 @@
 """Stack cubes with a UR5e and a closed-loop Robotiq 2F-85 in Kamino.
 
 Command: python -m newton.examples kamino_ur5e_robotiq_stacking --world-count 16
-or: uv run -m newton.examples kamino_ur5e_robotiq_stacking --world-count 16 \
+or: PYGLET_HEADLESS=1 uv run -m newton.examples kamino_ur5e_robotiq_stacking --world-count 16 \
     --viewer gl --headless --num-frames 2000 --video-path ur5e_robotiq_stacking.mp4
 """
 

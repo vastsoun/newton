@@ -705,20 +705,19 @@ class USDImporter:
                 return True
         return False
 
-    def _get_joint_dof_hint(self, prim) -> JointDoFType | None:
-        """Queries the custom data for a DoF type hints."""
-        dofs = None
+    def _get_joint_dof_hint(self, prim):
+        """Return custom D6 DoF hints as an ordered tuple of USD axes."""
         cdata = prim.GetCustomData()
-        if cdata is not None:
-            dofs = cdata.get("dofs", None)
-        dof_type = None
+        dofs = cdata.get("dofs", None) if cdata is not None else None
         if dofs == "cylindrical":
-            dof_type = JointDoFType.CYLINDRICAL
-        elif dofs == "universal":
-            dof_type = JointDoFType.UNIVERSAL
-        elif dofs == "cartesian":
-            dof_type = JointDoFType.CARTESIAN
-        return dof_type
+            return (self.UsdPhysics.JointDOF.TransX, self.UsdPhysics.JointDOF.RotX)
+        if dofs == "universal":
+            return (self.UsdPhysics.JointDOF.RotX, self.UsdPhysics.JointDOF.RotY)
+        if dofs == "cartesian":
+            return self._usd_trans_axes
+        if dofs is not None:
+            raise ValueError(f"Unsupported custom DoF hint '{dofs}' for joint '{prim.GetPath()}'.")
+        return None
 
     def _make_joint_default_limits(self, dof_type: JointDoFType) -> tuple[list[float], list[float], list[float]]:
         num_dofs = int(dof_type.num_dofs)
@@ -870,108 +869,55 @@ class USDImporter:
             act_type = JointActuationType.PASSIVE
         return dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max
 
-    def _parse_joint_cylindrical_from_d6(
-        self, name, joint_prim, joint_spec, distance_unit: float = 1.0, rotation_unit: float = 1.0
-    ):
-        dof_type = JointDoFType.CYLINDRICAL
-        q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
-        for limit in joint_spec.jointLimits:
-            dof = limit.first
-            if dof == self.UsdPhysics.JointDOF.TransX:
-                q_j_min[0] = max(distance_unit * limit.second.lower, JOINT_QMIN)
-                q_j_max[0] = min(distance_unit * limit.second.upper, JOINT_QMAX)
-            elif dof == self.UsdPhysics.JointDOF.RotX:
-                q_j_min[1] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
-                q_j_max[1] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
-        num_drives = len(joint_spec.jointDrives)
-        if num_drives > 0:
-            if num_drives != JointDoFType.CYLINDRICAL.num_dofs:
-                raise ValueError(
-                    f"Joint '{name}' ({joint_prim.GetPath()}) has {num_drives}"
-                    f"drives, but cylindrical joints require {JointDoFType.CYLINDRICAL.num_dofs} drives. "
-                )
-            act_type = JointActuationType.FORCE
-            for drive in joint_spec.jointDrives:
-                dof = drive.first
-                # To align with the Newton USD importer, the effort limit is not clamped to JOINT_TAUMAX.
-                if dof == self.UsdPhysics.JointDOF.TransX:
-                    tau_j_max[0] = drive.second.forceLimit
-                elif dof == self.UsdPhysics.JointDOF.RotX:
-                    tau_j_max[1] = drive.second.forceLimit
-        else:
-            act_type = JointActuationType.PASSIVE
-        return dof_type, act_type, q_j_min, q_j_max, tau_j_max
-
-    def _parse_joint_universal_from_d6(self, name, joint_prim, joint_spec, rotation_unit: float = 1.0):
-        dof_type = JointDoFType.UNIVERSAL
-        q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
-        for limit in joint_spec.jointLimits:
-            dof = limit.first
-            if dof == self.UsdPhysics.JointDOF.RotX:
-                q_j_min[0] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
-                q_j_max[0] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
-            elif dof == self.UsdPhysics.JointDOF.RotY:
-                q_j_min[1] = max(rotation_unit * limit.second.lower, JOINT_QMIN)
-                q_j_max[1] = min(rotation_unit * limit.second.upper, JOINT_QMAX)
-        num_drives = len(joint_spec.jointDrives)
-        if num_drives > 0:
-            if num_drives != JointDoFType.UNIVERSAL.num_dofs:
-                raise ValueError(
-                    f"Joint '{name}' ({joint_prim.GetPath()}) has {num_drives}"
-                    f"drives, but universal joints require {JointDoFType.UNIVERSAL.num_dofs} drives. "
-                )
-            act_type = JointActuationType.FORCE
-            for drive in joint_spec.jointDrives:
-                dof = drive.first
-                # To align with the Newton USD importer, the effort limit is not clamped to JOINT_TAUMAX.
-                if dof == self.UsdPhysics.JointDOF.RotX:
-                    tau_j_max[0] = drive.second.forceLimit
-                elif dof == self.UsdPhysics.JointDOF.RotY:
-                    tau_j_max[1] = drive.second.forceLimit
-        else:
-            act_type = JointActuationType.PASSIVE
-        return dof_type, act_type, q_j_min, q_j_max, tau_j_max
-
-    def _parse_joint_cartesian_from_d6(
+    def _parse_joint_generic_d6(
         self,
-        name,
-        joint_prim,
         joint_spec,
-        distance_unit: float = 1.0,
+        distance_unit: float,
+        rotation_unit: float,
+        forced_dofs=None,
     ):
-        dof_type = JointDoFType.CARTESIAN
-        q_j_min, q_j_max, tau_j_max = self._make_joint_default_limits(dof_type)
-        for limit in joint_spec.jointLimits:
-            dof = limit.first
-            if dof == self.UsdPhysics.JointDOF.TransX:
-                q_j_min[0] = max(distance_unit * limit.second.lower, JOINT_QMIN)
-                q_j_max[0] = min(distance_unit * limit.second.upper, JOINT_QMAX)
-            elif dof == self.UsdPhysics.JointDOF.TransY:
-                q_j_min[1] = max(distance_unit * limit.second.lower, JOINT_QMIN)
-                q_j_max[1] = min(distance_unit * limit.second.upper, JOINT_QMAX)
-            elif dof == self.UsdPhysics.JointDOF.TransZ:
-                q_j_min[2] = max(distance_unit * limit.second.lower, JOINT_QMIN)
-                q_j_max[2] = min(distance_unit * limit.second.upper, JOINT_QMAX)
-        num_drives = len(joint_spec.jointDrives)
-        if num_drives > 0:
-            if num_drives != JointDoFType.CARTESIAN.num_dofs:
-                raise ValueError(
-                    f"Joint '{name}' ({joint_prim.GetPath()}) has {num_drives}"
-                    f"drives, but cartesian joints require {JointDoFType.CARTESIAN.num_dofs} drives. "
-                )
+        """Parse arbitrary USD D6 free axes into canonical linear-first metadata."""
+        limits = {entry.first: entry.second for entry in joint_spec.jointLimits}
+        if forced_dofs is None:
+            forced_dofs = [
+                axis
+                for axis in (*self._usd_trans_axes, *self._usd_rot_axes)
+                if axis in limits and limits[axis].lower < limits[axis].upper
+            ]
+        linear_dofs = [axis for axis in self._usd_trans_axes if axis in forced_dofs]
+        angular_dofs = [axis for axis in self._usd_rot_axes if axis in forced_dofs]
+        dof_dim = (len(linear_dofs), len(angular_dofs))
+        dof_axes = [wp.vec3f(self.usd_dofs_to_axis[axis].to_vec3()) for axis in (*linear_dofs, *angular_dofs)]
+        if dof_dim == (0, 0):
+            dof_type = JointDoFType.FIXED
+        elif dof_dim == (1, 0):
+            dof_type = JointDoFType.PRISMATIC
+        elif dof_dim == (0, 1):
+            dof_type = JointDoFType.REVOLUTE
+        else:
+            dof_type = JointDoFType.D6
+
+        ordered_dofs = (*linear_dofs, *angular_dofs)
+        q_j_min = []
+        q_j_max = []
+        tau_j_max = [math.inf] * len(ordered_dofs)
+        for axis in ordered_dofs:
+            unit = distance_unit if axis in self._usd_trans_axes else rotation_unit
+            limit = limits.get(axis)
+            q_j_min.append(max(unit * limit.lower, JOINT_QMIN) if limit is not None else JOINT_QMIN)
+            q_j_max.append(min(unit * limit.upper, JOINT_QMAX) if limit is not None else JOINT_QMAX)
+        dof_index = {axis: i for i, axis in enumerate(ordered_dofs)}
+        drives = joint_spec.jointDrives
+        if drives:
+            driven_dofs = [drive.first for drive in drives]
+            if len(driven_dofs) != len(ordered_dofs) or set(driven_dofs) != set(ordered_dofs):
+                raise ValueError("Actuated D6 joints require exactly one drive for each free DoF.")
+            for drive in drives:
+                tau_j_max[dof_index[drive.first]] = drive.second.forceLimit
             act_type = JointActuationType.FORCE
-            for drive in joint_spec.jointDrives:
-                dof = drive.first
-                # To align with the Newton USD importer, the effort limit is not clamped to JOINT_TAUMAX.
-                if dof == self.UsdPhysics.JointDOF.TransX:
-                    tau_j_max[0] = drive.second.forceLimit
-                elif dof == self.UsdPhysics.JointDOF.TransY:
-                    tau_j_max[1] = drive.second.forceLimit
-                elif dof == self.UsdPhysics.JointDOF.TransZ:
-                    tau_j_max[2] = drive.second.forceLimit
         else:
             act_type = JointActuationType.PASSIVE
-        return dof_type, act_type, q_j_min, q_j_max, tau_j_max
+        return dof_type, dof_dim, dof_axes, act_type, q_j_min, q_j_max, tau_j_max
 
     def _parse_joint_spherical_from_d6(self, name, joint_prim, joint_spec, rotation_unit: float = 1.0):
         dof_type = JointDoFType.SPHERICAL
@@ -1176,6 +1122,8 @@ class USDImporter:
         b_j = None
         k_p_j = None
         k_d_j = None
+        dof_dim = None
+        dof_axes = None
 
         if joint_type == self.UsdPhysics.ObjectType.FixedJoint:
             dof_type = JointDoFType.FIXED
@@ -1203,86 +1151,20 @@ class USDImporter:
             raise NotImplementedError("Distance joints are not yet supported.")
 
         elif joint_type == self.UsdPhysics.ObjectType.D6Joint:
-            # First check if the joint contains a DoF type hint in the custom data
-            # NOTE: The hint allows us to skip the extensive D6 joint parsing
-            custom_dof_type = self._get_joint_dof_hint(joint_prim)
-            if custom_dof_type:
-                if custom_dof_type == JointDoFType.CYLINDRICAL:
-                    dof_type, act_type, q_j_min, q_j_max, tau_j_max = self._parse_joint_cylindrical_from_d6(
-                        name, joint_prim, joint_spec, distance_unit, rotation_unit
-                    )
-
-                elif custom_dof_type == JointDoFType.UNIVERSAL:
-                    dof_type, act_type, q_j_min, q_j_max, tau_j_max = self._parse_joint_universal_from_d6(
-                        name, joint_prim, joint_spec, rotation_unit
-                    )
-
-                elif custom_dof_type == JointDoFType.CARTESIAN:
-                    dof_type, act_type, q_j_min, q_j_max, tau_j_max = self._parse_joint_cartesian_from_d6(
-                        name, joint_prim, joint_spec, distance_unit
-                    )
-
-                else:
-                    raise ValueError(
-                        f"Unsupported custom DoF type hint '{custom_dof_type}' for joint '{joint_prim.GetPath()}'. "
-                        "Supported hints are: {'cylindrical', 'universal', 'cartesian'}."
-                    )
-
-            # If no custom DoF type hint is provided, we parse the D6 joint limits and drives
-            else:
-                # Parse the joint limits to determine the DoF type
-                dofs = []
-                cts = []
-                for limit in joint_spec.jointLimits:
-                    upper = limit.second.upper
-                    lower = limit.second.lower
-                    axis_is_free = lower < upper
-                    axis = limit.first
-                    if axis_is_free:
-                        dofs.append(axis)
-                    else:
-                        cts.append(axis)
-
-                # Attempt to detect the type of the joint based on the limits
-                if len(dofs) == 0:
-                    dof_type = JointDoFType.FIXED
-                    act_type = JointActuationType.PASSIVE
-                elif len(dofs) == 1:
-                    if dofs[0] in self._usd_rot_axes:
-                        dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max = self._parse_joint_revolute_from_d6(
-                            name, joint_prim, joint_spec, dofs[0], rotation_unit
-                        )
-                    if dofs[0] in self._usd_trans_axes:
-                        dof_type, act_type, X_j, q_j_min, q_j_max, tau_j_max = self._parse_joint_prismatic_from_d6(
-                            name, joint_prim, joint_spec, dofs[0], distance_unit
-                        )
-                elif len(dofs) == 2:
-                    if all(dof in self._usd_rot_axes for dof in dofs):
-                        dof_type, act_type, q_j_min, q_j_max, tau_j_max = self._parse_joint_universal_from_d6(
-                            name, joint_prim, joint_spec, rotation_unit
-                        )
-                    if dofs[0] in self._usd_trans_axes and dofs[1] in self._usd_rot_axes:
-                        dof_type, act_type, q_j_min, q_j_max, tau_j_max = self._parse_joint_cylindrical_from_d6(
-                            name, joint_prim, joint_spec, distance_unit, rotation_unit
-                        )
-                elif len(dofs) == 3:
-                    if all(dof in self._usd_rot_axes for dof in dofs):
-                        dof_type, act_type, q_j_min, q_j_max, tau_j_max = self._parse_joint_spherical_from_d6(
-                            name, joint_prim, joint_spec, rotation_unit
-                        )
-                    elif all(dof in self._usd_trans_axes for dof in dofs):
-                        dof_type, act_type, q_j_min, q_j_max, tau_j_max = self._parse_joint_cartesian_from_d6(
-                            name, joint_prim, joint_spec, distance_unit
-                        )
-                elif len(dofs) == 6:
-                    dof_type, act_type, q_j_min, q_j_max, tau_j_max = self._parse_joint_free_from_d6(
-                        name, joint_prim, joint_spec, distance_unit, rotation_unit
-                    )
-                else:
-                    raise ValueError(
-                        f"Joint '{name}' ({joint_prim.GetPath()}) has {len(dofs)} free axes, "
-                        "but D6 joints are only supported up to 3 DoFs. "
-                    )
+            forced_dofs = self._get_joint_dof_hint(joint_prim)
+            dof_type, dof_dim, dof_axes, act_type, q_j_min, q_j_max, tau_j_max = self._parse_joint_generic_d6(
+                joint_spec, distance_unit, rotation_unit, forced_dofs
+            )
+            if dof_type in (JointDoFType.PRISMATIC, JointDoFType.REVOLUTE):
+                active_dofs = forced_dofs or [
+                    entry.first for entry in joint_spec.jointLimits if entry.second.lower < entry.second.upper
+                ]
+                X_j = axis_to_mat33(self.usd_dofs_to_axis[active_dofs[0]])
+                dof_dim = None
+                dof_axes = None
+            elif dof_type == JointDoFType.FIXED:
+                dof_dim = None
+                dof_axes = None
 
         elif joint_type == self.UsdPhysics.ObjectType.CustomJoint:
             raise NotImplementedError("Custom joints are not yet supported.")
@@ -1311,8 +1193,10 @@ class USDImporter:
         return JointDescriptor(
             name=name,
             uid=uid,
-            dof_act_types=[act_type] * dof_type.num_dofs,
+            dof_act_types=[act_type] * JointDoFType.num_dofs_for(dof_type, dof_dim),
             dof_type=dof_type,
+            dof_dim=dof_dim,
+            dof_axes=dof_axes,
             bid_B=bid_B,
             bid_F=bid_F,
             B_r_Bj=B_r_Bj,

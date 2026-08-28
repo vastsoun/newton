@@ -382,10 +382,12 @@ class TestModelBuilder(unittest.TestCase):
         )
         bid = builder.add_rigid_body_descriptor(body, world_index=wid)
         joint = JointDescriptor(
-            name="test_gimbal",
+            name="test_d6",
             bid_B=-1,
             bid_F=bid,
-            dof_type=JointDoFType.GIMBAL,
+            dof_type=JointDoFType.D6,
+            dof_dim=(0, 3),
+            dof_axes=[wp.vec3f(1.0, 0.0, 0.0), wp.vec3f(0.0, 1.0, 0.0), wp.vec3f(0.0, 0.0, 1.0)],
             dof_act_types=[
                 JointActuationType.POSITION,
                 JointActuationType.FORCE,
@@ -876,6 +878,35 @@ class TestModelBuilder(unittest.TestCase):
 
         # Verify that the contents of the model matches those of the combined builder
         assert_model_matches_builder(self, builder, model)
+
+    def test_generic_d6_metadata(self):
+        """Finalize authored generic D6 dimensions and axes."""
+        builder = ModelBuilderKamino(default_world=True)
+        inertia = wp.mat33f(np.eye(3, dtype=np.float32))
+        for index in range(2):
+            builder.add_rigid_body(
+                name=f"body_{index}",
+                m_i=1.0,
+                i_I_i=inertia,
+                q_i_0=wp.transformf(),
+            )
+        axes = [wp.vec3f(1.0, 0.0, 0.0), wp.vec3f(0.0, 0.0, 1.0)]
+        builder.add_joint(
+            act_type=JointActuationType.PASSIVE,
+            dof_type=JointDoFType.D6,
+            bid_B=0,
+            bid_F=1,
+            B_r_Bj=wp.vec3f(),
+            F_r_Fj=wp.vec3f(),
+            X_Bj=wp.mat33f(np.eye(3, dtype=np.float32)),
+            dof_dim=(1, 1),
+            dof_axes=axes,
+        )
+        model = builder.finalize(device="cpu", base_auto=False)
+        np.testing.assert_array_equal(model.joints.dof_dim.numpy(), [[1, 1]])
+        np.testing.assert_array_equal(model.joints.dof_axes.numpy(), np.asarray(axes))
+        np.testing.assert_array_equal(model.joints.num_coords.numpy(), [2])
+        np.testing.assert_array_equal(model.joints.num_kinematic_cts.numpy(), [4])
 
 
 ###

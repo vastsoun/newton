@@ -71,6 +71,8 @@ def create_four_bar_tie_rod() -> ModelBuilderKamino:
         joint_copy = copy.deepcopy(joint)
         if joint.name == "link2_to_link3" or joint.name == "link3_to_link4":
             joint_copy.dof_type = JointDoFType.SPHERICAL
+            joint_copy.dof_dim = None
+            joint_copy.dof_axes = None
             joint_copy.dof_act_types = [joint_copy.act_type] * joint_copy.dof_type.num_dofs
             for attribute in ("q_j_min", "q_j_max", "dq_j_max", "tau_j_max", "a_j", "b_j", "k_p_j", "k_d_j", "f_j"):
                 setattr(
@@ -341,9 +343,12 @@ def compute_actuated_coords_and_dofs_data(model: ModelKamino):
     dof_offsets = model.joints.dofs_offset.numpy()[:-1]
     joint_num_dofs = model.joints.num_dofs.numpy()
     joint_dof_types = model.joints.dof_type.numpy()
+    joint_dof_dims = model.joints.dof_dim.numpy()
 
     # Filter for actuators only
     joint_is_actuator = model.joints.act_type.numpy() != JointActuationType.PASSIVE
+    base_joint_indices = model.info.base_joint_index.numpy()
+    joint_is_actuator[base_joint_indices[base_joint_indices >= 0]] = False
     if model.joints.fk_act_flag is not None:
         fk_act_flag_np = model.joints.fk_act_flag.numpy()
         joint_is_actuator_fk = fk_act_flag_np == 1
@@ -354,12 +359,23 @@ def compute_actuated_coords_and_dofs_data(model: ModelKamino):
     actuated_dof_offsets = dof_offsets[joint_is_actuator]
     actuated_dofs_sizes = joint_num_dofs[joint_is_actuator]
     actuator_dof_types = joint_dof_types[joint_is_actuator]
+    actuator_dof_dims = joint_dof_dims[joint_is_actuator]
 
-    return actuated_coord_offsets, actuated_coords_sizes, actuated_dof_offsets, actuated_dofs_sizes, actuator_dof_types
+    return (
+        actuated_coord_offsets,
+        actuated_coords_sizes,
+        actuated_dof_offsets,
+        actuated_dofs_sizes,
+        actuator_dof_types,
+        actuator_dof_dims,
+    )
 
 
 def standardize_actuated_coords(
-    actuators_q: np.ndarray, actuated_coords_sizes: np.ndarray, actuator_dof_types: np.ndarray
+    actuators_q: np.ndarray,
+    actuated_coords_sizes: np.ndarray,
+    actuator_dof_types: np.ndarray,
+    actuator_dof_dims: np.ndarray,
 ) -> np.ndarray:
     """
     Helper function converting actuator coordinates to their canonical, comparable form.
@@ -376,17 +392,17 @@ def standardize_actuated_coords(
     res = actuators_q.copy()
     coord_id = 0
     for i, dof_type in enumerate(actuator_dof_types):
-        if dof_type == JointDoFType.CYLINDRICAL:
-            res[coord_id + 1] = standardize_angle(res[coord_id + 1])
-        elif dof_type == JointDoFType.FREE:
+        if dof_type == JointDoFType.FREE:
             res[coord_id + 3 : coord_id + 7] = standardize_quat(res[coord_id + 3 : coord_id + 7])
         if dof_type == JointDoFType.REVOLUTE:
             res[coord_id] = standardize_angle(res[coord_id])
         elif dof_type == JointDoFType.SPHERICAL:
             res[coord_id : coord_id + 4] = standardize_quat(res[coord_id : coord_id + 4])
-        if dof_type == JointDoFType.UNIVERSAL:
-            res[coord_id] = standardize_angle(res[coord_id])
-            res[coord_id + 1] = standardize_angle(res[coord_id + 1])
+        elif dof_type == JointDoFType.D6:
+            n_linear, n_angular = actuator_dof_dims[i]
+            for j in range(n_angular):
+                index = coord_id + n_linear + j
+                res[index] = standardize_angle(res[index])
         coord_id += actuated_coords_sizes[i]
     return res
 
@@ -425,9 +441,14 @@ def simulate_random_poses(
     )
 
     # Precompute offset arrays for extracting actuator coordinates/dofs
-    actuated_coord_offsets, actuated_coords_sizes, actuated_dof_offsets, actuated_dofs_sizes, actuator_dof_types = (
-        compute_actuated_coords_and_dofs_data(model)
-    )
+    (
+        actuated_coord_offsets,
+        actuated_coords_sizes,
+        actuated_dof_offsets,
+        actuated_dofs_sizes,
+        actuator_dof_types,
+        actuator_dof_dims,
+    ) = compute_actuated_coords_and_dofs_data(model)
 
     # Run forward kinematics on all random poses
     config = ForwardKinematicsSolver.Config(**config_kwargs)
@@ -476,9 +497,11 @@ def simulate_random_poses(
             print(f"Large constraint residual ({residual_ct_pos}) for pose {pose_id}")
             success_flags[-1] = False
         actuators_q_check = extract_segments(data.joints.q_j.numpy(), actuated_coord_offsets, actuated_coords_sizes)
-        actuators_q_check = standardize_actuated_coords(actuators_q_check, actuated_coords_sizes, actuator_dof_types)
+        actuators_q_check = standardize_actuated_coords(
+            actuators_q_check, actuated_coords_sizes, actuator_dof_types, actuator_dof_dims
+        )
         actuators_q_ref = standardize_actuated_coords(
-            actuators_q_np[pose_id], actuated_coords_sizes, actuator_dof_types
+            actuators_q_np[pose_id], actuated_coords_sizes, actuator_dof_types, actuator_dof_dims
         )
         residual_actuators_q = np.max(np.abs(actuators_q_check - actuators_q_ref))
         if residual_actuators_q > epsilon:
@@ -1101,18 +1124,20 @@ class MultiRhsVelocityForwardKinematics(unittest.TestCase):
         np.testing.assert_allclose(result[2], result[0] + result[1], rtol=2.0e-4, atol=2.0e-4)
         self.assertGreater(float(np.max(np.abs(result))), 1.0e-3)
 
-    def test_multi_rhs_refreshes_gimbal_coords_with_explicit_transforms(self):
-        """Evaluate gimbal velocity axes from the current body pose."""
+    def test_multi_rhs_refreshes_three_axis_d6_coords_with_explicit_transforms(self):
+        """Evaluate three-axis D6 velocity axes from the current body pose."""
         builder = ModelBuilderKamino(default_world=True)
         body_id = builder.add_rigid_body(
-            name="gimbal_body",
+            name="d6_body",
             m_i=1.0,
             i_I_i=wp.mat33f(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
             q_i_0=wp.transformf(wp.vec3f(0.0), wp.quatf(0.0, 0.0, 0.0, 1.0)),
         )
         builder.add_joint(
             act_type=JointActuationType.POSITION,
-            dof_type=JointDoFType.GIMBAL,
+            dof_type=JointDoFType.D6,
+            dof_dim=(0, 3),
+            dof_axes=[wp.vec3f(1.0, 0.0, 0.0), wp.vec3f(0.0, 1.0, 0.0), wp.vec3f(0.0, 0.0, 1.0)],
             bid_B=-1,
             bid_F=body_id,
             B_r_Bj=wp.vec3f(0.0),
@@ -1132,7 +1157,7 @@ class MultiRhsVelocityForwardKinematics(unittest.TestCase):
         base_u = wp.zeros(1, dtype=wp.spatial_vectorf, device=self.default_device)
 
         # Use independent single-RHS solves as the reference for both velocity
-        # vectors at the same converged gimbal pose.
+        # vectors at the same converged three-axis D6 pose.
         expected = []
         for rhs_index in range(actuator_u_np.shape[0]):
             actuator_u_single = wp.array(actuator_u_np[rhs_index], dtype=wp.float32, device=self.default_device)
@@ -1146,7 +1171,7 @@ class MultiRhsVelocityForwardKinematics(unittest.TestCase):
             )
             expected.append(body_u.numpy())
 
-        # Poison the coordinate scratch buffer with a different gimbal pose. The
+        # Poison the coordinate scratch buffer with a different three-axis D6 pose. The
         # batched solve must refresh it from bodies_q so its velocity axes do not
         # depend on state left behind by an earlier operation.
         solver.actuators_q_next.assign([1.1, 0.7, -0.8])

@@ -349,6 +349,7 @@ for device in devices:
 child_xform_solvers = {
     "xpbd": solvers["xpbd"],
     "semi_implicit": solvers["semi_implicit"],
+    "kamino": solvers["kamino"],
 }
 for device in devices:
     for solver_name, solver_fn in child_xform_solvers.items():

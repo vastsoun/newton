@@ -14,12 +14,10 @@ from ..core.model import ModelKamino
 from ..core.state import StateKamino
 from ..kinematics.joints import (
     compute_joint_pose_and_relative_motion,
-    convert_angular_vel_to_universal_joint_intermediary_frame,
     correct_quat_vector_coord,
     correct_rotational_coord,
     get_joint_coords_mapping_function,
-    map_gimbal_angular_velocity_to_rates,
-    select_gimbal_coords,
+    write_joint_data_by_layout,
 )
 
 ###
@@ -56,13 +54,8 @@ def make_correct_joint_coords(dof_type: JointDoFType):
         coords: Any,  # dof_type.coords_storage_type,
         coords_ref: wp.array[wp.float32],
     ) -> Any:  # dof_type.coords_storage_type
-        if wp.static(
-            dof_type == JointDoFType.CARTESIAN or dof_type == JointDoFType.FIXED or dof_type == JointDoFType.PRISMATIC
-        ):
+        if wp.static(dof_type == JointDoFType.FIXED or dof_type == JointDoFType.PRISMATIC):
             pass  # No correction needed
-
-        elif wp.static(dof_type == JointDoFType.CYLINDRICAL):  # Correct angle up to +/- 2 pi
-            coords[1] = correct_rotational_coord(coords[1], coords_ref[1])
 
         elif wp.static(dof_type == JointDoFType.FREE):  # Correct quaternion up to sign
             quat = wp.vec4f(coords[3], coords[4], coords[5], coords[6])
@@ -77,16 +70,6 @@ def make_correct_joint_coords(dof_type: JointDoFType):
         elif wp.static(dof_type == JointDoFType.SPHERICAL):  # Correct quaternion up to sign
             quat_ref = wp.vec4f(coords_ref[0], coords_ref[1], coords_ref[2], coords_ref[3])
             coords = correct_quat_vector_coord(coords, quat_ref)
-
-        elif wp.static(dof_type == JointDoFType.UNIVERSAL):  # Correct angles up to +/- 2 pi
-            coords[0] = correct_rotational_coord(coords[0], coords_ref[0])
-            coords[1] = correct_rotational_coord(coords[1], coords_ref[1])
-
-        elif wp.static(
-            dof_type == JointDoFType.GIMBAL or dof_type == JointDoFType.GIMBAL_LEFT_HANDED
-        ):  # Correct angles up to +/- 2 pi
-            for i in range(3):
-                coords[i] = correct_rotational_coord(coords[i], coords_ref[i])
 
         return coords
 
@@ -125,38 +108,28 @@ def make_compute_and_write_joint_coords(dof_type: JointDoFType):
 
 def make_compute_and_write_joint_vel(dof_type: JointDoFType):
     """
-    Generate a function computing the dof-space joint velocity, from the joint-frame relative
-    body velocity (and from the joint-frame relative body orientation, for universal joints).
+    Generate a function computing the dof-space joint velocity from the joint-frame relative body velocity.
     """
     num_dofs = dof_type.num_dofs
     assert num_dofs > 0
-    dof_axes = dof_type.dofs_axes
-    third_axis_sign = -1.0 if dof_type == JointDoFType.GIMBAL_LEFT_HANDED else 1.0
+    num_linear_dofs = 3 if dof_type == JointDoFType.FREE else 0
+    if dof_type == JointDoFType.PRISMATIC:
+        num_linear_dofs = 1
 
     @wp.func
     def _compute_and_write_joint_vel(
         q_j: wp.quatf,
         u_j: wp.spatial_vectorf,
         dofs_offset: wp.int32,
+        dof_axes: wp.array[wp.vec3f],
         joint_u: wp.array[wp.float32],
     ):
-        # Convert angular velocity to intermediary body frame for universal joint
-        if wp.static(dof_type == JointDoFType.UNIVERSAL):
-            u_j = convert_angular_vel_to_universal_joint_intermediary_frame(q_j, u_j)
-
-        if wp.static(dof_type == JointDoFType.GIMBAL or dof_type == JointDoFType.GIMBAL_LEFT_HANDED):
-            rates = map_gimbal_angular_velocity_to_rates(
-                wp.vec3f(joint_u[dofs_offset], joint_u[dofs_offset + 1], joint_u[dofs_offset + 2]),
-                wp.spatial_bottom(u_j),
-                third_axis_sign,
-            )
-            for i in range(3):
-                joint_u[dofs_offset + i] = rates[i]
-            return
-
         # Write out joint velocity (=components of relative velocity along unconstrained axes)
         for i in range(num_dofs):
-            joint_u[dofs_offset + i] = u_j[dof_axes[i]]
+            velocity = wp.spatial_bottom(u_j)
+            if wp.static(i < num_linear_dofs):
+                velocity = wp.spatial_top(u_j)
+            joint_u[dofs_offset + i] = wp.dot(velocity, dof_axes[dofs_offset + i])
 
     return _compute_and_write_joint_vel
 
@@ -164,74 +137,48 @@ def make_compute_and_write_joint_vel(dof_type: JointDoFType):
 @wp.func
 def _compute_and_write_joint_coords_and_vel(
     dof_type: wp.int32,
+    dof_dim: wp.vec2i,
+    dof_axes: wp.array[wp.vec3f],
     r_j: wp.vec3f,
     q_j: wp.quatf,
     u_j: wp.spatial_vectorf,
+    cts_offset: wp.int32,
     coords_offset: wp.int32,
     dofs_offset: wp.int32,
     joint_q_ref: wp.array[wp.float32],
     joint_q: wp.array[wp.float32],
     joint_u: wp.array[wp.float32],
+    scratch: wp.array[wp.float32],
 ):
-    if dof_type == JointDoFType.CARTESIAN:
-        wp.static(make_compute_and_write_joint_coords(JointDoFType.CARTESIAN))(
-            r_j, q_j, coords_offset, joint_q_ref, joint_q
+    if dof_type == JointDoFType.D6 or dof_type == JointDoFType.PRISMATIC or dof_type == JointDoFType.REVOLUTE:
+        write_joint_data_by_layout(
+            dof_dim,
+            dof_axes,
+            cts_offset,
+            dofs_offset,
+            coords_offset,
+            r_j,
+            q_j,
+            u_j,
+            joint_q_ref,
+            0,
+            scratch,
+            scratch,
+            joint_q,
+            joint_u,
         )
-        wp.static(make_compute_and_write_joint_vel(JointDoFType.CARTESIAN))(q_j, u_j, dofs_offset, joint_u)
-
-    elif dof_type == JointDoFType.CYLINDRICAL:
-        wp.static(make_compute_and_write_joint_coords(JointDoFType.CYLINDRICAL))(
-            r_j, q_j, coords_offset, joint_q_ref, joint_q
-        )
-        wp.static(make_compute_and_write_joint_vel(JointDoFType.CYLINDRICAL))(q_j, u_j, dofs_offset, joint_u)
-
     elif dof_type == JointDoFType.FIXED:
         pass  # 0 coords and dofs
 
     elif dof_type == JointDoFType.FREE:
         wp.static(make_compute_and_write_joint_coords(JointDoFType.FREE))(r_j, q_j, coords_offset, joint_q_ref, joint_q)
-        wp.static(make_compute_and_write_joint_vel(JointDoFType.FREE))(q_j, u_j, dofs_offset, joint_u)
-
-    elif dof_type == JointDoFType.GIMBAL or dof_type == JointDoFType.GIMBAL_LEFT_HANDED:
-        # Gimbal resets use select_gimbal_coords and reuse those coords for rate mapping in one step.
-        # Keep this inline so the shared make_compute_and_write_joint_* factories stay decoupled.
-        third_axis_sign = 1.0
-        if dof_type == JointDoFType.GIMBAL_LEFT_HANDED:
-            third_axis_sign = -1.0
-        coords = select_gimbal_coords(
-            q_j,
-            wp.vec3f(joint_q_ref[coords_offset], joint_q_ref[coords_offset + 1], joint_q_ref[coords_offset + 2]),
-            third_axis_sign,
-        )
-        for i in range(3):
-            joint_q[coords_offset + i] = coords[i]
-            joint_u[dofs_offset + i] = map_gimbal_angular_velocity_to_rates(
-                coords, wp.spatial_bottom(u_j), third_axis_sign
-            )[i]
-
-    elif dof_type == JointDoFType.PRISMATIC:
-        wp.static(make_compute_and_write_joint_coords(JointDoFType.PRISMATIC))(
-            r_j, q_j, coords_offset, joint_q_ref, joint_q
-        )
-        wp.static(make_compute_and_write_joint_vel(JointDoFType.PRISMATIC))(q_j, u_j, dofs_offset, joint_u)
-
-    elif dof_type == JointDoFType.REVOLUTE:
-        wp.static(make_compute_and_write_joint_coords(JointDoFType.REVOLUTE))(
-            r_j, q_j, coords_offset, joint_q_ref, joint_q
-        )
-        wp.static(make_compute_and_write_joint_vel(JointDoFType.REVOLUTE))(q_j, u_j, dofs_offset, joint_u)
+        wp.static(make_compute_and_write_joint_vel(JointDoFType.FREE))(q_j, u_j, dofs_offset, dof_axes, joint_u)
 
     elif dof_type == JointDoFType.SPHERICAL:
         wp.static(make_compute_and_write_joint_coords(JointDoFType.SPHERICAL))(
             r_j, q_j, coords_offset, joint_q_ref, joint_q
         )
-        wp.static(make_compute_and_write_joint_vel(JointDoFType.SPHERICAL))(q_j, u_j, dofs_offset, joint_u)
-
-    elif dof_type == JointDoFType.UNIVERSAL:
-        wp.static(make_compute_and_write_joint_coords(JointDoFType.UNIVERSAL))(
-            r_j, q_j, coords_offset, joint_q_ref, joint_q
-        )
-        wp.static(make_compute_and_write_joint_vel(JointDoFType.UNIVERSAL))(q_j, u_j, dofs_offset, joint_u)
+        wp.static(make_compute_and_write_joint_vel(JointDoFType.SPHERICAL))(q_j, u_j, dofs_offset, dof_axes, joint_u)
 
 
 @wp.kernel
@@ -336,6 +283,8 @@ def _reset_joints_state_from_bodies_state(
     # Inputs
     joint_world_id: wp.array[wp.int32],
     joint_dof_type: wp.array[wp.int32],
+    joint_dof_dim: wp.array2d[wp.int32],
+    joint_dof_axes: wp.array[wp.vec3f],
     joint_coords_offset: wp.array[wp.int32],
     joint_dofs_offset: wp.array[wp.int32],
     joint_dynamic_cts_offset: wp.array[wp.int32],
@@ -371,6 +320,7 @@ def _reset_joints_state_from_bodies_state(
 
     # Retrieve the joint model data
     dof_type = joint_dof_type[jid]
+    dof_dim = wp.vec2i(joint_dof_dim[jid, 0], joint_dof_dim[jid, 1])
     coords_offset = joint_coords_offset[jid]
     num_coords = joint_coords_offset[jid + 1] - coords_offset
     dofs_offset = joint_dofs_offset[jid]
@@ -403,7 +353,19 @@ def _reset_joints_state_from_bodies_state(
 
     # Evaluate joint coordinates/velocity from relative motion
     _compute_and_write_joint_coords_and_vel(
-        dof_type, r_j, q_j, u_j, coords_offset, dofs_offset, joint_q_0, joint_q, joint_u
+        dof_type,
+        dof_dim,
+        joint_dof_axes,
+        r_j,
+        q_j,
+        u_j,
+        kinematic_cts_offset,
+        coords_offset,
+        dofs_offset,
+        joint_q_0,
+        joint_q,
+        joint_u,
+        joint_lambda_kin,
     )
     for i in range(num_coords):
         joint_q_prev[coords_offset + i] = joint_q[coords_offset + i]
@@ -826,6 +788,8 @@ def reset_joints_state_from_bodies_state(
         inputs=[
             model.joints.wid,
             model.joints.dof_type,
+            model.joints.dof_dim,
+            model.joints.dof_axes,
             model.joints.coords_offset,
             model.joints.dofs_offset,
             model.joints.dynamic_cts_offset,

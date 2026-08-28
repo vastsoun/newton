@@ -405,16 +405,17 @@ def test_root_free_joint_under_rotated_parent_xform_uses_parent_frame_qd(
     np.testing.assert_allclose(state_1.body_qd.numpy()[body, 3:6], (0.0, 0.0, 0.0), atol=1e-5)
 
 
-def test_featherstone_d6_three_angular_body_qd_matches_fk(
+def test_d6_three_angular_body_qd_matches_fk(
     test: TestBodyVelocity,
     device,
+    solver_fn,
 ):
-    """SolverFeatherstone's reported body_qd should match eval_fk for a D6 joint
+    """The solver's reported body_qd should match eval_fk for a D6 joint
     with three angular DOFs at a non-identity configuration.
 
-    The Featherstone state update and the public eval_fk must agree on the
-    world-frame angular velocity, which is the transported-axis sum rather than
-    the raw joint_qd.
+    The state update and the public eval_fk must agree on the world-frame
+    angular velocity, which is the transported-axis sum rather than the raw
+    joint_qd.
     """
     cfg = newton.ModelBuilder.JointDofConfig.create_unlimited
     builder = newton.ModelBuilder(gravity=(0.0, 0.0, 0.0))
@@ -432,7 +433,7 @@ def test_featherstone_d6_three_angular_body_qd_matches_fk(
     builder.add_articulation([j])
 
     model = builder.finalize(device=device)
-    solver = newton.solvers.SolverFeatherstone(model, angular_damping=0.0)
+    solver = solver_fn(model)
     state_0 = model.state()
     state_1 = model.state()
 
@@ -948,12 +949,14 @@ for device in devices:
                 tolerance=tolerance,
             )
 
-    add_function_test(
-        TestBodyVelocity,
-        "test_featherstone_d6_three_angular_body_qd_matches_fk",
-        test_featherstone_d6_three_angular_body_qd_matches_fk,
-        devices=[device],
-    )
+    for solver_name in ("featherstone", "kamino"):
+        add_function_test(
+            TestBodyVelocity,
+            f"test_d6_three_angular_body_qd_matches_fk_{solver_name}",
+            test_d6_three_angular_body_qd_matches_fk,
+            devices=[device],
+            solver_fn=solvers[solver_name][0],
+        )
     add_function_test(
         TestBodyVelocity,
         "test_featherstone_free_descendant_joint_qd_round_trip_under_rotated_parent",

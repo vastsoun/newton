@@ -207,6 +207,7 @@ solvers = {
     "mujoco_warp": lambda model: newton.solvers.SolverMuJoCo(model, use_mujoco_cpu=False, disable_contacts=True),
     "xpbd": lambda model: newton.solvers.SolverXPBD(model, angular_damping=0.0),
     "semi_implicit": lambda model: newton.solvers.SolverSemiImplicit(model, angular_damping=0.0),
+    "kamino": newton.solvers.SolverKamino,
 }
 for device in devices:
     for solver_name, solver_fn in solvers.items():
@@ -633,7 +634,7 @@ for device in devices:
                 )
 
 for device in devices:
-    for solver_name in ("xpbd", "featherstone"):
+    for solver_name in ("xpbd", "featherstone", "kamino"):
         add_function_test(
             TestBodyForce,
             f"test_descendant_free_joint_f_world_force_under_rotated_parent_{solver_name}",

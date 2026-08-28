@@ -753,6 +753,7 @@ class SolverKamino(SolverBase, CouplingInterface):
             dtype=wp.int32,
             device=model.device,
         )
+        self._built_joint_dof_dim = model.joint_dof_dim.numpy().copy()
 
         built_massless_np = (model.body_inv_mass.numpy() == 0.0) | np.all(
             model.body_inv_inertia.numpy() == 0.0, axis=(1, 2)
@@ -1394,6 +1395,10 @@ class SolverKamino(SolverBase, CouplingInterface):
         check_inertial = bool(flags & ModelFlags.BODY_INERTIAL_PROPERTIES)
         if not check_dof and not check_actuation and not check_axes and not check_inertial:
             return
+        if check_dof and not np.array_equal(self.model.joint_dof_dim.numpy(), self._built_joint_dof_dim):
+            raise RuntimeError(
+                "Changing joint D6 dimensions is not supported; recreate SolverKamino to apply the change."
+            )
 
         sentinel = self._kamino.validate_model_structural_updates(
             self.model,
@@ -1412,7 +1417,7 @@ class SolverKamino(SolverBase, CouplingInterface):
         actuation_joint = violations[self._kamino.StructuralUpdateViolation.ACTUATION_PARTITION]
         invalid_joint = violations[self._kamino.StructuralUpdateViolation.INVALID_TARGET_MODE]
         axis_joint = violations[self._kamino.StructuralUpdateViolation.NONORTHONORMAL_AXES]
-        gimbal_handedness_joint = violations[self._kamino.StructuralUpdateViolation.GIMBAL_HANDEDNESS]
+        d6_handedness_joint = violations[self._kamino.StructuralUpdateViolation.D6_HANDEDNESS]
         massless_body = violations[self._kamino.StructuralUpdateViolation.MASSLESS]
         friction_joint = violations[self._kamino.StructuralUpdateViolation.FRICTION_CTS]
         effort_joint = violations[self._kamino.StructuralUpdateViolation.EFFORT_CTS]
@@ -1464,15 +1469,15 @@ class SolverKamino(SolverBase, CouplingInterface):
             raise ValueError(
                 f"Invalid joint configuration for SolverKamino:\n"
                 f"  - joint {joint} ({self.model.joint_label[joint]!r}): "
-                "universal and gimbal axes must be unit length and orthogonal"
+                "D6 axes must be finite, unit length, and orthogonal within each multi-axis group"
             )
 
-        if gimbal_handedness_joint != sentinel:
-            joint = int(gimbal_handedness_joint)
+        if d6_handedness_joint != sentinel:
+            joint = int(d6_handedness_joint)
             raise ValueError(
                 f"Invalid joint configuration for SolverKamino:\n"
                 f"  - joint {joint} ({self.model.joint_label[joint]!r}): "
-                "gimbal axes must preserve the solver's original handedness"
+                "three-axis D6 axes must preserve the solver's original handedness"
             )
 
         if massless_body != sentinel:
@@ -1506,6 +1511,7 @@ class SolverKamino(SolverBase, CouplingInterface):
     def _update_joint_transforms(self):
         """Re-derive Kamino joint anchors and axes from Newton's joint transforms."""
         self._kamino.convert_model_joint_transforms(self.model, self._model_kamino.joints)
+        wp.copy(self._model_kamino.joints.dof_axes, self.model.joint_axis)
 
     def _update_materials(self) -> None:
         """Refresh Kamino contact-material tables using cached representative shapes."""

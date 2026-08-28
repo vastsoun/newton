@@ -338,7 +338,9 @@ class TestModelConversions(unittest.TestCase):
         # so inv_i_I_i needs a somewhat higher tolerance.
         rtol = {"inv_i_I_i": 1e-5}
         atol = {"inv_i_I_i": 1e-6}
-        excluded = ["ptr"]
+        # Newton D6 joints now retain their generic runtime type, while the
+        # native Kamino importer still authors equivalent legacy joint types.
+        excluded = ["ptr", "dof_type"]
         test_util_checks.assert_model_equal(
             self, model_kamino_converted, model_kamino, excluded=excluded, rtol=rtol, atol=atol, allow_reordering=True
         )

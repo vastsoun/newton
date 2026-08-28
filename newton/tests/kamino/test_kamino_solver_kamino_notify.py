@@ -728,7 +728,7 @@ class TestKaminoNotifyModelChanged(unittest.TestCase):
         axes[qd_start + 1] = [1.0, 0.0, 0.0]
         model.joint_axis.assign(axes)
 
-        with self.assertRaisesRegex(ValueError, "gimbal axes must be unit length and orthogonal"):
+        with self.assertRaisesRegex(ValueError, "D6 axes must be finite, unit length, and orthogonal"):
             solver.notify_model_changed(newton.ModelFlags.JOINT_DOF_PROPERTIES)
 
     def test_gimbal_handedness_change_raises(self):
@@ -740,7 +740,7 @@ class TestKaminoNotifyModelChanged(unittest.TestCase):
         axes[qd_start + 2] = -axes[qd_start + 2]
         model.joint_axis.assign(axes)
 
-        with self.assertRaisesRegex(ValueError, "gimbal axes must preserve the solver's original handedness"):
+        with self.assertRaisesRegex(ValueError, "three-axis D6 axes must preserve the solver's original handedness"):
             solver.notify_model_changed(newton.ModelFlags.JOINT_DOF_PROPERTIES)
 
     def test_actuation_mode_change_raises(self):

@@ -1645,7 +1645,7 @@ for device in devices:
         # Torque-free precession exercises the articulated rigid-body dynamics
         # exactly (rigid joints, no soft constraints), so restrict it to the
         # exact generalized-coordinate solvers.
-        if solver_name in ("featherstone", "mujoco_cpu", "mujoco_warp"):
+        if solver_name in ("featherstone", "mujoco_cpu", "mujoco_warp", "kamino"):
             add_function_test(
                 TestPhysicsVerification,
                 f"test_torque_free_precession_{solver_name}",

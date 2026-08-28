@@ -598,7 +598,9 @@ def build_unary_cylindrical_joint_test(
     )
     _builder.add_joint(
         name="world_to_follower_cylindrical",
-        dof_type=JointDoFType.CYLINDRICAL,
+        dof_type=JointDoFType.D6,
+        dof_dim=(1, 1),
+        dof_axes=[wp.vec3f(1.0, 0.0, 0.0), wp.vec3f(1.0, 0.0, 0.0)],
         act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid_F,
@@ -710,7 +712,9 @@ def build_binary_cylindrical_joint_test(
     )
     _builder.add_joint(
         name="base_to_follower_cylindrical",
-        dof_type=JointDoFType.CYLINDRICAL,
+        dof_type=JointDoFType.D6,
+        dof_dim=(1, 1),
+        dof_axes=[wp.vec3f(1.0, 0.0, 0.0), wp.vec3f(1.0, 0.0, 0.0)],
         act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=bid_B,
         bid_F=bid_F,
@@ -797,7 +801,9 @@ def build_unary_universal_joint_test(
     )
     _builder.add_joint(
         name="world_to_follower_universal",
-        dof_type=JointDoFType.UNIVERSAL,
+        dof_type=JointDoFType.D6,
+        dof_dim=(0, 2),
+        dof_axes=[wp.vec3f(1.0, 0.0, 0.0), wp.vec3f(0.0, 1.0, 0.0)],
         act_type=JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid_F,
@@ -901,7 +907,9 @@ def build_binary_universal_joint_test(
     )
     _builder.add_joint(
         name="base_to_follower_universal",
-        dof_type=JointDoFType.UNIVERSAL,
+        dof_type=JointDoFType.D6,
+        dof_dim=(0, 2),
+        dof_axes=[wp.vec3f(1.0, 0.0, 0.0), wp.vec3f(0.0, 1.0, 0.0)],
         act_type=JointActuationType.FORCE,
         bid_B=bid_B,
         bid_F=bid_F,
@@ -1175,7 +1183,9 @@ def build_unary_cartesian_joint_test(
     )
     _builder.add_joint(
         name="world_to_follower_cartesian",
-        dof_type=JointDoFType.CARTESIAN,
+        dof_type=JointDoFType.D6,
+        dof_dim=(3, 0),
+        dof_axes=[wp.vec3f(1.0, 0.0, 0.0), wp.vec3f(0.0, 1.0, 0.0), wp.vec3f(0.0, 0.0, 1.0)],
         act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=-1,
         bid_F=bid_F,
@@ -1287,7 +1297,9 @@ def build_binary_cartesian_joint_test(
     )
     _builder.add_joint(
         name="base_to_follower_cartesian",
-        dof_type=JointDoFType.CARTESIAN,
+        dof_type=JointDoFType.D6,
+        dof_dim=(3, 0),
+        dof_axes=[wp.vec3f(1.0, 0.0, 0.0), wp.vec3f(0.0, 1.0, 0.0), wp.vec3f(0.0, 0.0, 1.0)],
         act_type=JointActuationType.POSITION_VELOCITY if implicit_pd else JointActuationType.FORCE,
         bid_B=bid_B,
         bid_F=bid_F,
@@ -1367,6 +1379,8 @@ def build_all_joints_test_model(
         if make_floating_base:
             base_joint.dof_type = JointDoFType.FREE
             base_joint.dof_act_types = [base_joint.act_type] * base_joint.dof_type.num_dofs
+            base_joint.dof_dim = None
+            base_joint.dof_axes = None
             base_joint.__post_init__()  # Will correctly populate joint dynamics etc.
         builder_alt.add_joint_descriptor(base_joint)
         joint = copy.deepcopy(builder.joints[0][1])

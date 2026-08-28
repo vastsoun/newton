@@ -208,7 +208,7 @@ class ModelBuilderKamino:
 
     @property
     def num_effort_joint_cts(self) -> int:
-        """Returns the number of effort-limit implicit-PD constraint rows contained in the model."""
+        """Returns the number of effort-limited implicit-PD actuator constraint rows contained in the model."""
         return self._num_joint_effort_cts
 
     @property
@@ -422,6 +422,8 @@ class ModelBuilderKamino:
         name: str | None = None,
         uid: str | None = None,
         world_index: int = 0,
+        dof_dim: tuple[int, int] | None = None,
+        dof_axes: list[wp.vec3f] | np.ndarray | None = None,
     ) -> int:
         """
         Add a joint entity to the model using explicit specifications.
@@ -445,6 +447,12 @@ class ModelBuilderKamino:
             f_j: The Coulomb friction force or torque limit along each DoF [N, N·m].
             k_p_j: The joint proportional gain along each DoF.
             k_d_j: The joint derivative gain along each DoF.
+            dof_dim: Linear and angular DoF counts. Required for D6 joints;
+                omitted specialized joint types receive defaults during
+                descriptor initialization.
+            dof_axes: Unit DoF axes in linear-first joint-frame order. Required
+                for D6 joints; omitted specialized joint types receive defaults
+                during descriptor initialization.
             name: The name of the joint.
             uid: The unique identifier of the joint.
             world_index: The index of the world to which the joint will be added.
@@ -457,7 +465,7 @@ class ModelBuilderKamino:
         if not isinstance(dof_type, JointDoFType):
             raise TypeError(f"Invalid DoF type: {dof_type}. Must be `JointDoFType`.")
         if isinstance(act_type, JointActuationType):
-            dof_act_types = [act_type] * dof_type.num_dofs
+            dof_act_types = [act_type] * JointDoFType.num_dofs_for(dof_type, dof_dim)
         elif isinstance(act_type, list):
             dof_act_types = act_type
         else:
@@ -487,6 +495,8 @@ class ModelBuilderKamino:
             f_j=f_j,
             k_p_j=k_p_j,
             k_d_j=k_d_j,
+            dof_dim=dof_dim,
+            dof_axes=dof_axes,
         )
 
         # Add the body descriptor to the model
@@ -1035,6 +1045,8 @@ class ModelBuilderKamino:
         joints_dof_type = []
         joints_act_type = []
         joints_dof_act_types = []
+        joints_dof_dim = []
+        joints_axis = []
         joints_fk_act_flag = []
         joints_q_j_0 = []
         joints_dq_j_0 = []
@@ -1179,6 +1191,8 @@ class ModelBuilderKamino:
                 joints_act_type.append(joint.act_type.value)
                 joints_dof_act_types.extend(act_type.value for act_type in joint.dof_act_types)
                 joints_dof_act_paths.extend(path.value for path in joint.dof_act_paths())
+                joints_dof_dim.append(joint.dof_dim)
+                joints_axis.extend(joint.dof_axes)
                 joints_fk_act_flag.append(joint.fk_act_flag)
                 joints_B_r_Bj.append(joint.B_r_Bj)
                 joints_F_r_Fj.append(joint.F_r_Fj)
@@ -1198,9 +1212,11 @@ class ModelBuilderKamino:
                     q_j_0 = wp.transform_inverse(q_B * T_B) * q_F * T_F
                     wp.transform_set_rotation(q_j_0, wp.normalize(wp.transform_get_rotation(q_j_0)))
                     joints_q_j_0.extend(list(q_j_0))
+                elif joint.dof_type == JointDoFType.D6:
+                    joints_q_j_0.extend(joint.num_coords * [0.0])
                 else:
                     joints_q_j_0.extend(joint.dof_type.reference_coords)
-                joints_dq_j_0.extend(joint.dof_type.num_dofs * [0.0])
+                joints_dq_j_0.extend(joint.num_dofs * [0.0])
                 joints_q_j_min.extend(joint.q_j_min)
                 joints_q_j_max.extend(joint.q_j_max)
                 joints_qd_j_max.extend(joint.dq_j_max)
@@ -1467,6 +1483,11 @@ class ModelBuilderKamino:
                 wid=to_warp_int32_array(joints_wid),
                 jid=to_warp_int32_array(joints_jid),
                 dof_type=to_warp_int32_array(joints_dof_type),
+                dof_dim=wp.array(
+                    np.asarray(joints_dof_dim, dtype=np.int32).reshape((-1, 2)),
+                    dtype=wp.int32,
+                ),
+                dof_axes=wp.array(joints_axis, dtype=wp.vec3f),
                 act_type=to_warp_int32_array(joints_act_type),
                 dof_act_types=to_warp_int32_array(joints_dof_act_types),
                 dof_act_paths=to_warp_int32_array(joints_dof_act_paths),

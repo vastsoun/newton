@@ -43,14 +43,10 @@ class FKJointDoFType(IntEnum):
     FREE = 0
     REVOLUTE = 1
     PRISMATIC = 2
-    CYLINDRICAL = 3
-    UNIVERSAL = 4
-    SPHERICAL = 5
-    CARTESIAN = 6
-    FIXED = 7
-    GIMBAL = 8
-    GIMBAL_LEFT_HANDED = 9
-    AXIS = 10
+    SPHERICAL = 3
+    FIXED = 4
+    D6 = 5
+    AXIS = 6
 
 
 class ForwardKinematicsPreconditionerType(IntEnum):

@@ -15,7 +15,6 @@ designed to serve as foundational examples for testing and demonstration
 purposes, and each features a certain subset of ill-conditioned dynamics.
 
 World context:
-    Unlike :class:`ModelBuilderKamino`, Newton has no ``world_index`` argument.
     When ``new_world`` is ``False``, the caller must already be inside an active
     world (i.e. between :meth:`ModelBuilder.begin_world` and
     :meth:`ModelBuilder.end_world`).

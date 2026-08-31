@@ -18,20 +18,21 @@ Usage
 A typical example for using this module is:
 
     # Import all relevant types from Kamino
-    from newton._src.solvers.kamino.core import ModelBuilderKamino
+    import newton
+    from newton._src.solvers.kamino._src.core import ModelKamino
     from newton._src.solvers.kamino._src.geometry import ContactsKamino
     from newton._src.solvers.kamino._src.kinematics import LimitsKamino
     from newton._src.solvers.kamino._src.kinematics import DenseSystemJacobians
     from newton._src.solvers.kamino._src.dynamics import DualProblem
     from newton._src.solvers.kamino.solvers import PADMMSolver
 
-    # Create a model builder and add bodies, joints, geoms, etc.
-    builder = ModelBuilderKamino()
+    # Create a model builder and add bodies, joints, shapes, etc.
+    builder = newton.ModelBuilder()
     ...
 
     # Create a model from the builder and construct additional
     # containers to hold joint-limits, contacts, Jacobians
-    model = builder.finalize()
+    model = ModelKamino.from_newton(builder.finalize())
     state_p = model.state()
     data = model.data()
     limits = LimitsKamino(model)

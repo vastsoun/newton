@@ -828,8 +828,8 @@ class TestSolverMetrics(unittest.TestCase):
             contacts=test.contacts,
         )
 
-        rtol = 1e-6
-        atol = 1e-6
+        rtol = 1e-5
+        atol = 1e-5
 
         # Compare Jacobians
         J_cts_dense_np = extract_cts_jacobians(

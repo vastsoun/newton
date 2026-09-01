@@ -391,6 +391,7 @@ def simulate_random_poses(
     randomize_base: bool = True,
     use_graph: bool = False,
     verbose: bool = False,
+    epsilon: float | None = None,
     **config_kwargs,
 ):
     # Generate random inputs
@@ -419,7 +420,8 @@ def simulate_random_poses(
         base_u = wp.array(shape=(model.size.num_worlds), dtype=wp.spatial_vectorf)
         actuators_u = wp.array(shape=(actuators_u_np.shape[1]), dtype=wp.float32)
     data = model.data(device=model.device)
-    epsilon = 1e-3 if config.use_regularization else 1e-4
+    if epsilon is None:
+        epsilon = 1e-3 if config.use_regularization else 1e-4
     for pose_id in range(num_poses):
         # Run FK solve and check convergence
         base_q.assign(base_q_np[pose_id])
@@ -572,6 +574,7 @@ class DRLegsRandomPosesCheckForwardKinematics(unittest.TestCase):
             verbose=self.verbose,
             reset_state=True,
             tolerance=1e-6,
+            epsilon=3e-4,
         )
 
         # Simulate random poses with dense solver

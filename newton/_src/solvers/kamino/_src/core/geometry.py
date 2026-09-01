@@ -145,8 +145,7 @@ class GeometriesModel:
     group: wp.array[wp.int32] | None = None
     """
     Collision group assigned to each collision geometry. These groups are based
-    on Newton's collision group semantics, not the group/collides semantics used
-    by Kamino's retired internal model builder.
+    on Newton's collision group semantics.
 
     Group `0` will not collide with anything. Any positive group N will collide
     with the same group as well as any negative group. Any negative group -M

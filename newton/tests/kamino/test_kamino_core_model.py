@@ -891,15 +891,13 @@ class TestStateControlConversions(unittest.TestCase):
         self.assertIs(state_kamino.u_i.ptr, state_newton.body_qd.ptr)
         self.assertIs(state_kamino.w_i_e.ptr, state_newton.body_f.ptr)
         self.assertIs(state_kamino.w_i.ptr, state_newton.body_f_total.ptr)
-        # NOTE: Check that the same arrays because these should be pure references
+        # NOTE: Check that arrays are the same because these should be pure references
         self.assertIs(state_kamino.q_i, state_newton.body_q)
         self.assertIs(state_kamino.q_j, state_newton.joint_q)
         self.assertIs(state_kamino.dq_j, state_newton.joint_qd)
         self.assertIs(state_kamino.q_j_p, state_newton.joint_q_prev)
         self.assertIs(state_kamino.lambda_kin_j, state_newton.joint_lambdas)
         self.assertIsNot(state_kamino.lambda_dyn_j, state_newton.joint_lambdas)
-        # TODO: re-enable the check below once the free-joint handling is fixed in Newton
-        # test_util_checks.assert_state_equal(self, state_kamino_converted, state_kamino)
 
         state_newton_converted: State = StateKamino.to_newton(model_newton, state_kamino)
         self.assertIsInstance(state_newton_converted.body_q, wp.array)

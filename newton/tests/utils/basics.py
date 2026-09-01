@@ -102,17 +102,17 @@ def build_sphere_on_plane(
 
     Args:
         builder:
-            An optional existing model builder to populate.\n
+            An optional existing model builder to populate.
             If `None`, a new builder is created.
         z_offset:
             A vertical offset to apply to the initial position of the box.
         ground:
             Whether to add a static ground plane to the model.
         new_world:
-            Whether to begin a new world in the builder for this model.\n
+            Whether to begin a new world in the builder for this model.
             If `True` (or `builder` is `None`), the model is wrapped in a new world context
             opened via :meth:`ModelBuilder.begin_world` and closed via
-            :meth:`ModelBuilder.end_world`.\n
+            :meth:`ModelBuilder.end_world`.
             If `False`, the caller must already be inside an active world; the model is then
             added to that currently active world.
 
@@ -194,17 +194,17 @@ def build_box_on_plane(
 
     Args:
         builder:
-            An optional existing model builder to populate.\n
+            An optional existing model builder to populate.
             If `None`, a new builder is created.
         z_offset:
             A vertical offset to apply to the initial position of the box.
         ground:
             Whether to add a static ground plane to the model.
         new_world:
-            Whether to begin a new world in the builder for this model.\n
+            Whether to begin a new world in the builder for this model.
             If `True` (or `builder` is `None`), the model is wrapped in a new world context
             opened via :meth:`ModelBuilder.begin_world` and closed via
-            :meth:`ModelBuilder.end_world`.\n
+            :meth:`ModelBuilder.end_world`.
             If `False`, the caller must already be inside an active world; the model is then
             added to that currently active world.
 
@@ -292,17 +292,17 @@ def build_box_pendulum(
 
     Args:
         builder:
-            An optional existing model builder to populate.\n
+            An optional existing model builder to populate.
             If `None`, a new builder is created.
         z_offset:
             A vertical offset to apply to the initial position of the box.
         ground:
             Whether to add a static ground plane to the model.
         new_world:
-            Whether to begin a new world in the builder for this model.\n
+            Whether to begin a new world in the builder for this model.
             If `True` (or `builder` is `None`), the model is wrapped in a new world context
             opened via :meth:`ModelBuilder.begin_world` and closed via
-            :meth:`ModelBuilder.end_world`.\n
+            :meth:`ModelBuilder.end_world`.
             If `False`, the caller must already be inside an active world; the model is then
             added to that currently active world.
         dynamic_joints:
@@ -409,17 +409,17 @@ def build_box_pendulum_vertical(
 
     Args:
         builder:
-            An optional existing model builder to populate.\n
+            An optional existing model builder to populate.
             If `None`, a new builder is created.
         z_offset:
             A vertical offset to apply to the initial position of the box.
         ground:
             Whether to add a static ground plane to the model.
         new_world:
-            Whether to begin a new world in the builder for this model.\n
+            Whether to begin a new world in the builder for this model.
             If `True` (or `builder` is `None`), the model is wrapped in a new world context
             opened via :meth:`ModelBuilder.begin_world` and closed via
-            :meth:`ModelBuilder.end_world`.\n
+            :meth:`ModelBuilder.end_world`.
             If `False`, the caller must already be inside an active world; the model is then
             added to that currently active world.
 
@@ -505,22 +505,22 @@ def build_cartpole(
 
     Args:
         builder:
-            An optional existing model builder to populate.\n
+            An optional existing model builder to populate.
             If `None`, a new builder is created.
         z_offset:
             A vertical offset to apply to the initial position of the box.
         ground:
             Whether to add a static ground plane to the model.
         new_world:
-            Whether to begin a new world in the builder for this model.\n
+            Whether to begin a new world in the builder for this model.
             If `True` (or `builder` is `None`), the model is wrapped in a new world context
             opened via :meth:`ModelBuilder.begin_world` and closed via
-            :meth:`ModelBuilder.end_world`.\n
+            :meth:`ModelBuilder.end_world`.
             If `False`, the caller must already be inside an active world; the model is then
             added to that currently active world.
         limits:
-            Whether to apply finite position limits on the prismatic rail joint.\n
-            If `True`, the cart is restricted to the range `[-4, 4]` along the rail.\n
+            Whether to apply finite position limits on the prismatic rail joint.
+            If `True`, the cart is restricted to the range `[-4, 4]` along the rail.
             If `False`, the joint limits are set to the largest representable float32 range.
 
     Returns:
@@ -682,17 +682,17 @@ def build_boxes_stacked_on_plane(
 
     Args:
         builder:
-            An optional existing model builder to populate.\n
+            An optional existing model builder to populate.
             If `None`, a new builder is created.
         z_offset:
             A vertical offset to apply to the initial position of the box.
         ground:
             Whether to add a static ground plane to the model.
         new_world:
-            Whether to begin a new world in the builder for this model.\n
+            Whether to begin a new world in the builder for this model.
             If `True` (or `builder` is `None`), the model is wrapped in a new world context
             opened via :meth:`ModelBuilder.begin_world` and closed via
-            :meth:`ModelBuilder.end_world`.\n
+            :meth:`ModelBuilder.end_world`.
             If `False`, the caller must already be inside an active world; the model is then
             added to that currently active world.
 
@@ -811,7 +811,7 @@ def build_boxes_hinged(
 
     Args:
         builder:
-            An optional existing model builder to populate.\n
+            An optional existing model builder to populate.
             If `None`, a new builder is created.
         z_offset:
             A vertical offset to apply to the initial position of the box.
@@ -824,10 +824,10 @@ def build_boxes_hinged(
             Whether to configure the hinge joint with a position/velocity target mode
             (implicit PD) instead of the default effort-based actuation.
         new_world:
-            Whether to begin a new world in the builder for this model.\n
+            Whether to begin a new world in the builder for this model.
             If `True` (or `builder` is `None`), the model is wrapped in a new world context
             opened via :meth:`ModelBuilder.begin_world` and closed via
-            :meth:`ModelBuilder.end_world`.\n
+            :meth:`ModelBuilder.end_world`.
             If `False`, the caller must already be inside an active world; the model is then
             added to that currently active world.
 
@@ -975,17 +975,17 @@ def build_boxes_nunchaku(
 
     Args:
         builder:
-            An optional existing model builder to populate.\n
+            An optional existing model builder to populate.
             If `None`, a new builder is created.
         z_offset:
             A vertical offset to apply to the initial position of the box.
         ground:
             Whether to add a static ground plane to the model.
         new_world:
-            Whether to begin a new world in the builder for this model.\n
+            Whether to begin a new world in the builder for this model.
             If `True` (or `builder` is `None`), the model is wrapped in a new world context
             opened via :meth:`ModelBuilder.begin_world` and closed via
-            :meth:`ModelBuilder.end_world`.\n
+            :meth:`ModelBuilder.end_world`.
             If `False`, the caller must already be inside an active world; the model is then
             added to that currently active world.
 
@@ -1131,17 +1131,17 @@ def build_boxes_nunchaku_vertical(
 
     Args:
         builder:
-            An optional existing model builder to populate.\n
+            An optional existing model builder to populate.
             If `None`, a new builder is created.
         z_offset:
             A vertical offset to apply to the initial position of the box.
         ground:
             Whether to add a static ground plane to the model.
         new_world:
-            Whether to begin a new world in the builder for this model.\n
+            Whether to begin a new world in the builder for this model.
             If `True` (or `builder` is `None`), the model is wrapped in a new world context
             opened via :meth:`ModelBuilder.begin_world` and closed via
-            :meth:`ModelBuilder.end_world`.\n
+            :meth:`ModelBuilder.end_world`.
             If `False`, the caller must already be inside an active world; the model is then
             added to that currently active world.
 
@@ -1290,7 +1290,7 @@ def build_boxes_fourbar(
 
     Args:
         builder:
-            An optional existing model builder to populate.\n
+            An optional existing model builder to populate.
             If `None`, a new builder is created.
         z_offset:
             A vertical offset to apply to the initial position of the box.
@@ -1299,8 +1299,8 @@ def build_boxes_fourbar(
         floatingbase:
             Whether to attach ``link_1`` to the world with a free (6-DoF) joint.
         limits:
-            Whether to apply finite position limits on every revolute joint.\n
-            If `True`, each hinge is restricted to `[-pi/4, pi/4]`.\n
+            Whether to apply finite position limits on every revolute joint.
+            If `True`, each hinge is restricted to `[-pi/4, pi/4]`.
             If `False`, the joint limits are set to the largest representable float32 range.
         ground:
             Whether to add a static ground plane to the model.
@@ -1316,19 +1316,19 @@ def build_boxes_fourbar(
             If `True`, prints the computed body inertias and the initial body and
             joint positions during construction.
         new_world:
-            Whether to begin a new world in the builder for this model.\n
+            Whether to begin a new world in the builder for this model.
             If `True` (or `builder` is `None`), the model is wrapped in a new world context
             opened via :meth:`ModelBuilder.begin_world` and closed via
-            :meth:`ModelBuilder.end_world`.\n
+            :meth:`ModelBuilder.end_world`.
             If `False`, the caller must already be inside an active world; the model is then
             added to that currently active world.
         actuator_ids:
             1-based indices of the revolute joints (``1`` through ``4``) that should be
             driven by an actuator. Any joint whose index is not listed is treated as a
-            passive revolute joint.\n
+            passive revolute joint.
             In the original Kamino factory the special index ``0`` selected actuation of
             the free-base joint; Newton's free joint does not expose an analogous flag
-            and the value is currently ignored for the base joint.\n
+            and the value is currently ignored for the base joint.
             If `None`, defaults to `[1, 3]`.
         friction:
             Friction parameter set on all shape configs if ``use_custom_shape_cfg`` is
@@ -1341,9 +1341,9 @@ def build_boxes_fourbar(
             ``restitution`` parameters, instead of the builder's default config.
         spherical_joints:
             1-based indices of the revolute joints (``2`` or ``3``) to instead build as
-            ball (spherical) joints, turning the linkage into a "tie rod" mechanism.\n
+            ball (spherical) joints, turning the linkage into a "tie rod" mechanism.
             Joints ``1`` and ``4`` (the actuated base joint and the loop-closing joint)
-            are always revolute.\n
+            are always revolute.
             If `None`, all four joints are revolute.
 
     Returns:
@@ -1712,7 +1712,7 @@ def make_basics_heterogeneous_builder(
 
     Args:
         builder:
-            An optional existing model builder to populate.\n
+            An optional existing model builder to populate.
             If `None`, a new builder is created.
         ground:
             Whether to add a static ground plane to each sub-model.

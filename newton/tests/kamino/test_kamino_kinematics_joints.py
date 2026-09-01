@@ -252,6 +252,8 @@ class TestKinematicsJoints(unittest.TestCase):
     def test_03_single_dynamic_revolute_joint(self):
         # Loop over all actuation types to test dynamic joint with different modes
         for act_type in JointActuationType:
+            # Convert Kamino actuation type to Newton target mode.
+            # Unmapped types (e.g., POSITION_VELOCITY_FORCE) are mapped to POSITION_VELOCITY.
             try:
                 target_mode = JointActuationType.to_newton(act_type)
             except ValueError:

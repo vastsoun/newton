@@ -120,8 +120,7 @@ class BroadPhaseType(IntEnum):
     EXPLICIT = 2
     """
     Use an explicit broad-phase that relies on pre-computed candidate pairs
-    of collision shapes, typically generated based on heuristics such as
-    proximity and connectivity.
+    of collision shapes (see ``GeometriesModel.collidable_pairs``).
 
     This mode can be the most efficient when the candidate pairs are
     well-chosen, but it requires additional setup during model building.

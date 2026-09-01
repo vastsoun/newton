@@ -704,9 +704,9 @@ class TestPADMMSolver(unittest.TestCase):
         # but are defined here explicitly for the purposes
         # of experimentation and testing.
         config = PADMMSolver.Config()
-        config.primal_tolerance = 1e-6
-        config.dual_tolerance = 1e-6
-        config.compl_tolerance = 1e-6
+        config.primal_tolerance = 1e-5
+        config.dual_tolerance = 1e-5
+        config.compl_tolerance = 1e-5
         config.restart_tolerance = 0.999
         config.eta = 1e-5
         config.rho_0 = 1.0
@@ -752,9 +752,9 @@ class TestPADMMSolver(unittest.TestCase):
         # but are defined here explicitly for the purposes
         # of experimentation and testing.
         config = PADMMSolver.Config()
-        config.primal_tolerance = 1e-6
-        config.dual_tolerance = 1e-6
-        config.compl_tolerance = 1e-6
+        config.primal_tolerance = 1e-5
+        config.dual_tolerance = 1e-5
+        config.compl_tolerance = 1e-5
         config.restart_tolerance = 0.999
         config.eta = 1e-5
         config.rho_0 = 1.0

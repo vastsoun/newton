@@ -7,7 +7,6 @@ import warp as wp
 
 from ...core.types import override
 from ...sim import Contacts, Control, Model, ModelFlags, State
-from ...utils.deprecation import deprecate_nonkeyword_arguments
 from ..coupled.interface import CouplingInterface
 from ..solver import SolverBase
 from . import kernels, restitution_kernels
@@ -115,7 +114,6 @@ class SolverXPBD(SolverBase, CouplingInterface):
 
     """
 
-    @deprecate_nonkeyword_arguments
     def __init__(
         self,
         model: Model,

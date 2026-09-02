@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 import warp as wp
 
-from newton._src.sim import Model
+from newton import BodyFlags, Model
 from newton._src.solvers.kamino._src.core.bodies import convert_body_com_to_origin
 from newton._src.solvers.kamino._src.core.control import ControlKamino
 from newton._src.solvers.kamino._src.core.joints import JointActuationType
@@ -174,16 +174,15 @@ def _assert_model_bodies_conversion_consistency(
 
     # Pure aliases: mass, inertia, COM, and initial velocity.
     aliases = [
-        ("m_i", "body_mass"),
-        ("inv_m_i", "body_inv_mass"),
         ("i_r_com_i", "body_com"),
-        ("i_I_i", "body_inertia"),
-        ("inv_i_I_i", "body_inv_inertia"),
         ("u_i_0", "body_qd"),
     ]
     for kamino_attr, newton_attr in aliases:
         if kamino_attr not in excluded:
             _assert_array_is_alias(test, bodies, kamino_attr, model_newton, newton_attr)
+
+    if model_newton.body_count == 0:
+        return
 
     # `wid` may be renumbered for single-world models with global (-1) entities,
     # so it is compared against the expected post-renumbering value.
@@ -194,9 +193,47 @@ def _assert_model_bodies_conversion_consistency(
             err_msg="RigidBodiesModel.wid does not match the expected Model.body_world.",
         )
 
+    # Inverse transformation: `m_i` and `inv_m_i` are near-identical copies,
+    # except for bodies with
+    if "m_i" not in excluded or "inv_m_i" not in excluded or "i_I_i" not in excluded or "inv_i_I_i" not in excluded:
+        body_flags = model_newton.body_flags.numpy()
+        is_kinematic = body_flags != BodyFlags.DYNAMIC
+        if "m_i" not in excluded:
+            m_i_expected = model_newton.body_mass.numpy()
+            m_i_expected[is_kinematic] = 0.0
+            np.testing.assert_array_equal(
+                bodies.m_i.numpy(),
+                m_i_expected,
+                err_msg="RigidBodiesModel.m_i does not match expected masked Model.body_mass",
+            )
+        if "inv_m_i" not in excluded:
+            inv_m_i_expected = model_newton.body_inv_mass.numpy()
+            inv_m_i_expected[is_kinematic] = 0.0
+            np.testing.assert_array_equal(
+                bodies.inv_m_i.numpy(),
+                inv_m_i_expected,
+                err_msg="RigidBodiesModel.inv_m_i does not match expected masked Model.body_inv_mass",
+            )
+        if "i_I_i" not in excluded:
+            i_I_i_expected = model_newton.body_inertia.numpy()
+            i_I_i_expected[is_kinematic, :, :] = 0.0
+            np.testing.assert_array_equal(
+                bodies.i_I_i.numpy(),
+                i_I_i_expected,
+                err_msg="RigidBodiesModel.i_I_i does not match expected masked Model.body_inertia",
+            )
+        if "inv_i_I_i" not in excluded:
+            inv_i_I_i_expected = model_newton.body_inv_inertia.numpy()
+            inv_i_I_i_expected[is_kinematic, :, :] = 0.0
+            np.testing.assert_array_equal(
+                bodies.inv_i_I_i.numpy(),
+                inv_i_I_i_expected,
+                err_msg="RigidBodiesModel.m_inv_i_I_i does not match expected masked Model.body_inv_inertia",
+            )
+
     # Inverse transformation: `q_i_0` stores COM-frame world poses; inverting it
     # back to body-origin frame must recover `Model.body_q` exactly.
-    if "q_i_0" not in excluded and model_newton.body_count > 0:
+    if "q_i_0" not in excluded:
         body_q_recovered = wp.empty_like(bodies.q_i_0)
         convert_body_com_to_origin(bodies.i_r_com_i, bodies.q_i_0, body_q_recovered)
         np.testing.assert_allclose(

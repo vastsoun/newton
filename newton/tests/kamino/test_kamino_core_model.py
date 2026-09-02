@@ -187,8 +187,8 @@ class TestModelConversions(unittest.TestCase):
 
     def test_01_model_conversions_consistency_fourbar_from_builder(self):
         """
-        Test that a fourbar model built with Newton's ModelBuilder (single- and
-        multi-world) converts to a self-consistent ModelKamino.
+        Test that the Newton to Kamino model conversion of a fourbar model
+        (single- and multi-world) is consistent.
         """
         builder_single: ModelBuilder = ModelBuilder()
         builder_single.default_shape_cfg.margin = 0.0
@@ -218,9 +218,9 @@ class TestModelConversions(unittest.TestCase):
 
     def test_02_model_conversions_consistency_material_variation_from_builder(self):
         """
-        Test that a fourbar model with distinct per-shape friction/restitution
-        overrides converts to a self-consistent ModelKamino, exercising the
-        materials dedup path.
+        Test that the Newton to Kamino model conversion of a fourbar model with
+        distinct per-shape friction/restitution overrides is consistent,
+        exercising the materials dedup path.
         """
         builder_newton: ModelBuilder = ModelBuilder()
         SolverKamino.register_custom_attributes(builder_newton)
@@ -255,8 +255,8 @@ class TestModelConversions(unittest.TestCase):
 
     def test_03_model_conversions_consistency_fourbar_from_usd(self):
         """
-        Test that a fourbar model loaded from USD converts to a self-consistent
-        ModelKamino.
+        Test that the Newton to Kamino model conversion of a fourbar model
+        loaded from USD is consistent.
         """
         asset_file = get_kamino_basics_asset("boxes_fourbar.usda")
 
@@ -282,9 +282,9 @@ class TestModelConversions(unittest.TestCase):
 
     def test_04_model_conversions_consistency_box_on_plane_materials_from_usd(self):
         """
-        Test that a box-on-plane model with distinct per-shape materials loaded
-        from USD converts to a self-consistent ModelKamino, exercising both
-        multi-world duplication and the materials dedup path.
+        Test that the Newton to Kamino model conversion of a box-on-plane model
+        with distinct per-shape materials loaded from USD is consistent,
+        exercising both multi-world duplication and the materials dedup path.
         """
         asset_file = get_kamino_basics_asset("box_on_plane.usda")
 

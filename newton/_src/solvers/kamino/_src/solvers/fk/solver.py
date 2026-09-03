@@ -137,10 +137,11 @@ class ForwardKinematicsSolver:
         self.config: ForwardKinematicsSolver.Config = ForwardKinematicsSolver.Config()
         """Solver config"""
 
+        self.data: FKData | None = None
+        """ Internal solver data, allocated by finalize() """
+
         self.graph: wp.Graph | None = None
         """Cuda graph for the convenience function with verbosity options"""
-
-        # Note: there are many other internal data members below, which are not documented here
 
         # Set model and config, and finalize if model was provided
         self.model = model
@@ -179,24 +180,24 @@ class ForwardKinematicsSolver:
         # Initialize device
         self.device = self.model.device
 
-        # Reset internal data
-        self._data = FKData()
-        self._data.linear_system.preconditioner_type = ForwardKinematicsSolver.PreconditionerType.from_string(
+        # Initialize internal data
+        self.data = FKData()
+        self.data.linear_system.preconditioner_type = ForwardKinematicsSolver.PreconditionerType.from_string(
             self.config.preconditioner
         )
 
         # Retrieve / compute dimensions - Bodies
         num_bodies = self.model.info.num_bodies.numpy()  # Number of bodies per world
-        body_offset = np.concatenate(([0], num_bodies.cumsum()))  # Index of first body per world
-        self._data.dimensions.num_bodies_max = self.model.size.max_of_num_bodies  # Max number of bodies across worlds
+        body_offset = self.model.info.bodies_offset.numpy()  # Index of first body per world
+        self.data.dimensions.num_bodies_max = self.model.size.max_of_num_bodies  # Max number of bodies across worlds
 
         # Retrieve / compute dimensions - States (i.e., body poses)
         num_states = 7 * num_bodies  # Number of state dimensions per world
-        self._data.dimensions.num_states_tot = (
+        self.data.dimensions.num_states_tot = (
             7 * self.model.size.sum_of_num_bodies
         )  # State dimensions for the whole model
-        self._data.dimensions.num_states_max = (
-            7 * self._data.dimensions.num_bodies_max
+        self.data.dimensions.num_states_max = (
+            7 * self.data.dimensions.num_bodies_max
         )  # Max state dimension across worlds
 
         # Retrieve / compute dimensions - Joints (main model)
@@ -261,11 +262,11 @@ class ForwardKinematicsSolver:
         classes = compute_fk_equivalence_classes(self.model)
         num_classes = len(classes)
 
-        # Resolve discrete joint data (e.g. types and indices) first, then
-        # copy or compute continuous joint data (e.g. frames).
         # Create a copy of the model's joints with added joints as needed:
         # - actuated free joints to reset the base position/orientation
         # - axis joints to factor out superfluous DoFs at tie rods
+        # We resolve discrete joint data (e.g. types and indices) first, then
+        # copy or compute continuous joint data (e.g. frames).
         joint_dof_type_prev = self.model.joints.dof_type.numpy().copy()
         joint_bid_B_prev = self.model.joints.bid_B.numpy().copy()
         joint_bid_F_prev = self.model.joints.bid_F.numpy().copy()
@@ -279,12 +280,12 @@ class ForwardKinematicsSolver:
         joints_num_actuated_dofs = []  # Number of actuated dofs per joint (0 for passive joints)
         joints_source_id = []  # Source joint in the main model, or -1 for synthetic joints
         joint_world_id = []  # World index per joint
-        fk_axis_joint = []  # FK index of each synthetic axis joint
-        fk_axis_body = []  # Body defining each synthetic axis joint
-        fk_axis_source_joint_0 = []  # First source joint defining each synthetic axis joint
-        fk_axis_source_joint_1 = []  # Second source joint defining each synthetic axis joint
+        axis_joint_d = []  # FK index of each synthetic axis joint
+        axis_body_id = []  # Body defining each synthetic axis joint
+        axis_source_joint_0 = []  # First source joint defining each synthetic axis joint
+        axis_source_joint_1 = []  # Second source joint defining each synthetic axis joint
         num_joints = np.zeros(self.model.size.num_worlds, dtype=np.int32)  # Number of joints per world
-        self._data.dimensions.num_joints_tot = 0  # Number of joints for all worlds
+        self.data.dimensions.num_joints_tot = 0  # Number of joints for all worlds
         actuated_coords_map = []  # Map of new actuated coordinates to these in the model or to the base coordinates
         actuated_dofs_map = []  # Map of new actuated dofs to these in the model or to the base dofs
         base_joint_ids = self.model.size.num_worlds * [-1]  # Base joint id per world
@@ -353,10 +354,10 @@ class ForwardKinematicsSolver:
                     joint_bid_F.append(rb_id_tot)
                     joints_source_id.append(-1)
                     joint_world_id.append(wd_id)
-                    fk_axis_joint.append(len(joint_dof_type) - 1)
-                    fk_axis_body.append(rb_id_tot)
-                    fk_axis_source_joint_0.append(rotation_joints_per_body[rb_id][0])
-                    fk_axis_source_joint_1.append(rotation_joints_per_body[rb_id][1])
+                    axis_joint_d.append(len(joint_dof_type) - 1)
+                    axis_body_id.append(rb_id_tot)
+                    axis_source_joint_0.append(rotation_joints_per_body[rb_id][0])
+                    axis_source_joint_1.append(rotation_joints_per_body[rb_id][1])
                     joints_num_actuated_coords.append(0)
                     joints_num_actuated_dofs.append(0)
 
@@ -392,20 +393,20 @@ class ForwardKinematicsSolver:
                 base_joint_ids[wd_id] = len(joint_dof_type) - 1
 
             # Record number of joints
-            num_joints_world = len(joint_dof_type) - self._data.dimensions.num_joints_tot
-            self._data.dimensions.num_joints_tot += num_joints_world
+            num_joints_world = len(joint_dof_type) - self.data.dimensions.num_joints_tot
+            self.data.dimensions.num_joints_tot += num_joints_world
             num_joints[wd_id] = num_joints_world
 
         # Retrieve / compute dimensions - Joints (FK model)
         joint_offset = np.concatenate(([0], num_joints.cumsum()))  # Index of first joint per world
-        self._data.dimensions.num_joints_max = max(num_joints)  # Max number of joints across worlds
+        self.data.dimensions.num_joints_max = max(num_joints)  # Max number of joints across worlds
 
         # Retrieve / compute dimensions - Actuated coordinates (FK model)
         joints_num_actuated_coords = np.array(joints_num_actuated_coords)  # Number of actuated coordinates per joint
         actuated_coord_offset = np.concatenate(
             ([0], joints_num_actuated_coords.cumsum())
         )  # First actuated coordinate offset per joint, among all actuated coordinates
-        self._data.dimensions.num_actuated_coords = actuated_coord_offset[-1]
+        self.data.dimensions.num_actuated_coords = actuated_coord_offset[-1]
         world_num_actuated_coords = np.array(
             [
                 joints_num_actuated_coords[joint_offset[wd_id] : joint_offset[wd_id + 1]].sum()
@@ -413,20 +414,20 @@ class ForwardKinematicsSolver:
             ]
         )
         world_actuated_coord_offset = np.concatenate(([0], world_num_actuated_coords.cumsum()))
-        self._data.dimensions.num_actuated_coords_max = np.max(world_num_actuated_coords)
+        self.data.dimensions.num_actuated_coords_max = np.max(world_num_actuated_coords)
 
         # Retrieve / compute dimensions - Actuated dofs (FK model)
         joints_num_actuated_dofs = np.array(joints_num_actuated_dofs)  # Number of actuated dofs per joint
         actuated_dof_offset = np.concatenate(
             ([0], joints_num_actuated_dofs.cumsum())
         )  # First actuated dof offset per joint, among all actuated dofs
-        self._data.dimensions.num_actuated_dofs = actuated_dof_offset[-1]
+        self.data.dimensions.num_actuated_dofs = actuated_dof_offset[-1]
 
         # Retrieve / compute dimensions - Constraints
         num_constraints = num_bodies.copy()  # Number of kinematic constraints per world (unit quat. + joints)
         has_universal_joints = False  # Whether the model has at least one passive universal joint
-        self._data.joints.has_universal_actuators = False  # Whether the model has at least one actuated universal joint
-        constraint_full_to_red_map = np.full(6 * self._data.dimensions.num_joints_tot, -1, dtype=np.int32)
+        self.data.joints.has_universal_actuators = False  # Whether the model has at least one actuated universal joint
+        constraint_full_to_red_map = np.full(6 * self.data.dimensions.num_joints_tot, -1, dtype=np.int32)
         for eq_class in classes:
             # Count constraints for first world in equivalence class
             wd_id = eq_class[0]
@@ -439,7 +440,7 @@ class ForwardKinematicsSolver:
                         constraint_full_to_red_map[6 * jt_id + i] = ct_count + i
                     ct_count += 6
                     if dof_type == FKJointDoFType.UNIVERSAL:
-                        self._data.joints.has_universal_actuators = True
+                        self.data.joints.has_universal_actuators = True
                 else:
                     if dof_type == FKJointDoFType.AXIS:
                         constraint_full_to_red_map[6 * jt_id + 3] = ct_count
@@ -496,11 +497,11 @@ class ForwardKinematicsSolver:
                     constraint_full_to_red_map[6 * joint_offset[wd_id] : 6 * joint_offset[wd_id + 1]]
                 )
                 num_constraints[wd_id_1] = num_constraints[wd_id]
-        self._data.dimensions.num_constraints_max = np.max(num_constraints)
+        self.data.dimensions.num_constraints_max = np.max(num_constraints)
 
         # Initialize maximal step size per iteration in actuated coordinates
         if self.config.use_incremental_solve:
-            delta_q_max = np.zeros(self._data.dimensions.num_actuated_coords, dtype=np.float32)
+            delta_q_max = np.zeros(self.data.dimensions.num_actuated_coords, dtype=np.float32)
             max_step_linear = self.config.max_linear_incremental_step
             max_step_angular = self.config.max_angular_incremental_step
             half_angle = 0.5 * min(max_step_angular, np.pi)
@@ -550,207 +551,207 @@ class ForwardKinematicsSolver:
 
         # Retrieve / compute dimensions - Number of tiles (for kernels using Tile API)
         # For 1d reduction kernels, large tiles yield the best performance
-        self._data.dimensions.tile_size_cts_1d = get_tile_size(self._data.dimensions.num_constraints_max)
-        self._data.dimensions.num_tiles_cts_1d = get_num_tiles(
-            self._data.dimensions.num_constraints_max, self._data.dimensions.tile_size_cts_1d
+        self.data.dimensions.tile_size_cts_1d = get_tile_size(self.data.dimensions.num_constraints_max)
+        self.data.dimensions.num_tiles_cts_1d = get_num_tiles(
+            self.data.dimensions.num_constraints_max, self.data.dimensions.tile_size_cts_1d
         )
-        self._data.dimensions.tile_size_vrs_1d = get_tile_size(self._data.dimensions.num_states_max)
-        self._data.dimensions.num_tiles_vrs_1d = get_num_tiles(
-            self._data.dimensions.num_states_max, self._data.dimensions.tile_size_vrs_1d
+        self.data.dimensions.tile_size_vrs_1d = get_tile_size(self.data.dimensions.num_states_max)
+        self.data.dimensions.num_tiles_vrs_1d = get_num_tiles(
+            self.data.dimensions.num_states_max, self.data.dimensions.tile_size_vrs_1d
         )
         # For 2d matrix product kernels, smaller 16x16 tiles give the best tradeoff (also for using sparsity)
-        self._data.dimensions.tile_size_cts_2d = 16
-        self._data.dimensions.num_tiles_cts_2d = get_num_tiles(
-            self._data.dimensions.num_constraints_max, self._data.dimensions.tile_size_cts_2d
+        self.data.dimensions.tile_size_cts_2d = 16
+        self.data.dimensions.num_tiles_cts_2d = get_num_tiles(
+            self.data.dimensions.num_constraints_max, self.data.dimensions.tile_size_cts_2d
         )
-        self._data.dimensions.tile_size_vrs_2d = 16
-        self._data.dimensions.num_tiles_vrs_2d = get_num_tiles(
-            self._data.dimensions.num_states_max, self._data.dimensions.tile_size_vrs_2d
+        self.data.dimensions.tile_size_vrs_2d = 16
+        self.data.dimensions.num_tiles_vrs_2d = get_num_tiles(
+            self.data.dimensions.num_states_max, self.data.dimensions.tile_size_vrs_2d
         )
         # For optional 1d reduction kernel over actuated coordinates
         if self.config.use_incremental_solve:
-            self._data.dimensions.tile_size_coords = get_tile_size(self._data.dimensions.num_actuated_coords_max)
-            self._data.dimensions.num_tiles_coords = get_num_tiles(
-                self._data.dimensions.num_actuated_coords_max, self._data.dimensions.tile_size_coords
+            self.data.dimensions.tile_size_coords = get_tile_size(self.data.dimensions.num_actuated_coords_max)
+            self.data.dimensions.num_tiles_coords = get_num_tiles(
+                self.data.dimensions.num_actuated_coords_max, self.data.dimensions.tile_size_coords
             )
 
         # Data allocation or transfer from numpy to warp
         with wp.ScopedDevice(self.device):
             # Dimensions
-            self._data.dimensions.num_joints = to_warp_int32_array(num_joints)
-            self._data.dimensions.joint_offset = to_warp_int32_array(joint_offset)
-            self._data.dimensions.actuated_coord_offset = to_warp_int32_array(actuated_coord_offset)
-            self._data.dimensions.actuated_coords_map = to_warp_int32_array(np.array(actuated_coords_map))
-            self._data.dimensions.world_actuated_coord_offset = to_warp_int32_array(world_actuated_coord_offset)
-            self._data.dimensions.actuated_dof_offset = to_warp_int32_array(actuated_dof_offset)
-            self._data.dimensions.actuated_dofs_map = to_warp_int32_array(np.array(actuated_dofs_map))
-            self._data.dimensions.num_states = to_warp_int32_array(num_states)
-            self._data.dimensions.num_constraints = to_warp_int32_array(num_constraints)
-            self._data.dimensions.constraint_full_to_red_map = to_warp_int32_array(constraint_full_to_red_map)
+            self.data.dimensions.num_joints = to_warp_int32_array(num_joints)
+            self.data.dimensions.joint_offset = to_warp_int32_array(joint_offset)
+            self.data.dimensions.actuated_coord_offset = to_warp_int32_array(actuated_coord_offset)
+            self.data.dimensions.actuated_coords_map = to_warp_int32_array(np.array(actuated_coords_map))
+            self.data.dimensions.world_actuated_coord_offset = to_warp_int32_array(world_actuated_coord_offset)
+            self.data.dimensions.actuated_dof_offset = to_warp_int32_array(actuated_dof_offset)
+            self.data.dimensions.actuated_dofs_map = to_warp_int32_array(np.array(actuated_dofs_map))
+            self.data.dimensions.num_states = to_warp_int32_array(num_states)
+            self.data.dimensions.num_constraints = to_warp_int32_array(num_constraints)
+            self.data.dimensions.constraint_full_to_red_map = to_warp_int32_array(constraint_full_to_red_map)
 
             # Helper data for model updates validation
-            self._data.joints._built_actuated = to_warp_int32_array(built_fk_actuated)
-            self._data.joints._actuation_violations = wp.empty(2, dtype=wp.int32)
+            self.data.joints._built_actuated = to_warp_int32_array(built_fk_actuated)
+            self.data.joints._actuation_violations = wp.empty(2, dtype=wp.int32)
 
             # Modified joints
-            self._data.joints.dof_type = to_warp_int32_array(joint_dof_type)
-            self._data.joints.act_type = to_warp_int32_array(joint_act_type)
-            self._data.joints.bid_B = to_warp_int32_array(joint_bid_B)
-            self._data.joints.bid_F = to_warp_int32_array(joint_bid_F)
-            self._data.joints.B_r_Bj = wp.empty(self._data.dimensions.num_joints_tot, dtype=wp.vec3f)
-            self._data.joints.F_r_Fj = wp.empty(self._data.dimensions.num_joints_tot, dtype=wp.vec3f)
-            self._data.joints.X_Bj = wp.empty(self._data.dimensions.num_joints_tot, dtype=wp.mat33f)
-            self._data.joints.X_Fj = wp.empty(self._data.dimensions.num_joints_tot, dtype=wp.mat33f)
-            self._data.joints.source_id = to_warp_int32_array(joints_source_id)
-            self._data.joints.world_id = to_warp_int32_array(joint_world_id)
-            self._data.joints.axis_joint = to_warp_int32_array(fk_axis_joint)
-            self._data.joints.axis_body = to_warp_int32_array(fk_axis_body)
-            self._data.joints.axis_source_joint_0 = to_warp_int32_array(fk_axis_source_joint_0)
-            self._data.joints.axis_source_joint_1 = to_warp_int32_array(fk_axis_source_joint_1)
-            self._data.dimensions.num_axis_joints = len(fk_axis_joint)
-            self._data.joints.base_joint_id = to_warp_int32_array(base_joint_ids)
+            self.data.joints.dof_type = to_warp_int32_array(joint_dof_type)
+            self.data.joints.act_type = to_warp_int32_array(joint_act_type)
+            self.data.joints.bid_B = to_warp_int32_array(joint_bid_B)
+            self.data.joints.bid_F = to_warp_int32_array(joint_bid_F)
+            self.data.joints.B_r_Bj = wp.empty(self.data.dimensions.num_joints_tot, dtype=wp.vec3f)
+            self.data.joints.F_r_Fj = wp.empty(self.data.dimensions.num_joints_tot, dtype=wp.vec3f)
+            self.data.joints.X_Bj = wp.empty(self.data.dimensions.num_joints_tot, dtype=wp.mat33f)
+            self.data.joints.X_Fj = wp.empty(self.data.dimensions.num_joints_tot, dtype=wp.mat33f)
+            self.data.joints.source_id = to_warp_int32_array(joints_source_id)
+            self.data.joints.world_id = to_warp_int32_array(joint_world_id)
+            self.data.joints.axis_joint_id = to_warp_int32_array(axis_joint_d)
+            self.data.joints.axis_body_id = to_warp_int32_array(axis_body_id)
+            self.data.joints.axis_source_joint_0 = to_warp_int32_array(axis_source_joint_0)
+            self.data.joints.axis_source_joint_1 = to_warp_int32_array(axis_source_joint_1)
+            self.data.dimensions.num_axis_joints = len(axis_joint_d)
+            self.data.joints.base_joint_id = to_warp_int32_array(base_joint_ids)
 
             # Default base state
-            self._data.problem.base_q_default = wp.zeros(shape=self.model.size.num_worlds, dtype=wp.transformf)
-            self._data.problem.base_u_default = wp.zeros(shape=(self.model.size.num_worlds,), dtype=wp.spatial_vectorf)
+            self.data.problem.base_q_default = wp.zeros(shape=self.model.size.num_worlds, dtype=wp.transformf)
+            self.data.problem.base_u_default = wp.zeros(shape=(self.model.size.num_worlds,), dtype=wp.spatial_vectorf)
 
             # Line search
-            self._data.line_search.max_iterations = wp.array(dtype=wp.int32, shape=(1,))  # Max iterations
-            self._data.line_search.max_iterations.fill_(self.config.max_line_search_iterations)
-            self._data.line_search.iteration = wp.array(
+            self.data.line_search.max_iterations = wp.array(dtype=wp.int32, shape=(1,))  # Max iterations
+            self.data.line_search.max_iterations.fill_(self.config.max_line_search_iterations)
+            self.data.line_search.iteration = wp.array(
                 dtype=wp.int32, shape=(self.model.size.num_worlds,)
             )  # Iteration count
-            self._data.line_search.loop_condition = wp.array(dtype=wp.int32, shape=(1,))  # Loop condition
-            self._data.dimensions.all_worlds_mask = wp.full(
+            self.data.line_search.loop_condition = wp.array(dtype=wp.int32, shape=(1,))  # Loop condition
+            self.data.dimensions.all_worlds_mask = wp.full(
                 shape=(self.model.size.num_worlds,), value=True, dtype=wp.bool
             )
-            self._data.line_search.success = wp.array(
+            self.data.line_search.success = wp.array(
                 dtype=wp.bool, shape=(self.model.size.num_worlds,)
             )  # Convergence, per world
-            self._data.line_search.mask = wp.array(
+            self.data.line_search.mask = wp.array(
                 dtype=wp.bool, shape=(self.model.size.num_worlds,)
             )  # Flag to keep iterating per world
-            self._data.line_search.val_0 = wp.array(
+            self.data.line_search.val_0 = wp.array(
                 dtype=wp.float32, shape=(self.model.size.num_worlds,)
             )  # Merit function value at 0, per world
-            self._data.line_search.grad_0 = wp.array(
+            self.data.line_search.grad_0 = wp.array(
                 dtype=wp.float32, shape=(self.model.size.num_worlds,)
             )  # Merit function gradient at 0, per world
-            self._data.line_search.alpha = wp.array(
+            self.data.line_search.alpha = wp.array(
                 dtype=wp.float32, shape=(self.model.size.num_worlds,)
             )  # Step size, per world
-            self._data.line_search.body_q_alpha = wp.array(
+            self.data.line_search.body_q_alpha = wp.array(
                 dtype=wp.transformf, shape=(self.model.size.sum_of_num_bodies,)
             )  # New state
-            self._data.line_search.val_alpha = wp.array(
+            self.data.line_search.val_alpha = wp.array(
                 dtype=wp.float32, shape=(self.model.size.num_worlds,)
             )  # New merit function value, per world
 
             # Gauss-Newton
-            self._data.gauss_newton.max_iterations = wp.array(dtype=wp.int32, shape=(1,))  # Max iterations
-            self._data.gauss_newton.max_iterations.fill_(self.config.max_newton_iterations)
-            self._data.gauss_newton.min_iterations = wp.zeros(
+            self.data.gauss_newton.max_iterations = wp.array(dtype=wp.int32, shape=(1,))  # Max iterations
+            self.data.gauss_newton.max_iterations.fill_(self.config.max_newton_iterations)
+            self.data.gauss_newton.min_iterations = wp.zeros(
                 dtype=wp.int32, shape=(self.model.size.num_worlds,)
             )  # Min iterations
-            self._data.gauss_newton.iteration = wp.array(
+            self.data.gauss_newton.iteration = wp.array(
                 dtype=wp.int32, shape=(self.model.size.num_worlds,)
             )  # Iteration count
-            self._data.gauss_newton.loop_condition = wp.array(dtype=wp.int32, shape=(1,))  # Loop condition
-            self._data.gauss_newton.success = wp.array(
+            self.data.gauss_newton.loop_condition = wp.array(dtype=wp.int32, shape=(1,))  # Loop condition
+            self.data.gauss_newton.success = wp.array(
                 dtype=wp.bool, shape=(self.model.size.num_worlds,)
             )  # Convergence per world
-            self._data.gauss_newton.mask = wp.array(
+            self.data.gauss_newton.mask = wp.array(
                 dtype=wp.bool, shape=(self.model.size.num_worlds,)
             )  # Flag to keep iterating per world
             if self.config.use_regularization and self.config.use_incremental_solve:
                 # Flags to keep track of in what worlds Jacobians should be updated before/after controls
-                self._data.gauss_newton.jacobian_early_update_mask = wp.array(
+                self.data.gauss_newton.jacobian_early_update_mask = wp.array(
                     dtype=wp.bool, shape=(self.model.size.num_worlds,)
                 )
-                self._data.gauss_newton.jacobian_late_update_mask = wp.array(
+                self.data.gauss_newton.jacobian_late_update_mask = wp.array(
                     dtype=wp.bool, shape=(self.model.size.num_worlds,)
                 )
             else:
-                self._data.gauss_newton.jacobian_early_update_mask = None
-                self._data.gauss_newton.jacobian_late_update_mask = None
-            self._data.gauss_newton.tolerance = wp.array(dtype=wp.float32, shape=(1,))  # Tolerance on max constraint
-            self._data.gauss_newton.tolerance.fill_(self.config.tolerance)
-            self._data.problem.actuator_q_next = wp.array(
-                dtype=wp.float32, shape=(self._data.dimensions.num_actuated_coords,)
+                self.data.gauss_newton.jacobian_early_update_mask = None
+                self.data.gauss_newton.jacobian_late_update_mask = None
+            self.data.gauss_newton.tolerance = wp.array(dtype=wp.float32, shape=(1,))  # Tolerance on max constraint
+            self.data.gauss_newton.tolerance.fill_(self.config.tolerance)
+            self.data.problem.actuator_q_next = wp.array(
+                dtype=wp.float32, shape=(self.data.dimensions.num_actuated_coords,)
             )  # Actuated coordinates (target)
             if self.config.use_incremental_solve:
-                self._data.problem.actuator_q_prev = wp.array(
-                    dtype=wp.float32, shape=(self._data.dimensions.num_actuated_coords,)
+                self.data.problem.actuator_q_prev = wp.array(
+                    dtype=wp.float32, shape=(self.data.dimensions.num_actuated_coords,)
                 )  # Actuated coordinates (previous)
-                self._data.problem.actuator_q_curr = wp.array(
-                    dtype=wp.float32, shape=(self._data.dimensions.num_actuated_coords,)
+                self.data.problem.actuator_q_curr = wp.array(
+                    dtype=wp.float32, shape=(self.data.dimensions.num_actuated_coords,)
                 )  # Actuated coordinates (incremental target)
-                self._data.gauss_newton.delta_q_max = wp.from_numpy(
+                self.data.gauss_newton.delta_q_max = wp.from_numpy(
                     delta_q_max, dtype=wp.float32
                 )  # Maximal step in actuated coordinates
-            self._data.problem.target_rel_transforms = wp.array(
-                dtype=wp.transformf, shape=(self._data.dimensions.num_joints_tot,)
+            self.data.problem.target_rel_transforms = wp.array(
+                dtype=wp.transformf, shape=(self.data.dimensions.num_joints_tot,)
             )  # Position-control transformations at joints
             if self.config.use_regularization:
-                self._data.problem.body_q_ref = wp.array(
+                self.data.problem.body_q_ref = wp.array(
                     dtype=wp.transformf, shape=(self.model.size.sum_of_num_bodies,)
                 )  # Reference for regularizer
-            self._data.problem.constraints = wp.zeros(
+            self.data.problem.constraints = wp.zeros(
                 dtype=wp.float32,
                 shape=(
                     self.model.size.num_worlds,
-                    self._data.dimensions.num_constraints_max,
+                    self.data.dimensions.num_constraints_max,
                 ),
             )  # Constraints vector per world
-            self._data.problem.jacobian = wp.zeros(
+            self.data.problem.jacobian = wp.zeros(
                 dtype=wp.float32,
                 shape=(
                     self.model.size.num_worlds,
-                    self._data.dimensions.num_constraints_max,
-                    self._data.dimensions.num_states_max,
+                    self.data.dimensions.num_constraints_max,
+                    self.data.dimensions.num_states_max,
                 ),
             )  # Constraints Jacobian per world
             if not self.config.use_sparsity:
-                self._data.linear_system.lhs = wp.zeros(
+                self.data.linear_system.lhs = wp.zeros(
                     dtype=wp.float32,
                     shape=(
                         self.model.size.num_worlds,
-                        self._data.dimensions.num_states_max,
-                        self._data.dimensions.num_states_max,
+                        self.data.dimensions.num_states_max,
+                        self.data.dimensions.num_states_max,
                     ),
                 )  # Gauss-Newton left-hand side per world
-            self._data.gauss_newton.grad = wp.zeros(
-                dtype=wp.float32, shape=(self.model.size.num_worlds, self._data.dimensions.num_states_max)
+            self.data.gauss_newton.grad = wp.zeros(
+                dtype=wp.float32, shape=(self.model.size.num_worlds, self.data.dimensions.num_states_max)
             )  # Merit function gradient w.r.t. state per world
-            self._data.gauss_newton.max_residual = wp.array(
+            self.data.gauss_newton.max_residual = wp.array(
                 dtype=wp.float32, shape=(self.model.size.num_worlds,)
             )  # Maximal constraint or gradient per world
-            self._data.linear_system.rhs = wp.zeros(
-                dtype=wp.float32, shape=(self.model.size.num_worlds, self._data.dimensions.num_states_max)
+            self.data.linear_system.rhs = wp.zeros(
+                dtype=wp.float32, shape=(self.model.size.num_worlds, self.data.dimensions.num_states_max)
             )  # Gauss-Newton right-hand side per world (=-grad)
-            self._data.gauss_newton.step = wp.zeros(
-                dtype=wp.float32, shape=(self.model.size.num_worlds, self._data.dimensions.num_states_max)
+            self.data.gauss_newton.step = wp.zeros(
+                dtype=wp.float32, shape=(self.model.size.num_worlds, self.data.dimensions.num_states_max)
             )  # Step in state variables per world
-            self._data.linear_system.jacobian_times_vector = wp.zeros(
-                dtype=wp.float32, shape=(self.model.size.num_worlds, self._data.dimensions.num_constraints_max)
+            self.data.linear_system.jacobian_times_vector = wp.zeros(
+                dtype=wp.float32, shape=(self.model.size.num_worlds, self.data.dimensions.num_constraints_max)
             )  # Intermediary vector when computing J^T * (J * x)
-            self._data.linear_system.lhs_times_vector = wp.zeros(
-                dtype=wp.float32, shape=(self.model.size.num_worlds, self._data.dimensions.num_states_max)
+            self.data.linear_system.lhs_times_vector = wp.zeros(
+                dtype=wp.float32, shape=(self.model.size.num_worlds, self.data.dimensions.num_states_max)
             )  # Intermediary vector when computing J^T * (J * x)
 
             # Velocity solver — preallocate batch_size 1; the RHS and body time derivative arrays
             # alias the Gauss-Newton RHS/step to reuse memory.
-            self._data.velocity_solve[1] = FKVelocitySolveData(
-                fk_actuator_u=wp.zeros(dtype=wp.float32, shape=(1, self._data.dimensions.num_actuated_dofs)),
+            self.data.velocity_solve[1] = FKVelocitySolveData(
+                fk_actuator_u=wp.zeros(dtype=wp.float32, shape=(1, self.data.dimensions.num_actuated_dofs)),
                 target_cts_u=wp.zeros(
                     dtype=wp.float32,
-                    shape=(self.model.size.num_worlds, self._data.dimensions.num_constraints_max, 1),
+                    shape=(self.model.size.num_worlds, self.data.dimensions.num_constraints_max, 1),
                 ),
-                rhs=self._data.linear_system.rhs.reshape(
-                    (self.model.size.num_worlds, self._data.dimensions.num_states_max, 1)
+                rhs=self.data.linear_system.rhs.reshape(
+                    (self.model.size.num_worlds, self.data.dimensions.num_states_max, 1)
                 ),
-                body_q_dot=self._data.gauss_newton.step.reshape(
-                    (self.model.size.num_worlds, self._data.dimensions.num_states_max, 1)
+                body_q_dot=self.data.gauss_newton.step.reshape(
+                    (self.model.size.num_worlds, self.data.dimensions.num_states_max, 1)
                 ),
             )
 
@@ -761,27 +762,27 @@ class ForwardKinematicsSolver:
             self._eval_pattern_T_pattern_kernel,
             self._eval_jacobian_T_jacobian_kernel,
             self._eval_jacobian_T_constraints_kernel,
-        ) = make_2d_tile_based_kernels(self._data.dimensions.tile_size_cts_2d, self._data.dimensions.tile_size_vrs_2d)
+        ) = make_2d_tile_based_kernels(self.data.dimensions.tile_size_cts_2d, self.data.dimensions.tile_size_vrs_2d)
         (
             self._eval_max_residual_kernel,
             self._eval_merit_function_kernel,
             self._eval_regularizer_kernel,
             self._eval_merit_function_gradient_kernel,
         ) = make_1d_tile_based_kernels(
-            self._data.dimensions.tile_size_cts_1d,
-            self._data.dimensions.tile_size_vrs_1d,
+            self.data.dimensions.tile_size_cts_1d,
+            self.data.dimensions.tile_size_vrs_1d,
             self.config.use_regularization,
         )
         if self.config.use_incremental_solve:
             self._eval_min_num_iterations_kernel = make_eval_min_num_iterations_kernel(
-                self._data.dimensions.tile_size_coords
+                self.data.dimensions.tile_size_coords
             )
 
         # Compute sparsity pattern and initialize linear solver for dense (semi-sparse) case
         if not self.config.use_sparsity:
             # Jacobian sparsity pattern
             sparsity_pattern = np.zeros(
-                (num_classes, self._data.dimensions.num_constraints_max, self._data.dimensions.num_states_max),
+                (num_classes, self.data.dimensions.num_constraints_max, self.data.dimensions.num_states_max),
                 dtype=int,
             )
             for class_id in range(num_classes):
@@ -808,12 +809,12 @@ class ForwardKinematicsSolver:
             sparsity_pattern_wp = wp.from_numpy(sparsity_pattern, dtype=wp.float32, device=self.device)
             sparsity_pattern_lhs_wp = wp.zeros(
                 dtype=wp.float32,
-                shape=(num_classes, self._data.dimensions.num_states_max, self._data.dimensions.num_states_max),
+                shape=(num_classes, self.data.dimensions.num_states_max, self.data.dimensions.num_states_max),
                 device=self.device,
             )
             wp.launch_tiled(
                 self._eval_pattern_T_pattern_kernel,
-                dim=(num_classes, self._data.dimensions.num_tiles_vrs_2d, self._data.dimensions.num_tiles_vrs_2d),
+                dim=(num_classes, self.data.dimensions.num_tiles_vrs_2d, self.data.dimensions.num_tiles_vrs_2d),
                 inputs=[sparsity_pattern_wp, sparsity_pattern_lhs_wp],
                 block_dim=32,
                 device=self.device,
@@ -828,7 +829,7 @@ class ForwardKinematicsSolver:
             # Initialize linear solver (semi-sparse LLT)
             self.linear_solver_llt = SemiSparseBlockCholeskySolverBatched(
                 self.model.size.num_worlds,
-                self._data.dimensions.num_states_max,
+                self.data.dimensions.num_states_max,
                 block_size=16,  # TODO: optimize this (e.g. 14 ?)
                 device=self.device,
                 enable_reordering=True,
@@ -840,30 +841,30 @@ class ForwardKinematicsSolver:
             tile_sparsity_pattern_np = np.zeros(
                 (
                     self.model.size.num_worlds,
-                    self._data.dimensions.num_tiles_cts_2d,
-                    self._data.dimensions.num_tiles_vrs_2d,
+                    self.data.dimensions.num_tiles_cts_2d,
+                    self.data.dimensions.num_tiles_vrs_2d,
                 ),
                 dtype=np.int32,
             )
             for class_id, eq_class in enumerate(classes):
                 pattern = np.zeros(
-                    (self._data.dimensions.num_tiles_cts_2d, self._data.dimensions.num_tiles_vrs_2d), dtype=np.int32
+                    (self.data.dimensions.num_tiles_cts_2d, self.data.dimensions.num_tiles_vrs_2d), dtype=np.int32
                 )
-                for i in range(self._data.dimensions.num_constraints_max):
-                    for j in range(self._data.dimensions.num_states_max):
+                for i in range(self.data.dimensions.num_constraints_max):
+                    for j in range(self.data.dimensions.num_states_max):
                         if sparsity_pattern[class_id, i, j] != 0:
-                            tile_row = i // self._data.dimensions.tile_size_cts_2d
-                            tile_col = j // self._data.dimensions.tile_size_vrs_2d
+                            tile_row = i // self.data.dimensions.tile_size_cts_2d
+                            tile_col = j // self.data.dimensions.tile_size_vrs_2d
                             pattern[tile_row, tile_col] = 1
                 for wd_id in eq_class:
                     tile_sparsity_pattern_np[wd_id] = pattern
-            self._data.dimensions.tile_sparsity_pattern = to_warp_int32_array(
+            self.data.dimensions.tile_sparsity_pattern = to_warp_int32_array(
                 tile_sparsity_pattern_np, device=self.device
             )
 
         # Compute sparsity pattern and initialize linear solver for sparse case
         if self.config.use_sparsity:
-            self._data.problem.sparse_jacobian: BlockSparseMatrices[wp.float32, wp.int32, vec7f] = BlockSparseMatrices(
+            self.data.problem.sparse_jacobian: BlockSparseMatrices[wp.float32, wp.int32, vec7f] = BlockSparseMatrices(
                 device=self.device,
                 nzb_dtype=BlockDType[wp.float32](dtype=wp.float32, shape=(7,)),
                 num_matrices=self.model.size.num_worlds,
@@ -874,7 +875,7 @@ class ForwardKinematicsSolver:
             num_nzb = num_bodies.copy()  # nzb due to rigid body unit quaternion constraints
             jt_num_constraints = (constraint_full_to_red_map.reshape((-1, 6)) >= 0).sum(axis=1)
             jt_num_bodies = np.array(
-                [1 if joint_bid_B[i] < 0 else 2 for i in range(self._data.dimensions.num_joints_tot)]
+                [1 if joint_bid_B[i] < 0 else 2 for i in range(self.data.dimensions.num_joints_tot)]
             )
             for wd_id in range(self.model.size.num_worlds):  # nzb due to joint constraints
                 start = joint_offset[wd_id]
@@ -887,8 +888,8 @@ class ForwardKinematicsSolver:
             nzb_row = np.empty(num_nzb_tot, dtype=np.int32)
             nzb_col = np.empty(num_nzb_tot, dtype=np.int32)
             rb_nzb_id = np.empty(self.model.size.sum_of_num_bodies, dtype=np.int32)
-            ct_nzb_id_base = np.full(6 * self._data.dimensions.num_joints_tot, -1, dtype=np.int32)
-            ct_nzb_id_follower = np.full(6 * self._data.dimensions.num_joints_tot, -1, dtype=np.int32)
+            ct_nzb_id_base = np.full(6 * self.data.dimensions.num_joints_tot, -1, dtype=np.int32)
+            ct_nzb_id_follower = np.full(6 * self.data.dimensions.num_joints_tot, -1, dtype=np.int32)
             for wd_id in range(self.model.size.num_worlds):
                 start_nzb = first_nzb[wd_id]
 
@@ -923,16 +924,16 @@ class ForwardKinematicsSolver:
                     start_nzb += num_cts
 
             # Transfer data to GPU
-            self._data.problem.sparse_jacobian.finalize(jacobian_dims, num_nzb.tolist())
-            self._data.problem.sparse_jacobian.dims.assign(jacobian_dims)
-            assign_to_warp_int32_array(self._data.problem.sparse_jacobian.num_nzb, num_nzb)
+            self.data.problem.sparse_jacobian.finalize(jacobian_dims, num_nzb.tolist())
+            self.data.problem.sparse_jacobian.dims.assign(jacobian_dims)
+            assign_to_warp_int32_array(self.data.problem.sparse_jacobian.num_nzb, num_nzb)
             assign_to_warp_int32_array(
-                self._data.problem.sparse_jacobian.nzb_coords, np.stack((nzb_row, nzb_col)).T.flatten()
+                self.data.problem.sparse_jacobian.nzb_coords, np.stack((nzb_row, nzb_col)).T.flatten()
             )
             with wp.ScopedDevice(self.device):
-                self._data.dimensions.rb_nzb_id = to_warp_int32_array(rb_nzb_id)
-                self._data.dimensions.ct_nzb_id_base = to_warp_int32_array(ct_nzb_id_base)
-                self._data.dimensions.ct_nzb_id_follower = to_warp_int32_array(ct_nzb_id_follower)
+                self.data.dimensions.rb_nzb_id = to_warp_int32_array(rb_nzb_id)
+                self.data.dimensions.ct_nzb_id_base = to_warp_int32_array(ct_nzb_id_base)
+                self.data.dimensions.ct_nzb_id_follower = to_warp_int32_array(ct_nzb_id_follower)
 
             # Initialize Jacobian assembly kernel
             self._eval_joint_constraints_sparse_jacobian_kernel = make_eval_joint_constraints_sparse_jacobian_kernel(
@@ -940,53 +941,53 @@ class ForwardKinematicsSolver:
             )
 
             # Initialize Jacobian linear operator
-            self._data.problem.sparse_jacobian_op = BlockSparseLinearOperators[wp.float32, wp.int32](
-                self._data.problem.sparse_jacobian
+            self.data.problem.sparse_jacobian_op = BlockSparseLinearOperators[wp.float32, wp.int32](
+                self.data.problem.sparse_jacobian
             )
 
             # Compute flat-array offsets for the CG solver (uniform world dimensions)
             cg_vio = wp.from_numpy(
-                np.arange(self.model.size.num_worlds, dtype=np.int32) * self._data.dimensions.num_states_max,
+                np.arange(self.model.size.num_worlds, dtype=np.int32) * self.data.dimensions.num_states_max,
                 device=self.device,
             )
-            cg_total_vec_size = self.model.size.num_worlds * self._data.dimensions.num_states_max
+            cg_total_vec_size = self.model.size.num_worlds * self.data.dimensions.num_states_max
 
             # Initialize preconditioner
             if (
-                self._data.linear_system.preconditioner_type
+                self.data.linear_system.preconditioner_type
                 == ForwardKinematicsSolver.PreconditionerType.JACOBI_DIAGONAL
             ):
-                self._data.linear_system.jacobian_diag_inv = wp.array(
+                self.data.linear_system.jacobian_diag_inv = wp.array(
                     dtype=wp.float32,
                     device=self.device,
-                    shape=(self.model.size.num_worlds, self._data.dimensions.num_states_max),
+                    shape=(self.model.size.num_worlds, self.data.dimensions.num_states_max),
                 )
                 preconditioner_op = BatchedLinearOperator.from_diagonal(
-                    self._data.linear_system.jacobian_diag_inv.reshape((cg_total_vec_size,)),
-                    self._data.dimensions.num_states,
+                    self.data.linear_system.jacobian_diag_inv.reshape((cg_total_vec_size,)),
+                    self.data.dimensions.num_states,
                     cg_vio,
-                    self._data.dimensions.num_states_max,
+                    self.data.dimensions.num_states_max,
                 )
             elif (
-                self._data.linear_system.preconditioner_type
+                self.data.linear_system.preconditioner_type
                 == ForwardKinematicsSolver.PreconditionerType.JACOBI_BLOCK_DIAGONAL
             ):
-                self._data.linear_system.inv_blocks_3 = wp.array(
+                self.data.linear_system.inv_blocks_3 = wp.array(
                     dtype=wp.mat33f,
-                    shape=(self.model.size.num_worlds, self._data.dimensions.num_bodies_max),
+                    shape=(self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
                     device=self.device,
                 )
-                self._data.linear_system.inv_blocks_4 = wp.array(
+                self.data.linear_system.inv_blocks_4 = wp.array(
                     dtype=wp.mat44f,
-                    shape=(self.model.size.num_worlds, self._data.dimensions.num_bodies_max),
+                    shape=(self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
                     device=self.device,
                 )
                 blockwise_gemv_2d = get_blockwise_diag_3_4_gemv_2d(
-                    self._data.linear_system.inv_blocks_3,
-                    self._data.linear_system.inv_blocks_4,
-                    self._data.dimensions.num_states,
+                    self.data.linear_system.inv_blocks_3,
+                    self.data.linear_system.inv_blocks_4,
+                    self.data.dimensions.num_states,
                 )
-                n_wd, n_st = self.model.size.num_worlds, self._data.dimensions.num_states_max
+                n_wd, n_st = self.model.size.num_worlds, self.data.dimensions.num_states_max
 
                 def _blockwise_gemv_flat(x, y, world_active, alpha, beta):
                     blockwise_gemv_2d(x.reshape((n_wd, n_st)), y.reshape((n_wd, n_st)), world_active, alpha, beta)
@@ -994,8 +995,8 @@ class ForwardKinematicsSolver:
                 preconditioner_op = BatchedLinearOperator(
                     gemv_fn=_blockwise_gemv_flat,
                     n_worlds=self.model.size.num_worlds,
-                    max_dim=self._data.dimensions.num_states_max,
-                    active_dims=self._data.dimensions.num_states,
+                    max_dim=self.data.dimensions.num_states_max,
+                    active_dims=self.data.dimensions.num_states,
                     device=self.device,
                     dtype=wp.float32,
                     vio=cg_vio,
@@ -1005,7 +1006,7 @@ class ForwardKinematicsSolver:
                 preconditioner_op = None
 
             # Initialize CG solver — wrap 2D gemv for flat 1D arrays
-            n_wd, n_st = self.model.size.num_worlds, self._data.dimensions.num_states_max
+            n_wd, n_st = self.model.size.num_worlds, self.data.dimensions.num_states_max
 
             def _cg_gemv_flat(x, y, world_active, alpha, beta):
                 self._eval_lhs_gemv(x.reshape((n_wd, n_st)), y.reshape((n_wd, n_st)), world_active, alpha, beta)
@@ -1015,8 +1016,8 @@ class ForwardKinematicsSolver:
 
             cg_op = BatchedLinearOperator(
                 n_worlds=self.model.size.num_worlds,
-                max_dim=self._data.dimensions.num_states_max,
-                active_dims=self._data.dimensions.num_states,
+                max_dim=self.data.dimensions.num_states_max,
+                active_dims=self.data.dimensions.num_states,
                 dtype=wp.float32,
                 device=self.device,
                 gemv_fn=_cg_gemv_flat,
@@ -1024,22 +1025,22 @@ class ForwardKinematicsSolver:
                 vio=cg_vio,
                 total_vec_size=cg_total_vec_size,
             )
-            self._data.linear_system.cg_atol = wp.array(
+            self.data.linear_system.cg_atol = wp.array(
                 dtype=wp.float32, shape=self.model.size.num_worlds, device=self.device
             )
-            self._data.linear_system.cg_rtol = wp.array(
+            self.data.linear_system.cg_rtol = wp.array(
                 dtype=wp.float32, shape=self.model.size.num_worlds, device=self.device
             )
-            self._data.linear_system.cg_max_iter = wp.from_numpy(
-                2 * self._data.dimensions.num_states.numpy(), dtype=wp.int32, device=self.device
+            self.data.linear_system.cg_max_iter = wp.from_numpy(
+                2 * self.data.dimensions.num_states.numpy(), dtype=wp.int32, device=self.device
             )
             self.linear_solver_cg = CGSolver(
                 A=cg_op,
-                active_dims=self._data.dimensions.num_states,
+                active_dims=self.data.dimensions.num_states,
                 Mi=preconditioner_op,
-                atol=self._data.linear_system.cg_atol,
-                rtol=self._data.linear_system.cg_rtol,
-                maxiter=self._data.linear_system.cg_max_iter,
+                atol=self.data.linear_system.cg_atol,
+                rtol=self.data.linear_system.cg_rtol,
+                maxiter=self.data.linear_system.cg_max_iter,
             )
 
         # Initialize continuous joint data (e.g. joint frames)
@@ -1063,19 +1064,19 @@ class ForwardKinematicsSolver:
         if joint_count == 0:
             return
 
-        self._data.joints._actuation_violations.fill_(joint_count)
+        self.data.joints._actuation_violations.fill_(joint_count)
         wp.launch(
             validate_fk_actuation_updates,
             dim=joint_count,
             inputs=[
                 self.model.joints.act_type,
                 self.model.joints.fk_act_flag,
-                self._data.joints._built_actuated,
-                self._data.joints._actuation_violations,
+                self.data.joints._built_actuated,
+                self.data.joints._actuation_violations,
             ],
             device=self.device,
         )
-        changed_joint, invalid_joint = self._data.joints._actuation_violations.numpy()
+        changed_joint, invalid_joint = self.data.joints._actuation_violations.numpy()
         if invalid_joint != joint_count:
             raise ValueError(f"Invalid FK actuation flag for joint {int(invalid_joint)}: expected -1, 0, or 1")
         if changed_joint != joint_count:
@@ -1104,43 +1105,43 @@ class ForwardKinematicsSolver:
 
     def _update_joint_frames(self) -> None:
         """Compute FK joint frames from the current Kamino model."""
-        if self._data.dimensions.num_joints_tot == 0:
+        if self.data.dimensions.num_joints_tot == 0:
             return
         wp.launch(
             _compute_fk_joint_frames,
-            dim=self._data.dimensions.num_joints_tot,
+            dim=self.data.dimensions.num_joints_tot,
             inputs=[
-                self._data.joints.source_id,
+                self.data.joints.source_id,
                 self.model.joints.B_r_Bj,
                 self.model.joints.F_r_Fj,
                 self.model.joints.X_Bj,
                 self.model.joints.X_Fj,
-                self._data.joints.B_r_Bj,
-                self._data.joints.F_r_Fj,
-                self._data.joints.X_Bj,
-                self._data.joints.X_Fj,
+                self.data.joints.B_r_Bj,
+                self.data.joints.F_r_Fj,
+                self.data.joints.X_Bj,
+                self.data.joints.X_Fj,
             ],
             device=self.device,
         )
 
     def _update_axis_joint_frames(self) -> None:
         """Compute synthetic axis-joint frames from the current model."""
-        if self._data.dimensions.num_axis_joints == 0:
+        if self.data.dimensions.num_axis_joints == 0:
             return
         wp.launch(
             _compute_fk_axis_joint_frames,
-            dim=self._data.dimensions.num_axis_joints,
+            dim=self.data.dimensions.num_axis_joints,
             inputs=[
-                self._data.joints.axis_joint,
-                self._data.joints.axis_body,
-                self._data.joints.axis_source_joint_0,
-                self._data.joints.axis_source_joint_1,
+                self.data.joints.axis_joint_id,
+                self.data.joints.axis_body_id,
+                self.data.joints.axis_source_joint_0,
+                self.data.joints.axis_source_joint_1,
                 self.model.joints.bid_B,
                 self.model.joints.B_r_Bj,
                 self.model.joints.F_r_Fj,
                 self.model.bodies.q_i_0,
-                self._data.joints.X_Bj,
-                self._data.joints.X_Fj,
+                self.data.joints.X_Bj,
+                self.data.joints.X_Fj,
             ],
             device=self.device,
         )
@@ -1153,8 +1154,8 @@ class ForwardKinematicsSolver:
             model=self.model,
             joint_q=self.model.joints.q_j_0,
             body_q=self.model.bodies.q_i_0,
-            base_q=self._data.problem.base_q_default,
-            world_mask=self._data.dimensions.all_worlds_mask,
+            base_q=self.data.problem.base_q_default,
+            world_mask=self.data.dimensions.all_worlds_mask,
         )
 
     ###
@@ -1171,7 +1172,7 @@ class ForwardKinematicsSolver:
         """
         wp.launch(
             _reset_state,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_states_max),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_states_max),
             inputs=[
                 self.model.info.num_bodies,
                 self.model.info.bodies_offset,
@@ -1194,15 +1195,15 @@ class ForwardKinematicsSolver:
         """
         wp.launch(
             _reset_state_base_q,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_bodies_max),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
             inputs=[
-                self._data.joints.base_joint_id,
+                self.data.joints.base_joint_id,
                 base_q,
-                self._data.joints.bid_F,
-                self._data.joints.X_Bj,
-                self._data.joints.X_Fj,
-                self._data.joints.B_r_Bj,
-                self._data.joints.F_r_Fj,
+                self.data.joints.bid_F,
+                self.data.joints.X_Bj,
+                self.data.joints.X_Fj,
+                self.data.joints.B_r_Bj,
+                self.data.joints.F_r_Fj,
                 self.model.info.num_bodies,
                 self.model.info.bodies_offset,
                 self.model.bodies.q_i_0,
@@ -1225,19 +1226,19 @@ class ForwardKinematicsSolver:
         # Extract current actuator coordinates
         wp.launch(
             _eval_actuator_coords,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_joints_max),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_joints_max),
             inputs=[
-                self._data.dimensions.num_joints,
-                self._data.dimensions.joint_offset,
-                self._data.joints.dof_type,
-                self._data.joints.bid_B,
-                self._data.joints.bid_F,
-                self._data.joints.X_Bj,
-                self._data.joints.X_Fj,
-                self._data.joints.B_r_Bj,
-                self._data.joints.F_r_Fj,
+                self.data.dimensions.num_joints,
+                self.data.dimensions.joint_offset,
+                self.data.joints.dof_type,
+                self.data.joints.bid_B,
+                self.data.joints.bid_F,
+                self.data.joints.X_Bj,
+                self.data.joints.X_Fj,
+                self.data.joints.B_r_Bj,
+                self.data.joints.F_r_Fj,
                 body_q,
-                self._data.dimensions.actuated_coord_offset,
+                self.data.dimensions.actuated_coord_offset,
                 actuator_q,
             ],
             device=self.device,
@@ -1246,10 +1247,10 @@ class ForwardKinematicsSolver:
         if actuator_q_ref is not None:
             wp.launch(
                 _correct_actuator_coords,
-                dim=(self._data.dimensions.num_joints_tot,),
+                dim=(self.data.dimensions.num_joints_tot,),
                 inputs=[
-                    self._data.dimensions.actuated_coord_offset,
-                    self._data.joints.dof_type,
+                    self.data.dimensions.actuated_coord_offset,
+                    self.data.joints.dof_type,
                     actuator_q_ref,
                     actuator_q,
                 ],
@@ -1262,19 +1263,19 @@ class ForwardKinematicsSolver:
         Assumes without check that data related to incremental solve is allocated.
         """
         # Extract current actuator coordinates, and correct w.r.t. target coordinates
-        self._eval_actuator_coords(body_q, self._data.problem.actuator_q_prev, self._data.problem.actuator_q_next)
+        self._eval_actuator_coords(body_q, self.data.problem.actuator_q_prev, self.data.problem.actuator_q_next)
         # Compute necessary number of Newton steps, before the incremental target matches the true target
-        self._data.gauss_newton.min_iterations.zero_()
+        self.data.gauss_newton.min_iterations.zero_()
         wp.launch_tiled(
             self._eval_min_num_iterations_kernel,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_tiles_coords),
-            block_dim=get_block_dim(self._data.dimensions.tile_size_coords),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_tiles_coords),
+            block_dim=get_block_dim(self.data.dimensions.tile_size_coords),
             inputs=[
-                self._data.dimensions.world_actuated_coord_offset,
-                self._data.problem.actuator_q_prev,
-                self._data.problem.actuator_q_next,
-                self._data.gauss_newton.delta_q_max,
-                self._data.gauss_newton.min_iterations,
+                self.data.dimensions.world_actuated_coord_offset,
+                self.data.problem.actuator_q_prev,
+                self.data.problem.actuator_q_next,
+                self.data.gauss_newton.delta_q_max,
+                self.data.gauss_newton.min_iterations,
             ],
             device=self.device,
         )
@@ -1285,10 +1286,10 @@ class ForwardKinematicsSolver:
                 _initialize_jacobian_update_masks,
                 dim=(self.model.size.num_worlds,),
                 inputs=[
-                    self._data.gauss_newton.mask,
-                    self._data.gauss_newton.min_iterations,
-                    self._data.gauss_newton.jacobian_early_update_mask,
-                    self._data.gauss_newton.jacobian_late_update_mask,
+                    self.data.gauss_newton.mask,
+                    self.data.gauss_newton.min_iterations,
+                    self.data.gauss_newton.jacobian_early_update_mask,
+                    self.data.gauss_newton.jacobian_late_update_mask,
                 ],
                 device=self.device,
             )
@@ -1305,11 +1306,11 @@ class ForwardKinematicsSolver:
         """
         wp.launch(
             _eval_fk_actuated_dofs_or_coords,
-            dim=(1, self._data.dimensions.num_actuated_coords),
+            dim=(1, self.data.dimensions.num_actuated_coords),
             inputs=[
                 base_q_model.view(wp.float32).reshape((1, 7 * self.model.size.num_worlds)),
                 actuator_q_model.reshape((1, actuator_q_model.shape[0])),
-                self._data.dimensions.actuated_coords_map,
+                self.data.dimensions.actuated_coords_map,
                 actuator_q_next.reshape((1, actuator_q_next.shape[0])),
             ],
             device=self.device,
@@ -1326,15 +1327,15 @@ class ForwardKinematicsSolver:
         """
         wp.launch(
             _eval_incremental_target_actuator_coords,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_actuated_coords_max),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_actuated_coords_max),
             inputs=[
-                self._data.dimensions.world_actuated_coord_offset,
-                self._data.problem.actuator_q_prev,
-                self._data.problem.actuator_q_next,
-                self._data.gauss_newton.delta_q_max,
+                self.data.dimensions.world_actuated_coord_offset,
+                self.data.problem.actuator_q_prev,
+                self.data.problem.actuator_q_next,
+                self.data.gauss_newton.delta_q_max,
                 iteration,
                 world_mask,
-                self._data.problem.actuator_q_curr,
+                self.data.problem.actuator_q_curr,
             ],
             device=self.device,
         )
@@ -1350,16 +1351,16 @@ class ForwardKinematicsSolver:
         """
         wp.launch(
             _eval_target_relative_transformations,
-            dim=(self._data.dimensions.num_joints_tot,),
+            dim=(self.data.dimensions.num_joints_tot,),
             inputs=[
-                self._data.joints.dof_type,
-                self._data.joints.act_type,
-                self._data.dimensions.actuated_coord_offset,
-                self._data.joints.X_Bj,
-                self._data.joints.X_Fj,
+                self.data.joints.dof_type,
+                self.data.joints.act_type,
+                self.data.dimensions.actuated_coord_offset,
+                self.data.joints.X_Bj,
+                self.data.joints.X_Fj,
                 actuator_q,
                 self.config.use_incremental_solve,  # Incremental solve may result in non-unit quaternions
-                self._data.joints.world_id,
+                self.data.joints.world_id,
                 world_mask,
                 target_rel_transforms,
             ],
@@ -1380,28 +1381,28 @@ class ForwardKinematicsSolver:
         # Evaluate unit norm quaternion constraints
         wp.launch(
             _eval_unit_quaternion_constraints,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_bodies_max),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
             inputs=[self.model.info.num_bodies, self.model.info.bodies_offset, body_q, world_mask, constraints],
             device=self.device,
         )
         # Evaluate joint constraints
         wp.launch(
             self._eval_joint_constraints_kernel,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_joints_max),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_joints_max),
             inputs=[
-                self._data.dimensions.num_joints,
-                self._data.dimensions.joint_offset,
-                self._data.joints.dof_type,
-                self._data.joints.act_type,
-                self._data.joints.bid_B,
-                self._data.joints.bid_F,
-                self._data.joints.X_Bj,
-                self._data.joints.X_Fj,
-                self._data.joints.B_r_Bj,
-                self._data.joints.F_r_Fj,
+                self.data.dimensions.num_joints,
+                self.data.dimensions.joint_offset,
+                self.data.joints.dof_type,
+                self.data.joints.act_type,
+                self.data.joints.bid_B,
+                self.data.joints.bid_F,
+                self.data.joints.X_Bj,
+                self.data.joints.X_Fj,
+                self.data.joints.B_r_Bj,
+                self.data.joints.F_r_Fj,
                 body_q,
                 target_rel_transforms,
-                self._data.dimensions.constraint_full_to_red_map,
+                self.data.dimensions.constraint_full_to_red_map,
                 world_mask,
                 constraints,
             ],
@@ -1425,17 +1426,17 @@ class ForwardKinematicsSolver:
         if self.config.use_regularization:
             wp.launch_tiled(
                 self._eval_max_residual_kernel,
-                dim=(self.model.size.num_worlds, self._data.dimensions.num_tiles_vrs_1d),
+                dim=(self.model.size.num_worlds, self.data.dimensions.num_tiles_vrs_1d),
                 inputs=[gradient, max_residual],
-                block_dim=get_block_dim(self._data.dimensions.tile_size_vrs_1d),
+                block_dim=get_block_dim(self.data.dimensions.tile_size_vrs_1d),
                 device=self.device,
             )
         else:
             wp.launch_tiled(
                 self._eval_max_residual_kernel,
-                dim=(self.model.size.num_worlds, self._data.dimensions.num_tiles_cts_1d),
+                dim=(self.model.size.num_worlds, self.data.dimensions.num_tiles_cts_1d),
                 inputs=[constraints, max_residual],
-                block_dim=get_block_dim(self._data.dimensions.tile_size_cts_1d),
+                block_dim=get_block_dim(self.data.dimensions.tile_size_cts_1d),
                 device=self.device,
             )
 
@@ -1454,7 +1455,7 @@ class ForwardKinematicsSolver:
         # Evaluate unit norm quaternion constraints Jacobian
         wp.launch(
             _eval_unit_quaternion_constraints_jacobian,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_bodies_max),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
             inputs=[
                 self.model.info.num_bodies,
                 self.model.info.bodies_offset,
@@ -1468,22 +1469,22 @@ class ForwardKinematicsSolver:
         # Evaluate joint constraints Jacobian
         wp.launch(
             self._eval_joint_constraints_jacobian_kernel,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_joints_max),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_joints_max),
             inputs=[
-                self._data.dimensions.num_joints,
-                self._data.dimensions.joint_offset,
+                self.data.dimensions.num_joints,
+                self.data.dimensions.joint_offset,
                 self.model.info.bodies_offset,
-                self._data.joints.dof_type,
-                self._data.joints.act_type,
-                self._data.joints.bid_B,
-                self._data.joints.bid_F,
-                self._data.joints.X_Bj,
-                self._data.joints.X_Fj,
-                self._data.joints.B_r_Bj,
-                self._data.joints.F_r_Fj,
+                self.data.joints.dof_type,
+                self.data.joints.act_type,
+                self.data.joints.bid_B,
+                self.data.joints.bid_F,
+                self.data.joints.X_Bj,
+                self.data.joints.X_Fj,
+                self.data.joints.B_r_Bj,
+                self.data.joints.F_r_Fj,
                 body_q,
                 target_rel_transforms,
-                self._data.dimensions.constraint_full_to_red_map,
+                self.data.dimensions.constraint_full_to_red_map,
                 world_mask,
                 constraints_jacobian,
             ],
@@ -1501,19 +1502,19 @@ class ForwardKinematicsSolver:
         and target relative transforms
         """
 
-        self._data.problem.sparse_jacobian.zero(world_mask)
+        self.data.problem.sparse_jacobian.zero(world_mask)
 
         # Evaluate unit norm quaternion constraints Jacobian
         wp.launch(
             _eval_unit_quaternion_constraints_sparse_jacobian,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_bodies_max),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
             inputs=[
                 self.model.info.num_bodies,
                 self.model.info.bodies_offset,
                 body_q,
-                self._data.dimensions.rb_nzb_id,
+                self.data.dimensions.rb_nzb_id,
                 world_mask,
-                self._data.problem.sparse_jacobian.nzb_values,
+                self.data.problem.sparse_jacobian.nzb_values,
             ],
             device=self.device,
         )
@@ -1521,25 +1522,25 @@ class ForwardKinematicsSolver:
         # Evaluate joint constraints Jacobian
         wp.launch(
             self._eval_joint_constraints_sparse_jacobian_kernel,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_joints_max),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_joints_max),
             inputs=[
-                self._data.dimensions.num_joints,
-                self._data.dimensions.joint_offset,
+                self.data.dimensions.num_joints,
+                self.data.dimensions.joint_offset,
                 self.model.info.bodies_offset,
-                self._data.joints.dof_type,
-                self._data.joints.act_type,
-                self._data.joints.bid_B,
-                self._data.joints.bid_F,
-                self._data.joints.X_Bj,
-                self._data.joints.X_Fj,
-                self._data.joints.B_r_Bj,
-                self._data.joints.F_r_Fj,
+                self.data.joints.dof_type,
+                self.data.joints.act_type,
+                self.data.joints.bid_B,
+                self.data.joints.bid_F,
+                self.data.joints.X_Bj,
+                self.data.joints.X_Fj,
+                self.data.joints.B_r_Bj,
+                self.data.joints.F_r_Fj,
                 body_q,
                 target_rel_transforms,
-                self._data.dimensions.ct_nzb_id_base,
-                self._data.dimensions.ct_nzb_id_follower,
+                self.data.dimensions.ct_nzb_id_base,
+                self.data.dimensions.ct_nzb_id_follower,
                 world_mask,
-                self._data.problem.sparse_jacobian.nzb_values,
+                self.data.problem.sparse_jacobian.nzb_values,
             ],
             device=self.device,
         )
@@ -1559,7 +1560,7 @@ class ForwardKinematicsSolver:
             self._assemble_sparse_jacobian(body_q, target_rel_transforms, world_mask)
         else:
             self._eval_kinematic_constraints_jacobian(
-                body_q, target_rel_transforms, world_mask, self._data.problem.jacobian
+                body_q, target_rel_transforms, world_mask, self.data.problem.jacobian
             )
 
     def _update_lhs(
@@ -1578,14 +1579,14 @@ class ForwardKinematicsSolver:
             self._eval_jacobian_T_jacobian_kernel,
             dim=(
                 self.model.size.num_worlds,
-                self._data.dimensions.num_tiles_vrs_2d,
-                self._data.dimensions.num_tiles_vrs_2d,
+                self.data.dimensions.num_tiles_vrs_2d,
+                self.data.dimensions.num_tiles_vrs_2d,
             ),
             inputs=[
-                self._data.problem.jacobian,
-                self._data.dimensions.tile_sparsity_pattern,
+                self.data.problem.jacobian,
+                self.data.dimensions.tile_sparsity_pattern,
                 world_mask,
-                self._data.linear_system.lhs,
+                self.data.linear_system.lhs,
             ],
             block_dim=32,
             device=self.device,
@@ -1593,12 +1594,12 @@ class ForwardKinematicsSolver:
         if self.config.use_regularization:
             wp.launch(
                 _add_regularizer_to_diagonal,
-                dim=(self.model.size.num_worlds, self._data.dimensions.num_states_max),
+                dim=(self.model.size.num_worlds, self.data.dimensions.num_states_max),
                 inputs=[
                     self.config.regularization_weight,
-                    self._data.dimensions.num_states,
+                    self.data.dimensions.num_states,
                     world_mask,
-                    self._data.linear_system.lhs,
+                    self.data.linear_system.lhs,
                 ],
                 device=self.device,
             )
@@ -1614,22 +1615,22 @@ class ForwardKinematicsSolver:
         Solver configuration (sparsity, regularization) are taken into account.
         """
         if self.config.use_sparsity:
-            self._data.problem.sparse_jacobian_op.matvec_transpose(
-                self._data.problem.constraints, self._data.gauss_newton.grad, world_mask
+            self.data.problem.sparse_jacobian_op.matvec_transpose(
+                self.data.problem.constraints, self.data.gauss_newton.grad, world_mask
             )
         else:
             wp.launch_tiled(
                 self._eval_jacobian_T_constraints_kernel,
-                dim=(self.model.size.num_worlds, self._data.dimensions.num_tiles_vrs_2d, 1),
+                dim=(self.model.size.num_worlds, self.data.dimensions.num_tiles_vrs_2d, 1),
                 inputs=[
-                    self._data.problem.jacobian,
-                    self._data.problem.constraints.reshape(
-                        (self.model.size.num_worlds, self._data.dimensions.num_constraints_max, 1)
+                    self.data.problem.jacobian,
+                    self.data.problem.constraints.reshape(
+                        (self.model.size.num_worlds, self.data.dimensions.num_constraints_max, 1)
                     ),
-                    self._data.dimensions.tile_sparsity_pattern,
+                    self.data.dimensions.tile_sparsity_pattern,
                     world_mask,
-                    self._data.gauss_newton.grad.reshape(
-                        (self.model.size.num_worlds, self._data.dimensions.num_states_max, 1)
+                    self.data.gauss_newton.grad.reshape(
+                        (self.model.size.num_worlds, self.data.dimensions.num_states_max, 1)
                     ),
                 ],
                 block_dim=32,
@@ -1639,15 +1640,15 @@ class ForwardKinematicsSolver:
         if self.config.use_regularization:
             wp.launch(
                 _eval_regularizer_gradient,
-                dim=(self.model.size.num_worlds, self._data.dimensions.num_states_max),
+                dim=(self.model.size.num_worlds, self.data.dimensions.num_states_max),
                 inputs=[
                     self.model.info.num_bodies,
                     self.model.info.bodies_offset,
                     self.config.regularization_weight,
                     body_q.view(wp.float32).flatten(),
-                    self._data.problem.body_q_ref.view(wp.float32).flatten(),
+                    self.data.problem.body_q_ref.view(wp.float32).flatten(),
                     world_mask,
-                    self._data.gauss_newton.grad,
+                    self.data.gauss_newton.grad,
                 ],
                 device=self.device,
             )
@@ -1664,34 +1665,34 @@ class ForwardKinematicsSolver:
         Internal evaluator for y = alpha * lhs * x + beta * y, using the assembled sparse Jacobian J,
         and with lhs = J^T * J (plus optionally the regularizer Hessian reg_weight * I)
         """
-        self._data.problem.sparse_jacobian_op.matvec(x, self._data.linear_system.jacobian_times_vector, world_mask)
-        self._data.problem.sparse_jacobian_op.matvec_transpose(
-            self._data.linear_system.jacobian_times_vector, self._data.linear_system.lhs_times_vector, world_mask
+        self.data.problem.sparse_jacobian_op.matvec(x, self.data.linear_system.jacobian_times_vector, world_mask)
+        self.data.problem.sparse_jacobian_op.matvec_transpose(
+            self.data.linear_system.jacobian_times_vector, self.data.linear_system.lhs_times_vector, world_mask
         )
         if self.config.use_regularization:
             wp.launch(
                 _eval_linear_combination,
-                dim=(self.model.size.num_worlds, self._data.dimensions.num_states_max),
+                dim=(self.model.size.num_worlds, self.data.dimensions.num_states_max),
                 inputs=[
                     1.0,
-                    self._data.linear_system.lhs_times_vector,
+                    self.data.linear_system.lhs_times_vector,
                     self.config.regularization_weight,
                     x,
-                    self._data.dimensions.num_constraints,
+                    self.data.dimensions.num_constraints,
                     world_mask,
-                    self._data.linear_system.lhs_times_vector,
+                    self.data.linear_system.lhs_times_vector,
                 ],
                 device=self.device,
             )
         wp.launch(
             _eval_linear_combination,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_states_max),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_states_max),
             inputs=[
                 alpha,
-                self._data.linear_system.lhs_times_vector,
+                self.data.linear_system.lhs_times_vector,
                 beta,
                 y,
-                self._data.dimensions.num_constraints,
+                self.data.dimensions.num_constraints,
                 world_mask,
                 y,
             ],
@@ -1708,20 +1709,20 @@ class ForwardKinematicsSolver:
         Internal evaluator for y = lhs * x, using the assembled sparse Jacobian J,
         and with lhs = J^T * J (plus optionally the regularizer Hessian reg_weight * I)
         """
-        self._data.problem.sparse_jacobian_op.matvec(x, self._data.linear_system.jacobian_times_vector, world_mask)
-        self._data.problem.sparse_jacobian_op.matvec_transpose(
-            self._data.linear_system.jacobian_times_vector, y, world_mask
+        self.data.problem.sparse_jacobian_op.matvec(x, self.data.linear_system.jacobian_times_vector, world_mask)
+        self.data.problem.sparse_jacobian_op.matvec_transpose(
+            self.data.linear_system.jacobian_times_vector, y, world_mask
         )
         if self.config.use_regularization:
             wp.launch(
                 _eval_linear_combination,
-                dim=(self.model.size.num_worlds, self._data.dimensions.num_states_max),
+                dim=(self.model.size.num_worlds, self.data.dimensions.num_states_max),
                 inputs=[
                     1.0,
                     y,
                     self.config.regularization_weight,
                     x,
-                    self._data.dimensions.num_constraints,
+                    self.data.dimensions.num_constraints,
                     world_mask,
                     y,
                 ],
@@ -1742,23 +1743,23 @@ class ForwardKinematicsSolver:
         merit_function.zero_()
         wp.launch_tiled(
             self._eval_merit_function_kernel,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_tiles_cts_1d),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_tiles_cts_1d),
             inputs=[constraints, merit_function],
-            block_dim=get_block_dim(self._data.dimensions.tile_size_cts_1d),
+            block_dim=get_block_dim(self.data.dimensions.tile_size_cts_1d),
             device=self.device,
         )
         if self.config.use_regularization and body_q is not None:
             wp.launch_tiled(
                 self._eval_regularizer_kernel,
-                dim=(self.model.size.num_worlds, self._data.dimensions.num_tiles_vrs_1d),
+                dim=(self.model.size.num_worlds, self.data.dimensions.num_tiles_vrs_1d),
                 inputs=[
                     self.model.info.bodies_offset,
                     self.config.regularization_weight,
                     body_q.view(wp.float32).flatten(),
-                    self._data.problem.body_q_ref.view(wp.float32).flatten(),
+                    self.data.problem.body_q_ref.view(wp.float32).flatten(),
                     merit_function,
                 ],
-                block_dim=get_block_dim(self._data.dimensions.tile_size_vrs_1d),
+                block_dim=get_block_dim(self.data.dimensions.tile_size_vrs_1d),
                 device=self.device,
             )
 
@@ -1776,9 +1777,9 @@ class ForwardKinematicsSolver:
         error_grad.zero_()
         wp.launch_tiled(
             self._eval_merit_function_gradient_kernel,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_tiles_vrs_1d),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_tiles_vrs_1d),
             inputs=[step, grad, error_grad],
-            block_dim=get_block_dim(self._data.dimensions.tile_size_vrs_1d),
+            block_dim=get_block_dim(self.data.dimensions.tile_size_vrs_1d),
             device=self.device,
         )
 
@@ -1789,45 +1790,45 @@ class ForwardKinematicsSolver:
         # Eval stepped state
         wp.launch(
             _eval_stepped_state,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_states_max),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_states_max),
             inputs=[
                 self.model.info.num_bodies,
                 self.model.info.bodies_offset,
                 body_q.view(wp.float32).flatten(),
-                self._data.line_search.alpha,
-                self._data.gauss_newton.step,
-                self._data.line_search.mask,
-                self._data.line_search.body_q_alpha.view(wp.float32).flatten(),
+                self.data.line_search.alpha,
+                self.data.gauss_newton.step,
+                self.data.line_search.mask,
+                self.data.line_search.body_q_alpha.view(wp.float32).flatten(),
             ],
             device=self.device,
         )
 
         # Evaluate new constraints and merit function (least squares norm of constraints)
         self._eval_kinematic_constraints(
-            self._data.line_search.body_q_alpha,
-            self._data.problem.target_rel_transforms,
-            self._data.line_search.mask,
-            self._data.problem.constraints,
+            self.data.line_search.body_q_alpha,
+            self.data.problem.target_rel_transforms,
+            self.data.line_search.mask,
+            self.data.problem.constraints,
         )
         self._eval_merit_function(
-            self._data.problem.constraints, self._data.line_search.val_alpha, self._data.line_search.body_q_alpha
+            self.data.problem.constraints, self.data.line_search.val_alpha, self.data.line_search.body_q_alpha
         )
 
         # Check decrease and update step
-        self._data.line_search.loop_condition.zero_()
+        self.data.line_search.loop_condition.zero_()
         wp.launch(
             _line_search_check,
             dim=(self.model.size.num_worlds,),
             inputs=[
-                self._data.line_search.val_0,
-                self._data.line_search.grad_0,
-                self._data.line_search.alpha,
-                self._data.line_search.val_alpha,
-                self._data.line_search.iteration,
-                self._data.line_search.max_iterations,
-                self._data.line_search.success,
-                self._data.line_search.mask,
-                self._data.line_search.loop_condition,
+                self.data.line_search.val_0,
+                self.data.line_search.grad_0,
+                self.data.line_search.alpha,
+                self.data.line_search.val_alpha,
+                self.data.line_search.iteration,
+                self.data.line_search.max_iterations,
+                self.data.line_search.success,
+                self.data.line_search.mask,
+                self.data.line_search.loop_condition,
             ],
             device=self.device,
         )
@@ -1840,12 +1841,11 @@ class ForwardKinematicsSolver:
         """
         Internal function heuristically adapting the CG tolerance based on the current constraint/gradient residual
         (starting with a loose tolerance, and tightening it as we converge)
-        Note: needs to be refined, until then we are still using a fixed tolerance
         """
         wp.launch(
             _update_cg_tolerance_kernel,
             dim=(self.model.size.num_worlds,),
-            inputs=[residual_norm, world_mask, self._data.linear_system.cg_atol, self._data.linear_system.cg_rtol],
+            inputs=[residual_norm, world_mask, self.data.linear_system.cg_atol, self.data.linear_system.cg_rtol],
             device=self.device,
         )
 
@@ -1856,37 +1856,37 @@ class ForwardKinematicsSolver:
         """
         # Update actuator_q and kinematic constraints, for incremental solve
         if self.config.use_incremental_solve:
-            self._update_incremental_target_actuator_q(self._data.gauss_newton.iteration, self._data.gauss_newton.mask)
+            self._update_incremental_target_actuator_q(self.data.gauss_newton.iteration, self.data.gauss_newton.mask)
             self._eval_target_relative_transformations(
-                self._data.problem.actuator_q_curr,
-                self._data.problem.target_rel_transforms,
-                self._data.gauss_newton.mask,
+                self.data.problem.actuator_q_curr,
+                self.data.problem.target_rel_transforms,
+                self.data.gauss_newton.mask,
             )
             self._eval_kinematic_constraints(
                 body_q,
-                self._data.problem.target_rel_transforms,
-                self._data.gauss_newton.mask,
-                self._data.problem.constraints,
+                self.data.problem.target_rel_transforms,
+                self.data.gauss_newton.mask,
+                self.data.problem.constraints,
             )
 
         # Evaluate constraints Jacobian if needed
         if not self.config.use_regularization:
-            self._update_jacobian(body_q, self._data.problem.target_rel_transforms, self._data.gauss_newton.mask)
+            self._update_jacobian(body_q, self.data.problem.target_rel_transforms, self.data.gauss_newton.mask)
         elif self.config.use_incremental_solve:
             self._update_jacobian(
-                body_q, self._data.problem.target_rel_transforms, self._data.gauss_newton.jacobian_late_update_mask
+                body_q, self.data.problem.target_rel_transforms, self.data.gauss_newton.jacobian_late_update_mask
             )
 
         # Evaluate Gauss-Newton left-hand side (J^T * J) if needed, and right-hand side (-J^T * C)
-        self._update_lhs(self._data.gauss_newton.mask)
+        self._update_lhs(self.data.gauss_newton.mask)
         if not self.config.use_regularization:
-            self._update_gradient(body_q, self._data.gauss_newton.mask)
+            self._update_gradient(body_q, self.data.gauss_newton.mask)
         elif self.config.use_incremental_solve:
-            self._update_gradient(body_q, self._data.gauss_newton.jacobian_late_update_mask)
+            self._update_gradient(body_q, self.data.gauss_newton.jacobian_late_update_mask)
         wp.launch(
             _eval_rhs,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_states_max),
-            inputs=[self._data.gauss_newton.grad, self._data.linear_system.rhs],
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_states_max),
+            inputs=[self.data.gauss_newton.grad, self.data.linear_system.rhs],
             device=self.device,
         )
 
@@ -1894,106 +1894,106 @@ class ForwardKinematicsSolver:
         if self.config.use_sparsity:
             offset = self.config.regularization_weight if self.config.use_regularization else 0.0
             if (
-                self._data.linear_system.preconditioner_type
+                self.data.linear_system.preconditioner_type
                 == ForwardKinematicsSolver.PreconditionerType.JACOBI_DIAGONAL
             ):
                 block_sparse_ATA_inv_diagonal_2d(
-                    self._data.problem.sparse_jacobian,
-                    self._data.linear_system.jacobian_diag_inv,
-                    self._data.gauss_newton.mask,
+                    self.data.problem.sparse_jacobian,
+                    self.data.linear_system.jacobian_diag_inv,
+                    self.data.gauss_newton.mask,
                     diag_offset=offset,
                 )
             elif (
-                self._data.linear_system.preconditioner_type
+                self.data.linear_system.preconditioner_type
                 == ForwardKinematicsSolver.PreconditionerType.JACOBI_BLOCK_DIAGONAL
             ):
                 block_sparse_ATA_blockwise_3_4_inv_diagonal_2d(
-                    self._data.problem.sparse_jacobian,
-                    self._data.linear_system.inv_blocks_3,
-                    self._data.linear_system.inv_blocks_4,
-                    self._data.gauss_newton.mask,
+                    self.data.problem.sparse_jacobian,
+                    self.data.linear_system.inv_blocks_3,
+                    self.data.linear_system.inv_blocks_4,
+                    self.data.gauss_newton.mask,
                     diag_offset=offset,
                 )
 
-            self._data.gauss_newton.step.zero_()
+            self.data.gauss_newton.step.zero_()
             if self.config.use_adaptive_cg_tolerance:
-                self._update_cg_tolerance(self._data.gauss_newton.max_residual, self._data.gauss_newton.mask)
+                self._update_cg_tolerance(self.data.gauss_newton.max_residual, self.data.gauss_newton.mask)
             else:
-                self._data.linear_system.cg_atol.fill_(1e-8)
-                self._data.linear_system.cg_rtol.fill_(1e-8)
+                self.data.linear_system.cg_atol.fill_(1e-8)
+                self.data.linear_system.cg_rtol.fill_(1e-8)
             self.linear_solver_cg.solve(
-                self._data.linear_system.rhs.reshape((-1,)),
-                self._data.gauss_newton.step.reshape((-1,)),
-                world_active=self._data.gauss_newton.mask,
+                self.data.linear_system.rhs.reshape((-1,)),
+                self.data.gauss_newton.step.reshape((-1,)),
+                world_active=self.data.gauss_newton.mask,
             )
         else:
             self.linear_solver_llt.factorize(
-                self._data.linear_system.lhs, self._data.dimensions.num_states, self._data.gauss_newton.mask
+                self.data.linear_system.lhs, self.data.dimensions.num_states, self.data.gauss_newton.mask
             )
             self.linear_solver_llt.solve(
-                self._data.linear_system.rhs.reshape(
-                    (self.model.size.num_worlds, self._data.dimensions.num_states_max, 1)
+                self.data.linear_system.rhs.reshape(
+                    (self.model.size.num_worlds, self.data.dimensions.num_states_max, 1)
                 ),
-                self._data.gauss_newton.step.reshape(
-                    (self.model.size.num_worlds, self._data.dimensions.num_states_max, 1)
+                self.data.gauss_newton.step.reshape(
+                    (self.model.size.num_worlds, self.data.dimensions.num_states_max, 1)
                 ),
-                self._data.gauss_newton.mask,
+                self.data.gauss_newton.mask,
             )
 
         # Line search
-        self._data.line_search.iteration.zero_()
-        self._data.line_search.success.zero_()
-        wp.copy(self._data.line_search.mask, self._data.gauss_newton.mask)
-        self._data.line_search.loop_condition.fill_(1)
-        self._eval_merit_function(self._data.problem.constraints, self._data.line_search.val_0, body_q)
+        self.data.line_search.iteration.zero_()
+        self.data.line_search.success.zero_()
+        wp.copy(self.data.line_search.mask, self.data.gauss_newton.mask)
+        self.data.line_search.loop_condition.fill_(1)
+        self._eval_merit_function(self.data.problem.constraints, self.data.line_search.val_0, body_q)
         self._eval_merit_function_gradient(
-            self._data.gauss_newton.step, self._data.gauss_newton.grad, self._data.line_search.grad_0
+            self.data.gauss_newton.step, self.data.gauss_newton.grad, self.data.line_search.grad_0
         )
-        self._data.line_search.alpha.fill_(1.0)
-        wp.capture_while(self._data.line_search.loop_condition, lambda: self._run_line_search_iteration(body_q))
+        self.data.line_search.alpha.fill_(1.0)
+        wp.capture_while(self.data.line_search.loop_condition, lambda: self._run_line_search_iteration(body_q))
 
         # Apply line search step and update max constraint
         wp.launch(
             _apply_line_search_step,
-            dim=(self.model.size.num_worlds, self._data.dimensions.num_bodies_max),
+            dim=(self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
             inputs=[
                 self.model.info.num_bodies,
                 self.model.info.bodies_offset,
-                self._data.line_search.body_q_alpha,
-                self._data.line_search.success,
+                self.data.line_search.body_q_alpha,
+                self.data.line_search.success,
                 body_q,
             ],
             device=self.device,
         )
         if self.config.use_regularization:
             mask = (
-                self._data.gauss_newton.jacobian_early_update_mask
+                self.data.gauss_newton.jacobian_early_update_mask
                 if self.config.use_incremental_solve
-                else self._data.gauss_newton.mask
+                else self.data.gauss_newton.mask
             )
-            self._update_jacobian(body_q, self._data.problem.target_rel_transforms, mask)
+            self._update_jacobian(body_q, self.data.problem.target_rel_transforms, mask)
             self._update_gradient(body_q, mask)
         self._eval_max_residual(
-            self._data.problem.constraints, self._data.gauss_newton.grad, self._data.gauss_newton.max_residual
+            self.data.problem.constraints, self.data.gauss_newton.grad, self.data.gauss_newton.max_residual
         )
 
         # Check convergence
-        self._data.gauss_newton.loop_condition.zero_()
+        self.data.gauss_newton.loop_condition.zero_()
         wp.launch(
             _newton_check,
             dim=(self.model.size.num_worlds,),
             inputs=[
-                self._data.gauss_newton.max_residual,
-                self._data.gauss_newton.tolerance,
-                self._data.gauss_newton.iteration,
-                self._data.gauss_newton.min_iterations,
-                self._data.gauss_newton.max_iterations,
-                self._data.line_search.success,
-                self._data.gauss_newton.success,
-                self._data.gauss_newton.mask,
-                self._data.gauss_newton.loop_condition,
-                self._data.gauss_newton.jacobian_early_update_mask,
-                self._data.gauss_newton.jacobian_late_update_mask,
+                self.data.gauss_newton.max_residual,
+                self.data.gauss_newton.tolerance,
+                self.data.gauss_newton.iteration,
+                self.data.gauss_newton.min_iterations,
+                self.data.gauss_newton.max_iterations,
+                self.data.line_search.success,
+                self.data.gauss_newton.success,
+                self.data.gauss_newton.mask,
+                self.data.gauss_newton.loop_condition,
+                self.data.gauss_newton.jacobian_early_update_mask,
+                self.data.gauss_newton.jacobian_late_update_mask,
             ],
             device=self.device,
         )
@@ -2015,7 +2015,7 @@ class ForwardKinematicsSolver:
         """
         # Retrieve temporary buffers
         batch_size = actuator_u.shape[0]
-        velocity_data = self._data.velocity_solve.get(batch_size)
+        velocity_data = self.data.velocity_solve.get(batch_size)
         if velocity_data is None:
             raise ValueError(
                 f"Velocity buffers for batch_size={batch_size} are not allocated; "
@@ -2029,51 +2029,51 @@ class ForwardKinematicsSolver:
         # Compute actuator_u of fk model with modified joints
         wp.launch(
             _eval_fk_actuated_dofs_or_coords,
-            dim=(batch_size, self._data.dimensions.num_actuated_dofs),
+            dim=(batch_size, self.data.dimensions.num_actuated_dofs),
             inputs=[
                 base_u.view(wp.float32).reshape((base_u.shape[0], 6 * self.model.size.num_worlds)),
                 actuator_u,
-                self._data.dimensions.actuated_dofs_map,
+                self.data.dimensions.actuated_dofs_map,
                 fk_actuator_u,
             ],
             device=self.device,
         )
 
         # Compute target constraint velocities (prescribed for actuated dofs, zero for passive constraints)
-        self._eval_actuator_coords(body_q, self._data.problem.actuator_q_next)
+        self._eval_actuator_coords(body_q, self.data.problem.actuator_q_next)
         target_cts_u.zero_()
         wp.launch(
             _eval_target_constraint_velocities,
-            dim=(batch_size, self.model.size.num_worlds, self._data.dimensions.num_joints_max),
+            dim=(batch_size, self.model.size.num_worlds, self.data.dimensions.num_joints_max),
             inputs=[
-                self._data.dimensions.num_joints,
-                self._data.dimensions.joint_offset,
-                self._data.joints.dof_type,
-                self._data.joints.act_type,
-                self._data.dimensions.actuated_coord_offset,
-                self._data.dimensions.actuated_dof_offset,
-                self._data.dimensions.constraint_full_to_red_map,
-                self._data.problem.actuator_q_next,
+                self.data.dimensions.num_joints,
+                self.data.dimensions.joint_offset,
+                self.data.joints.dof_type,
+                self.data.joints.act_type,
+                self.data.dimensions.actuated_coord_offset,
+                self.data.dimensions.actuated_dof_offset,
+                self.data.dimensions.constraint_full_to_red_map,
+                self.data.problem.actuator_q_next,
                 fk_actuator_u,
                 world_mask,
                 target_cts_u,
             ],
             device=self.device,
         )
-        if self._data.joints.has_universal_actuators:
+        if self.data.joints.has_universal_actuators:
             wp.launch(
                 _correct_universal_constraint_velocities,
-                dim=(batch_size, self.model.size.num_worlds, self._data.dimensions.num_joints_max),
+                dim=(batch_size, self.model.size.num_worlds, self.data.dimensions.num_joints_max),
                 inputs=[
-                    self._data.dimensions.num_joints,
-                    self._data.dimensions.joint_offset,
-                    self._data.joints.dof_type,
-                    self._data.joints.act_type,
-                    self._data.joints.bid_B,
-                    self._data.joints.bid_F,
-                    self._data.joints.X_Bj,
-                    self._data.joints.X_Fj,
-                    self._data.dimensions.constraint_full_to_red_map,
+                    self.data.dimensions.num_joints,
+                    self.data.dimensions.joint_offset,
+                    self.data.joints.dof_type,
+                    self.data.joints.act_type,
+                    self.data.joints.bid_B,
+                    self.data.joints.bid_F,
+                    self.data.joints.X_Bj,
+                    self.data.joints.X_Fj,
+                    self.data.dimensions.constraint_full_to_red_map,
                     body_q,
                     world_mask,
                     target_cts_u,
@@ -2088,19 +2088,19 @@ class ForwardKinematicsSolver:
         # These are J^T * J (+ regularizer Hessian), and J^T * targets_cts_u
         self._update_lhs(world_mask)
         if self.config.use_sparsity:
-            self._data.problem.sparse_jacobian_op.matvec_transpose(
-                target_cts_u.reshape((self.model.size.num_worlds, self._data.dimensions.num_constraints_max)),
-                rhs.reshape((self.model.size.num_worlds, self._data.dimensions.num_states_max)),
+            self.data.problem.sparse_jacobian_op.matvec_transpose(
+                target_cts_u.reshape((self.model.size.num_worlds, self.data.dimensions.num_constraints_max)),
+                rhs.reshape((self.model.size.num_worlds, self.data.dimensions.num_states_max)),
                 world_mask,
             )
         else:
             wp.launch_tiled(
                 self._eval_jacobian_T_constraints_kernel,
-                dim=(self.model.size.num_worlds, self._data.dimensions.num_tiles_vrs_2d, batch_size),
+                dim=(self.model.size.num_worlds, self.data.dimensions.num_tiles_vrs_2d, batch_size),
                 inputs=[
-                    self._data.problem.jacobian,
+                    self.data.problem.jacobian,
                     target_cts_u,
-                    self._data.dimensions.tile_sparsity_pattern,
+                    self.data.dimensions.tile_sparsity_pattern,
                     world_mask,
                     rhs,
                 ],
@@ -2112,36 +2112,36 @@ class ForwardKinematicsSolver:
         if self.config.use_sparsity:
             offset = self.config.regularization_weight if self.config.use_regularization else 0.0
             if (
-                self._data.linear_system.preconditioner_type
+                self.data.linear_system.preconditioner_type
                 == ForwardKinematicsSolver.PreconditionerType.JACOBI_DIAGONAL
             ):
                 block_sparse_ATA_inv_diagonal_2d(
-                    self._data.problem.sparse_jacobian,
-                    self._data.linear_system.jacobian_diag_inv,
+                    self.data.problem.sparse_jacobian,
+                    self.data.linear_system.jacobian_diag_inv,
                     world_mask,
                     diag_offset=offset,
                 )
             elif (
-                self._data.linear_system.preconditioner_type
+                self.data.linear_system.preconditioner_type
                 == ForwardKinematicsSolver.PreconditionerType.JACOBI_BLOCK_DIAGONAL
             ):
                 block_sparse_ATA_blockwise_3_4_inv_diagonal_2d(
-                    self._data.problem.sparse_jacobian,
-                    self._data.linear_system.inv_blocks_3,
-                    self._data.linear_system.inv_blocks_4,
+                    self.data.problem.sparse_jacobian,
+                    self.data.linear_system.inv_blocks_3,
+                    self.data.linear_system.inv_blocks_4,
                     world_mask,
                     diag_offset=offset,
                 )
             body_q_dot.zero_()
-            self._data.linear_system.cg_atol.fill_(1e-8)
-            self._data.linear_system.cg_rtol.fill_(1e-8)
+            self.data.linear_system.cg_atol.fill_(1e-8)
+            self.data.linear_system.cg_rtol.fill_(1e-8)
             self.linear_solver_cg.solve(rhs.reshape((-1,)), body_q_dot.reshape((-1,)), world_active=world_mask)
         else:
-            self.linear_solver_llt.factorize(self._data.linear_system.lhs, self._data.dimensions.num_states, world_mask)
+            self.linear_solver_llt.factorize(self.data.linear_system.lhs, self.data.dimensions.num_states, world_mask)
             self.linear_solver_llt.solve(rhs, body_q_dot, world_mask)
         wp.launch(
             _eval_body_velocities,
-            dim=(batch_size, self.model.size.num_worlds, self._data.dimensions.num_bodies_max),
+            dim=(batch_size, self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
             inputs=[self.model.info.num_bodies, self.model.info.bodies_offset, body_q, body_q_dot, world_mask, body_u],
             device=self.device,
         )
@@ -2152,18 +2152,21 @@ class ForwardKinematicsSolver:
 
     def eval_target_relative_transforms(
         self, actuator_q: wp.array[wp.float32], base_q: wp.array[wp.transformf] | None = None
-    ):
+    ) -> wp.array[wp.transformf]:
         """
         Evaluates and returns the target relative transforms (an intermediary quantity needed for the
         kinematic constraints/Jacobian evaluation) for a model given actuated coordinates, and optionally
         the base pose (the default base pose is used if not provided).
 
         Args:
-            actuator_q: Actuated joint coordinates, with shape ``(sum_of_num_fk_actuated_joint_coords,)``.
+            actuator_q: Actuated joint coordinates, with shape ``(num_fk_actuated_coords,)``.
             base_q: Base pose per world, with shape ``(num_worlds,)``. Defaults to the model's base pose.
 
         Raises:
             ValueError: If any input array is not on this solver's device.
+
+        Returns:
+            Target relative transforms, with shape ``(num_fk_joints)``.
         """
         if actuator_q.device != self.device:
             raise ValueError("actuator_q must be on the solver's device")
@@ -2171,20 +2174,20 @@ class ForwardKinematicsSolver:
             raise ValueError("base_q must be on the solver's device")
 
         if base_q is None:
-            base_q = self._data.problem.base_q_default
+            base_q = self.data.problem.base_q_default
 
         # Convert base_q, actuator_q from the main model to actuator_q for the FK model
         actuator_q_fk = wp.array(
-            dtype=wp.float32, shape=(self._data.dimensions.num_actuated_coords,), device=self.device
+            dtype=wp.float32, shape=(self.data.dimensions.num_actuated_coords,), device=self.device
         )
         self._eval_target_actuator_q(base_q, actuator_q, actuator_q_fk)
 
         # Evaluate target relative transformations
         target_rel_transforms = wp.array(
-            dtype=wp.transformf, shape=(self._data.dimensions.num_joints_tot,), device=self.device
+            dtype=wp.transformf, shape=(self.data.dimensions.num_joints_tot,), device=self.device
         )
         self._eval_target_relative_transformations(
-            actuator_q_fk, target_rel_transforms, self._data.dimensions.all_worlds_mask
+            actuator_q_fk, target_rel_transforms, self.data.dimensions.all_worlds_mask
         )
 
         return target_rel_transforms
@@ -2202,6 +2205,9 @@ class ForwardKinematicsSolver:
 
         Raises:
             ValueError: If any input array is not on this solver's device.
+
+        Returns:
+            Evaluated constraints, with shape ``(num_worlds, num_constraints_max)``.
         """
         if body_q.device != self.device:
             raise ValueError("body_q must be on the solver's device")
@@ -2212,7 +2218,7 @@ class ForwardKinematicsSolver:
             dtype=wp.float32,
             shape=(
                 self.model.size.num_worlds,
-                self._data.dimensions.num_constraints_max,
+                self.data.dimensions.num_constraints_max,
             ),
             device=self.device,
         )
@@ -2233,6 +2239,9 @@ class ForwardKinematicsSolver:
 
         Raises:
             ValueError: If any input array is not on this solver's device.
+
+        Returns:
+            Evaluated dense Jacobian, with shape ``(num_worlds, num_constraints_max, num_states_max)``.
         """
         if body_q.device != self.device:
             raise ValueError("body_q must be on the solver's device")
@@ -2243,8 +2252,8 @@ class ForwardKinematicsSolver:
             dtype=wp.float32,
             shape=(
                 self.model.size.num_worlds,
-                self._data.dimensions.num_constraints_max,
-                self._data.dimensions.num_states_max,
+                self.data.dimensions.num_constraints_max,
+                self.data.dimensions.num_states_max,
             ),
             device=self.device,
         )
@@ -2254,7 +2263,7 @@ class ForwardKinematicsSolver:
 
     def assemble_sparse_jacobian(self, body_q: wp.array[wp.transformf], target_rel_transforms: wp.array[wp.transformf]):
         """
-        Assembles the sparse Jacobian (under self._data.problem.sparse_jacobian) given input body poses and control transforms.
+        Assembles the sparse Jacobian (under self.data.problem.sparse_jacobian) given input body poses and control transforms.
 
         Note: only safe to call if this object was finalized with sparsity enabled in the config.
 
@@ -2287,25 +2296,25 @@ class ForwardKinematicsSolver:
             raise ValueError("batch_size must be positive")
         if self.config.use_sparsity and batch_size != 1:
             raise ValueError("Multiple velocity right-hand sides require the dense FK solver")
-        if batch_size in self._data.velocity_solve:
+        if batch_size in self.data.velocity_solve:
             return
 
-        self._data.velocity_solve[batch_size] = FKVelocitySolveData(
+        self.data.velocity_solve[batch_size] = FKVelocitySolveData(
             fk_actuator_u=wp.zeros(
-                (batch_size, self._data.dimensions.num_actuated_dofs), dtype=wp.float32, device=self.device
+                (batch_size, self.data.dimensions.num_actuated_dofs), dtype=wp.float32, device=self.device
             ),
             target_cts_u=wp.zeros(
-                (self.model.size.num_worlds, self._data.dimensions.num_constraints_max, batch_size),
+                (self.model.size.num_worlds, self.data.dimensions.num_constraints_max, batch_size),
                 dtype=wp.float32,
                 device=self.device,
             ),
             rhs=wp.zeros(
-                (self.model.size.num_worlds, self._data.dimensions.num_states_max, batch_size),
+                (self.model.size.num_worlds, self.data.dimensions.num_states_max, batch_size),
                 dtype=wp.float32,
                 device=self.device,
             ),
             body_q_dot=wp.zeros(
-                (self.model.size.num_worlds, self._data.dimensions.num_states_max, batch_size),
+                (self.model.size.num_worlds, self.data.dimensions.num_states_max, batch_size),
                 dtype=wp.float32,
                 device=self.device,
             ),
@@ -2323,8 +2332,8 @@ class ForwardKinematicsSolver:
     ):
         """
         Graph-capturable function solving for body velocities as a post-processing to the FK solve.
-        Solves for body twists yielding zero constraint velocities, except at actuated dofs and at the
-        base joint, where velocities must match prescribed velocities.
+        More specifically, solves for body twists yielding zero constraint velocities, except at
+        actuated dofs and at the base joint, where velocities must match prescribed velocities.
 
         Processes ``batch_size`` velocity vectors in parallel. For ``batch_size > 1``,
         :meth:`request_velocity_solve_batch_size()` must be called beforehand.
@@ -2332,17 +2341,18 @@ class ForwardKinematicsSolver:
         Optional arrays must be either always or never provided across calls in a captured graph.
 
         Args:
-            actuator_u: Actuated joint velocities, shape ``(batch_size, sum_of_num_fk_actuated_joint_dofs)``
-                (or 1D if batch_size = 1).
-            body_q: Body poses (FK solution given the target relative transforms), shape ``(num_bodies,)``.
-            body_u: Body velocities (twists) written out by the solver, shape ``(batch_size, num_bodies)``
-                (or 1D if batch_size = 1).
-            base_u: Base body twist per world, in base joint frame if set or absolute otherwise, shape
-                ``(batch_size, num_worlds)`` (or 1D if batch_size = 1). Defaults to zero; ignored when no
-                base body/joint is set. A single row is broadcast across the batch.
-            target_rel_transforms: Target relative transforms per joint, shape ``(num_fk_joints,)``. If not
-                provided, inferred from ``body_q``.
-            world_mask: Per-world flags, shape ``(num_worlds,)``; ``False`` leaves a world unchanged.
+            actuator_u: Actuated joint velocities, with shape ``(batch_size, num_fk_actuated_dofs)``,
+                or a 1D array if batch_size = 1.
+            body_q: Body poses (FK solution given the target relative transforms), with shape ``(num_bodies,)``.
+            body_u: Body velocities (twists) written out by the solver, with shape ``(batch_size, num_bodies)``,
+                or a 1D array if batch_size = 1.
+            base_u: Base body twist per world, in the base joint frame if applicable, absolute otherwise.
+                Shape of ``(batch_size, num_worlds)``, or a 1D array if batch_size = 1.
+                Defaults to zero; ignored when no base body/joint is set.
+                A single row is broadcast across the batch.
+            target_rel_transforms: Target relative transforms per joint, encoding actuated coordinates and
+                base pose. Shape of ``(num_fk_joints,)``. If not provided, inferred from ``body_q``.
+            world_mask: Per-world boolean flags selecting which worlds to process, shape ``(num_worlds,)``.
                 Defaults to all worlds.
 
         Raises:
@@ -2377,18 +2387,18 @@ class ForwardKinematicsSolver:
 
         # Use default base velocity if not provided
         if base_u is None:
-            base_u = self._data.problem.base_u_default.reshape((1, self.model.size.num_worlds))
+            base_u = self.data.problem.base_u_default.reshape((1, self.model.size.num_worlds))
 
         # Use default mask with all worlds if not provided
-        world_mask = self._data.dimensions.all_worlds_mask if world_mask is None else world_mask
+        world_mask = self.data.dimensions.all_worlds_mask if world_mask is None else world_mask
 
         # Extract target relative transformations from state if not provided
         if target_rel_transforms is None:
-            self._eval_actuator_coords(body_q, self._data.problem.actuator_q_next)
+            self._eval_actuator_coords(body_q, self.data.problem.actuator_q_next)
             self._eval_target_relative_transformations(
-                self._data.problem.actuator_q_next, self._data.problem.target_rel_transforms, world_mask
+                self.data.problem.actuator_q_next, self.data.problem.target_rel_transforms, world_mask
             )
-            target_rel_transforms = self._data.problem.target_rel_transforms
+            target_rel_transforms = self.data.problem.target_rel_transforms
 
         # Compute velocities
         self._solve_for_body_velocities(target_rel_transforms, base_u, actuator_u, body_q, body_u, world_mask)
@@ -2406,25 +2416,25 @@ class ForwardKinematicsSolver:
         """
         Graph-capturable function solving forward kinematics with Gauss-Newton.
 
-        Solves for the rigid body poses satisfying kinematic constraints, given actuated joint coordinates
-        and base pose. Optionally also solves for rigid body velocities given actuator and base body
-        velocities.
+        More specifically, solves for the rigid body poses satisfying kinematic constraints,
+        given actuated joint coordinates and base pose. Optionally also solves for rigid body velocities
+        given actuator and base body velocities.
 
         Optional arrays must be either always or never provided across calls in a captured graph.
 
         Args:
-            actuator_q: Actuated joint coordinates, shape ``(sum_of_num_fk_actuated_joint_coords,)``.
+            actuator_q: Actuated joint coordinates, shape ``(num_fk_actuated_coords,)``.
             body_q: Body poses, shape ``(num_bodies,)``. Written out by the solver, and used as an initial
                 guess when ``reset_state`` is False.
-            base_q: Base pose per world, shape ``(num_worlds,)``, in base joint frame if set or absolute
-                otherwise. Defaults to zero coordinates of the base joint (or the initial base body pose);
-                ignored when no base body/joint is set.
-            actuator_u: Actuated joint velocities, shape ``(sum_of_num_fk_actuated_joint_dofs,)``. Required
+            base_q: Base pose per world, in the base joint frame if applicable, absolute otherwise.
+                Shape of ``(num_worlds,)``. Defaults to zero coordinates of the base joint, or the initial
+                base body pose; ignored when no base body/joint is set.
+            actuator_u: Actuated joint velocities, shape ``(num_fk_actuated_dofs,)``. Required
                 when solving for velocities (``body_u`` provided).
-            base_u: Base body twist per world, shape ``(num_worlds,)``, in base joint frame if set or
-                absolute otherwise. Defaults to zero; ignored when no base body/joint is set.
+            base_u: Base body twist per world, in the base joint frame if applicable, absolute otherwise.
+                Shape of ``(num_worlds,)``. Defaults to zero; ignored when no base body/joint is set.
             body_u: Body velocities (twists) written out by the solver if provided, shape ``(num_bodies,)``.
-            world_mask: Per-world flags, shape ``(num_worlds,)``; ``False`` leaves a world unchanged.
+            world_mask: Per-world boolean flags selecting which worlds to process, shape ``(num_worlds,)``.
                 Defaults to all worlds.
 
         Raises:
@@ -2437,89 +2447,89 @@ class ForwardKinematicsSolver:
             )
 
         # Reset iteration count and success/continuation flags
-        self._data.gauss_newton.iteration.fill_(-1)  # The initial Newton convergence check will increment this to zero
-        self._data.gauss_newton.success.zero_()
+        self.data.gauss_newton.iteration.fill_(-1)  # The initial Newton convergence check will increment this to zero
+        self.data.gauss_newton.success.zero_()
         if world_mask is not None:
-            self._data.gauss_newton.mask.assign(world_mask)
+            self.data.gauss_newton.mask.assign(world_mask)
         else:
-            wp.copy(self._data.gauss_newton.mask, self._data.dimensions.all_worlds_mask)
-        self._data.gauss_newton.min_iterations.fill_(-1)  # To disregard min iterations in initial Newton check
+            wp.copy(self.data.gauss_newton.mask, self.data.dimensions.all_worlds_mask)
+        self.data.gauss_newton.min_iterations.fill_(-1)  # To disregard min iterations in initial Newton check
 
         # Optionally reset state
         if self.config.reset_state:
             if base_q is None:
-                self._reset_state(body_q, self._data.gauss_newton.mask)
+                self._reset_state(body_q, self.data.gauss_newton.mask)
             else:
-                self._reset_state_base_q(body_q, base_q, self._data.gauss_newton.mask)
+                self._reset_state_base_q(body_q, base_q, self.data.gauss_newton.mask)
 
         # Optionally initialize the reference pose for the regularizer
         if self.config.use_regularization:
-            wp.copy(self._data.problem.body_q_ref, body_q)
+            wp.copy(self.data.problem.body_q_ref, body_q)
 
         # Use default base state if not provided
         if base_q is None:
-            base_q = self._data.problem.base_q_default
+            base_q = self.data.problem.base_q_default
         if body_u is not None and base_u is None:
-            base_u = self._data.problem.base_u_default
+            base_u = self.data.problem.base_u_default
 
         # Compute target actuator coordinates and corresponding transforms
-        self._eval_target_actuator_q(base_q, actuator_q, self._data.problem.actuator_q_next)
+        self._eval_target_actuator_q(base_q, actuator_q, self.data.problem.actuator_q_next)
         self._eval_target_relative_transformations(
-            self._data.problem.actuator_q_next, self._data.problem.target_rel_transforms, self._data.gauss_newton.mask
+            self.data.problem.actuator_q_next, self.data.problem.target_rel_transforms, self.data.gauss_newton.mask
         )
 
         # Evaluate constraints, and initialize loop condition (might not even need to loop)
         self._eval_kinematic_constraints(
             body_q,
-            self._data.problem.target_rel_transforms,
-            self._data.gauss_newton.mask,
-            self._data.problem.constraints,
+            self.data.problem.target_rel_transforms,
+            self.data.gauss_newton.mask,
+            self.data.problem.constraints,
         )
         if self.config.use_regularization:  # Update Jacobian and gradient for stopping criterion
-            self._update_jacobian(body_q, self._data.problem.target_rel_transforms, self._data.gauss_newton.mask)
-            self._update_gradient(body_q, self._data.gauss_newton.mask)
+            self._update_jacobian(body_q, self.data.problem.target_rel_transforms, self.data.gauss_newton.mask)
+            self._update_gradient(body_q, self.data.gauss_newton.mask)
         self._eval_max_residual(
-            self._data.problem.constraints, self._data.gauss_newton.grad, self._data.gauss_newton.max_residual
+            self.data.problem.constraints, self.data.gauss_newton.grad, self.data.gauss_newton.max_residual
         )
-        self._data.gauss_newton.loop_condition.zero_()
+        self.data.gauss_newton.loop_condition.zero_()
         wp.copy(
-            self._data.line_search.success, self._data.gauss_newton.mask
+            self.data.line_search.success, self.data.gauss_newton.mask
         )  # To disregard line search success in initial Newton check
         wp.launch(
             _newton_check,
             dim=(self.model.size.num_worlds,),
             inputs=[
-                self._data.gauss_newton.max_residual,
-                self._data.gauss_newton.tolerance,
-                self._data.gauss_newton.iteration,
-                self._data.gauss_newton.min_iterations,
-                self._data.gauss_newton.max_iterations,
-                self._data.line_search.success,
-                self._data.gauss_newton.success,
-                self._data.gauss_newton.mask,
-                self._data.gauss_newton.loop_condition,
-                self._data.gauss_newton.jacobian_early_update_mask,
-                self._data.gauss_newton.jacobian_late_update_mask,
+                self.data.gauss_newton.max_residual,
+                self.data.gauss_newton.tolerance,
+                self.data.gauss_newton.iteration,
+                self.data.gauss_newton.min_iterations,
+                self.data.gauss_newton.max_iterations,
+                self.data.line_search.success,
+                self.data.gauss_newton.success,
+                self.data.gauss_newton.mask,
+                self.data.gauss_newton.loop_condition,
+                self.data.gauss_newton.jacobian_early_update_mask,
+                self.data.gauss_newton.jacobian_late_update_mask,
             ],
             device=self.device,
         )
 
         # Initialize incremental solve
         if self.config.use_incremental_solve:
-            wp.capture_if(self._data.gauss_newton.loop_condition, lambda: self._initialize_incremental_solve(body_q))
+            wp.capture_if(self.data.gauss_newton.loop_condition, lambda: self._initialize_incremental_solve(body_q))
 
         # Main loop
-        wp.capture_while(self._data.gauss_newton.loop_condition, lambda: self._run_newton_iteration(body_q))
+        wp.capture_while(self.data.gauss_newton.loop_condition, lambda: self._run_newton_iteration(body_q))
 
         # Velocity solve, for worlds where FK ran and was successful
         if body_u is not None:
             self._solve_for_body_velocities(
-                self._data.problem.target_rel_transforms,
+                self.data.problem.target_rel_transforms,
                 base_u.reshape((1, base_u.shape[0])),
                 actuator_u.reshape((1, actuator_u.shape[0])),
                 body_q,
                 body_u.reshape((1, body_u.shape[0])),
-                self._data.gauss_newton.success,
+                self.data.gauss_newton.success,
             )
 
     def solve_fk(
@@ -2540,18 +2550,18 @@ class ForwardKinematicsSolver:
         internal graph capture across calls.
 
         Args:
-            actuator_q: Actuated joint coordinates, shape ``(sum_of_num_fk_actuated_joint_coords,)``.
+            actuator_q: Actuated joint coordinates, shape ``(num_fk_actuated_coords,)``.
             body_q: Body poses, shape ``(num_bodies,)``. Written out by the solver, and used as an initial
                 guess when ``reset_state`` is False.
-            base_q: Base pose per world, shape ``(num_worlds,)``, in base joint frame if set or absolute
-                otherwise. Defaults to zero coordinates of the base joint (or the initial base body pose);
-                ignored when no base body/joint is set.
-            actuator_u: Actuated joint velocities, shape ``(sum_of_num_fk_actuated_joint_dofs,)``. Required
+            base_q: Base pose per world, in the base joint frame if applicable, absolute otherwise.
+                Shape of ``(num_worlds,)``. Defaults to zero coordinates of the base joint, or the initial
+                base body pose; ignored when no base body/joint is set.
+            actuator_u: Actuated joint velocities, shape ``(num_fk_actuated_dofs,)``. Required
                 when solving for velocities (``body_u`` provided).
-            base_u: Base body twist per world, shape ``(num_worlds,)``, in base joint frame if set or
-                absolute otherwise. Defaults to zero; ignored when no base body/joint is set.
+            base_u: Base body twist per world, in the base joint frame if applicable, absolute otherwise.
+                Shape of ``(num_worlds,)``. Defaults to zero; ignored when no base body/joint is set.
             body_u: Body velocities (twists) written out by the solver if provided, shape ``(num_bodies,)``.
-            world_mask: Per-world flags, shape ``(num_worlds,)``; ``False`` leaves a world unchanged.
+            world_mask: Per-world boolean flags selecting which worlds to process, shape ``(num_worlds,)``.
                 Defaults to all worlds.
             verbose: Whether to write a status message at the end.
             return_status: Whether to return the detailed solver status.
@@ -2595,9 +2605,9 @@ class ForwardKinematicsSolver:
 
         # Status message
         if verbose or return_status:
-            success = self._data.gauss_newton.success.numpy().copy()
-            iterations = self._data.gauss_newton.iteration.numpy().copy()
-            max_residual = self._data.gauss_newton.max_residual.numpy().copy()
+            success = self.data.gauss_newton.success.numpy().copy()
+            iterations = self.data.gauss_newton.iteration.numpy().copy()
+            max_residual = self.data.gauss_newton.max_residual.numpy().copy()
             num_active_worlds = self.model.size.num_worlds if world_mask is None else world_mask.numpy().sum()
             if verbose:
                 sys.__stdout__.write(f"Newton success for {success.sum()}/{num_active_worlds} worlds; ")

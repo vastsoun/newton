@@ -324,8 +324,8 @@ def _compute_fk_joint_frames(
 @wp.kernel
 def _compute_fk_axis_joint_frames(
     # Inputs
-    axis_fk_joint: wp.array[wp.int32],
-    axis_body: wp.array[wp.int32],
+    axis_joint_id: wp.array[wp.int32],
+    axis_body_id: wp.array[wp.int32],
     axis_joint_0: wp.array[wp.int32],
     axis_joint_1: wp.array[wp.int32],
     model_joint_bid_B: wp.array[wp.int32],
@@ -338,18 +338,18 @@ def _compute_fk_axis_joint_frames(
 ):
     """Compute synthetic axis-joint frames from the model data."""
     axis_joint = wp.tid()
-    fk_joint = axis_fk_joint[axis_joint]
-    body = axis_body[axis_joint]
+    joint_id = axis_joint_id[axis_joint]
+    body_id = axis_body_id[axis_joint]
     joint_0 = axis_joint_0[axis_joint]
     joint_1 = axis_joint_1[axis_joint]
-    body_q = model_body_q_0[body]
+    body_q = model_body_q_0[body_id]
 
     # Locate both spherical-joint anchors in the tie-rod body frame.
     local_0 = model_joint_F_r_Fj[joint_0]
-    if model_joint_bid_B[joint_0] == body:
+    if model_joint_bid_B[joint_0] == body_id:
         local_0 = model_joint_B_r_Bj[joint_0]
     local_1 = model_joint_F_r_Fj[joint_1]
-    if model_joint_bid_B[joint_1] == body:
+    if model_joint_bid_B[joint_1] == body_id:
         local_1 = model_joint_B_r_Bj[joint_1]
 
     # Evaluate the anchors in the initial pose and align the joint X axis with
@@ -363,9 +363,9 @@ def _compute_fk_axis_joint_frames(
         a_y = wp.normalize(wp.cross(wp.vec3f(0.0, 1.0, 0.0), a_x))
     a_z = wp.normalize(wp.cross(a_x, a_y))
     X_Bj = wp.matrix_from_cols(a_x, a_y, a_z)
-    fk_X_Bj[fk_joint] = X_Bj
+    fk_X_Bj[joint_id] = X_Bj
     # Match the follower frame to the base frame in the initial pose.
-    fk_X_Fj[fk_joint] = wp.quat_to_matrix(wp.transform_get_rotation(body_q)) * X_Bj
+    fk_X_Fj[joint_id] = wp.quat_to_matrix(wp.transform_get_rotation(body_q)) * X_Bj
 
 
 @wp.kernel
@@ -2040,7 +2040,7 @@ def _newton_check(
     A kernel checking the convergence (max residual vs tolerance) in each world, and updating the looping
     condition (zero if max iterations reached, or all worlds successful)
 
-    If provided, also updates masks keeping tracks of worlds where the Jacobian needs to be
+    If provided, also updates masks keeping track of worlds where the Jacobian needs to be
     updated before/after the controls (based on whether min iterations was already reached or not)
 
     Inputs
@@ -2320,7 +2320,6 @@ def _update_cg_tolerance_kernel(
     """
     A kernel heuristically adapting the CG tolerance based on the current constraint/gradient residual
     (starting with a loose tolerance, and tightening it as we converge)
-    Note: needs to be refined, until then we are still using a fixed tolerance
     """
     wd_id = wp.tid()
     if not world_mask[wd_id]:

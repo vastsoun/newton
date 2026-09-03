@@ -268,8 +268,8 @@ class SparseJacobianSingleJointCheckForwardKinematics(unittest.TestCase):
 
             jac_dense_np = solver.eval_kinematic_constraints_jacobian(body_q, transforms).numpy()
             solver.assemble_sparse_jacobian(body_q, transforms)
-            jac_sparse_np = solver._data.problem.sparse_jacobian.numpy()
-            rows, cols = solver._data.problem.sparse_jacobian.dims.numpy()[0]
+            jac_sparse_np = solver.data.problem.sparse_jacobian.numpy()
+            rows, cols = solver.data.problem.sparse_jacobian.dims.numpy()[0]
             return np.allclose(jac_dense_np[0, :rows, :cols], jac_sparse_np[0], atol=1e-6, rtol=0.0)
 
         success = run_test_single_joint_examples(test_function, test_name, device=self.default_device)
@@ -296,11 +296,11 @@ class WorldMaskInitializationForwardKinematics(unittest.TestCase):
             use_incremental_solve=False,
             use_regularization=False,
         )
-        solver._data = FKData()
-        dims = solver._data.dimensions
-        gn = solver._data.gauss_newton
-        ls = solver._data.line_search
-        problem = solver._data.problem
+        solver.data = FKData()
+        dims = solver.data.dimensions
+        gn = solver.data.gauss_newton
+        ls = solver.data.line_search
+        problem = solver.data.problem
 
         with wp.ScopedDevice(self.default_device):
             dims.all_worlds_mask = wp.full(shape=(num_worlds,), value=True, dtype=wp.bool)
@@ -677,18 +677,18 @@ class FourBarTieRodRandomPosesCheckForwardKinematics(unittest.TestCase):
         model = create_four_bar_tie_rod().finalize(device=self.default_device, requires_grad=False)
         config = ForwardKinematicsSolver.Config(add_axis_joints=True)
         solver = ForwardKinematicsSolver(model, config)
-        axis_body = int(solver._data.joints.axis_body.numpy()[0])
-        source_joint = int(solver._data.joints.axis_source_joint_0.numpy()[0])
+        axis_body_id = int(solver.data.joints.axis_body_id.numpy()[0])
+        source_joint = int(solver.data.joints.axis_source_joint_0.numpy()[0])
 
         body_q = model.bodies.q_i_0.numpy()
-        body_q[axis_body] = np.array(
+        body_q[axis_body_id] = np.array(
             wp.transformf(
-                wp.vec3f(*body_q[axis_body, :3]),
+                wp.vec3f(*body_q[axis_body_id, :3]),
                 wp.quat_from_axis_angle(wp.vec3f(0.0, 1.0, 0.0), 0.3),
             )
         )
         model.bodies.q_i_0.assign(body_q)
-        if model.joints.bid_B.numpy()[source_joint] == axis_body:
+        if model.joints.bid_B.numpy()[source_joint] == axis_body_id:
             joint_anchor = model.joints.B_r_Bj.numpy()
             joint_anchor[source_joint] += np.array([0.05, -0.02, 0.01], dtype=np.float32)
             model.joints.B_r_Bj.assign(joint_anchor)
@@ -699,16 +699,16 @@ class FourBarTieRodRandomPosesCheckForwardKinematics(unittest.TestCase):
 
         solver.notify_model_changed(newton.ModelFlags.JOINT_PROPERTIES | newton.ModelFlags.BODY_PROPERTIES)
         reference = ForwardKinematicsSolver(model, ForwardKinematicsSolver.Config(add_axis_joints=True))
-        axis_joints = solver._data.joints.axis_joint.numpy()
+        axis_joints = solver.data.joints.axis_joint_id.numpy()
 
         np.testing.assert_allclose(
-            solver._data.joints.X_Bj.numpy()[axis_joints],
-            reference._data.joints.X_Bj.numpy()[axis_joints],
+            solver.data.joints.X_Bj.numpy()[axis_joints],
+            reference.data.joints.X_Bj.numpy()[axis_joints],
             atol=1e-6,
         )
         np.testing.assert_allclose(
-            solver._data.joints.X_Fj.numpy()[axis_joints],
-            reference._data.joints.X_Fj.numpy()[axis_joints],
+            solver.data.joints.X_Fj.numpy()[axis_joints],
+            reference.data.joints.X_Fj.numpy()[axis_joints],
             atol=1e-6,
         )
 
@@ -950,7 +950,7 @@ class HeterogenousModelSparseJacobianAssemblyCheck(unittest.TestCase):
             body_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
             base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)
             actuator_q = wp.array(shape=(actuator_q_np.shape[1]), dtype=wp.float32)
-        dims = solver._data.problem.sparse_jacobian.dims.numpy()
+        dims = solver.data.problem.sparse_jacobian.dims.numpy()
 
         for pose_id in range(num_poses):
             body_q.assign(body_q_np[pose_id])
@@ -960,7 +960,7 @@ class HeterogenousModelSparseJacobianAssemblyCheck(unittest.TestCase):
 
             jac_dense_np = solver.eval_kinematic_constraints_jacobian(body_q, transforms).numpy()
             solver.assemble_sparse_jacobian(body_q, transforms)
-            jac_sparse_np = solver._data.problem.sparse_jacobian.numpy()
+            jac_sparse_np = solver.data.problem.sparse_jacobian.numpy()
 
             for wd_id in range(model.size.num_worlds):
                 rows, cols = int(dims[wd_id][0]), int(dims[wd_id][1])
@@ -1154,7 +1154,7 @@ class MultiRhsVelocityForwardKinematics(unittest.TestCase):
         # Poison the coordinate scratch buffer with a different gimbal pose. The
         # batched solve must refresh it from body_q so its velocity axes do not
         # depend on state left behind by an earlier operation.
-        solver._data.problem.actuator_q_next.assign([1.1, 0.7, -0.8])
+        solver.data.problem.actuator_q_next.assign([1.1, 0.7, -0.8])
         rhs_size = actuator_u_np.shape[0]
         solver.request_velocity_solve_batch_size(rhs_size)
         actual = wp.zeros(

@@ -1071,17 +1071,9 @@ class ForwardKinematicsSolver:
             inputs=[
                 self.model.info.num_bodies,
                 self.first_body_id,
-                wp.array(
-                    ptr=self.model.bodies.q_i_0.ptr,
-                    dtype=wp.float32,
-                    shape=(self.num_states_tot,),
-                    device=self.device,
-                    copy=False,
-                ),
+                self.model.bodies.q_i_0.view(wp.float32).flatten(),
                 world_mask,
-                wp.array(
-                    ptr=body_q.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device, copy=False
-                ),
+                body_q.view(wp.float32).flatten(),
             ],
             device=self.device,
         )
@@ -1211,13 +1203,7 @@ class ForwardKinematicsSolver:
             _eval_fk_actuated_dofs_or_coords,
             dim=(1, self.num_actuated_coords),
             inputs=[
-                wp.array(
-                    ptr=base_q_model.ptr,
-                    dtype=wp.float32,
-                    shape=(1, 7 * self.num_worlds),
-                    device=self.device,
-                    copy=False,
-                ),
+                base_q_model.view(wp.float32).reshape((1, 7 * self.num_worlds)),
                 actuator_q_model.reshape((1, actuator_q_model.shape[0])),
                 self.actuated_coords_map,
                 actuator_q_next.reshape((1, actuator_q_next.shape[0])),
@@ -1526,16 +1512,8 @@ class ForwardKinematicsSolver:
                     self.model.info.num_bodies,
                     self.first_body_id,
                     self.config.regularization_weight,
-                    wp.array(
-                        ptr=body_q.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device, copy=False
-                    ),
-                    wp.array(
-                        ptr=self.body_q_ref.ptr,
-                        dtype=wp.float32,
-                        shape=(self.num_states_tot,),
-                        device=self.device,
-                        copy=False,
-                    ),
+                    body_q.view(wp.float32).flatten(),
+                    self.body_q_ref.view(wp.float32).flatten(),
                     world_mask,
                     self.grad,
                 ],
@@ -1632,16 +1610,8 @@ class ForwardKinematicsSolver:
                 inputs=[
                     self.first_body_id,
                     self.config.regularization_weight,
-                    wp.array(
-                        ptr=body_q.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device, copy=False
-                    ),
-                    wp.array(
-                        ptr=self.body_q_ref.ptr,
-                        dtype=wp.float32,
-                        shape=(self.num_states_tot,),
-                        device=self.device,
-                        copy=False,
-                    ),
+                    body_q.view(wp.float32).flatten(),
+                    self.body_q_ref.view(wp.float32).flatten(),
                     merit_function,
                 ],
                 block_dim=get_block_dim(self.tile_size_vrs_1d),
@@ -1679,19 +1649,11 @@ class ForwardKinematicsSolver:
             inputs=[
                 self.model.info.num_bodies,
                 self.first_body_id,
-                wp.array(
-                    ptr=body_q.ptr, dtype=wp.float32, shape=(self.num_states_tot,), device=self.device, copy=False
-                ),
+                body_q.view(wp.float32).flatten(),
                 self.alpha,
                 self.step,
                 self.line_search_mask,
-                wp.array(
-                    ptr=self.body_q_alpha.ptr,
-                    dtype=wp.float32,
-                    shape=(self.num_states_tot,),
-                    device=self.device,
-                    copy=False,
-                ),
+                self.body_q_alpha.view(wp.float32).flatten(),
             ],
             device=self.device,
         )
@@ -1879,13 +1841,7 @@ class ForwardKinematicsSolver:
             _eval_fk_actuated_dofs_or_coords,
             dim=(batch_size, self.num_actuated_dofs),
             inputs=[
-                wp.array(
-                    ptr=base_u.ptr,
-                    dtype=wp.float32,
-                    shape=(base_u.shape[0], 6 * self.num_worlds),
-                    device=self.device,
-                    copy=False,
-                ),
+                base_u.view(wp.float32).reshape((base_u.shape[0], 6 * self.num_worlds)),
                 actuator_u,
                 self.actuated_dofs_map,
                 fk_actuator_u,

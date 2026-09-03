@@ -59,12 +59,12 @@ from .kernels import (
     _reset_state_base_q,
     _resolve_fk_actuation_types,
     _update_cg_tolerance_kernel,
-    create_1d_tile_based_kernels,
-    create_2d_tile_based_kernels,
-    create_eval_joint_constraints_jacobian_kernel,
-    create_eval_joint_constraints_kernel,
-    create_eval_joint_constraints_sparse_jacobian_kernel,
-    create_eval_min_num_iterations_kernel,
+    make_1d_tile_based_kernels,
+    make_2d_tile_based_kernels,
+    make_eval_joint_constraints_jacobian_kernel,
+    make_eval_joint_constraints_kernel,
+    make_eval_joint_constraints_sparse_jacobian_kernel,
+    make_eval_min_num_iterations_kernel,
     validate_fk_actuation_updates,
 )
 from .types import FKJointDoFType, ForwardKinematicsPreconditionerType, ForwardKinematicsStatus
@@ -698,23 +698,21 @@ class ForwardKinematicsSolver:
             # body_q_dot: Time derivative of body poses
 
         # Initialize kernels that depend on static values
-        self._eval_joint_constraints_kernel = create_eval_joint_constraints_kernel(has_universal_joints)
-        self._eval_joint_constraints_jacobian_kernel = create_eval_joint_constraints_jacobian_kernel(
-            has_universal_joints
-        )
+        self._eval_joint_constraints_kernel = make_eval_joint_constraints_kernel(has_universal_joints)
+        self._eval_joint_constraints_jacobian_kernel = make_eval_joint_constraints_jacobian_kernel(has_universal_joints)
         (
             self._eval_pattern_T_pattern_kernel,
             self._eval_jacobian_T_jacobian_kernel,
             self._eval_jacobian_T_constraints_kernel,
-        ) = create_2d_tile_based_kernels(self.tile_size_cts_2d, self.tile_size_vrs_2d)
+        ) = make_2d_tile_based_kernels(self.tile_size_cts_2d, self.tile_size_vrs_2d)
         (
             self._eval_max_residual_kernel,
             self._eval_merit_function_kernel,
             self._eval_regularizer_kernel,
             self._eval_merit_function_gradient_kernel,
-        ) = create_1d_tile_based_kernels(self.tile_size_cts_1d, self.tile_size_vrs_1d, self.config.use_regularization)
+        ) = make_1d_tile_based_kernels(self.tile_size_cts_1d, self.tile_size_vrs_1d, self.config.use_regularization)
         if self.config.use_incremental_solve:
-            self._eval_min_num_iterations_kernel = create_eval_min_num_iterations_kernel(self.tile_size_coords)
+            self._eval_min_num_iterations_kernel = make_eval_min_num_iterations_kernel(self.tile_size_coords)
 
         # Compute sparsity pattern and initialize linear solver for dense (semi-sparse) case
         if not self.config.use_sparsity:
@@ -856,7 +854,7 @@ class ForwardKinematicsSolver:
                 self.ct_nzb_id_follower = to_warp_int32_array(ct_nzb_id_follower)
 
             # Initialize Jacobian assembly kernel
-            self._eval_joint_constraints_sparse_jacobian_kernel = create_eval_joint_constraints_sparse_jacobian_kernel(
+            self._eval_joint_constraints_sparse_jacobian_kernel = make_eval_joint_constraints_sparse_jacobian_kernel(
                 has_universal_joints
             )
 

@@ -61,12 +61,12 @@ __all__ = [
     "_reset_state_base_q",
     "_resolve_fk_actuation_types",
     "_update_cg_tolerance_kernel",
-    "create_1d_tile_based_kernels",
-    "create_2d_tile_based_kernels",
-    "create_eval_joint_constraints_jacobian_kernel",
-    "create_eval_joint_constraints_kernel",
-    "create_eval_joint_constraints_sparse_jacobian_kernel",
-    "create_eval_min_num_iterations_kernel",
+    "make_1d_tile_based_kernels",
+    "make_2d_tile_based_kernels",
+    "make_eval_joint_constraints_jacobian_kernel",
+    "make_eval_joint_constraints_kernel",
+    "make_eval_joint_constraints_sparse_jacobian_kernel",
+    "make_eval_min_num_iterations_kernel",
     "read_quat_from_array",
     "validate_fk_actuation_updates",
 ]
@@ -764,7 +764,7 @@ def mul_mask_float(mask: wp.int32, value: wp.float32) -> wp.float32:
 
 
 @cache
-def create_eval_min_num_iterations_kernel(TILE_SIZE: int):
+def make_eval_min_num_iterations_kernel(TILE_SIZE: int):
     @wp.kernel(module="unique", module_options={"enable_backward": False, "default_grid_stride": False})
     def _eval_min_num_iterations(
         # Inputs
@@ -996,7 +996,7 @@ def _eval_unit_quaternion_constraints(
 
 
 @cache
-def create_eval_joint_constraints_kernel(has_universal_joints: bool):
+def make_eval_joint_constraints_kernel(has_universal_joints: bool):
     """
     Returns the joint constraints evaluation kernel, statically baking in whether there are universal joints
     or not (these joints need a separate handling)
@@ -1198,7 +1198,7 @@ def _eval_unit_quaternion_constraints_sparse_jacobian(
 
 
 @cache
-def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
+def make_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
     """
     Returns the joint constraints Jacobian evaluation kernel, statically baking in whether there are universal joints
     or not (these joints need a separate handling)
@@ -1332,7 +1332,7 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
 
 
 @cache
-def create_eval_joint_constraints_sparse_jacobian_kernel(has_universal_joints: bool):
+def make_eval_joint_constraints_sparse_jacobian_kernel(has_universal_joints: bool):
     """
     Returns the joint constraints sparse Jacobian evaluation kernel,
     statically baking in whether there are universal joints or not
@@ -1478,7 +1478,7 @@ def create_eval_joint_constraints_sparse_jacobian_kernel(has_universal_joints: b
 
 
 @cache
-def create_2d_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
+def make_2d_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32):
     """
     Generates and returns all kernels based on 2d tiles in this module, given the tile size to use along the constraints
     and variables (i.e. body poses) dimensions in the constraint vector, Jacobian, step vector etc.
@@ -1650,7 +1650,7 @@ def create_2d_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int3
 
 
 @cache
-def create_1d_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32, use_regularization: bool):
+def make_1d_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int32, use_regularization: bool):
     """
     Generates and returns all kernels based on 1d tiles in this module, given the tile size to use along the constraints
     and variables (i.e. body poses) dimensions in the constraint vector, Jacobian, step vector etc.

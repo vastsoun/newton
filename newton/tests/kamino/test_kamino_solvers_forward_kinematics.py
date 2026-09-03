@@ -306,8 +306,8 @@ class WorldMaskInitializationForwardKinematics(unittest.TestCase):
             solver.newton_loop_condition = wp.empty(shape=(1,), dtype=wp.int32)
             solver.line_search_success = wp.empty(shape=(num_worlds,), dtype=wp.bool)
             solver.tolerance = wp.array([solver.config.tolerance], dtype=wp.float32)
-            solver.jacobian_early_update_mask = wp.empty(shape=0, dtype=wp.bool)
-            solver.jacobian_late_update_mask = wp.empty(shape=0, dtype=wp.bool)
+            solver.jacobian_early_update_mask = None
+            solver.jacobian_late_update_mask = None
             solver.base_q_default = wp.empty(shape=(num_worlds,), dtype=wp.transformf)
             solver.actuator_q_next = wp.empty(shape=0, dtype=wp.float32)
             solver.target_rel_transforms = wp.empty(shape=0, dtype=wp.transformf)

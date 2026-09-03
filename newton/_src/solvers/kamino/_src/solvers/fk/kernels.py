@@ -2033,14 +2033,14 @@ def _newton_check(
     newton_success: wp.array[wp.bool],
     newton_mask: wp.array[wp.bool],
     newton_loop_condition: wp.array[wp.int32],
-    jacobian_early_update_mask: wp.array[wp.bool],
-    jacobian_late_update_mask: wp.array[wp.bool],
+    jacobian_early_update_mask: wp.array[wp.bool],  # None also supported
+    jacobian_late_update_mask: wp.array[wp.bool],  # None also supported
 ):
     """
     A kernel checking the convergence (max residual vs tolerance) in each world, and updating the looping
     condition (zero if max iterations reached, or all worlds successful)
 
-    If provided (non-zero size), also updates masks keeping tracks of worlds where the Jacobian needs to be
+    If provided, also updates masks keeping tracks of worlds where the Jacobian needs to be
     updated before/after the controls (based on whether min iterations was already reached or not)
 
     Inputs
@@ -2076,9 +2076,9 @@ def _newton_check(
         and line_search_success[wd_id]  # Abort in case of line search failure
     )
     newton_mask[wd_id] = newton_continue_world
-    if jacobian_early_update_mask.shape[0] > 0:
+    if jacobian_early_update_mask:
         jacobian_early_update_mask[wd_id] = newton_continue_world and iteration_next >= min_iterations_wd
-    if jacobian_late_update_mask.shape[0] > 0:
+    if jacobian_late_update_mask:
         jacobian_late_update_mask[wd_id] = newton_continue_world and iteration_next <= min_iterations_wd
     wp.atomic_max(newton_loop_condition, 0, wp.int32(newton_continue_world))
 

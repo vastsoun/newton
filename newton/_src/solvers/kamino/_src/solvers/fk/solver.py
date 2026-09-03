@@ -633,8 +633,8 @@ class ForwardKinematicsSolver:
                 self.jacobian_early_update_mask = wp.array(dtype=wp.bool, shape=(self.model.size.num_worlds,))
                 self.jacobian_late_update_mask = wp.array(dtype=wp.bool, shape=(self.model.size.num_worlds,))
             else:
-                self.jacobian_early_update_mask = wp.array(dtype=wp.bool, shape=0)
-                self.jacobian_late_update_mask = wp.array(dtype=wp.bool, shape=0)
+                self.jacobian_early_update_mask = None
+                self.jacobian_late_update_mask = None
             self.tolerance = wp.array(dtype=wp.float32, shape=(1,))  # Tolerance on max constraint
             self.tolerance.fill_(self.config.tolerance)
             self.actuator_q_next = wp.array(

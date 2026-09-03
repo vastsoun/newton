@@ -107,29 +107,29 @@ class JacobianCheckForwardKinematics(unittest.TestCase):
             assert model.size.num_worlds == 1  # For simplicity we assume a single world
 
             # Generate (random) body poses
-            bodies_q_np = rng.uniform(-1.0, 1.0, 7 * model.size.sum_of_num_bodies).astype("float32")
-            bodies_q = wp.from_numpy(bodies_q_np, dtype=wp.transformf, device=model.device)
+            body_q_np = rng.uniform(-1.0, 1.0, 7 * model.size.sum_of_num_bodies).astype("float32")
+            body_q = wp.from_numpy(body_q_np, dtype=wp.transformf, device=model.device)
 
             # Generate (random) actuated coordinates
-            actuators_q_np = rng.uniform(-1.0, 1.0, model.size.sum_of_num_actuated_joint_coords).astype("float32")
-            actuators_q = wp.from_numpy(actuators_q_np, dtype=wp.float32, device=model.device)
+            actuator_q_np = rng.uniform(-1.0, 1.0, model.size.sum_of_num_actuated_joint_coords).astype("float32")
+            actuator_q = wp.from_numpy(actuator_q_np, dtype=wp.float32, device=model.device)
 
             # Evaluate analytic Jacobian
             solver = ForwardKinematicsSolver(model=model)
-            pos_control_transforms = solver.eval_position_control_transformations(actuators_q, None)
-            jacobian = solver.eval_kinematic_constraints_jacobian(bodies_q, pos_control_transforms)
+            pos_control_transforms = solver.eval_position_control_transformations(actuator_q, None)
+            jacobian = solver.eval_kinematic_constraints_jacobian(body_q, pos_control_transforms)
 
             # Check against finite differences Jacobian
-            def eval_constraints(bodies_q_stepped_np):
-                bodies_q.assign(bodies_q_stepped_np)
-                constraints = solver.eval_kinematic_constraints(bodies_q, pos_control_transforms)
-                bodies_q.assign(bodies_q_np)  # Reset state
+            def eval_constraints(body_q_stepped_np):
+                body_q.assign(body_q_stepped_np)
+                constraints = solver.eval_kinematic_constraints(body_q, pos_control_transforms)
+                body_q.assign(body_q_np)  # Reset state
                 return constraints.numpy()[0]
 
             return diff_check(
                 eval_constraints,
                 jacobian.numpy()[0],
-                bodies_q_np,
+                body_q_np,
                 epsilon=1e-4,
                 tolerance_abs=5e-3,
                 tolerance_rel=5e-3,
@@ -208,31 +208,31 @@ class PassiveUniversalJointFrameForwardKinematics(unittest.TestCase):
         B_r_Bj = wp.vec3f(model.joints.B_r_Bj.numpy()[0])
         F_r_Fj = wp.vec3f(model.joints.F_r_Fj.numpy()[0])
         r_F = B_r_Bj - wp.quat_rotate(q_F, F_r_Fj)
-        bodies_q = wp.array([wp.transformf(r_F, q_F)], dtype=wp.transformf, device=self.default_device)
+        body_q = wp.array([wp.transformf(r_F, q_F)], dtype=wp.transformf, device=self.default_device)
 
         # Coincident joint frames satisfy all three anchor constraints and the
         # universal joint's rotational orthogonality constraint.
         solver = ForwardKinematicsSolver(model)
-        actuators_q = wp.empty(0, dtype=wp.float32, device=self.default_device)
-        target_transforms = solver.eval_position_control_transformations(actuators_q, None)
-        constraints = solver.eval_kinematic_constraints(bodies_q, target_transforms).numpy()[0]
+        actuator_q = wp.empty(0, dtype=wp.float32, device=self.default_device)
+        target_transforms = solver.eval_position_control_transformations(actuator_q, None)
+        constraints = solver.eval_kinematic_constraints(body_q, target_transforms).numpy()[0]
         np.testing.assert_allclose(constraints, 0.0, atol=1.0e-6)
 
         # Validate jacobian with finite differences
-        bodies_q_np = bodies_q.numpy().reshape(-1)
-        jacobian = solver.eval_kinematic_constraints_jacobian(bodies_q, target_transforms).numpy()[0]
+        body_q_np = body_q.numpy().reshape(-1)
+        jacobian = solver.eval_kinematic_constraints_jacobian(body_q, target_transforms).numpy()[0]
 
-        def eval_constraints(bodies_q_stepped_np):
-            bodies_q.assign(bodies_q_stepped_np)
-            stepped_constraints = solver.eval_kinematic_constraints(bodies_q, target_transforms).numpy()[0]
-            bodies_q.assign(bodies_q_np)
+        def eval_constraints(body_q_stepped_np):
+            body_q.assign(body_q_stepped_np)
+            stepped_constraints = solver.eval_kinematic_constraints(body_q, target_transforms).numpy()[0]
+            body_q.assign(body_q_np)
             return stepped_constraints
 
         self.assertTrue(
             diff_check(
                 eval_constraints,
                 jacobian,
-                bodies_q_np,
+                body_q_np,
                 epsilon=1.0e-4,
                 tolerance_abs=5.0e-3,
                 tolerance_rel=5.0e-3,
@@ -256,16 +256,16 @@ class SparseJacobianSingleJointCheckForwardKinematics(unittest.TestCase):
 
         def test_function(model: ModelKamino):
             """Compare the dense and sparse Jacobians for a random body state."""
-            bodies_q_np = rng.uniform(-1.0, 1.0, 7 * model.size.sum_of_num_bodies).astype("float32")
-            bodies_q = wp.from_numpy(bodies_q_np, dtype=wp.transformf, device=model.device)
-            actuators_q = wp.zeros(
+            body_q_np = rng.uniform(-1.0, 1.0, 7 * model.size.sum_of_num_bodies).astype("float32")
+            body_q = wp.from_numpy(body_q_np, dtype=wp.transformf, device=model.device)
+            actuator_q = wp.zeros(
                 shape=model.size.sum_of_num_actuated_joint_coords, dtype=wp.float32, device=model.device
             )
             solver = ForwardKinematicsSolver(model, config=ForwardKinematicsSolver.Config(use_sparsity=True))
-            transforms = solver.eval_position_control_transformations(actuators_q, None)
+            transforms = solver.eval_position_control_transformations(actuator_q, None)
 
-            jac_dense_np = solver.eval_kinematic_constraints_jacobian(bodies_q, transforms).numpy()
-            solver.assemble_sparse_jacobian(bodies_q, transforms)
+            jac_dense_np = solver.eval_kinematic_constraints_jacobian(body_q, transforms).numpy()
+            solver.assemble_sparse_jacobian(body_q, transforms)
             jac_sparse_np = solver.sparse_jacobian.numpy()
             rows, cols = solver.sparse_jacobian.dims.numpy()[0]
             return np.allclose(jac_dense_np[0, :rows, :cols], jac_sparse_np[0], atol=1e-6, rtol=0.0)
@@ -308,22 +308,22 @@ class WorldMaskInitializationForwardKinematics(unittest.TestCase):
             solver.jacobian_early_update_mask = wp.empty(shape=0, dtype=wp.bool)
             solver.jacobian_late_update_mask = wp.empty(shape=0, dtype=wp.bool)
             solver.base_q_default = wp.empty(shape=(num_worlds,), dtype=wp.transformf)
-            solver.actuators_q_next = wp.empty(shape=0, dtype=wp.float32)
+            solver.actuator_q_next = wp.empty(shape=0, dtype=wp.float32)
             solver.target_rel_transforms = wp.empty(shape=0, dtype=wp.transformf)
             solver.constraints = wp.empty(shape=(num_worlds, 0), dtype=wp.float32)
             solver.grad = wp.empty(shape=(num_worlds, 0), dtype=wp.float32)
             solver.max_residual = wp.zeros(shape=(num_worlds,), dtype=wp.float32)
-            actuators_q = wp.empty(shape=0, dtype=wp.float32)
-            bodies_q = wp.empty(shape=0, dtype=wp.transformf)
+            actuator_q = wp.empty(shape=0, dtype=wp.float32)
+            body_q = wp.empty(shape=0, dtype=wp.transformf)
             world_mask = wp.array([True, False, True], dtype=wp.bool)
 
-        solver._eval_target_actuators_q = lambda base_q, actuators_q, actuators_q_next: None
-        solver._eval_target_relative_transformations = lambda actuators_q_next, target_rel_transforms, world_mask: None
-        solver._eval_kinematic_constraints = lambda bodies_q, target_rel_transforms, world_mask, constraints: None
+        solver._eval_target_actuator_q = lambda base_q, actuator_q, actuator_q_next: None
+        solver._eval_target_relative_transformations = lambda actuator_q_next, target_rel_transforms, world_mask: None
+        solver._eval_kinematic_constraints = lambda body_q, target_rel_transforms, world_mask, constraints: None
         solver._eval_max_residual = lambda constraints, grad, max_residual: None
-        solver._run_newton_iteration = lambda bodies_q: None
+        solver._run_newton_iteration = lambda body_q: None
 
-        solver.run_fk_solve(actuators_q, bodies_q, world_mask=world_mask)
+        solver.run_fk_solve(actuator_q, body_q, world_mask=world_mask)
 
         np.testing.assert_array_equal(solver.line_search_success.numpy(), np.array([1, 0, 1], dtype=np.int32))
 
@@ -359,7 +359,7 @@ def compute_actuated_coords_and_dofs_data(model: ModelKamino):
 
 
 def standardize_actuated_coords(
-    actuators_q: np.ndarray, actuated_coords_sizes: np.ndarray, actuator_dof_types: np.ndarray
+    actuator_q: np.ndarray, actuated_coords_sizes: np.ndarray, actuator_dof_types: np.ndarray
 ) -> np.ndarray:
     """
     Helper function converting actuator coordinates to their canonical, comparable form.
@@ -373,7 +373,7 @@ def standardize_actuated_coords(
     def standardize_quat(quat):
         return -quat if quat[3] < 0.0 else quat
 
-    res = actuators_q.copy()
+    res = actuator_q.copy()
     coord_id = 0
     for i, dof_type in enumerate(actuator_dof_types):
         if dof_type == JointDoFType.CYLINDRICAL:
@@ -417,10 +417,10 @@ def simulate_random_poses(
 ):
     # Generate random inputs
     base_q_np, base_u_np = sample_base_state(model.size.num_worlds, rng, num_poses)
-    actuators_q_np = sample_actuator_coords(
+    actuator_q_np = sample_actuator_coords(
         model, rng, num_poses, max_pos=max_pos, max_angle=max_angle, use_fk_actuators=True
     )
-    actuators_u_np = sample_actuator_velocities(
+    actuator_u_np = sample_actuator_velocities(
         model, rng, num_poses, max_lin_vel=max_lin_vel, max_ang_vel=max_ang_vel, use_fk_actuators=True
     )
 
@@ -434,27 +434,27 @@ def simulate_random_poses(
     solver = ForwardKinematicsSolver(model, config)
     success_flags = []
     with wp.ScopedDevice(model.device):
-        bodies_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
+        body_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
         base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)
-        actuators_q = wp.array(shape=(actuators_q_np.shape[1]), dtype=wp.float32)
-        bodies_u = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.spatial_vectorf)
+        actuator_q = wp.array(shape=(actuator_q_np.shape[1]), dtype=wp.float32)
+        body_u = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.spatial_vectorf)
         base_u = wp.array(shape=(model.size.num_worlds), dtype=wp.spatial_vectorf)
-        actuators_u = wp.array(shape=(actuators_u_np.shape[1]), dtype=wp.float32)
+        actuator_u = wp.array(shape=(actuator_u_np.shape[1]), dtype=wp.float32)
     data = model.data(device=model.device)
     epsilon = 1e-3 if config.use_regularization else 1e-4
     for pose_id in range(num_poses):
         # Run FK solve and check convergence
         base_q.assign(base_q_np[pose_id])
-        actuators_q.assign(actuators_q_np[pose_id])
+        actuator_q.assign(actuator_q_np[pose_id])
         base_u.assign(base_u_np[pose_id])
-        actuators_u.assign(actuators_u_np[pose_id])
+        actuator_u.assign(actuator_u_np[pose_id])
         status = solver.solve_fk(
-            actuators_q,
-            bodies_q,
+            actuator_q,
+            body_q,
             base_q=base_q if randomize_base else None,
             base_u=base_u if randomize_base else None,
-            actuators_u=actuators_u,
-            bodies_u=bodies_u,
+            actuator_u=actuator_u,
+            body_u=body_u,
             use_graph=use_graph,
             verbose=verbose,
             return_status=True,
@@ -466,8 +466,8 @@ def simulate_random_poses(
             success_flags.append(True)
 
         # Update joints data from body states for validation
-        wp.copy(data.bodies.q_i, bodies_q)
-        wp.copy(data.bodies.u_i, bodies_u)
+        wp.copy(data.bodies.q_i, body_q)
+        wp.copy(data.bodies.u_i, body_u)
         compute_joints_data(model=model, data=data, q_j_p=model.joints.q_j_0, correction=JointCorrectionMode.CONTINUOUS)
 
         # Validate positions computation
@@ -475,14 +475,12 @@ def simulate_random_poses(
         if residual_ct_pos > epsilon:
             print(f"Large constraint residual ({residual_ct_pos}) for pose {pose_id}")
             success_flags[-1] = False
-        actuators_q_check = extract_segments(data.joints.q_j.numpy(), actuated_coord_offsets, actuated_coords_sizes)
-        actuators_q_check = standardize_actuated_coords(actuators_q_check, actuated_coords_sizes, actuator_dof_types)
-        actuators_q_ref = standardize_actuated_coords(
-            actuators_q_np[pose_id], actuated_coords_sizes, actuator_dof_types
-        )
-        residual_actuators_q = np.max(np.abs(actuators_q_check - actuators_q_ref))
-        if residual_actuators_q > epsilon:
-            print(f"Large error on prescribed actuator coordinates ({residual_actuators_q}) for pose {pose_id}")
+        actuator_q_check = extract_segments(data.joints.q_j.numpy(), actuated_coord_offsets, actuated_coords_sizes)
+        actuator_q_check = standardize_actuated_coords(actuator_q_check, actuated_coords_sizes, actuator_dof_types)
+        actuator_q_ref = standardize_actuated_coords(actuator_q_np[pose_id], actuated_coords_sizes, actuator_dof_types)
+        residual_actuator_q = np.max(np.abs(actuator_q_check - actuator_q_ref))
+        if residual_actuator_q > epsilon:
+            print(f"Large error on prescribed actuator coordinates ({residual_actuator_q}) for pose {pose_id}")
             success_flags[-1] = False
 
         # Validate velocities computation
@@ -490,10 +488,10 @@ def simulate_random_poses(
         if residual_ct_vel > epsilon:
             print(f"Large constraint velocity residual ({residual_ct_vel}) for pose {pose_id}")
             success_flags[-1] = False
-        actuators_u_check = extract_segments(data.joints.dq_j.numpy(), actuated_dof_offsets, actuated_dofs_sizes)
-        residual_actuators_u = np.max(np.abs(actuators_u_check - actuators_u_np[pose_id]))
-        if residual_actuators_u > epsilon:
-            print(f"Large error on prescribed actuator velocities ({residual_actuators_u}) for pose {pose_id}")
+        actuator_u_check = extract_segments(data.joints.dq_j.numpy(), actuated_dof_offsets, actuated_dofs_sizes)
+        residual_actuator_u = np.max(np.abs(actuator_u_check - actuator_u_np[pose_id]))
+        if residual_actuator_u > epsilon:
+            print(f"Large error on prescribed actuator velocities ({residual_actuator_u}) for pose {pose_id}")
             success_flags[-1] = False
 
     success = np.sum(success_flags) == num_poses
@@ -697,13 +695,13 @@ class FourBarTieRodRandomPosesCheckForwardKinematics(unittest.TestCase):
         axis_joints = solver.fk_axis_joint.numpy()
 
         np.testing.assert_allclose(
-            solver.joints_X_Bj.numpy()[axis_joints],
-            reference.joints_X_Bj.numpy()[axis_joints],
+            solver.joint_X_Bj.numpy()[axis_joints],
+            reference.joint_X_Bj.numpy()[axis_joints],
             atol=1e-6,
         )
         np.testing.assert_allclose(
-            solver.joints_X_Fj.numpy()[axis_joints],
-            reference.joints_X_Fj.numpy()[axis_joints],
+            solver.joint_X_Fj.numpy()[axis_joints],
+            reference.joint_X_Fj.numpy()[axis_joints],
             atol=1e-6,
         )
 
@@ -924,7 +922,7 @@ class HeterogenousModelSparseJacobianAssemblyCheck(unittest.TestCase):
 
         # Generate random poses
         num_poses = 30
-        bodies_q_np = sample_body_poses(
+        body_q_np = sample_body_poses(
             model.size.sum_of_num_bodies,
             rng,
             num_poses,
@@ -937,24 +935,24 @@ class HeterogenousModelSparseJacobianAssemblyCheck(unittest.TestCase):
             rng,
             num_poses,
         )
-        actuators_q_np = sample_actuator_coords(model, rng, num_poses)
+        actuator_q_np = sample_actuator_coords(model, rng, num_poses)
 
         # Assemble and compare dense and sparse Jacobian for each pose
         solver = ForwardKinematicsSolver(model, config=ForwardKinematicsSolver.Config(use_sparsity=True))
         with wp.ScopedDevice(model.device):
-            bodies_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
+            body_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
             base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)
-            actuators_q = wp.array(shape=(actuators_q_np.shape[1]), dtype=wp.float32)
+            actuator_q = wp.array(shape=(actuator_q_np.shape[1]), dtype=wp.float32)
         dims = solver.sparse_jacobian.dims.numpy()
 
         for pose_id in range(num_poses):
-            bodies_q.assign(bodies_q_np[pose_id])
+            body_q.assign(body_q_np[pose_id])
             base_q.assign(base_q_np[pose_id])
-            actuators_q.assign(actuators_q_np[pose_id])
-            transforms = solver.eval_position_control_transformations(actuators_q, base_q)
+            actuator_q.assign(actuator_q_np[pose_id])
+            transforms = solver.eval_position_control_transformations(actuator_q, base_q)
 
-            jac_dense_np = solver.eval_kinematic_constraints_jacobian(bodies_q, transforms).numpy()
-            solver.assemble_sparse_jacobian(bodies_q, transforms)
+            jac_dense_np = solver.eval_kinematic_constraints_jacobian(body_q, transforms).numpy()
+            solver.assemble_sparse_jacobian(body_q, transforms)
             jac_sparse_np = solver.sparse_jacobian.numpy()
 
             for wd_id in range(model.size.num_worlds):
@@ -983,19 +981,19 @@ class ForwardKinematicsWarnings(unittest.TestCase):
 
         solver = ForwardKinematicsSolver(model=model)
         identity = wp.transformf(wp.vec3f(0.0, 0.0, 0.0), wp.quat_identity(dtype=wp.float32))
-        actuators_q = wp.empty(
+        actuator_q = wp.empty(
             model.size.sum_of_num_fk_actuated_joint_coords, dtype=wp.float32, device=self.default_device
         )
-        bodies_q = wp.array([identity] * model.size.sum_of_num_bodies, dtype=wp.transformf, device=self.default_device)
+        body_q = wp.array([identity] * model.size.sum_of_num_bodies, dtype=wp.transformf, device=self.default_device)
 
         # Without a base pose, the solve stays silent.
         with self.assertNoLogs(level="WARNING"):
-            solver.solve_fk(actuators_q, bodies_q, use_graph=False)
+            solver.solve_fk(actuator_q, body_q, use_graph=False)
 
         # Providing a base pose triggers the deferred warning.
         base_q = wp.array([identity], dtype=wp.transformf, device=self.default_device)
         with self.assertLogs(level="WARNING") as logs:
-            solver.solve_fk(actuators_q, bodies_q, base_q=base_q, use_graph=False)
+            solver.solve_fk(actuator_q, body_q, base_q=base_q, use_graph=False)
         self.assertTrue(any("no free-floating base body" in message for message in logs.output))
 
 
@@ -1026,7 +1024,7 @@ class MultiRhsVelocityForwardKinematics(unittest.TestCase):
         )
         model = builder.finalize(device=self.default_device)
         solver = ForwardKinematicsSolver(model=model)
-        bodies_q = wp.clone(model.bodies.q_i_0)
+        body_q = wp.clone(model.bodies.q_i_0)
 
         rhs_size = 4
         actuator_count = model.size.sum_of_num_fk_actuated_joint_dofs
@@ -1049,22 +1047,22 @@ class MultiRhsVelocityForwardKinematics(unittest.TestCase):
             base_u = wp.array(
                 base_u_np[rhs_index : rhs_index + 1], dtype=wp.spatial_vectorf, device=self.default_device
             )
-            bodies_u = wp.zeros(model.size.sum_of_num_bodies, dtype=wp.spatial_vectorf, device=self.default_device)
-            solver.solve_for_body_velocities(actuator_u, bodies_q, bodies_u, base_u=base_u)
-            expected.append(bodies_u.numpy())
+            body_u = wp.zeros(model.size.sum_of_num_bodies, dtype=wp.spatial_vectorf, device=self.default_device)
+            solver.solve_for_body_velocities(actuator_u, body_q, body_u, base_u=base_u)
+            expected.append(body_u.numpy())
 
         actuator_u = wp.array(actuator_u_np, dtype=wp.float32, device=self.default_device)
         base_u = wp.array(base_u_np[:, None, :], dtype=wp.spatial_vectorf, device=self.default_device)
-        bodies_u = wp.zeros(
+        body_u = wp.zeros(
             (rhs_size, model.size.sum_of_num_bodies), dtype=wp.spatial_vectorf, device=self.default_device
         )
         with self.assertRaisesRegex(ValueError, "request_velocity_solve_batch_size"):
-            solver.solve_for_body_velocities(actuator_u, bodies_q, bodies_u, base_u=base_u)
+            solver.solve_for_body_velocities(actuator_u, body_q, body_u, base_u=base_u)
 
         solver.request_velocity_solve_batch_size(rhs_size)
-        solver.solve_for_body_velocities(actuator_u, bodies_q, bodies_u, base_u=base_u)
+        solver.solve_for_body_velocities(actuator_u, body_q, body_u, base_u=base_u)
 
-        np.testing.assert_allclose(bodies_u.numpy(), np.asarray(expected), rtol=2.0e-4, atol=2.0e-4)
+        np.testing.assert_allclose(body_u.numpy(), np.asarray(expected), rtol=2.0e-4, atol=2.0e-4)
 
     def test_multi_rhs_preserves_linearity(self):
         """Map summed velocity inputs to the sum of their body-twist responses."""
@@ -1080,7 +1078,7 @@ class MultiRhsVelocityForwardKinematics(unittest.TestCase):
         )
         model = builder.finalize(device=self.default_device)
         solver = ForwardKinematicsSolver(model=model)
-        bodies_q = wp.clone(model.bodies.q_i_0)
+        body_q = wp.clone(model.bodies.q_i_0)
 
         actuator_u = wp.array([[0.0], [0.7], [0.7]], dtype=wp.float32, device=self.default_device)
         base_u = wp.array(
@@ -1092,12 +1090,12 @@ class MultiRhsVelocityForwardKinematics(unittest.TestCase):
             dtype=wp.spatial_vectorf,
             device=self.default_device,
         )
-        bodies_u = wp.zeros((3, model.size.sum_of_num_bodies), dtype=wp.spatial_vectorf, device=self.default_device)
+        body_u = wp.zeros((3, model.size.sum_of_num_bodies), dtype=wp.spatial_vectorf, device=self.default_device)
 
         solver.request_velocity_solve_batch_size(3)
-        solver.solve_for_body_velocities(actuator_u, bodies_q, bodies_u, base_u=base_u)
+        solver.solve_for_body_velocities(actuator_u, body_q, body_u, base_u=base_u)
 
-        result = bodies_u.numpy()
+        result = body_u.numpy()
         np.testing.assert_allclose(result[2], result[0] + result[1], rtol=2.0e-4, atol=2.0e-4)
         self.assertGreater(float(np.max(np.abs(result))), 1.0e-3)
 
@@ -1123,8 +1121,8 @@ class MultiRhsVelocityForwardKinematics(unittest.TestCase):
         model = builder.finalize(device=self.default_device)
         solver = ForwardKinematicsSolver(model=model)
         actuator_q = wp.array([0.4, -0.3, 0.2], dtype=wp.float32, device=self.default_device)
-        bodies_q = wp.clone(model.bodies.q_i_0)
-        solver.solve_fk(actuator_q, bodies_q, use_graph=False)
+        body_q = wp.clone(model.bodies.q_i_0)
+        solver.solve_fk(actuator_q, body_q, use_graph=False)
         target_transforms = solver.eval_position_control_transformations(actuator_q)
 
         actuator_u_np = np.array([[0.3, -0.4, 0.5], [-0.2, 0.1, 0.35]], dtype=np.float32)
@@ -1139,7 +1137,7 @@ class MultiRhsVelocityForwardKinematics(unittest.TestCase):
             body_u = wp.zeros(model.size.sum_of_num_bodies, dtype=wp.spatial_vectorf, device=self.default_device)
             solver.solve_for_body_velocities(
                 actuator_u_single,
-                bodies_q,
+                body_q,
                 body_u,
                 base_u=base_u,
                 target_rel_transforms=target_transforms,
@@ -1147,9 +1145,9 @@ class MultiRhsVelocityForwardKinematics(unittest.TestCase):
             expected.append(body_u.numpy())
 
         # Poison the coordinate scratch buffer with a different gimbal pose. The
-        # batched solve must refresh it from bodies_q so its velocity axes do not
+        # batched solve must refresh it from body_q so its velocity axes do not
         # depend on state left behind by an earlier operation.
-        solver.actuators_q_next.assign([1.1, 0.7, -0.8])
+        solver.actuator_q_next.assign([1.1, 0.7, -0.8])
         rhs_size = actuator_u_np.shape[0]
         solver.request_velocity_solve_batch_size(rhs_size)
         actual = wp.zeros(
@@ -1157,7 +1155,7 @@ class MultiRhsVelocityForwardKinematics(unittest.TestCase):
         )
         solver.solve_for_body_velocities(
             actuator_u,
-            bodies_q,
+            body_q,
             actual,
             base_u=wp.zeros((1, 1), dtype=wp.spatial_vectorf, device=self.default_device),
             target_rel_transforms=target_transforms,

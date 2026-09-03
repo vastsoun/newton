@@ -116,16 +116,16 @@ def _resolve_fk_actuation_type(act_type: wp.int32, fk_act_flag: wp.int32) -> wp.
 
 @wp.func
 def _load_joint_poses(
-    base_id: wp.int32, follower_id: wp.int32, bodies_q: wp.array[wp.transformf]
+    base_id: wp.int32, follower_id: wp.int32, body_q: wp.array[wp.transformf]
 ) -> tuple[wp.vec3f, wp.quatf, wp.vec3f, wp.quatf]:
     """Load the base and follower poses, using the identity pose for the world."""
     c_base = wp.vec3f(0.0, 0.0, 0.0)
     q_base = wp.quatf(0.0, 0.0, 0.0, 1.0)
     if base_id >= 0:
-        c_base = wp.transform_get_translation(bodies_q[base_id])
-        q_base = wp.transform_get_rotation(bodies_q[base_id])
-    c_follower = wp.transform_get_translation(bodies_q[follower_id])
-    q_follower = wp.transform_get_rotation(bodies_q[follower_id])
+        c_base = wp.transform_get_translation(body_q[base_id])
+        q_base = wp.transform_get_rotation(body_q[base_id])
+    c_follower = wp.transform_get_translation(body_q[follower_id])
+    q_follower = wp.transform_get_rotation(body_q[follower_id])
     return c_base, q_base, c_follower, q_follower
 
 
@@ -214,29 +214,27 @@ def _eval_passive_universal_jacobian_blocks(
 
 @wp.func
 def _correct_rotational_actuator_coord(
-    actuators_q: wp.array[wp.float32], actuators_q_ref: wp.array[wp.float32], coord_id: wp.int32
+    actuator_q: wp.array[wp.float32], actuator_q_ref: wp.array[wp.float32], coord_id: wp.int32
 ):
     """Correct an angular actuator coordinate against its reference."""
-    actuators_q[coord_id] = correct_rotational_coord(actuators_q[coord_id], actuators_q_ref[coord_id])
+    actuator_q[coord_id] = correct_rotational_coord(actuator_q[coord_id], actuator_q_ref[coord_id])
 
 
 @wp.func
 def _correct_quat_actuator_coords(
-    actuators_q: wp.array[wp.float32], actuators_q_ref: wp.array[wp.float32], coord_id: wp.int32
+    actuator_q: wp.array[wp.float32], actuator_q_ref: wp.array[wp.float32], coord_id: wp.int32
 ):
     """Correct four quaternion actuator coordinates against their reference."""
-    quat = wp.vec4f(
-        actuators_q[coord_id], actuators_q[coord_id + 1], actuators_q[coord_id + 2], actuators_q[coord_id + 3]
-    )
+    quat = wp.vec4f(actuator_q[coord_id], actuator_q[coord_id + 1], actuator_q[coord_id + 2], actuator_q[coord_id + 3])
     quat_ref = wp.vec4f(
-        actuators_q_ref[coord_id],
-        actuators_q_ref[coord_id + 1],
-        actuators_q_ref[coord_id + 2],
-        actuators_q_ref[coord_id + 3],
+        actuator_q_ref[coord_id],
+        actuator_q_ref[coord_id + 1],
+        actuator_q_ref[coord_id + 2],
+        actuator_q_ref[coord_id + 3],
     )
     quat_corrected = correct_quat_vector_coord(quat, quat_ref)
     for i in range(4):
-        actuators_q[coord_id + i] = quat_corrected[i]
+        actuator_q[coord_id + i] = quat_corrected[i]
 
 
 ###
@@ -375,10 +373,10 @@ def _reset_state(
     # Inputs
     num_bodies: wp.array[wp.int32],
     first_body_id: wp.array[wp.int32],
-    bodies_q_0_flat: wp.array[wp.float32],
+    body_q_0_flat: wp.array[wp.float32],
     world_mask: wp.array[wp.bool],
     # Outputs
-    bodies_q_flat: wp.array[wp.float32],
+    body_q_flat: wp.array[wp.float32],
 ):
     """
     A kernel resetting the fk state (body poses) to the reference state
@@ -386,17 +384,17 @@ def _reset_state(
     Inputs:
         num_bodies: Num bodies per world
         first_body_id: First body id per world
-        bodies_q_0_flat: Reference state, flattened
+        body_q_0_flat: Reference state, flattened
         world_mask: Per-world boolean flag to perform the operation (False = skip)
     Outputs:
-        bodies_q_flat: State to reset, flattened
+        body_q_flat: State to reset, flattened
     """
     wd_id, state_id_loc = wp.tid()  # Thread indices (= world index, state index)
     rb_id_loc = state_id_loc // 7
     if not world_mask[wd_id] or rb_id_loc >= num_bodies[wd_id]:
         return
     state_id_tot = 7 * first_body_id[wd_id] + state_id_loc
-    bodies_q_flat[state_id_tot] = bodies_q_0_flat[state_id_tot]
+    body_q_flat[state_id_tot] = body_q_0_flat[state_id_tot]
 
 
 @wp.kernel
@@ -404,17 +402,17 @@ def _reset_state_base_q(
     # Inputs
     base_joint_id: wp.array[wp.int32],
     base_q: wp.array[wp.transformf],
-    joints_bid_F: wp.array[wp.int32],
-    joints_X_Bj: wp.array[wp.mat33f],
-    joints_X_Fj: wp.array[wp.mat33f],
-    joints_B_r_B: wp.array[wp.vec3f],
-    joints_F_r_F: wp.array[wp.vec3f],
+    joint_bid_F: wp.array[wp.int32],
+    joint_X_Bj: wp.array[wp.mat33f],
+    joint_X_Fj: wp.array[wp.mat33f],
+    joint_B_r_B: wp.array[wp.vec3f],
+    joint_F_r_F: wp.array[wp.vec3f],
     num_bodies: wp.array[wp.int32],
     first_body_id: wp.array[wp.int32],
-    bodies_q_0: wp.array[wp.transformf],
+    body_q_0: wp.array[wp.transformf],
     world_mask: wp.array[wp.bool],
     # Outputs
-    bodies_q: wp.array[wp.transformf],
+    body_q: wp.array[wp.transformf],
 ):
     """
     A kernel resetting the fk state (body poses) to a rigid transformation of the reference state,
@@ -423,17 +421,17 @@ def _reset_state_base_q(
     Inputs:
         base_joint_id: Base joint id per world (-1 = None)
         base_q: Base body pose per world, in base joint coordinates
-        joints_bid_F: Joint follower body id
-        joints_X_Bj: Joint local frame on base body
-        joints_X_Fj: Joint local frame on follower body
-        joints_B_r_B: Joint local position on base body
-        joints_F_r_F: Joint local position on follower body
+        joint_bid_F: Joint follower body id
+        joint_X_Bj: Joint local frame on base body
+        joint_X_Fj: Joint local frame on follower body
+        joint_B_r_B: Joint local position on base body
+        joint_F_r_F: Joint local position on follower body
         num_bodies: Num bodies per world
         first_body_id: First body id per world
-        bodies_q_0: Reference body poses
+        body_q_0: Reference body poses
         world_mask: Per-world boolean flag to perform the operation (False = skip)
     Outputs:
-        bodies_q: Body poses to reset
+        body_q: Body poses to reset
     """
     wd_id, rb_id_loc = wp.tid()  # Thread indices (= world index, body index)
     if not world_mask[wd_id] or rb_id_loc >= num_bodies[wd_id]:
@@ -442,19 +440,19 @@ def _reset_state_base_q(
     # Worlds without base joint: just copy the reference pose
     rb_id_tot = first_body_id[wd_id] + rb_id_loc
     base_jt_id = base_joint_id[wd_id]
-    body_q_0 = bodies_q_0[rb_id_tot]
+    body_q_i_0 = body_q_0[rb_id_tot]
     if base_jt_id < 0:
-        bodies_q[rb_id_tot] = body_q_0
+        body_q[rb_id_tot] = body_q_i_0
         return
 
     # Read memory
     base_q_wd = base_q[wd_id]
-    bid_F = joints_bid_F[base_jt_id]
-    X_B = joints_X_Bj[base_jt_id]
-    X_F = joints_X_Fj[base_jt_id]
-    x_B = joints_B_r_B[base_jt_id]
-    x_F = joints_F_r_F[base_jt_id]
-    body_q_F_0 = bodies_q_0[bid_F]
+    bid_F = joint_bid_F[base_jt_id]
+    X_B = joint_X_Bj[base_jt_id]
+    X_F = joint_X_Fj[base_jt_id]
+    x_B = joint_B_r_B[base_jt_id]
+    x_F = joint_F_r_F[base_jt_id]
+    body_q_F_0 = body_q_0[bid_F]
 
     # Compute pose of the base body (follower of the base joint) given current joint coordinates
     # Note: the relative transform from base to follower can be written
@@ -472,7 +470,7 @@ def _reset_state_base_q(
     # Compute the transform that was applied to the base body relative to the base pose,
     # and apply that transform to all rigid bodies
     transform_tot = wp.transform_multiply(body_q_F, wp.transform_inverse(body_q_F_0))
-    bodies_q[rb_id_tot] = wp.transform_multiply(transform_tot, body_q_0)
+    body_q[rb_id_tot] = wp.transform_multiply(transform_tot, body_q_i_0)
 
 
 @wp.kernel
@@ -570,16 +568,16 @@ def _joint_transform_to_coords(
 def _eval_actuator_coords(
     num_joints: wp.array[wp.int32],
     first_joint_id: wp.array[wp.int32],
-    joints_dof_type: wp.array[wp.int32],
-    joints_bid_B: wp.array[wp.int32],
-    joints_bid_F: wp.array[wp.int32],
-    joints_X_Bj: wp.array[wp.mat33f],
-    joints_X_Fj: wp.array[wp.mat33f],
-    joints_B_r_B: wp.array[wp.vec3f],
-    joints_F_r_F: wp.array[wp.vec3f],
-    bodies_q: wp.array[wp.transformf],
-    actuated_coord_offsets: wp.array[wp.int32],
-    actuators_q: wp.array[wp.float32],
+    joint_dof_type: wp.array[wp.int32],
+    joint_bid_B: wp.array[wp.int32],
+    joint_bid_F: wp.array[wp.int32],
+    joint_X_Bj: wp.array[wp.mat33f],
+    joint_X_Fj: wp.array[wp.mat33f],
+    joint_B_r_B: wp.array[wp.vec3f],
+    joint_F_r_F: wp.array[wp.vec3f],
+    body_q: wp.array[wp.transformf],
+    actuated_coord_offset: wp.array[wp.int32],
+    actuator_q: wp.array[wp.float32],
 ):
     """
     A kernel evaluating effective actuator coordinates based on body poses.
@@ -587,17 +585,17 @@ def _eval_actuator_coords(
     Inputs:
         num_joints: Num joints per world.
         first_joint_id: First joint id per world.
-        joints_dof_type: Joint dof type (i.e. revolute, spherical, ...).
-        joints_bid_B: Joint base body id.
-        joints_bid_F: Joint follower body id.
-        joints_X_Bj: Joint local frame on base body
-        joints_X_Fj: Joint local frame on follower body
-        joints_B_r_B: Joint local position on base body.
-        joints_F_r_F: Joint local position on follower body.
-        bodies_q: Body poses.
-        actuated_coord_offsets: Joint first actuated coordinate id, among all actuated coordinates in all worlds.
+        joint_dof_type: Joint dof type (i.e. revolute, spherical, ...).
+        joint_bid_B: Joint base body id.
+        joint_bid_F: Joint follower body id.
+        joint_X_Bj: Joint local frame on base body
+        joint_X_Fj: Joint local frame on follower body
+        joint_B_r_B: Joint local position on base body.
+        joint_F_r_F: Joint local position on follower body.
+        body_q: Body poses.
+        actuated_coord_offset: Joint first actuated coordinate id, among all actuated coordinates in all worlds.
     Outputs:
-        actuators_q: Actuator coordinates.
+        actuator_q: Actuator coordinates.
     """
     # Retrieve the thread index (= world index, joint index within world)
     wd_id, jt_id_loc = wp.tid()
@@ -608,22 +606,22 @@ def _eval_actuator_coords(
     jt_id = first_joint_id[wd_id] + jt_id_loc
 
     # Get joint actuated coords size and offset
-    coord_id = actuated_coord_offsets[jt_id]
-    num_coords = actuated_coord_offsets[jt_id + 1] - coord_id
+    coord_id = actuated_coord_offset[jt_id]
+    num_coords = actuated_coord_offset[jt_id + 1] - coord_id
     if num_coords == 0:
         return
 
     # Get joint dof type, local positions and local orientation
-    dof_type = joints_dof_type[jt_id]
-    x_base = joints_B_r_B[jt_id]
-    x_follower = joints_F_r_F[jt_id]
-    q_X_B = wp.quat_from_matrix(joints_X_Bj[jt_id])
-    q_X_F = wp.quat_from_matrix(joints_X_Fj[jt_id])
+    dof_type = joint_dof_type[jt_id]
+    x_base = joint_B_r_B[jt_id]
+    x_follower = joint_F_r_F[jt_id]
+    q_X_B = wp.quat_from_matrix(joint_X_Bj[jt_id])
+    q_X_F = wp.quat_from_matrix(joint_X_Fj[jt_id])
 
     # Get base and follower transformations
-    base_id = joints_bid_B[jt_id]
-    follower_id = joints_bid_F[jt_id]
-    c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id, follower_id, bodies_q)
+    base_id = joint_bid_B[jt_id]
+    follower_id = joint_bid_F[jt_id]
+    c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id, follower_id, body_q)
 
     # Compute relative pose of follower body in joint frame of base body
     pos_base = c_base + wp.quat_rotate(q_base, x_base)
@@ -634,17 +632,17 @@ def _eval_actuator_coords(
     q_rel = ori_base_T * ori_follower
 
     # Extract joint coordinates from relative pose
-    _joint_transform_to_coords(dof_type, pos_rel, q_rel, coord_id, actuators_q)
+    _joint_transform_to_coords(dof_type, pos_rel, q_rel, coord_id, actuator_q)
 
 
 @wp.kernel
 def _correct_actuator_coords(
     # Inputs
-    actuated_coord_offsets: wp.array[wp.int32],
-    joints_dof_type: wp.array[wp.int32],
-    actuators_q_ref: wp.array[wp.float32],
+    actuated_coord_offset: wp.array[wp.int32],
+    joint_dof_type: wp.array[wp.int32],
+    actuator_q_ref: wp.array[wp.float32],
     # Outputs
-    actuators_q: wp.array[wp.float32],
+    actuator_q: wp.array[wp.float32],
 ):
     """
     A kernel correcting actuator coordinates w.r.t. reference coordinates, ensuring that
@@ -652,42 +650,42 @@ def _correct_actuator_coords(
     than to its opposite.
 
     Inputs:
-        actuated_coord_offsets: Joint first actuated coordinate id, among all actuated coordinates in all worlds.
-        joints_dof_type: Joint dof type (i.e. revolute, spherical, ...).
-        actuators_q_ref: Reference actuator coordinates.
+        actuated_coord_offset: Joint first actuated coordinate id, among all actuated coordinates in all worlds.
+        joint_dof_type: Joint dof type (i.e. revolute, spherical, ...).
+        actuator_q_ref: Reference actuator coordinates.
     Outputs:
-        actuators_q: Actuator coordinates to correct w.r.t. the reference.
+        actuator_q: Actuator coordinates to correct w.r.t. the reference.
     """
     # Retrieve the thread index (= joint index)
     joint_id = wp.tid()
 
     # Get joint actuated coords size and offset
-    coord_id = actuated_coord_offsets[joint_id]
-    num_coords = actuated_coord_offsets[joint_id + 1] - coord_id
+    coord_id = actuated_coord_offset[joint_id]
+    num_coords = actuated_coord_offset[joint_id + 1] - coord_id
     if num_coords == 0:
         return
 
     # Apply correction based on DoFs
-    dof_type = joints_dof_type[joint_id]
+    dof_type = joint_dof_type[joint_id]
     if (
         dof_type == FKJointDoFType.CARTESIAN or dof_type == FKJointDoFType.FIXED or dof_type == FKJointDoFType.PRISMATIC
     ):  # No correction needed
         return
     elif dof_type == FKJointDoFType.CYLINDRICAL:  # Correct angle up to +/- 2 pi
-        _correct_rotational_actuator_coord(actuators_q, actuators_q_ref, coord_id + 1)
+        _correct_rotational_actuator_coord(actuator_q, actuator_q_ref, coord_id + 1)
     elif dof_type == FKJointDoFType.FREE:  # Correct quaternion up to sign
-        _correct_quat_actuator_coords(actuators_q, actuators_q_ref, coord_id + 3)
+        _correct_quat_actuator_coords(actuator_q, actuator_q_ref, coord_id + 3)
     elif dof_type == FKJointDoFType.REVOLUTE:  # Correct angle up to +/- 2 pi
-        _correct_rotational_actuator_coord(actuators_q, actuators_q_ref, coord_id)
+        _correct_rotational_actuator_coord(actuator_q, actuator_q_ref, coord_id)
     elif dof_type == FKJointDoFType.SPHERICAL:  # Correct quaternion up to sign
-        _correct_quat_actuator_coords(actuators_q, actuators_q_ref, coord_id)
+        _correct_quat_actuator_coords(actuator_q, actuator_q_ref, coord_id)
     elif dof_type == FKJointDoFType.UNIVERSAL:  # Correct angles up to +/- 2 pi
-        _correct_rotational_actuator_coord(actuators_q, actuators_q_ref, coord_id)
-        _correct_rotational_actuator_coord(actuators_q, actuators_q_ref, coord_id + 1)
+        _correct_rotational_actuator_coord(actuator_q, actuator_q_ref, coord_id)
+        _correct_rotational_actuator_coord(actuator_q, actuator_q_ref, coord_id + 1)
     elif dof_type == FKJointDoFType.GIMBAL or dof_type == FKJointDoFType.GIMBAL_LEFT_HANDED:
         # Correct angles up to +/- 2 pi
         for i in range(3):
-            _correct_rotational_actuator_coord(actuators_q, actuators_q_ref, coord_id + i)
+            _correct_rotational_actuator_coord(actuator_q, actuator_q_ref, coord_id + i)
     else:
         assert False, "Unexpected actuator dof type"  # noqa: B011
 
@@ -695,14 +693,14 @@ def _correct_actuator_coords(
 @wp.kernel
 def _eval_incremental_target_actuator_coords(
     # Inputs
-    world_actuated_coord_offsets: wp.array[wp.int32],
-    actuators_q_prev: wp.array[wp.float32],
-    actuators_q_next: wp.array[wp.float32],
+    world_actuated_coord_offset: wp.array[wp.int32],
+    actuator_q_prev: wp.array[wp.float32],
+    actuator_q_next: wp.array[wp.float32],
     delta_q_max: wp.array[wp.float32],
     iteration: wp.array[wp.int32],
     world_mask: wp.array[wp.bool],
     # Outputs
-    actuators_q_curr: wp.array[wp.float32],
+    actuator_q_curr: wp.array[wp.float32],
 ):
     """
     A kernel evaluating the actuator coordinates to solve for given the Newton iteration
@@ -710,14 +708,14 @@ def _eval_incremental_target_actuator_coords(
     coordinates if necessary to avoid too large jumps per iteration.
 
     Inputs:
-        world_actuated_coord_offsets: World first actuated coordinate id, among all actuated coordinates in all worlds.
-        actuators_q_prev: Previous actuator coordinates.
-        actuators_q_next: Next actuator coordinates (= target).
+        world_actuated_coord_offset: World first actuated coordinate id, among all actuated coordinates in all worlds.
+        actuator_q_prev: Previous actuator coordinates.
+        actuator_q_next: Next actuator coordinates (= target).
         delta_q_max: Maximal allowed step per coordinate, for one Newton iteration.
         iteration: Current Newton iteration per world.
         world_mask: Per-world boolean flag to perform the computation (False = skip).
     Outputs:
-        actuators_q_curr: Actuator coordinates to use as target for the current iteration (= incremental target).
+        actuator_q_curr: Actuator coordinates to use as target for the current iteration (= incremental target).
     """
     # Retrieve the thread index (= world index, coordinate index in world)
     wd_id, coord_id_loc = wp.tid()
@@ -727,17 +725,17 @@ def _eval_incremental_target_actuator_coords(
         return
 
     # Read data
-    coord_id = world_actuated_coord_offsets[wd_id] + coord_id_loc
-    if coord_id >= world_actuated_coord_offsets[wd_id + 1]:
+    coord_id = world_actuated_coord_offset[wd_id] + coord_id_loc
+    if coord_id >= world_actuated_coord_offset[wd_id + 1]:
         return
-    q_prev = actuators_q_prev[coord_id]
-    q_next = actuators_q_next[coord_id]
+    q_prev = actuator_q_prev[coord_id]
+    q_next = actuator_q_next[coord_id]
     delta = delta_q_max[coord_id]
     it = iteration[wd_id]
 
     # Interpolate coordinate
     sign = wp.where(q_prev > q_next, -1.0, 1.0)
-    actuators_q_curr[coord_id] = sign * wp.min(sign * q_prev + wp.float32(it + 1) * delta, sign * q_next)
+    actuator_q_curr[coord_id] = sign * wp.min(sign * q_prev + wp.float32(it + 1) * delta, sign * q_next)
 
 
 @wp.func
@@ -770,9 +768,9 @@ def create_eval_min_num_iterations_kernel(TILE_SIZE: int):
     @wp.kernel(module="unique", module_options={"enable_backward": False, "default_grid_stride": False})
     def _eval_min_num_iterations(
         # Inputs
-        world_actuated_coord_offsets: wp.array[wp.int32],
-        actuators_q_prev: wp.array[wp.float32],
-        actuators_q_next: wp.array[wp.float32],
+        world_actuated_coord_offset: wp.array[wp.int32],
+        actuator_q_prev: wp.array[wp.float32],
+        actuator_q_next: wp.array[wp.float32],
         delta_q_max: wp.array[wp.float32],
         # Outputs
         min_iterations: wp.array[wp.int32],
@@ -782,9 +780,9 @@ def create_eval_min_num_iterations_kernel(TILE_SIZE: int):
         in actuator coordinates to have converged to the target coordinates.
 
         Inputs:
-            world_actuated_coord_offsets: World first actuated coordinate id, among all actuated coordinates in all worlds.
-            actuators_q_prev: Previous actuator coordinates.
-            actuators_q_next: Next actuator coordinates (= target).
+            world_actuated_coord_offset: World first actuated coordinate id, among all actuated coordinates in all worlds.
+            actuator_q_prev: Previous actuator coordinates.
+            actuator_q_next: Next actuator coordinates (= target).
             delta_q_max: Maximal allowed step per coordinate, for one Newton iteration.
         Outputs:
             min_iterations: Minimum iterations needed per world.
@@ -793,13 +791,13 @@ def create_eval_min_num_iterations_kernel(TILE_SIZE: int):
         wd_id, i, tid = wp.tid()
 
         # Read data
-        world_offset = world_actuated_coord_offsets[wd_id]
-        next_world_offset = world_actuated_coord_offsets[wd_id + 1]
+        world_offset = world_actuated_coord_offset[wd_id]
+        next_world_offset = world_actuated_coord_offset[wd_id + 1]
         offset = world_offset + i * TILE_SIZE
         if offset >= next_world_offset:
             return  # Early return if tile is fully outside of the world's data
-        q_prev = wp.tile_load(actuators_q_prev, shape=TILE_SIZE, offset=offset)
-        q_next = wp.tile_load(actuators_q_next, shape=TILE_SIZE, offset=offset)
+        q_prev = wp.tile_load(actuator_q_prev, shape=TILE_SIZE, offset=offset)
+        q_next = wp.tile_load(actuator_q_next, shape=TILE_SIZE, offset=offset)
         delta = wp.tile_load(delta_q_max, shape=TILE_SIZE, offset=offset)
 
         # Compute min iterations count per coordinate, and take the maximum per world
@@ -847,14 +845,14 @@ def _initialize_jacobian_update_masks(
 @wp.kernel
 def _eval_target_relative_transformations(
     # Inputs
-    joints_dof_type: wp.array[wp.int32],
-    joints_act_type: wp.array[wp.int32],
+    joint_dof_type: wp.array[wp.int32],
+    joint_act_type: wp.array[wp.int32],
     actuated_coords_offset: wp.array[wp.int32],
-    joints_X_Bj: wp.array[wp.mat33f],
-    joints_X_Fj: wp.array[wp.mat33f],
-    actuators_q: wp.array[wp.float32],
+    joint_X_Bj: wp.array[wp.mat33f],
+    joint_X_Fj: wp.array[wp.mat33f],
+    actuator_q: wp.array[wp.float32],
     normalize_quaternions: wp.bool,
-    joints_world_id: wp.array[wp.int32],
+    joint_world_id: wp.array[wp.int32],
     world_mask: wp.array[wp.bool],
     # Outputs
     target_rel_transforms: wp.array[wp.transformf],
@@ -871,14 +869,14 @@ def _eval_target_relative_transformations(
     The rotation part is expressed in body frame (e.g., rotation is about X[:,0] for a revolute joint)
 
     Inputs:
-        joints_dof_type: Joint dof type (i.e. revolute, spherical, ...)
-        joints_act_type: Joint actuation type (i.e. passive or actuated)
+        joint_dof_type: Joint dof type (i.e. revolute, spherical, ...)
+        joint_act_type: Joint actuation type (i.e. passive or actuated)
         actuated_coords_offset: Joint first actuated coordinate id, among all actuated coordinates in all worlds
-        joints_X_Bj: Joint local frame on base body
-        joints_X_Fj: Joint local frame on follower body
-        actuators_q: Actuated coordinates
-        normalize_quaternions: Whether to normalize quaternions in actuators_q (else unit length is assumed)
-        joints_world_id: World index per joint
+        joint_X_Bj: Joint local frame on base body
+        joint_X_Fj: Joint local frame on follower body
+        actuator_q: Actuated coordinates
+        normalize_quaternions: Whether to normalize quaternions in actuator_q (else unit length is assumed)
+        joint_world_id: World index per joint
         world_mask: Per-world boolean flag to perform the computation (False = skip)
     Outputs:
         target_rel_transforms: Joint target relative transformation
@@ -888,15 +886,15 @@ def _eval_target_relative_transformations(
     jt_id = wp.tid()
 
     # Early return based on world mask
-    wid = joints_world_id[jt_id]
+    wid = joint_world_id[jt_id]
     if not world_mask[wid]:
         return
 
     # Retrieve the joint model data
-    dof_type_j = joints_dof_type[jt_id]
-    act_type_j = joints_act_type[jt_id]
-    X_B = joints_X_Bj[jt_id]
-    X_F = joints_X_Fj[jt_id]
+    dof_type_j = joint_dof_type[jt_id]
+    act_type_j = joint_act_type[jt_id]
+    X_B = joint_X_Bj[jt_id]
+    X_F = joint_X_Fj[jt_id]
 
     # Initialize transform to identity (already covers the passive case)
     t = wp.vec3f(0.0, 0.0, 0.0)
@@ -906,44 +904,44 @@ def _eval_target_relative_transformations(
     if act_type_j != JointActuationType.PASSIVE:
         offset_q_j = actuated_coords_offset[jt_id]
         if dof_type_j == FKJointDoFType.CARTESIAN:
-            t[0] = actuators_q[offset_q_j]
-            t[1] = actuators_q[offset_q_j + 1]
-            t[2] = actuators_q[offset_q_j + 2]
+            t[0] = actuator_q[offset_q_j]
+            t[1] = actuator_q[offset_q_j + 1]
+            t[2] = actuator_q[offset_q_j + 2]
         elif dof_type_j == FKJointDoFType.CYLINDRICAL:
-            t[0] = actuators_q[offset_q_j]
-            q = wp.quat_from_axis_angle(X_B[:, 0], actuators_q[offset_q_j + 1])
+            t[0] = actuator_q[offset_q_j]
+            q = wp.quat_from_axis_angle(X_B[:, 0], actuator_q[offset_q_j + 1])
         elif dof_type_j == FKJointDoFType.FIXED:
             pass  # No dofs to apply
         elif dof_type_j == FKJointDoFType.FREE:
-            t[0] = actuators_q[offset_q_j]
-            t[1] = actuators_q[offset_q_j + 1]
-            t[2] = actuators_q[offset_q_j + 2]
+            t[0] = actuator_q[offset_q_j]
+            t[1] = actuator_q[offset_q_j + 1]
+            t[2] = actuator_q[offset_q_j + 2]
             q_X_B = wp.quat_from_matrix(X_B)
-            q_loc = read_quat_from_array(actuators_q, offset_q_j + 3, normalize_quaternions)
+            q_loc = read_quat_from_array(actuator_q, offset_q_j + 3, normalize_quaternions)
             q = q_X_B * q_loc * wp.quat_inverse(q_X_B)
         elif dof_type_j == FKJointDoFType.PRISMATIC:
-            t[0] = actuators_q[offset_q_j]
+            t[0] = actuator_q[offset_q_j]
         elif dof_type_j == FKJointDoFType.REVOLUTE:
-            q = wp.quat_from_axis_angle(wp.vec3f(X_B[:, 0]), actuators_q[offset_q_j])
+            q = wp.quat_from_axis_angle(wp.vec3f(X_B[:, 0]), actuator_q[offset_q_j])
         elif dof_type_j == FKJointDoFType.SPHERICAL:
             q_X_B = wp.quat_from_matrix(X_B)
-            q_loc = read_quat_from_array(actuators_q, offset_q_j, normalize_quaternions)
+            q_loc = read_quat_from_array(actuator_q, offset_q_j, normalize_quaternions)
             q = q_X_B * q_loc * wp.quat_inverse(q_X_B)
         elif dof_type_j == FKJointDoFType.GIMBAL or dof_type_j == FKJointDoFType.GIMBAL_LEFT_HANDED:
             third_axis_sign = 1.0
             if dof_type_j == FKJointDoFType.GIMBAL_LEFT_HANDED:
                 third_axis_sign = -1.0
             axes = X_B @ gimbal_transported_axes(
-                wp.vec3f(actuators_q[offset_q_j], actuators_q[offset_q_j + 1], actuators_q[offset_q_j + 2]),
+                wp.vec3f(actuator_q[offset_q_j], actuator_q[offset_q_j + 1], actuator_q[offset_q_j + 2]),
                 third_axis_sign,
             )
-            q_0 = wp.quat_from_axis_angle(wp.vec3f(axes[:, 0]), actuators_q[offset_q_j])
-            q_1 = wp.quat_from_axis_angle(wp.vec3f(axes[:, 1]), actuators_q[offset_q_j + 1])
-            q_2 = wp.quat_from_axis_angle(wp.vec3f(axes[:, 2]), actuators_q[offset_q_j + 2])
+            q_0 = wp.quat_from_axis_angle(wp.vec3f(axes[:, 0]), actuator_q[offset_q_j])
+            q_1 = wp.quat_from_axis_angle(wp.vec3f(axes[:, 1]), actuator_q[offset_q_j + 1])
+            q_2 = wp.quat_from_axis_angle(wp.vec3f(axes[:, 2]), actuator_q[offset_q_j + 2])
             q = q_2 * q_1 * q_0
         elif dof_type_j == FKJointDoFType.UNIVERSAL:
-            q_x = wp.quat_from_axis_angle(wp.vec3f(X_B[:, 0]), actuators_q[offset_q_j])
-            q_y = wp.quat_from_axis_angle(wp.vec3f(X_B[:, 1]), actuators_q[offset_q_j + 1])
+            q_x = wp.quat_from_axis_angle(wp.vec3f(X_B[:, 0]), actuator_q[offset_q_j])
+            q_y = wp.quat_from_axis_angle(wp.vec3f(X_B[:, 1]), actuator_q[offset_q_j + 1])
             q = q_x * q_y
         else:
             assert False, "Unexpected actuator dof type"  # noqa: B011
@@ -966,7 +964,7 @@ def _eval_unit_quaternion_constraints(
     # Inputs
     num_bodies: wp.array[wp.int32],
     first_body_id: wp.array[wp.int32],
-    bodies_q: wp.array[wp.transformf],
+    body_q: wp.array[wp.transformf],
     world_mask: wp.array[wp.bool],
     # Outputs
     constraints: wp.array2d[wp.float32],
@@ -977,7 +975,7 @@ def _eval_unit_quaternion_constraints(
         Inputs:
             num_bodies: Num bodies per world
             first_body_id: First body id per world
-            bodies_q: Body poses
+            body_q: Body poses
             world_mask: Per-world boolean flag to perform the computation (False = skip)
         Outputs:
             constraints: Constraint vector per world
@@ -993,7 +991,7 @@ def _eval_unit_quaternion_constraints(
     rb_id_tot = first_body_id[wd_id] + rb_id_loc
 
     # Evaluate unit quaternion constraint
-    q = wp.transform_get_rotation(bodies_q[rb_id_tot])
+    q = wp.transform_get_rotation(body_q[rb_id_tot])
     constraints[wd_id, rb_id_loc] = wp.dot(q, q) - 1.0
 
 
@@ -1009,15 +1007,15 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
         # Inputs
         num_joints: wp.array[wp.int32],
         first_joint_id: wp.array[wp.int32],
-        joints_dof_type: wp.array[wp.int32],
-        joints_act_type: wp.array[wp.int32],
-        joints_bid_B: wp.array[wp.int32],
-        joints_bid_F: wp.array[wp.int32],
-        joints_X_Bj: wp.array[wp.mat33f],
-        joints_X_Fj: wp.array[wp.mat33f],
-        joints_B_r_B: wp.array[wp.vec3f],
-        joints_F_r_F: wp.array[wp.vec3f],
-        bodies_q: wp.array[wp.transformf],
+        joint_dof_type: wp.array[wp.int32],
+        joint_act_type: wp.array[wp.int32],
+        joint_bid_B: wp.array[wp.int32],
+        joint_bid_F: wp.array[wp.int32],
+        joint_X_Bj: wp.array[wp.mat33f],
+        joint_X_Fj: wp.array[wp.mat33f],
+        joint_B_r_B: wp.array[wp.vec3f],
+        joint_F_r_F: wp.array[wp.vec3f],
+        body_q: wp.array[wp.transformf],
         target_rel_transforms: wp.array[wp.transformf],
         ct_full_to_red_map: wp.array[wp.int32],
         world_mask: wp.array[wp.bool],
@@ -1036,15 +1034,15 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
         Inputs:
             num_joints: Num joints per world
             first_joint_id: First joint id per world
-            joints_dof_type: Joint dof type (i.e. revolute, spherical, ...)
-            joints_act_type: Joint actuation type (i.e. passive or actuated)
-            joints_bid_B: Joint base body id
-            joints_bid_F: Joint follower body id
-            joints_X_Bj: Joint local frame on base body
-            joints_X_Fj: Joint local frame on follower body
-            joints_B_r_B: Joint local position on base body
-            joints_F_r_F: Joint local position on follower body
-            bodies_q: Body poses
+            joint_dof_type: Joint dof type (i.e. revolute, spherical, ...)
+            joint_act_type: Joint actuation type (i.e. passive or actuated)
+            joint_bid_B: Joint base body id
+            joint_bid_F: Joint follower body id
+            joint_X_Bj: Joint local frame on base body
+            joint_X_Fj: Joint local frame on follower body
+            joint_B_r_B: Joint local position on base body
+            joint_F_r_F: Joint local position on follower body
+            body_q: Body poses
             target_rel_transforms: Joint target relative transformation
             ct_full_to_red_map: Map from full to reduced constraint id
             world_mask: Per-world boolean flag to perform the computation (False = skip)
@@ -1064,14 +1062,14 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
         trans_ct_ids_red, rot_ct_ids_red = _get_reduced_constraint_ids(jt_id_tot, ct_full_to_red_map)
 
         # Get joint local positions and orientation
-        x_base = joints_B_r_B[jt_id_tot]
-        x_follower = joints_F_r_F[jt_id_tot]
-        X_T = wp.transpose(joints_X_Bj[jt_id_tot])
+        x_base = joint_B_r_B[jt_id_tot]
+        x_follower = joint_F_r_F[jt_id_tot]
+        X_T = wp.transpose(joint_X_Bj[jt_id_tot])
 
         # Get base and follower transformations
-        base_id = joints_bid_B[jt_id_tot]
-        follower_id = joints_bid_F[jt_id_tot]
-        c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id, follower_id, bodies_q)
+        base_id = joint_bid_B[jt_id_tot]
+        follower_id = joint_bid_F[jt_id_tot]
+        c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id, follower_id, body_q)
 
         # Get target relative transformation, in joint/body frame for translation/rotation part
         t_rel_joint = wp.transform_get_translation(target_rel_transforms[jt_id_tot])
@@ -1099,14 +1097,14 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
         # Correct constraints for passive universal joints
         if wp.static(has_universal_joints):
             # Check for a passive universal joint
-            dof_type_j = joints_dof_type[jt_id_tot]
-            act_type_j = joints_act_type[jt_id_tot]
+            dof_type_j = joint_dof_type[jt_id_tot]
+            act_type_j = joint_act_type[jt_id_tot]
             if dof_type_j != FKJointDoFType.UNIVERSAL or act_type_j != JointActuationType.PASSIVE:
                 return
 
             # Compute constraint (dot product between x axis on base and y axis on follower)
             a_x = X_T[0]
-            a_y = wp.transpose(joints_X_Fj[jt_id_tot])[1]
+            a_y = wp.transpose(joint_X_Fj[jt_id_tot])[1]
             a_x_base = unit_quat_apply(q_base, a_x)
             a_y_follower = unit_quat_apply(q_follower, a_y)
             ct = -wp.dot(a_x_base, a_y_follower)
@@ -1122,7 +1120,7 @@ def _eval_unit_quaternion_constraints_jacobian(
     # Inputs
     num_bodies: wp.array[wp.int32],
     first_body_id: wp.array[wp.int32],
-    bodies_q: wp.array[wp.transformf],
+    body_q: wp.array[wp.transformf],
     world_mask: wp.array[wp.bool],
     # Outputs
     constraints_jacobian: wp.array3d[wp.float32],
@@ -1134,7 +1132,7 @@ def _eval_unit_quaternion_constraints_jacobian(
     Inputs:
         num_bodies: Num bodies per world
         first_body_id: First body id per world
-        bodies_q: Body poses
+        body_q: Body poses
         world_mask: Per-world boolean flag to perform the computation (False = skip)
     Outputs:
         constraints_jacobian: Constraints Jacobian per world
@@ -1149,7 +1147,7 @@ def _eval_unit_quaternion_constraints_jacobian(
     rb_id_tot = first_body_id[wd_id] + rb_id_loc
 
     # Evaluate constraint Jacobian
-    q = wp.transform_get_rotation(bodies_q[rb_id_tot])
+    q = wp.transform_get_rotation(body_q[rb_id_tot])
     state_offset = 7 * rb_id_loc + 3
     constraints_jacobian[wd_id, rb_id_loc, state_offset] = 2.0 * q.x
     constraints_jacobian[wd_id, rb_id_loc, state_offset + 1] = 2.0 * q.y
@@ -1162,7 +1160,7 @@ def _eval_unit_quaternion_constraints_sparse_jacobian(
     # Inputs
     num_bodies: wp.array[wp.int32],
     first_body_id: wp.array[wp.int32],
-    bodies_q: wp.array[wp.transformf],
+    body_q: wp.array[wp.transformf],
     rb_nzb_id: wp.array[wp.int32],
     world_mask: wp.array[wp.bool],
     # Outputs
@@ -1175,7 +1173,7 @@ def _eval_unit_quaternion_constraints_sparse_jacobian(
     Inputs:
         num_bodies: Num bodies per world
         first_body_id: First body id per world
-        bodies_q: Body poses
+        body_q: Body poses
         rb_nzb_id: Id of the nzb corresponding to the constraint per body
         world_mask: Per-world boolean flag to perform the computation (False = skip)
     Outputs:
@@ -1191,7 +1189,7 @@ def _eval_unit_quaternion_constraints_sparse_jacobian(
     rb_id_tot = first_body_id[wd_id] + rb_id_loc
 
     # Evaluate constraint Jacobian
-    q = wp.transform_get_rotation(bodies_q[rb_id_tot])
+    q = wp.transform_get_rotation(body_q[rb_id_tot])
     nzb_id = rb_nzb_id[rb_id_tot]
     jacobian_nzb[nzb_id][3] = 2.0 * q.x
     jacobian_nzb[nzb_id][4] = 2.0 * q.y
@@ -1212,15 +1210,15 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
         num_joints: wp.array[wp.int32],
         first_joint_id: wp.array[wp.int32],
         first_body_id: wp.array[wp.int32],
-        joints_dof_type: wp.array[wp.int32],
-        joints_act_type: wp.array[wp.int32],
-        joints_bid_B: wp.array[wp.int32],
-        joints_bid_F: wp.array[wp.int32],
-        joints_X_Bj: wp.array[wp.mat33f],
-        joints_X_Fj: wp.array[wp.mat33f],
-        joints_B_r_B: wp.array[wp.vec3f],
-        joints_F_r_F: wp.array[wp.vec3f],
-        bodies_q: wp.array[wp.transformf],
+        joint_dof_type: wp.array[wp.int32],
+        joint_act_type: wp.array[wp.int32],
+        joint_bid_B: wp.array[wp.int32],
+        joint_bid_F: wp.array[wp.int32],
+        joint_X_Bj: wp.array[wp.mat33f],
+        joint_X_Fj: wp.array[wp.mat33f],
+        joint_B_r_B: wp.array[wp.vec3f],
+        joint_F_r_F: wp.array[wp.vec3f],
+        body_q: wp.array[wp.transformf],
         target_rel_transforms: wp.array[wp.transformf],
         ct_full_to_red_map: wp.array[wp.int32],
         world_mask: wp.array[wp.bool],
@@ -1236,15 +1234,15 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
             num_joints: Num joints per world
             first_joint_id: First joint id per world
             first_body_id: First body id per world
-            joints_dof_type: Joint dof type (i.e. revolute, spherical, ...)
-            joints_act_type: Joint actuation type (i.e. passive or actuated)
-            joints_bid_B: Joint base body id
-            joints_bid_F: Joint follower body id
-            joints_X_Bj: Joint local frame on base body
-            joints_X_Fj: Joint local frame on follower body
-            joints_B_r_B: Joint local position on base body
-            joints_F_r_F: Joint local position on follower body
-            bodies_q: Body poses
+            joint_dof_type: Joint dof type (i.e. revolute, spherical, ...)
+            joint_act_type: Joint actuation type (i.e. passive or actuated)
+            joint_bid_B: Joint base body id
+            joint_bid_F: Joint follower body id
+            joint_X_Bj: Joint local frame on base body
+            joint_X_Fj: Joint local frame on follower body
+            joint_B_r_B: Joint local position on base body
+            joint_F_r_F: Joint local position on follower body
+            body_q: Body poses
             target_rel_transforms: Joint target relative transformation
             ct_full_to_red_map: Map from full to reduced constraint id
             world_mask: Per-world boolean flag to perform the computation (False = skip)
@@ -1264,13 +1262,13 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
         trans_ct_ids_red, rot_ct_ids_red = _get_reduced_constraint_ids(jt_id_tot, ct_full_to_red_map)
 
         # Get joint local positions and orientation
-        x_follower = joints_F_r_F[jt_id_tot]
-        X_T = wp.transpose(joints_X_Bj[jt_id_tot])
+        x_follower = joint_F_r_F[jt_id_tot]
+        X_T = wp.transpose(joint_X_Bj[jt_id_tot])
 
         # Get base and follower transformations
-        base_id_tot = joints_bid_B[jt_id_tot]
-        follower_id_tot = joints_bid_F[jt_id_tot]
-        c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id_tot, follower_id_tot, bodies_q)
+        base_id_tot = joint_bid_B[jt_id_tot]
+        follower_id_tot = joint_bid_F[jt_id_tot]
+        c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id_tot, follower_id_tot, body_q)
         base_id_loc = base_id_tot - first_body_id[wd_id]
         follower_id_loc = follower_id_tot - first_body_id[wd_id]
 
@@ -1313,14 +1311,14 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
         # Correct Jacobian for passive universal joints
         if wp.static(has_universal_joints):
             # Check for a passive universal joint
-            dof_type_j = joints_dof_type[jt_id_tot]
-            act_type_j = joints_act_type[jt_id_tot]
+            dof_type_j = joint_dof_type[jt_id_tot]
+            act_type_j = joint_act_type[jt_id_tot]
             if dof_type_j != FKJointDoFType.UNIVERSAL or act_type_j != JointActuationType.PASSIVE:
                 return
 
             # Compute constraint Jacobian (cross product between x axis on base and y axis on follower)
             jac_q_base, jac_q_follower = _eval_passive_universal_jacobian_blocks(
-                X_T, wp.transpose(joints_X_Fj[jt_id_tot]), q_base, q_follower, base_id_tot >= 0
+                X_T, wp.transpose(joint_X_Fj[jt_id_tot]), q_base, q_follower, base_id_tot >= 0
             )
 
             # Write out Jacobian
@@ -1347,15 +1345,15 @@ def create_eval_joint_constraints_sparse_jacobian_kernel(has_universal_joints: b
         num_joints: wp.array[wp.int32],
         first_joint_id: wp.array[wp.int32],
         first_body_id: wp.array[wp.int32],
-        joints_dof_type: wp.array[wp.int32],
-        joints_act_type: wp.array[wp.int32],
-        joints_bid_B: wp.array[wp.int32],
-        joints_bid_F: wp.array[wp.int32],
-        joints_X_Bj: wp.array[wp.mat33f],
-        joints_X_Fj: wp.array[wp.mat33f],
-        joints_B_r_B: wp.array[wp.vec3f],
-        joints_F_r_F: wp.array[wp.vec3f],
-        bodies_q: wp.array[wp.transformf],
+        joint_dof_type: wp.array[wp.int32],
+        joint_act_type: wp.array[wp.int32],
+        joint_bid_B: wp.array[wp.int32],
+        joint_bid_F: wp.array[wp.int32],
+        joint_X_Bj: wp.array[wp.mat33f],
+        joint_X_Fj: wp.array[wp.mat33f],
+        joint_B_r_B: wp.array[wp.vec3f],
+        joint_F_r_F: wp.array[wp.vec3f],
+        body_q: wp.array[wp.transformf],
         target_rel_transforms: wp.array[wp.transformf],
         ct_nzb_id_base: wp.array[wp.int32],
         ct_nzb_id_follower: wp.array[wp.int32],
@@ -1372,15 +1370,15 @@ def create_eval_joint_constraints_sparse_jacobian_kernel(has_universal_joints: b
             num_joints: Num joints per world
             first_joint_id: First joint id per world
             first_body_id: First body id per world
-            joints_dof_type: Joint dof type (i.e. revolute, spherical, ...)
-            joints_act_type: Joint actuation type (i.e. passive or actuated)
-            joints_bid_B: Joint base body id
-            joints_bid_F: Joint follower body id
-            joints_X_Bj: Joint local frame on base body
-            joints_X_Fj: Joint local frame on follower body
-            joints_B_r_B: Joint local position on base body
-            joints_F_r_F: Joint local position on follower body
-            bodies_q: Body poses
+            joint_dof_type: Joint dof type (i.e. revolute, spherical, ...)
+            joint_act_type: Joint actuation type (i.e. passive or actuated)
+            joint_bid_B: Joint base body id
+            joint_bid_F: Joint follower body id
+            joint_X_Bj: Joint local frame on base body
+            joint_X_Fj: Joint local frame on follower body
+            joint_B_r_B: Joint local position on base body
+            joint_F_r_F: Joint local position on follower body
+            body_q: Body poses
             target_rel_transforms: Joint target relative transformation
             ct_nzb_id_base: Map from full constraint id to nzb id, for the base body blocks
             ct_nzb_id_base: Map from full constraint id to nzb id, for the follower body blocks
@@ -1404,13 +1402,13 @@ def create_eval_joint_constraints_sparse_jacobian_kernel(has_universal_joints: b
         nzb_ids_follower = ct_nzb_id_follower[start:end]
 
         # Get joint local positions and orientation
-        x_follower = joints_F_r_F[jt_id_tot]
-        X_T = wp.transpose(joints_X_Bj[jt_id_tot])
+        x_follower = joint_F_r_F[jt_id_tot]
+        X_T = wp.transpose(joint_X_Bj[jt_id_tot])
 
         # Get base and follower transformations
-        base_id = joints_bid_B[jt_id_tot]
-        follower_id = joints_bid_F[jt_id_tot]
-        c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id, follower_id, bodies_q)
+        base_id = joint_bid_B[jt_id_tot]
+        follower_id = joint_bid_F[jt_id_tot]
+        c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id, follower_id, body_q)
 
         # Get target relative transformation (rotation part only, as translation part doesn't affect the Jacobian)
         q_rel_body = wp.transform_get_rotation(target_rel_transforms[jt_id_tot])
@@ -1457,14 +1455,14 @@ def create_eval_joint_constraints_sparse_jacobian_kernel(has_universal_joints: b
         # Correct Jacobian for passive universal joints
         if wp.static(has_universal_joints):
             # Check for a passive universal joint
-            dof_type_j = joints_dof_type[jt_id_tot]
-            act_type_j = joints_act_type[jt_id_tot]
+            dof_type_j = joint_dof_type[jt_id_tot]
+            act_type_j = joint_act_type[jt_id_tot]
             if dof_type_j != FKJointDoFType.UNIVERSAL or act_type_j != JointActuationType.PASSIVE:
                 return
 
             # Compute constraint Jacobian (cross product between x axis on base and y axis on follower)
             jac_q_base, jac_q_follower = _eval_passive_universal_jacobian_blocks(
-                X_T, wp.transpose(joints_X_Fj[jt_id_tot]), q_base, q_follower, base_id >= 0
+                X_T, wp.transpose(joint_X_Fj[jt_id_tot]), q_base, q_follower, base_id >= 0
             )
 
             # Write out Jacobian
@@ -1738,8 +1736,8 @@ def create_1d_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int3
         # Inputs
         first_body_id: wp.array[wp.int32],
         reg_weight: wp.float32,
-        bodies_q_flat: wp.array[wp.float32],
-        bodies_q_ref_flat: wp.array[wp.float32],
+        body_q_flat: wp.array[wp.float32],
+        body_q_ref_flat: wp.array[wp.float32],
         # Outputs
         merit_function_val: wp.array[wp.float32],
     ):
@@ -1750,8 +1748,8 @@ def create_1d_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int3
         Inputs:
             first_body_id: First body index per world.
             reg_weight: Regularizer weight.
-            bodies_q_flat: Flattened array of current body poses.
-            bodies_q_ref_flat: Flattened array of reference body poses.
+            body_q_flat: Flattened array of current body poses.
+            body_q_ref_flat: Flattened array of reference body poses.
         Outputs:
             merit_function_val: Merit function value per world; must be zero-initialized
         """
@@ -1762,8 +1760,8 @@ def create_1d_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int3
         next_world_start = 7 * first_body_id[wd_id + 1]
         if offset >= next_world_start:
             return  # Early return if tile is fully outside of this world's data
-        tile = wp.tile_load(bodies_q_flat, shape=TILE_SIZE_VRS, offset=offset)
-        tile_ref = wp.tile_load(bodies_q_ref_flat, shape=TILE_SIZE_VRS, offset=offset)
+        tile = wp.tile_load(body_q_flat, shape=TILE_SIZE_VRS, offset=offset)
+        tile_ref = wp.tile_load(body_q_ref_flat, shape=TILE_SIZE_VRS, offset=offset)
 
         # Compute regularizer
         reg_tile = tile - tile_ref
@@ -1855,8 +1853,8 @@ def _eval_regularizer_gradient(
     num_bodies: wp.array[wp.int32],
     first_body_id: wp.array[wp.int32],
     reg_weight: wp.float32,
-    bodies_q_flat: wp.array[wp.float32],
-    bodies_q_ref_flat: wp.array[wp.float32],
+    body_q_flat: wp.array[wp.float32],
+    body_q_ref_flat: wp.array[wp.float32],
     world_mask: wp.array[wp.bool],
     # Outputs
     gradient: wp.array2d[wp.float32],
@@ -1869,8 +1867,8 @@ def _eval_regularizer_gradient(
         num_bodies: Number of bodies per world.
         first_body_id: First body index per world.
         reg_weight: Regularizer weight.
-        bodies_q_flat: Flattened array of current body poses.
-        bodies_q_ref_flat: Flattened array of reference body poses.
+        body_q_flat: Flattened array of current body poses.
+        body_q_ref_flat: Flattened array of reference body poses.
         world_mask: Per-world boolean flag to perform the computation (False = skip).
     Outputs:
         gradient: Gradient vector, to which to add the regularizer gradient.
@@ -1882,7 +1880,7 @@ def _eval_regularizer_gradient(
         return
     state_id = 7 * first_body_id[wd_id] + state_id_loc
 
-    gradient[wd_id, state_id_loc] += reg_weight * (bodies_q_flat[state_id] - bodies_q_ref_flat[state_id])
+    gradient[wd_id, state_id_loc] += reg_weight * (body_q_flat[state_id] - body_q_ref_flat[state_id])
 
 
 @wp.kernel
@@ -1921,12 +1919,12 @@ def _eval_stepped_state(
     # Inputs
     num_bodies: wp.array[wp.int32],
     first_body_id: wp.array[wp.int32],
-    bodies_q_0_flat: wp.array[wp.float32],
+    body_q_0_flat: wp.array[wp.float32],
     alpha: wp.array[wp.float32],
     step: wp.array2d[wp.float32],
     world_mask: wp.array[wp.bool],
     # Outputs
-    bodies_q_alpha_flat: wp.array[wp.float32],
+    body_q_alpha_flat: wp.array[wp.float32],
 ):
     """
     A kernel computing states_alpha := states_0 + alpha * step
@@ -1934,19 +1932,19 @@ def _eval_stepped_state(
     Inputs:
         num_bodies: Num bodies per world
         first_body_id: First body id per world
-        bodies_q_0_flat: Previous state (for step size 0), flattened
+        body_q_0_flat: Previous state (for step size 0), flattened
         alpha: Step size per world
         step: Step direction per world
         world_mask: Per-world boolean flag to perform the computation (False = skip)
     Outputs:
-        bodies_q_alpha_flat: New state (for step size alpha), flattened
+        body_q_alpha_flat: New state (for step size alpha), flattened
     """
     wd_id, state_id_loc = wp.tid()  # Thread indices (= world index, state index)
     rb_id_loc = state_id_loc // 7
     if not world_mask[wd_id] or rb_id_loc >= num_bodies[wd_id]:
         return
     state_id_tot = 7 * first_body_id[wd_id] + state_id_loc
-    bodies_q_alpha_flat[state_id_tot] = bodies_q_0_flat[state_id_tot] + alpha[wd_id] * step[wd_id, state_id_loc]
+    body_q_alpha_flat[state_id_tot] = body_q_0_flat[state_id_tot] + alpha[wd_id] * step[wd_id, state_id_loc]
 
 
 @wp.kernel
@@ -1954,10 +1952,10 @@ def _apply_line_search_step(
     # Inputs
     num_bodies: wp.array[wp.int32],
     first_body_id: wp.array[wp.int32],
-    bodies_q_alpha: wp.array[wp.transformf],
+    body_q_alpha: wp.array[wp.transformf],
     line_search_success: wp.array[wp.bool],
     # Outputs
-    bodies_q: wp.array[wp.transformf],
+    body_q: wp.array[wp.transformf],
 ):
     """
     A kernel replacing the state with the line search result, in worlds where line search succeeded
@@ -1967,16 +1965,16 @@ def _apply_line_search_step(
     Inputs
         num_bodies: Num bodies per world
         first_body_id: First body id per world
-        bodies_q_alpha: Stepped states (line search result)
+        body_q_alpha: Stepped states (line search result)
         line_search_success: Per-world line search success flag
     Outputs
-        bodies_q: Output state (rigid body poses)
+        body_q: Output state (rigid body poses)
     """
     wd_id, rb_id_loc = wp.tid()  # Thread indices (= world index, body index)
     if not line_search_success[wd_id] or rb_id_loc >= num_bodies[wd_id]:
         return
     rb_id_tot = first_body_id[wd_id] + rb_id_loc
-    bodies_q[rb_id_tot] = bodies_q_alpha[rb_id_tot]
+    body_q[rb_id_tot] = body_q_alpha[rb_id_tot]
 
 
 @wp.kernel
@@ -2090,13 +2088,13 @@ def _eval_target_constraint_velocities(
     # Inputs
     num_joints: wp.array[wp.int32],
     first_joint_id: wp.array[wp.int32],
-    joints_dof_type: wp.array[wp.int32],
-    joints_act_type: wp.array[wp.int32],
+    joint_dof_type: wp.array[wp.int32],
+    joint_act_type: wp.array[wp.int32],
     actuated_coords_offset: wp.array[wp.int32],
     actuated_dofs_offset: wp.array[wp.int32],
     ct_full_to_red_map: wp.array[wp.int32],
-    actuators_q: wp.array[wp.float32],
-    actuators_u: wp.array2d[wp.float32],
+    actuator_q: wp.array[wp.float32],
+    actuator_u: wp.array2d[wp.float32],
     world_mask: wp.array[wp.bool],
     # Outputs
     target_cts_u: wp.array3d[wp.float32],
@@ -2110,11 +2108,11 @@ def _eval_target_constraint_velocities(
     Inputs:
         num_joints: Num joints per world
         first_joint_id: First joint id per world
-        joints_dof_type: Joint dof type (i.e. revolute, spherical, ...)
-        joints_act_type: Joint actuation type (i.e. passive or actuated)
+        joint_dof_type: Joint dof type (i.e. revolute, spherical, ...)
+        joint_act_type: Joint actuation type (i.e. passive or actuated)
         actuated_dofs_offset: Joint first actuated dof id, among all actuated dofs in all worlds
         ct_full_to_red_map: Map from full to reduced constraint id
-        actuators_u: Actuated joint velocities, with shape ``(batch_size, num_fk_actuated_dofs)``
+        actuator_u: Actuated joint velocities, with shape ``(batch_size, num_fk_actuated_dofs)``
         world_mask: Per-world boolean flag to perform the computation (False = skip)
     Outputs:
         target_cts_u: Target constraint velocities, with shape ``(num_worlds, num_cts_max, batch_size)``
@@ -2127,50 +2125,50 @@ def _eval_target_constraint_velocities(
 
     # Retrieve the joint model data
     jt_id_tot = first_joint_id[wd_id] + jt_id_loc
-    if joints_act_type[jt_id_tot] == JointActuationType.PASSIVE:
+    if joint_act_type[jt_id_tot] == JointActuationType.PASSIVE:
         return
-    dof_type_j = joints_dof_type[jt_id_tot]
+    dof_type_j = joint_dof_type[jt_id_tot]
     offset_q_j = actuated_coords_offset[jt_id_tot]
     offset_u_j = actuated_dofs_offset[jt_id_tot]
     offset_cts_j = ct_full_to_red_map[6 * jt_id_tot]
 
     if dof_type_j == FKJointDoFType.CARTESIAN:
-        target_cts_u[wd_id, offset_cts_j, batch_id] = actuators_u[batch_id, offset_u_j]
-        target_cts_u[wd_id, offset_cts_j + 1, batch_id] = actuators_u[batch_id, offset_u_j + 1]
-        target_cts_u[wd_id, offset_cts_j + 2, batch_id] = actuators_u[batch_id, offset_u_j + 2]
+        target_cts_u[wd_id, offset_cts_j, batch_id] = actuator_u[batch_id, offset_u_j]
+        target_cts_u[wd_id, offset_cts_j + 1, batch_id] = actuator_u[batch_id, offset_u_j + 1]
+        target_cts_u[wd_id, offset_cts_j + 2, batch_id] = actuator_u[batch_id, offset_u_j + 2]
     elif dof_type_j == FKJointDoFType.CYLINDRICAL:
-        target_cts_u[wd_id, offset_cts_j, batch_id] = actuators_u[batch_id, offset_u_j]
-        target_cts_u[wd_id, offset_cts_j + 3, batch_id] = actuators_u[batch_id, offset_u_j + 1]
+        target_cts_u[wd_id, offset_cts_j, batch_id] = actuator_u[batch_id, offset_u_j]
+        target_cts_u[wd_id, offset_cts_j + 3, batch_id] = actuator_u[batch_id, offset_u_j + 1]
     elif dof_type_j == FKJointDoFType.FIXED:
         pass  # No dofs to apply
     elif dof_type_j == FKJointDoFType.FREE:
         for i in range(6):
-            target_cts_u[wd_id, offset_cts_j + i, batch_id] = actuators_u[batch_id, offset_u_j + i]
+            target_cts_u[wd_id, offset_cts_j + i, batch_id] = actuator_u[batch_id, offset_u_j + i]
     elif dof_type_j == FKJointDoFType.PRISMATIC:
-        target_cts_u[wd_id, offset_cts_j, batch_id] = actuators_u[batch_id, offset_u_j]
+        target_cts_u[wd_id, offset_cts_j, batch_id] = actuator_u[batch_id, offset_u_j]
     elif dof_type_j == FKJointDoFType.REVOLUTE:
-        target_cts_u[wd_id, offset_cts_j + 3, batch_id] = actuators_u[batch_id, offset_u_j]
+        target_cts_u[wd_id, offset_cts_j + 3, batch_id] = actuator_u[batch_id, offset_u_j]
     elif dof_type_j == FKJointDoFType.SPHERICAL:
         for i in range(3):
-            target_cts_u[wd_id, offset_cts_j + 3 + i, batch_id] = actuators_u[batch_id, offset_u_j + i]
+            target_cts_u[wd_id, offset_cts_j + 3 + i, batch_id] = actuator_u[batch_id, offset_u_j + i]
     elif dof_type_j == FKJointDoFType.GIMBAL or dof_type_j == FKJointDoFType.GIMBAL_LEFT_HANDED:
         third_axis_sign = 1.0
         if dof_type_j == FKJointDoFType.GIMBAL_LEFT_HANDED:
             third_axis_sign = -1.0
         axes = gimbal_transported_axes(
-            wp.vec3f(actuators_q[offset_q_j], actuators_q[offset_q_j + 1], actuators_q[offset_q_j + 2]),
+            wp.vec3f(actuator_q[offset_q_j], actuator_q[offset_q_j + 1], actuator_q[offset_q_j + 2]),
             third_axis_sign,
         )
         omega = (
-            wp.vec3f(axes[:, 0]) * actuators_u[batch_id, offset_u_j]
-            + wp.vec3f(axes[:, 1]) * actuators_u[batch_id, offset_u_j + 1]
-            + wp.vec3f(axes[:, 2]) * actuators_u[batch_id, offset_u_j + 2]
+            wp.vec3f(axes[:, 0]) * actuator_u[batch_id, offset_u_j]
+            + wp.vec3f(axes[:, 1]) * actuator_u[batch_id, offset_u_j + 1]
+            + wp.vec3f(axes[:, 2]) * actuator_u[batch_id, offset_u_j + 2]
         )
         for i in range(3):
             target_cts_u[wd_id, offset_cts_j + 3 + i, batch_id] = omega[i]
     elif dof_type_j == FKJointDoFType.UNIVERSAL:
-        target_cts_u[wd_id, offset_cts_j + 3, batch_id] = actuators_u[batch_id, offset_u_j]
-        target_cts_u[wd_id, offset_cts_j + 4, batch_id] = actuators_u[batch_id, offset_u_j + 1]
+        target_cts_u[wd_id, offset_cts_j + 3, batch_id] = actuator_u[batch_id, offset_u_j]
+        target_cts_u[wd_id, offset_cts_j + 4, batch_id] = actuator_u[batch_id, offset_u_j + 1]
     else:
         assert False, "Unexpected actuator dof type"  # noqa: B011
 
@@ -2180,14 +2178,14 @@ def _correct_universal_constraint_velocities(
     # Inputs
     num_joints: wp.array[wp.int32],
     first_joint_id: wp.array[wp.int32],
-    joints_dof_type: wp.array[wp.int32],
-    joints_act_type: wp.array[wp.int32],
-    joints_bid_B: wp.array[wp.int32],
-    joints_bid_F: wp.array[wp.int32],
-    joints_X_Bj: wp.array[wp.mat33f],
-    joints_X_Fj: wp.array[wp.mat33f],
+    joint_dof_type: wp.array[wp.int32],
+    joint_act_type: wp.array[wp.int32],
+    joint_bid_B: wp.array[wp.int32],
+    joint_bid_F: wp.array[wp.int32],
+    joint_X_Bj: wp.array[wp.mat33f],
+    joint_X_Fj: wp.array[wp.mat33f],
     ct_full_to_red_map: wp.array[wp.int32],
-    bodies_q: wp.array[wp.transformf],
+    body_q: wp.array[wp.transformf],
     world_mask: wp.array[wp.bool],
     # Outputs
     target_cts_u: wp.array3d[wp.float32],
@@ -2202,14 +2200,14 @@ def _correct_universal_constraint_velocities(
     Inputs:
         num_joints: Num joints per world
         first_joint_id: First joint id per world
-        joints_dof_type: Joint dof type (i.e. revolute, spherical, ...)
-        joints_act_type: Joint actuation type (i.e. passive or actuated)
-        joints_bid_B: Joint base body id
-        joints_bid_F: Joint follower body id
-        joints_X_Bj: Joint local frame on base body
-        joints_X_Fj: Joint local frame on follower body
+        joint_dof_type: Joint dof type (i.e. revolute, spherical, ...)
+        joint_act_type: Joint actuation type (i.e. passive or actuated)
+        joint_bid_B: Joint base body id
+        joint_bid_F: Joint follower body id
+        joint_X_Bj: Joint local frame on base body
+        joint_X_Fj: Joint local frame on follower body
         ct_full_to_red_map: Map from full to reduced constraint id
-        bodies_q: Current body poses.
+        body_q: Current body poses.
         world_mask: Per-world boolean flag to perform the computation (False = skip)
     Outputs:
         target_cts_u: Corrected target constraint velocities, with shape ``(num_worlds, num_cts_max, batch_size)``
@@ -2222,10 +2220,7 @@ def _correct_universal_constraint_velocities(
 
     # Early return if this is not a universal actuator
     jt_id_tot = first_joint_id[wd_id] + jt_id_loc
-    if (
-        joints_act_type[jt_id_tot] == JointActuationType.PASSIVE
-        or joints_dof_type[jt_id_tot] != FKJointDoFType.UNIVERSAL
-    ):
+    if joint_act_type[jt_id_tot] == JointActuationType.PASSIVE or joint_dof_type[jt_id_tot] != FKJointDoFType.UNIVERSAL:
         return
 
     # Read target angular velocity (currently, in dof space i.e. in the frame of the intermediary body)
@@ -2236,12 +2231,12 @@ def _correct_universal_constraint_velocities(
         0.0,
     )
     # Compute relative orientation of joint frame on follower body w.r.t. joint frame on base body
-    bid_B = joints_bid_B[jt_id_tot]
-    bid_F = joints_bid_F[jt_id_tot]
-    q_B = wp.quatf(0.0, 0.0, 0.0, 1.0) if bid_B < 0 else wp.transform_get_rotation(bodies_q[bid_B])
-    q_F = wp.transform_get_rotation(bodies_q[bid_F])
-    q_X_B = wp.quat_from_matrix(joints_X_Bj[jt_id_tot])
-    q_X_F = wp.quat_from_matrix(joints_X_Fj[jt_id_tot])
+    bid_B = joint_bid_B[jt_id_tot]
+    bid_F = joint_bid_F[jt_id_tot]
+    q_B = wp.quatf(0.0, 0.0, 0.0, 1.0) if bid_B < 0 else wp.transform_get_rotation(body_q[bid_B])
+    q_F = wp.transform_get_rotation(body_q[bid_F])
+    q_X_B = wp.quat_from_matrix(joint_X_Bj[jt_id_tot])
+    q_X_F = wp.quat_from_matrix(joint_X_Fj[jt_id_tot])
     q_rel = wp.quat_inverse(q_B * q_X_B) * q_F * q_X_F
 
     # Compute intermediary body axes, in the joint frame on the base body
@@ -2264,11 +2259,11 @@ def _eval_body_velocities(
     # Inputs
     num_bodies: wp.array[wp.int32],
     first_body_id: wp.array[wp.int32],
-    bodies_q: wp.array[wp.transformf],
-    bodies_q_dot: wp.array3d[wp.float32],
+    body_q: wp.array[wp.transformf],
+    body_q_dot: wp.array3d[wp.float32],
     world_mask: wp.array[wp.bool],
     # Outputs
-    bodies_u: wp.array2d[wp.spatial_vectorf],
+    body_u: wp.array2d[wp.spatial_vectorf],
 ):
     """
     A kernel computing the body velocities (twists) from the time derivative of body poses,
@@ -2279,11 +2274,11 @@ def _eval_body_velocities(
     Inputs:
         num_bodies: Number of bodies per world
         first_body_id: First body id per world
-        bodies_q: Body poses
-        bodies_q_dot: Time derivative of body poses, with shape ``(num_worlds, num_states_max, batch_size)``
+        body_q: Body poses
+        body_q_dot: Time derivative of body poses, with shape ``(num_worlds, num_states_max, batch_size)``
         world_mask: Per-world boolean flag to perform the computation (False = skip)
     Outputs:
-        bodies_u: Body velocities (twists), with shape ``(batch_size, sum_of_num_bodies)``
+        body_u: Body velocities (twists), with shape ``(batch_size, sum_of_num_bodies)``
     """
     # Retrieve the thread indices (= batch index, world index, body index)
     batch_id, wd_id, rb_id_loc = wp.tid()
@@ -2296,20 +2291,20 @@ def _eval_body_velocities(
 
     # Copy linear velocity
     linear = wp.vec3f(
-        bodies_q_dot[wd_id, offset_q_dot, batch_id],
-        bodies_q_dot[wd_id, offset_q_dot + 1, batch_id],
-        bodies_q_dot[wd_id, offset_q_dot + 2, batch_id],
+        body_q_dot[wd_id, offset_q_dot, batch_id],
+        body_q_dot[wd_id, offset_q_dot + 1, batch_id],
+        body_q_dot[wd_id, offset_q_dot + 2, batch_id],
     )
     # Compute angular velocity
-    q = wp.transform_get_rotation(bodies_q[rb_id_tot])
+    q = wp.transform_get_rotation(body_q[rb_id_tot])
     q_dot = wp.vec4f(
-        bodies_q_dot[wd_id, offset_q_dot + 3, batch_id],
-        bodies_q_dot[wd_id, offset_q_dot + 4, batch_id],
-        bodies_q_dot[wd_id, offset_q_dot + 5, batch_id],
-        bodies_q_dot[wd_id, offset_q_dot + 6, batch_id],
+        body_q_dot[wd_id, offset_q_dot + 3, batch_id],
+        body_q_dot[wd_id, offset_q_dot + 4, batch_id],
+        body_q_dot[wd_id, offset_q_dot + 5, batch_id],
+        body_q_dot[wd_id, offset_q_dot + 6, batch_id],
     )
     omega = 2.0 * (G_of(q) * q_dot)
-    bodies_u[batch_id, rb_id_tot] = wp.spatial_vector(linear, omega)
+    body_u[batch_id, rb_id_tot] = wp.spatial_vector(linear, omega)
 
 
 @wp.kernel

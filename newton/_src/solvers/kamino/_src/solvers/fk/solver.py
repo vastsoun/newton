@@ -1961,9 +1961,18 @@ class ForwardKinematicsSolver:
         Evaluates and returns position control transformations (an intermediary quantity needed for the
         kinematic constraints/Jacobian evaluation) for a model given actuated coordinates, and optionally
         the base pose (the default base pose is used if not provided).
+
+        Args:
+            actuator_q: Actuated joint coordinates, with shape ``(sum_of_num_fk_actuated_joint_coords,)``.
+            base_q: Base pose per world, with shape ``(num_worlds,)``. Defaults to the model's base pose.
+
+        Raises:
+            ValueError: If any input array is not on this solver's device.
         """
-        assert base_q is None or base_q.device == self.device
-        assert actuator_q.device == self.device
+        if actuator_q.device != self.device:
+            raise ValueError("actuator_q must be on the solver's device")
+        if base_q is not None and base_q.device != self.device:
+            raise ValueError("base_q must be on the solver's device")
 
         if base_q is None:
             base_q = self.base_q_default
@@ -1984,9 +1993,18 @@ class ForwardKinematicsSolver:
         """
         Evaluates and returns the kinematic constraints vector given the body poses and the position
         control transformations.
+
+        Args:
+            body_q: Body poses, with shape ``(num_bodies,)``.
+            target_rel_transforms: Target relative transforms per joint, with shape ``(num_fk_joints,)``.
+
+        Raises:
+            ValueError: If any input array is not on this solver's device.
         """
-        assert body_q.device == self.device
-        assert target_rel_transforms.device == self.device
+        if body_q.device != self.device:
+            raise ValueError("body_q must be on the solver's device")
+        if target_rel_transforms.device != self.device:
+            raise ValueError("target_rel_transforms must be on the solver's device")
 
         constraints = wp.zeros(
             dtype=wp.float32,
@@ -2006,9 +2024,18 @@ class ForwardKinematicsSolver:
         """
         Evaluates and returns the kinematic constraints Jacobian (w.r.t. body poses) given the body poses
         and the position control transformations.
+
+        Args:
+            body_q: Body poses, with shape ``(num_bodies,)``.
+            target_rel_transforms: Target relative transforms per joint, with shape ``(num_fk_joints,)``.
+
+        Raises:
+            ValueError: If any input array is not on this solver's device.
         """
-        assert body_q.device == self.device
-        assert target_rel_transforms.device == self.device
+        if body_q.device != self.device:
+            raise ValueError("body_q must be on the solver's device")
+        if target_rel_transforms.device != self.device:
+            raise ValueError("target_rel_transforms must be on the solver's device")
 
         constraints_jacobian = wp.zeros(
             dtype=wp.float32,
@@ -2022,10 +2049,20 @@ class ForwardKinematicsSolver:
     def assemble_sparse_jacobian(self, body_q: wp.array[wp.transformf], target_rel_transforms: wp.array[wp.transformf]):
         """
         Assembles the sparse Jacobian (under self.sparse_jacobian) given input body poses and control transforms.
+
         Note: only safe to call if this object was finalized with sparsity enabled in the config.
+
+        Args:
+            body_q: Body poses, with shape ``(num_bodies,)``.
+            target_rel_transforms: Target relative transforms per joint, with shape ``(num_fk_joints,)``.
+
+        Raises:
+            ValueError: If any input array is not on this solver's device.
         """
-        assert body_q.device == self.device
-        assert target_rel_transforms.device == self.device
+        if body_q.device != self.device:
+            raise ValueError("body_q must be on the solver's device")
+        if target_rel_transforms.device != self.device:
+            raise ValueError("target_rel_transforms must be on the solver's device")
 
         world_mask = wp.ones(dtype=wp.bool, shape=(self.model.size.num_worlds,), device=self.device)
         self._assemble_sparse_jacobian(body_q, target_rel_transforms, world_mask)
@@ -2104,20 +2141,27 @@ class ForwardKinematicsSolver:
                 Expects shape of ``(num_worlds,)``.
 
         Raises:
-            ValueError: If ``batch_size`` was not requested beforehand.
+            ValueError: If ``batch_size`` was not requested beforehand, if any input array is not on this
+                solver's device, or if batched inputs have inconsistent shapes.
         """
-        assert actuator_u.device == self.device
-        assert body_q.device == self.device
-        assert body_u.device == self.device
-        assert base_u is None or base_u.device == self.device
-        assert target_rel_transforms is None or target_rel_transforms.device == self.device
-        assert world_mask is None or world_mask.device == self.device
+        for name, arr in (
+            ("actuator_u", actuator_u),
+            ("body_q", body_q),
+            ("body_u", body_u),
+            ("base_u", base_u),
+            ("target_rel_transforms", target_rel_transforms),
+            ("world_mask", world_mask),
+        ):
+            if arr is not None and arr.device != self.device:
+                raise ValueError(f"{name} must be on the solver's device")
 
         # Resolve batch size (= number of right-hand sides)
         if len(actuator_u.shape) > 1:
             batch_size = actuator_u.shape[0]
-            assert len(body_u.shape) > 1 and body_u.shape[0] == batch_size
-            assert base_u is None or (len(base_u.shape) > 1 and base_u.shape[0] in (1, batch_size))
+            if len(body_u.shape) <= 1 or body_u.shape[0] != batch_size:
+                raise ValueError(f"body_u must have batch dimension of size {batch_size}")
+            if base_u is not None and (len(base_u.shape) <= 1 or base_u.shape[0] not in (1, batch_size)):
+                raise ValueError(f"base_u first dimension must be 1 or {batch_size}")
             if self.config.use_sparsity:
                 raise ValueError("Multi-RHS velocity FK currently requires the dense FK solver")
         else:
@@ -2187,6 +2231,9 @@ class ForwardKinematicsSolver:
                 If not provided, all worlds are processed.
                 If this function is captured in a graph, must be either always or never provided.
                 Expects shape of ``(num_worlds,)``.
+
+        Raises:
+            ValueError: If ``body_u`` is provided without ``actuator_u``.
         """
         # Check that actuator_u are provided if we need to solve for body_u
         if body_u is not None and actuator_u is None:
@@ -2319,13 +2366,20 @@ class ForwardKinematicsSolver:
         Returns:
             If return_status is True, the detailed solver status with success flag, number of iterations
             and constraint residual per world; otherwise nothing.
+
+        Raises:
+            ValueError: If any input array is not on this solver's device.
         """
-        assert base_q is None or base_q.device == self.device
-        assert actuator_q.device == self.device
-        assert body_q.device == self.device
-        assert base_u is None or base_u.device == self.device
-        assert actuator_u is None or actuator_u.device == self.device
-        assert body_u is None or body_u.device == self.device
+        for name, arr in (
+            ("actuator_q", actuator_q),
+            ("body_q", body_q),
+            ("base_q", base_q),
+            ("actuator_u", actuator_u),
+            ("base_u", base_u),
+            ("body_u", body_u),
+        ):
+            if arr is not None and arr.device != self.device:
+                raise ValueError(f"{name} must be on the solver's device")
 
         # Warn if any world does not have an assigned base body when base attributes are provided.
         if (base_q is not None or base_u is not None) and self.model.info.has_world_without_base_body:

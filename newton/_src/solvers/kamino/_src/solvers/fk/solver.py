@@ -2111,34 +2111,27 @@ class ForwardKinematicsSolver:
     ):
         """
         Graph-capturable function solving for body velocities as a post-processing to the FK solve.
-        More specifically, solves for body twists yielding zero constraint velocities, except at
-        actuated dofs and at the base joint, where velocities must match prescribed velocities.
+        Solves for body twists yielding zero constraint velocities, except at actuated dofs and at the
+        base joint, where velocities must match prescribed velocities.
 
-        Processes a batch of batch_size velocity vectors in parallel.
-        For batch_size > 1, :meth:`request_velocity_solve_batch_size()` must be called beforehand.
+        Processes ``batch_size`` velocity vectors in parallel. For ``batch_size > 1``,
+        :meth:`request_velocity_solve_batch_size()` must be called beforehand.
+
+        Optional arrays must be either always or never provided across calls in a captured graph.
 
         Args:
-            actuator_u: Array of actuated joint velocities.
-                Expects shape of ``(batch_size, sum_of_num_fk_actuated_joint_dofs,)``, or a 1D array if batch_size = 1.
-            body_q: Array of rigid body poses. Must be the solution of FK given the position-control transforms.
-                Expects shape of ``(num_bodies,)``.
-            body_u: Array of rigid body velocities (twists), written out by the solver.
-                Expects shape of ``(batch_size, num_bodies,)``, or a 1D array if batch_size = 1.
-            base_u: Velocity (twist) of the base body for each world, in the frame of the base joint if it was set, or
-                absolute otherwise.
-                If not provided, will default to zero. Ignored if no base body or joint was set for this model.
-                A single row is broadcast across the batch.
-                If this function is captured in a graph, must be either always or never provided.
-                Expects shape of ``(batch_size, num_worlds,)``, or a 1D array if batch_size = 1.
-            target_rel_transforms: Array of position-control transforms, encoding actuated coordinates and base pose.
-                Expects shape of ``(num_fk_joints,)``.
-                If not provided, will be inferred from body_q, reading actuated coordinates and base pose
-                from body poses (assuming they are consistent).
-                If this function is captured in a graph, must be either always or never provided.
-            world_mask: Per-world boolean flags selecting which worlds to process (``False`` leaves a world unchanged).
-                If not provided, all worlds are processed.
-                If this function is captured in a graph, must be either always or never provided.
-                Expects shape of ``(num_worlds,)``.
+            actuator_u: Actuated joint velocities, shape ``(batch_size, sum_of_num_fk_actuated_joint_dofs)``
+                (or 1D if batch_size = 1).
+            body_q: Body poses (FK solution given the target relative transforms), shape ``(num_bodies,)``.
+            body_u: Body velocities (twists) written out by the solver, shape ``(batch_size, num_bodies)``
+                (or 1D if batch_size = 1).
+            base_u: Base body twist per world, in base joint frame if set or absolute otherwise, shape
+                ``(batch_size, num_worlds)`` (or 1D if batch_size = 1). Defaults to zero; ignored when no
+                base body/joint is set. A single row is broadcast across the batch.
+            target_rel_transforms: Target relative transforms per joint, shape ``(num_fk_joints,)``. If not
+                provided, inferred from ``body_q``.
+            world_mask: Per-world flags, shape ``(num_worlds,)``; ``False`` leaves a world unchanged.
+                Defaults to all worlds.
 
         Raises:
             ValueError: If ``batch_size`` was not requested beforehand, if any input array is not on this
@@ -2199,38 +2192,26 @@ class ForwardKinematicsSolver:
         """
         Graph-capturable function solving forward kinematics with Gauss-Newton.
 
-        More specifically, solves for the rigid body poses satisfying
-        kinematic constraints, given actuated joint coordinates and
-        base pose. Optionally also solves for rigid body velocities
-        given actuator and base body velocities.
+        Solves for the rigid body poses satisfying kinematic constraints, given actuated joint coordinates
+        and base pose. Optionally also solves for rigid body velocities given actuator and base body
+        velocities.
+
+        Optional arrays must be either always or never provided across calls in a captured graph.
 
         Args:
-            actuator_q: Array of actuated joint coordinates.
-                Expects shape of ``(sum_of_num_fk_actuated_joint_coords,)``.
-            body_q: Array of rigid body poses, written out by the solver and read in as initial guess if the reset_state
-                solver setting is False.
-                Expects shape of ``(num_bodies,)``.
-            base_q: Pose of the base body for each world, in the frame of the base joint if it was set, or absolute otherwise.
-                If not provided, will default to zero coordinates of the base joint, or the initial pose of the base body.
-                If no base body or joint was set for this model, will be ignored.
-                If this function is captured in a graph, must be either always or never provided.
-                Expects shape of ``(num_worlds,)``.
-            actuator_u: Array of actuated joint velocities.
-                Must be provided when solving for body velocities, i.e. if body_u is provided.
-                If this function is captured in a graph, must be either always or never provided.
-                Expects shape of ``(sum_of_num_fk_actuated_joint_dofs,)``.
-            base_u: Velocity (twist) of the base body for each world, in the frame of the base joint if it was set, or
-                absolute otherwise.
-                If not provided, will default to zero. Ignored if no base body or joint was set for this model.
-                If this function is captured in a graph, must be either always or never provided.
-                Expects shape of ``(num_worlds,)``.
-            body_u: Array of rigid body velocities (twists), written out by the solver if provided.
-                If this function is captured in a graph, must be either always or never provided.
-                Expects shape of ``(num_bodies,)``.
-            world_mask: Per-world boolean flags selecting which worlds to process (``False`` leaves a world unchanged).
-                If not provided, all worlds are processed.
-                If this function is captured in a graph, must be either always or never provided.
-                Expects shape of ``(num_worlds,)``.
+            actuator_q: Actuated joint coordinates, shape ``(sum_of_num_fk_actuated_joint_coords,)``.
+            body_q: Body poses, shape ``(num_bodies,)``. Written out by the solver, and used as an initial
+                guess when ``reset_state`` is False.
+            base_q: Base pose per world, shape ``(num_worlds,)``, in base joint frame if set or absolute
+                otherwise. Defaults to zero coordinates of the base joint (or the initial base body pose);
+                ignored when no base body/joint is set.
+            actuator_u: Actuated joint velocities, shape ``(sum_of_num_fk_actuated_joint_dofs,)``. Required
+                when solving for velocities (``body_u`` provided).
+            base_u: Base body twist per world, shape ``(num_worlds,)``, in base joint frame if set or
+                absolute otherwise. Defaults to zero; ignored when no base body/joint is set.
+            body_u: Body velocities (twists) written out by the solver if provided, shape ``(num_bodies,)``.
+            world_mask: Per-world flags, shape ``(num_worlds,)``; ``False`` leaves a world unchanged.
+                Defaults to all worlds.
 
         Raises:
             ValueError: If ``body_u`` is provided without ``actuator_u``.
@@ -2330,42 +2311,31 @@ class ForwardKinematicsSolver:
         use_graph: bool = True,
     ):
         """
-        Convenience function with verbosity options (non graph-capturable), solving
-        forward kinematics with Gauss-Newton. More specifically, it solves for the
-        rigid body poses satisfying kinematic constraints, given actuated joint
-        coordinates and base pose. Optionally also solves for rigid body velocities
-        given actuator and base body velocities.
+        Non-graph-capturable convenience wrapper around :meth:`run_fk_solve` adding verbosity and optional
+        internal graph capture across calls.
 
         Args:
-            actuator_q: Array of actuated joint coordinates.
-                Expects shape of ``(sum_of_num_fk_actuated_joint_coords,)``.
-            body_q: Array of rigid body poses, written out by the solver and read in as initial guess if the reset_state
-                solver setting is False.
-                Expects shape of ``(num_bodies,)``.
-            base_q: Pose of the base body for each world, in the frame of the base joint if it was set, or absolute otherwise.
-                If not provided, will default to zero coordinates of the base joint, or the initial pose of the base body.
-                If no base body or joint was set for this model, will be ignored.
-                Expects shape of ``(num_worlds,)``.
-            actuator_u: Array of actuated joint velocities.
-                Must be provided when solving for body velocities, i.e. if body_u is provided.
-                Expects shape of ``(sum_of_num_fk_actuated_joint_dofs,)``.
-            base_u: Velocity (twist) of the base body for each world, in the frame of the base joint if it was set, or
-                absolute otherwise.
-                If not provided, will default to zero. Ignored if no base body or joint was set for this model.
-                Expects shape of ``(num_worlds,)``.
-            body_u: Array of rigid body velocities (twists), written out by the solver if provided.
-                Expects shape of ``(num_bodies,)``.
-            world_mask: Per-world boolean flags selecting which worlds to process (``False`` leaves a world unchanged).
-                If not provided, all worlds are processed.
-                Expects shape of ``(num_worlds,)``.
-            verbose: Whether to write a status message at the end (default: False)
-            return_status: Whether to return the detailed solver status (default: False)
-            use_graph: Whether to use graph capture internally to accelerate multiple calls to this function. Can be turned
-                off for profiling individual kernels (default: True)
+            actuator_q: Actuated joint coordinates, shape ``(sum_of_num_fk_actuated_joint_coords,)``.
+            body_q: Body poses, shape ``(num_bodies,)``. Written out by the solver, and used as an initial
+                guess when ``reset_state`` is False.
+            base_q: Base pose per world, shape ``(num_worlds,)``, in base joint frame if set or absolute
+                otherwise. Defaults to zero coordinates of the base joint (or the initial base body pose);
+                ignored when no base body/joint is set.
+            actuator_u: Actuated joint velocities, shape ``(sum_of_num_fk_actuated_joint_dofs,)``. Required
+                when solving for velocities (``body_u`` provided).
+            base_u: Base body twist per world, shape ``(num_worlds,)``, in base joint frame if set or
+                absolute otherwise. Defaults to zero; ignored when no base body/joint is set.
+            body_u: Body velocities (twists) written out by the solver if provided, shape ``(num_bodies,)``.
+            world_mask: Per-world flags, shape ``(num_worlds,)``; ``False`` leaves a world unchanged.
+                Defaults to all worlds.
+            verbose: Whether to write a status message at the end.
+            return_status: Whether to return the detailed solver status.
+            use_graph: Whether to use graph capture internally to accelerate repeated calls (turn off to
+                profile individual kernels).
 
         Returns:
-            If return_status is True, the detailed solver status with success flag, number of iterations
-            and constraint residual per world; otherwise nothing.
+            The detailed solver status (success flag, iterations, residual per world) if
+            ``return_status`` is True, else nothing.
 
         Raises:
             ValueError: If any input array is not on this solver's device.

@@ -1277,7 +1277,7 @@ class ForwardKinematicsSolver:
         constraints: wp.array2d[wp.float32],
     ):
         """
-        Internal evaluator for the kinematic constraints vector, from body poses and position-control transformations
+        Internal evaluator for the kinematic constraints vector, from body poses and target relative transforms
         """
 
         # Evaluate unit norm quaternion constraints
@@ -1351,7 +1351,7 @@ class ForwardKinematicsSolver:
     ):
         """
         Internal evaluator for the kinematic constraints Jacobian with respect to body poses, from body poses
-        and position-control transformations
+        and target relative transforms
         """
 
         # Evaluate unit norm quaternion constraints Jacobian
@@ -1401,7 +1401,7 @@ class ForwardKinematicsSolver:
     ):
         """
         Internal evaluator for the sparse kinematic constraints Jacobian with respect to body poses, from body poses
-        and position-control transformations
+        and target relative transforms
         """
 
         self.sparse_jacobian.zero(world_mask)
@@ -1454,7 +1454,7 @@ class ForwardKinematicsSolver:
         world_mask: wp.array[wp.bool],
     ):
         """
-        Convenience function updating the constraints Jacobian, given body poses and position-control
+        Convenience function updating the constraints Jacobian, given body poses and target relative
         transforms
         Solver configuration (sparsity, regularization) are taken into account.
         """
@@ -1954,11 +1954,11 @@ class ForwardKinematicsSolver:
     # Exposed functions (overall solve_fk() function + constraints (Jacobian) evaluators for debugging)
     ###
 
-    def eval_position_control_transformations(
+    def eval_target_relative_transforms(
         self, actuator_q: wp.array[wp.float32], base_q: wp.array[wp.transformf] | None = None
     ):
         """
-        Evaluates and returns position control transformations (an intermediary quantity needed for the
+        Evaluates and returns the target relative transforms (an intermediary quantity needed for the
         kinematic constraints/Jacobian evaluation) for a model given actuated coordinates, and optionally
         the base pose (the default base pose is used if not provided).
 
@@ -2023,7 +2023,7 @@ class ForwardKinematicsSolver:
     ) -> wp.array3d[wp.float32]:
         """
         Evaluates and returns the kinematic constraints Jacobian (w.r.t. body poses) given the body poses
-        and the position control transformations.
+        and the target relative transforms.
 
         Args:
             body_q: Body poses, with shape ``(num_bodies,)``.

@@ -117,13 +117,13 @@ class JacobianCheckForwardKinematics(unittest.TestCase):
 
             # Evaluate analytic Jacobian
             solver = ForwardKinematicsSolver(model=model)
-            pos_control_transforms = solver.eval_position_control_transformations(actuator_q, None)
-            jacobian = solver.eval_kinematic_constraints_jacobian(body_q, pos_control_transforms)
+            target_rel_transforms = solver.eval_target_relative_transforms(actuator_q, None)
+            jacobian = solver.eval_kinematic_constraints_jacobian(body_q, target_rel_transforms)
 
             # Check against finite differences Jacobian
             def eval_constraints(body_q_stepped_np):
                 body_q.assign(body_q_stepped_np)
-                constraints = solver.eval_kinematic_constraints(body_q, pos_control_transforms)
+                constraints = solver.eval_kinematic_constraints(body_q, target_rel_transforms)
                 body_q.assign(body_q_np)  # Reset state
                 return constraints.numpy()[0]
 
@@ -215,7 +215,7 @@ class PassiveUniversalJointFrameForwardKinematics(unittest.TestCase):
         # universal joint's rotational orthogonality constraint.
         solver = ForwardKinematicsSolver(model)
         actuator_q = wp.empty(0, dtype=wp.float32, device=self.default_device)
-        target_transforms = solver.eval_position_control_transformations(actuator_q, None)
+        target_transforms = solver.eval_target_relative_transforms(actuator_q, None)
         constraints = solver.eval_kinematic_constraints(body_q, target_transforms).numpy()[0]
         np.testing.assert_allclose(constraints, 0.0, atol=1.0e-6)
 
@@ -263,7 +263,7 @@ class SparseJacobianSingleJointCheckForwardKinematics(unittest.TestCase):
                 shape=model.size.sum_of_num_actuated_joint_coords, dtype=wp.float32, device=model.device
             )
             solver = ForwardKinematicsSolver(model, config=ForwardKinematicsSolver.Config(use_sparsity=True))
-            transforms = solver.eval_position_control_transformations(actuator_q, None)
+            transforms = solver.eval_target_relative_transforms(actuator_q, None)
 
             jac_dense_np = solver.eval_kinematic_constraints_jacobian(body_q, transforms).numpy()
             solver.assemble_sparse_jacobian(body_q, transforms)
@@ -950,7 +950,7 @@ class HeterogenousModelSparseJacobianAssemblyCheck(unittest.TestCase):
             body_q.assign(body_q_np[pose_id])
             base_q.assign(base_q_np[pose_id])
             actuator_q.assign(actuator_q_np[pose_id])
-            transforms = solver.eval_position_control_transformations(actuator_q, base_q)
+            transforms = solver.eval_target_relative_transforms(actuator_q, base_q)
 
             jac_dense_np = solver.eval_kinematic_constraints_jacobian(body_q, transforms).numpy()
             solver.assemble_sparse_jacobian(body_q, transforms)
@@ -1124,7 +1124,7 @@ class MultiRhsVelocityForwardKinematics(unittest.TestCase):
         actuator_q = wp.array([0.4, -0.3, 0.2], dtype=wp.float32, device=self.default_device)
         body_q = wp.clone(model.bodies.q_i_0)
         solver.solve_fk(actuator_q, body_q, use_graph=False)
-        target_transforms = solver.eval_position_control_transformations(actuator_q)
+        target_transforms = solver.eval_target_relative_transforms(actuator_q)
 
         actuator_u_np = np.array([[0.3, -0.4, 0.5], [-0.2, 0.1, 0.35]], dtype=np.float32)
         actuator_u = wp.array(actuator_u_np, dtype=wp.float32, device=self.default_device)

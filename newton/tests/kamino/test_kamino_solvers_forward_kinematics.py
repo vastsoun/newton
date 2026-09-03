@@ -9,6 +9,7 @@ import copy
 import hashlib
 import unittest
 from functools import partial
+from types import SimpleNamespace
 
 import numpy as np
 import warp as wp
@@ -287,7 +288,7 @@ class WorldMaskInitializationForwardKinematics(unittest.TestCase):
         num_worlds = 3
         solver = ForwardKinematicsSolver.__new__(ForwardKinematicsSolver)
         solver.device = self.default_device
-        solver.num_worlds = num_worlds
+        solver.model = SimpleNamespace(size=SimpleNamespace(num_worlds=num_worlds))
         solver.config = ForwardKinematicsSolver.Config(
             max_newton_iterations=1,
             reset_state=False,

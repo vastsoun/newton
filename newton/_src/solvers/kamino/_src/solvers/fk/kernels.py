@@ -2017,7 +2017,7 @@ def _line_search_check(
     line_search_mask[wd_id] = continue_loop_world
     if continue_loop_world:
         alpha[wd_id] *= 0.5
-    wp.atomic_max(line_search_loop_condition, 0, wp.int32(continue_loop_world))
+        line_search_loop_condition[0] = 1
 
 
 @wp.kernel
@@ -2080,7 +2080,8 @@ def _newton_check(
         jacobian_early_update_mask[wd_id] = newton_continue_world and iteration_next >= min_iterations_wd
     if jacobian_late_update_mask:
         jacobian_late_update_mask[wd_id] = newton_continue_world and iteration_next <= min_iterations_wd
-    wp.atomic_max(newton_loop_condition, 0, wp.int32(newton_continue_world))
+    if newton_continue_world:
+        newton_loop_condition[0] = 1
 
 
 @wp.kernel

@@ -393,9 +393,10 @@ def _reset_state(
     """
     wd_id, state_id_loc = wp.tid()  # Thread indices (= world index, state index)
     rb_id_loc = state_id_loc // 7
-    if wd_id < num_bodies.shape[0] and world_mask[wd_id] and rb_id_loc < num_bodies[wd_id]:
-        state_id_tot = 7 * first_body_id[wd_id] + state_id_loc
-        bodies_q_flat[state_id_tot] = bodies_q_0_flat[state_id_tot]
+    if not world_mask[wd_id] or rb_id_loc >= num_bodies[wd_id]:
+        return
+    state_id_tot = 7 * first_body_id[wd_id] + state_id_loc
+    bodies_q_flat[state_id_tot] = bodies_q_0_flat[state_id_tot]
 
 
 @wp.kernel
@@ -435,41 +436,43 @@ def _reset_state_base_q(
         bodies_q: Body poses to reset
     """
     wd_id, rb_id_loc = wp.tid()  # Thread indices (= world index, body index)
-    if wd_id < num_bodies.shape[0] and world_mask[wd_id] and rb_id_loc < num_bodies[wd_id]:
-        # Worlds without base joint: just copy the reference pose
-        rb_id_tot = first_body_id[wd_id] + rb_id_loc
-        base_jt_id = base_joint_id[wd_id]
-        body_q_0 = bodies_q_0[rb_id_tot]
-        if base_jt_id < 0:
-            bodies_q[rb_id_tot] = body_q_0
-            return
+    if not world_mask[wd_id] or rb_id_loc >= num_bodies[wd_id]:
+        return
 
-        # Read memory
-        base_q_wd = base_q[wd_id]
-        bid_F = joints_bid_F[base_jt_id]
-        X_B = joints_X_Bj[base_jt_id]
-        X_F = joints_X_Fj[base_jt_id]
-        x_B = joints_B_r_B[base_jt_id]
-        x_F = joints_F_r_F[base_jt_id]
-        body_q_F_0 = bodies_q_0[bid_F]
+    # Worlds without base joint: just copy the reference pose
+    rb_id_tot = first_body_id[wd_id] + rb_id_loc
+    base_jt_id = base_joint_id[wd_id]
+    body_q_0 = bodies_q_0[rb_id_tot]
+    if base_jt_id < 0:
+        bodies_q[rb_id_tot] = body_q_0
+        return
 
-        # Compute pose of the base body (follower of the base joint) given current joint coordinates
-        # Note: the relative transform from base to follower can be written
-        # t_jt = X_B^T * R_B^T * (c_F + R_F * x_F - c_B - R_B * x_B)
-        # q_jt = X_B^T * R_B^T * R_F * X_F
-        # We invert these equations, using R_B = I and c_B = 0 (base body = world)
-        t_jt = wp.transform_get_translation(base_q_wd)
-        q_jt = wp.transform_get_rotation(base_q_wd)
-        q_X_B = wp.quat_from_matrix(X_B)
-        q_X_F = wp.quat_from_matrix(X_F)
-        q_F = q_X_B * q_jt * wp.quat_inverse(q_X_F)
-        c_F = wp.quat_rotate(q_X_B, t_jt) - wp.quat_rotate(q_F, x_F) + x_B
-        body_q_F = wp.transformf(c_F, q_F)
+    # Read memory
+    base_q_wd = base_q[wd_id]
+    bid_F = joints_bid_F[base_jt_id]
+    X_B = joints_X_Bj[base_jt_id]
+    X_F = joints_X_Fj[base_jt_id]
+    x_B = joints_B_r_B[base_jt_id]
+    x_F = joints_F_r_F[base_jt_id]
+    body_q_F_0 = bodies_q_0[bid_F]
 
-        # Compute the transform that was applied to the base body relative to the base pose,
-        # and apply that transform to all rigid bodies
-        transform_tot = wp.transform_multiply(body_q_F, wp.transform_inverse(body_q_F_0))
-        bodies_q[rb_id_tot] = wp.transform_multiply(transform_tot, body_q_0)
+    # Compute pose of the base body (follower of the base joint) given current joint coordinates
+    # Note: the relative transform from base to follower can be written
+    # t_jt = X_B^T * R_B^T * (c_F + R_F * x_F - c_B - R_B * x_B)
+    # q_jt = X_B^T * R_B^T * R_F * X_F
+    # We invert these equations, using R_B = I and c_B = 0 (base body = world)
+    t_jt = wp.transform_get_translation(base_q_wd)
+    q_jt = wp.transform_get_rotation(base_q_wd)
+    q_X_B = wp.quat_from_matrix(X_B)
+    q_X_F = wp.quat_from_matrix(X_F)
+    q_F = q_X_B * q_jt * wp.quat_inverse(q_X_F)
+    c_F = wp.quat_rotate(q_X_B, t_jt) - wp.quat_rotate(q_F, x_F) + x_B
+    body_q_F = wp.transformf(c_F, q_F)
+
+    # Compute the transform that was applied to the base body relative to the base pose,
+    # and apply that transform to all rigid bodies
+    transform_tot = wp.transform_multiply(body_q_F, wp.transform_inverse(body_q_F_0))
+    bodies_q[rb_id_tot] = wp.transform_multiply(transform_tot, body_q_0)
 
 
 @wp.kernel
@@ -503,16 +506,15 @@ def _eval_fk_actuated_dofs_or_coords(
     # Note: we use "dof" in variables naming to mean either dof or coordinate
     batch_id, fk_dof_id = wp.tid()
 
-    if batch_id < fk_actuated_dofs.shape[0] and fk_dof_id < fk_actuated_dofs.shape[1]:
-        model_dof_id = actuated_dofs_map[fk_dof_id]
-        if model_dof_id >= 0:
-            fk_actuated_dofs[batch_id, fk_dof_id] = model_actuated_dofs[batch_id, model_dof_id]
-        else:  # Base dofs/coordinates are encoded as negative indices
-            base_dof_id = -(model_dof_id + 1)  # Recover base dof/coord id
-            if model_base_dofs.shape[0] == 1:
-                fk_actuated_dofs[batch_id, fk_dof_id] = model_base_dofs[0, base_dof_id]
-            else:
-                fk_actuated_dofs[batch_id, fk_dof_id] = model_base_dofs[batch_id, base_dof_id]
+    model_dof_id = actuated_dofs_map[fk_dof_id]
+    if model_dof_id >= 0:
+        fk_actuated_dofs[batch_id, fk_dof_id] = model_actuated_dofs[batch_id, model_dof_id]
+    else:  # Base dofs/coordinates are encoded as negative indices
+        base_dof_id = -(model_dof_id + 1)  # Recover base dof/coord id
+        if model_base_dofs.shape[0] == 1:
+            fk_actuated_dofs[batch_id, fk_dof_id] = model_base_dofs[0, base_dof_id]
+        else:
+            fk_actuated_dofs[batch_id, fk_dof_id] = model_base_dofs[batch_id, base_dof_id]
 
 
 def _make_typed_joint_transform_to_coords_func(dof_type: JointDoFType):
@@ -890,74 +892,73 @@ def _eval_target_relative_transformations(
     if not world_mask[wid]:
         return
 
-    if jt_id < joints_dof_type.shape[0]:
-        # Retrieve the joint model data
-        dof_type_j = joints_dof_type[jt_id]
-        act_type_j = joints_act_type[jt_id]
-        X_B = joints_X_Bj[jt_id]
-        X_F = joints_X_Fj[jt_id]
+    # Retrieve the joint model data
+    dof_type_j = joints_dof_type[jt_id]
+    act_type_j = joints_act_type[jt_id]
+    X_B = joints_X_Bj[jt_id]
+    X_F = joints_X_Fj[jt_id]
 
-        # Initialize transform to identity (already covers the passive case)
-        t = wp.vec3f(0.0, 0.0, 0.0)
-        q = wp.quatf(0.0, 0.0, 0.0, 1.0)
+    # Initialize transform to identity (already covers the passive case)
+    t = wp.vec3f(0.0, 0.0, 0.0)
+    q = wp.quatf(0.0, 0.0, 0.0, 1.0)
 
-        # In the actuated case, set translation/rotation as per joint generalized coordinates
-        if act_type_j != JointActuationType.PASSIVE:
-            offset_q_j = actuated_coords_offset[jt_id]
-            if dof_type_j == FKJointDoFType.CARTESIAN:
-                t[0] = actuators_q[offset_q_j]
-                t[1] = actuators_q[offset_q_j + 1]
-                t[2] = actuators_q[offset_q_j + 2]
-            elif dof_type_j == FKJointDoFType.CYLINDRICAL:
-                t[0] = actuators_q[offset_q_j]
-                q = wp.quat_from_axis_angle(X_B[:, 0], actuators_q[offset_q_j + 1])
-            elif dof_type_j == FKJointDoFType.FIXED:
-                pass  # No dofs to apply
-            elif dof_type_j == FKJointDoFType.FREE:
-                t[0] = actuators_q[offset_q_j]
-                t[1] = actuators_q[offset_q_j + 1]
-                t[2] = actuators_q[offset_q_j + 2]
-                q_X_B = wp.quat_from_matrix(X_B)
-                q_loc = read_quat_from_array(actuators_q, offset_q_j + 3, normalize_quaternions)
-                q = q_X_B * q_loc * wp.quat_inverse(q_X_B)
-            elif dof_type_j == FKJointDoFType.PRISMATIC:
-                t[0] = actuators_q[offset_q_j]
-            elif dof_type_j == FKJointDoFType.REVOLUTE:
-                q = wp.quat_from_axis_angle(wp.vec3f(X_B[:, 0]), actuators_q[offset_q_j])
-            elif dof_type_j == FKJointDoFType.SPHERICAL:
-                q_X_B = wp.quat_from_matrix(X_B)
-                q_loc = read_quat_from_array(actuators_q, offset_q_j, normalize_quaternions)
-                q = q_X_B * q_loc * wp.quat_inverse(q_X_B)
-            elif dof_type_j == FKJointDoFType.GIMBAL or dof_type_j == FKJointDoFType.GIMBAL_LEFT_HANDED:
-                third_axis_sign = 1.0
-                if dof_type_j == FKJointDoFType.GIMBAL_LEFT_HANDED:
-                    third_axis_sign = -1.0
-                axes = X_B @ gimbal_transported_axes(
-                    wp.vec3f(actuators_q[offset_q_j], actuators_q[offset_q_j + 1], actuators_q[offset_q_j + 2]),
-                    third_axis_sign,
-                )
-                q_0 = wp.quat_from_axis_angle(wp.vec3f(axes[:, 0]), actuators_q[offset_q_j])
-                q_1 = wp.quat_from_axis_angle(wp.vec3f(axes[:, 1]), actuators_q[offset_q_j + 1])
-                q_2 = wp.quat_from_axis_angle(wp.vec3f(axes[:, 2]), actuators_q[offset_q_j + 2])
-                q = q_2 * q_1 * q_0
-            elif dof_type_j == FKJointDoFType.UNIVERSAL:
-                q_x = wp.quat_from_axis_angle(wp.vec3f(X_B[:, 0]), actuators_q[offset_q_j])
-                q_y = wp.quat_from_axis_angle(wp.vec3f(X_B[:, 1]), actuators_q[offset_q_j + 1])
-                q = q_x * q_y
-            else:
-                assert False, "Unexpected actuator dof type"  # noqa: B011
+    # In the actuated case, set translation/rotation as per joint generalized coordinates
+    if act_type_j != JointActuationType.PASSIVE:
+        offset_q_j = actuated_coords_offset[jt_id]
+        if dof_type_j == FKJointDoFType.CARTESIAN:
+            t[0] = actuators_q[offset_q_j]
+            t[1] = actuators_q[offset_q_j + 1]
+            t[2] = actuators_q[offset_q_j + 2]
+        elif dof_type_j == FKJointDoFType.CYLINDRICAL:
+            t[0] = actuators_q[offset_q_j]
+            q = wp.quat_from_axis_angle(X_B[:, 0], actuators_q[offset_q_j + 1])
+        elif dof_type_j == FKJointDoFType.FIXED:
+            pass  # No dofs to apply
+        elif dof_type_j == FKJointDoFType.FREE:
+            t[0] = actuators_q[offset_q_j]
+            t[1] = actuators_q[offset_q_j + 1]
+            t[2] = actuators_q[offset_q_j + 2]
+            q_X_B = wp.quat_from_matrix(X_B)
+            q_loc = read_quat_from_array(actuators_q, offset_q_j + 3, normalize_quaternions)
+            q = q_X_B * q_loc * wp.quat_inverse(q_X_B)
+        elif dof_type_j == FKJointDoFType.PRISMATIC:
+            t[0] = actuators_q[offset_q_j]
+        elif dof_type_j == FKJointDoFType.REVOLUTE:
+            q = wp.quat_from_axis_angle(wp.vec3f(X_B[:, 0]), actuators_q[offset_q_j])
+        elif dof_type_j == FKJointDoFType.SPHERICAL:
+            q_X_B = wp.quat_from_matrix(X_B)
+            q_loc = read_quat_from_array(actuators_q, offset_q_j, normalize_quaternions)
+            q = q_X_B * q_loc * wp.quat_inverse(q_X_B)
+        elif dof_type_j == FKJointDoFType.GIMBAL or dof_type_j == FKJointDoFType.GIMBAL_LEFT_HANDED:
+            third_axis_sign = 1.0
+            if dof_type_j == FKJointDoFType.GIMBAL_LEFT_HANDED:
+                third_axis_sign = -1.0
+            axes = X_B @ gimbal_transported_axes(
+                wp.vec3f(actuators_q[offset_q_j], actuators_q[offset_q_j + 1], actuators_q[offset_q_j + 2]),
+                third_axis_sign,
+            )
+            q_0 = wp.quat_from_axis_angle(wp.vec3f(axes[:, 0]), actuators_q[offset_q_j])
+            q_1 = wp.quat_from_axis_angle(wp.vec3f(axes[:, 1]), actuators_q[offset_q_j + 1])
+            q_2 = wp.quat_from_axis_angle(wp.vec3f(axes[:, 2]), actuators_q[offset_q_j + 2])
+            q = q_2 * q_1 * q_0
+        elif dof_type_j == FKJointDoFType.UNIVERSAL:
+            q_x = wp.quat_from_axis_angle(wp.vec3f(X_B[:, 0]), actuators_q[offset_q_j])
+            q_y = wp.quat_from_axis_angle(wp.vec3f(X_B[:, 1]), actuators_q[offset_q_j + 1])
+            q = q_x * q_y
+        else:
+            assert False, "Unexpected actuator dof type"  # noqa: B011
 
-        # If X_B != X_F, absorb the offset in q_rel so downstream kernels can keep using ``q_F = q_B * q_rel``
-        any_diff = wp.bool(False)
-        for r in range(3):
-            for c in range(3):
-                if X_B[r, c] != X_F[r, c]:
-                    any_diff = wp.bool(True)
-        if any_diff:
-            q = q * wp.quat_from_matrix(X_B) * wp.quat_inverse(wp.quat_from_matrix(X_F))
+    # If X_B != X_F, absorb the offset in q_rel so downstream kernels can keep using ``q_F = q_B * q_rel``
+    any_diff = wp.bool(False)
+    for r in range(3):
+        for c in range(3):
+            if X_B[r, c] != X_F[r, c]:
+                any_diff = wp.bool(True)
+    if any_diff:
+        q = q * wp.quat_from_matrix(X_B) * wp.quat_inverse(wp.quat_from_matrix(X_F))
 
-        # Write out transformation
-        target_rel_transforms[jt_id] = wp.transformf(t, q)
+    # Write out transformation
+    target_rel_transforms[jt_id] = wp.transformf(t, q)
 
 
 @wp.kernel
@@ -985,14 +986,15 @@ def _eval_unit_quaternion_constraints(
 
     # Retrieve the thread indices (= world index, body index)
     wd_id, rb_id_loc = wp.tid()
+    if not world_mask[wd_id] or rb_id_loc >= num_bodies[wd_id]:
+        return
 
-    if wd_id < num_bodies.shape[0] and world_mask[wd_id] and rb_id_loc < num_bodies[wd_id]:
-        # Get overall body id
-        rb_id_tot = first_body_id[wd_id] + rb_id_loc
+    # Get overall body id
+    rb_id_tot = first_body_id[wd_id] + rb_id_loc
 
-        # Evaluate unit quaternion constraint
-        q = wp.transform_get_rotation(bodies_q[rb_id_tot])
-        constraints[wd_id, rb_id_loc] = wp.dot(q, q) - 1.0
+    # Evaluate unit quaternion constraint
+    q = wp.transform_get_rotation(bodies_q[rb_id_tot])
+    constraints[wd_id, rb_id_loc] = wp.dot(q, q) - 1.0
 
 
 @cache
@@ -1052,64 +1054,65 @@ def create_eval_joint_constraints_kernel(has_universal_joints: bool):
 
         # Retrieve the thread indices (= world index, joint index)
         wd_id, jt_id_loc = wp.tid()
+        if not world_mask[wd_id] or jt_id_loc >= num_joints[wd_id]:
+            return
 
-        if wd_id < num_joints.shape[0] and world_mask[wd_id] and jt_id_loc < num_joints[wd_id]:
-            # Get overall joint id
-            jt_id_tot = first_joint_id[wd_id] + jt_id_loc
+        # Get overall joint id
+        jt_id_tot = first_joint_id[wd_id] + jt_id_loc
 
-            # Get reduced constraint ids (-1 meaning constraint is not used)
-            trans_ct_ids_red, rot_ct_ids_red = _get_reduced_constraint_ids(jt_id_tot, ct_full_to_red_map)
+        # Get reduced constraint ids (-1 meaning constraint is not used)
+        trans_ct_ids_red, rot_ct_ids_red = _get_reduced_constraint_ids(jt_id_tot, ct_full_to_red_map)
 
-            # Get joint local positions and orientation
-            x_base = joints_B_r_B[jt_id_tot]
-            x_follower = joints_F_r_F[jt_id_tot]
-            X_T = wp.transpose(joints_X_Bj[jt_id_tot])
+        # Get joint local positions and orientation
+        x_base = joints_B_r_B[jt_id_tot]
+        x_follower = joints_F_r_F[jt_id_tot]
+        X_T = wp.transpose(joints_X_Bj[jt_id_tot])
 
-            # Get base and follower transformations
-            base_id = joints_bid_B[jt_id_tot]
-            follower_id = joints_bid_F[jt_id_tot]
-            c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id, follower_id, bodies_q)
+        # Get base and follower transformations
+        base_id = joints_bid_B[jt_id_tot]
+        follower_id = joints_bid_F[jt_id_tot]
+        c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id, follower_id, bodies_q)
 
-            # Get target relative transformation, in joint/body frame for translation/rotation part
-            t_rel_joint = wp.transform_get_translation(target_rel_transforms[jt_id_tot])
-            q_rel_body = wp.transform_get_rotation(target_rel_transforms[jt_id_tot])
+        # Get target relative transformation, in joint/body frame for translation/rotation part
+        t_rel_joint = wp.transform_get_translation(target_rel_transforms[jt_id_tot])
+        q_rel_body = wp.transform_get_rotation(target_rel_transforms[jt_id_tot])
 
-            # Translation constraints: compute "error" translation, in joint frame
-            pos_follower_world = unit_quat_apply(q_follower, x_follower) + c_follower
-            pos_follower_base = unit_quat_conj_apply(q_base, pos_follower_world - c_base)
-            pos_rel_base = (
-                pos_follower_base - x_base
-            )  # Relative position on base body (should match translation from controls)
-            t_error = X_T * pos_rel_base - t_rel_joint  # Error in joint frame
+        # Translation constraints: compute "error" translation, in joint frame
+        pos_follower_world = unit_quat_apply(q_follower, x_follower) + c_follower
+        pos_follower_base = unit_quat_conj_apply(q_base, pos_follower_world - c_base)
+        pos_rel_base = (
+            pos_follower_base - x_base
+        )  # Relative position on base body (should match translation from controls)
+        t_error = X_T * pos_rel_base - t_rel_joint  # Error in joint frame
 
-            # Rotation constraints: compute "error" rotation with the log map, in joint frame
-            q_error_base = wp.quat_inverse(q_base) * q_follower * wp.quat_inverse(q_rel_body)
-            rot_error = X_T * quat_log(q_error_base)
+        # Rotation constraints: compute "error" rotation with the log map, in joint frame
+        q_error_base = wp.quat_inverse(q_base) * q_follower * wp.quat_inverse(q_rel_body)
+        rot_error = X_T * quat_log(q_error_base)
 
-            # Write out constraint
-            for i in range(3):
-                if trans_ct_ids_red[i] >= 0:
-                    constraints[wd_id, trans_ct_ids_red[i]] = t_error[i]
-                if rot_ct_ids_red[i] >= 0:
-                    constraints[wd_id, rot_ct_ids_red[i]] = rot_error[i]
+        # Write out constraint
+        for i in range(3):
+            if trans_ct_ids_red[i] >= 0:
+                constraints[wd_id, trans_ct_ids_red[i]] = t_error[i]
+            if rot_ct_ids_red[i] >= 0:
+                constraints[wd_id, rot_ct_ids_red[i]] = rot_error[i]
 
-            # Correct constraints for passive universal joints
-            if wp.static(has_universal_joints):
-                # Check for a passive universal joint
-                dof_type_j = joints_dof_type[jt_id_tot]
-                act_type_j = joints_act_type[jt_id_tot]
-                if dof_type_j != FKJointDoFType.UNIVERSAL or act_type_j != JointActuationType.PASSIVE:
-                    return
+        # Correct constraints for passive universal joints
+        if wp.static(has_universal_joints):
+            # Check for a passive universal joint
+            dof_type_j = joints_dof_type[jt_id_tot]
+            act_type_j = joints_act_type[jt_id_tot]
+            if dof_type_j != FKJointDoFType.UNIVERSAL or act_type_j != JointActuationType.PASSIVE:
+                return
 
-                # Compute constraint (dot product between x axis on base and y axis on follower)
-                a_x = X_T[0]
-                a_y = wp.transpose(joints_X_Fj[jt_id_tot])[1]
-                a_x_base = unit_quat_apply(q_base, a_x)
-                a_y_follower = unit_quat_apply(q_follower, a_y)
-                ct = -wp.dot(a_x_base, a_y_follower)
+            # Compute constraint (dot product between x axis on base and y axis on follower)
+            a_x = X_T[0]
+            a_y = wp.transpose(joints_X_Fj[jt_id_tot])[1]
+            a_x_base = unit_quat_apply(q_base, a_x)
+            a_y_follower = unit_quat_apply(q_follower, a_y)
+            ct = -wp.dot(a_x_base, a_y_follower)
 
-                # Set constraint in output (at a location corresponding to z rotational constraint)
-                constraints[wd_id, rot_ct_ids_red[2]] = ct
+            # Set constraint in output (at a location corresponding to z rotational constraint)
+            constraints[wd_id, rot_ct_ids_red[2]] = ct
 
     return _eval_joint_constraints
 
@@ -1139,18 +1142,19 @@ def _eval_unit_quaternion_constraints_jacobian(
 
     # Retrieve the thread indices (= world index, body index)
     wd_id, rb_id_loc = wp.tid()
+    if not world_mask[wd_id] or rb_id_loc >= num_bodies[wd_id]:
+        return
 
-    if wd_id < num_bodies.shape[0] and world_mask[wd_id] and rb_id_loc < num_bodies[wd_id]:
-        # Get overall body id
-        rb_id_tot = first_body_id[wd_id] + rb_id_loc
+    # Get overall body id
+    rb_id_tot = first_body_id[wd_id] + rb_id_loc
 
-        # Evaluate constraint Jacobian
-        q = wp.transform_get_rotation(bodies_q[rb_id_tot])
-        state_offset = 7 * rb_id_loc + 3
-        constraints_jacobian[wd_id, rb_id_loc, state_offset] = 2.0 * q.x
-        constraints_jacobian[wd_id, rb_id_loc, state_offset + 1] = 2.0 * q.y
-        constraints_jacobian[wd_id, rb_id_loc, state_offset + 2] = 2.0 * q.z
-        constraints_jacobian[wd_id, rb_id_loc, state_offset + 3] = 2.0 * q.w
+    # Evaluate constraint Jacobian
+    q = wp.transform_get_rotation(bodies_q[rb_id_tot])
+    state_offset = 7 * rb_id_loc + 3
+    constraints_jacobian[wd_id, rb_id_loc, state_offset] = 2.0 * q.x
+    constraints_jacobian[wd_id, rb_id_loc, state_offset + 1] = 2.0 * q.y
+    constraints_jacobian[wd_id, rb_id_loc, state_offset + 2] = 2.0 * q.z
+    constraints_jacobian[wd_id, rb_id_loc, state_offset + 3] = 2.0 * q.w
 
 
 @wp.kernel
@@ -1180,18 +1184,19 @@ def _eval_unit_quaternion_constraints_sparse_jacobian(
 
     # Retrieve the thread indices (= world index, body index)
     wd_id, rb_id_loc = wp.tid()
+    if not world_mask[wd_id] or rb_id_loc >= num_bodies[wd_id]:
+        return
 
-    if wd_id < num_bodies.shape[0] and world_mask[wd_id] and rb_id_loc < num_bodies[wd_id]:
-        # Get overall body id
-        rb_id_tot = first_body_id[wd_id] + rb_id_loc
+    # Get overall body id
+    rb_id_tot = first_body_id[wd_id] + rb_id_loc
 
-        # Evaluate constraint Jacobian
-        q = wp.transform_get_rotation(bodies_q[rb_id_tot])
-        nzb_id = rb_nzb_id[rb_id_tot]
-        jacobian_nzb[nzb_id][3] = 2.0 * q.x
-        jacobian_nzb[nzb_id][4] = 2.0 * q.y
-        jacobian_nzb[nzb_id][5] = 2.0 * q.z
-        jacobian_nzb[nzb_id][6] = 2.0 * q.w
+    # Evaluate constraint Jacobian
+    q = wp.transform_get_rotation(bodies_q[rb_id_tot])
+    nzb_id = rb_nzb_id[rb_id_tot]
+    jacobian_nzb[nzb_id][3] = 2.0 * q.x
+    jacobian_nzb[nzb_id][4] = 2.0 * q.y
+    jacobian_nzb[nzb_id][5] = 2.0 * q.z
+    jacobian_nzb[nzb_id][6] = 2.0 * q.w
 
 
 @cache
@@ -1249,84 +1254,81 @@ def create_eval_joint_constraints_jacobian_kernel(has_universal_joints: bool):
 
         # Retrieve the thread indices (= world index, joint index)
         wd_id, jt_id_loc = wp.tid()
+        if not world_mask[wd_id] or jt_id_loc >= num_joints[wd_id]:
+            return
 
-        if wd_id < num_joints.shape[0] and world_mask[wd_id] and jt_id_loc < num_joints[wd_id]:
-            # Get overall joint id
-            jt_id_tot = first_joint_id[wd_id] + jt_id_loc
+        # Get overall joint id
+        jt_id_tot = first_joint_id[wd_id] + jt_id_loc
 
-            # Get reduced constraint ids (-1 meaning constraint is not used)
-            trans_ct_ids_red, rot_ct_ids_red = _get_reduced_constraint_ids(jt_id_tot, ct_full_to_red_map)
+        # Get reduced constraint ids (-1 meaning constraint is not used)
+        trans_ct_ids_red, rot_ct_ids_red = _get_reduced_constraint_ids(jt_id_tot, ct_full_to_red_map)
 
-            # Get joint local positions and orientation
-            x_follower = joints_F_r_F[jt_id_tot]
-            X_T = wp.transpose(joints_X_Bj[jt_id_tot])
+        # Get joint local positions and orientation
+        x_follower = joints_F_r_F[jt_id_tot]
+        X_T = wp.transpose(joints_X_Bj[jt_id_tot])
 
-            # Get base and follower transformations
-            base_id_tot = joints_bid_B[jt_id_tot]
-            follower_id_tot = joints_bid_F[jt_id_tot]
-            c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id_tot, follower_id_tot, bodies_q)
-            base_id_loc = base_id_tot - first_body_id[wd_id]
-            follower_id_loc = follower_id_tot - first_body_id[wd_id]
+        # Get base and follower transformations
+        base_id_tot = joints_bid_B[jt_id_tot]
+        follower_id_tot = joints_bid_F[jt_id_tot]
+        c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id_tot, follower_id_tot, bodies_q)
+        base_id_loc = base_id_tot - first_body_id[wd_id]
+        follower_id_loc = follower_id_tot - first_body_id[wd_id]
 
-            # Get target relative transformation (rotation part only, as translation part doesn't affect the Jacobian)
-            q_rel_body = wp.transform_get_rotation(target_rel_transforms[jt_id_tot])
+        # Get target relative transformation (rotation part only, as translation part doesn't affect the Jacobian)
+        q_rel_body = wp.transform_get_rotation(target_rel_transforms[jt_id_tot])
 
-            # Translation constraints
-            jac_trans_c_base, jac_trans_q_base, jac_trans_c_follower, jac_trans_q_follower = (
-                _eval_translation_jacobian_blocks(
-                    X_T, q_base, q_follower, x_follower, c_base, c_follower, base_id_tot >= 0
-                )
+        # Translation constraints
+        jac_trans_c_base, jac_trans_q_base, jac_trans_c_follower, jac_trans_q_follower = (
+            _eval_translation_jacobian_blocks(X_T, q_base, q_follower, x_follower, c_base, c_follower, base_id_tot >= 0)
+        )
+        # Rotation constraints
+        jac_rot_q_base, jac_rot_q_follower = _eval_rotation_jacobian_blocks(
+            X_T, q_base, q_follower, q_rel_body, base_id_tot >= 0
+        )
+        # Note: we need X^T * R_base^T both for translation and rotation constraints, but to get the correct
+        # derivatives for non-unit quaternions (which may be encountered before convergence) we end up needing
+        # to use a separate formula to evaluate R_base in either case
+
+        # Write out Jacobian
+        base_offset = 7 * base_id_loc
+        follower_offset = 7 * follower_id_loc
+        for i in range(3):
+            trans_ct_id_red = trans_ct_ids_red[i]
+            if trans_ct_id_red >= 0:
+                for j in range(3):
+                    if base_id_tot >= 0:
+                        constraints_jacobian[wd_id, trans_ct_id_red, base_offset + j] = jac_trans_c_base[i, j]
+                    constraints_jacobian[wd_id, trans_ct_id_red, follower_offset + j] = jac_trans_c_follower[i, j]
+                for j in range(4):
+                    if base_id_tot >= 0:
+                        constraints_jacobian[wd_id, trans_ct_id_red, base_offset + 3 + j] = jac_trans_q_base[i, j]
+                    constraints_jacobian[wd_id, trans_ct_id_red, follower_offset + 3 + j] = jac_trans_q_follower[i, j]
+            rot_ct_id_red = rot_ct_ids_red[i]
+            if rot_ct_id_red >= 0:
+                for j in range(4):
+                    if base_id_tot >= 0:
+                        constraints_jacobian[wd_id, rot_ct_id_red, base_offset + 3 + j] = jac_rot_q_base[i, j]
+                    constraints_jacobian[wd_id, rot_ct_id_red, follower_offset + 3 + j] = jac_rot_q_follower[i, j]
+
+        # Correct Jacobian for passive universal joints
+        if wp.static(has_universal_joints):
+            # Check for a passive universal joint
+            dof_type_j = joints_dof_type[jt_id_tot]
+            act_type_j = joints_act_type[jt_id_tot]
+            if dof_type_j != FKJointDoFType.UNIVERSAL or act_type_j != JointActuationType.PASSIVE:
+                return
+
+            # Compute constraint Jacobian (cross product between x axis on base and y axis on follower)
+            jac_q_base, jac_q_follower = _eval_passive_universal_jacobian_blocks(
+                X_T, wp.transpose(joints_X_Fj[jt_id_tot]), q_base, q_follower, base_id_tot >= 0
             )
-            # Rotation constraints
-            jac_rot_q_base, jac_rot_q_follower = _eval_rotation_jacobian_blocks(
-                X_T, q_base, q_follower, q_rel_body, base_id_tot >= 0
-            )
-            # Note: we need X^T * R_base^T both for translation and rotation constraints, but to get the correct
-            # derivatives for non-unit quaternions (which may be encountered before convergence) we end up needing
-            # to use a separate formula to evaluate R_base in either case
 
             # Write out Jacobian
-            base_offset = 7 * base_id_loc
-            follower_offset = 7 * follower_id_loc
-            for i in range(3):
-                trans_ct_id_red = trans_ct_ids_red[i]
-                if trans_ct_id_red >= 0:
-                    for j in range(3):
-                        if base_id_tot >= 0:
-                            constraints_jacobian[wd_id, trans_ct_id_red, base_offset + j] = jac_trans_c_base[i, j]
-                        constraints_jacobian[wd_id, trans_ct_id_red, follower_offset + j] = jac_trans_c_follower[i, j]
-                    for j in range(4):
-                        if base_id_tot >= 0:
-                            constraints_jacobian[wd_id, trans_ct_id_red, base_offset + 3 + j] = jac_trans_q_base[i, j]
-                        constraints_jacobian[wd_id, trans_ct_id_red, follower_offset + 3 + j] = jac_trans_q_follower[
-                            i, j
-                        ]
-                rot_ct_id_red = rot_ct_ids_red[i]
-                if rot_ct_id_red >= 0:
-                    for j in range(4):
-                        if base_id_tot >= 0:
-                            constraints_jacobian[wd_id, rot_ct_id_red, base_offset + 3 + j] = jac_rot_q_base[i, j]
-                        constraints_jacobian[wd_id, rot_ct_id_red, follower_offset + 3 + j] = jac_rot_q_follower[i, j]
-
-            # Correct Jacobian for passive universal joints
-            if wp.static(has_universal_joints):
-                # Check for a passive universal joint
-                dof_type_j = joints_dof_type[jt_id_tot]
-                act_type_j = joints_act_type[jt_id_tot]
-                if dof_type_j != FKJointDoFType.UNIVERSAL or act_type_j != JointActuationType.PASSIVE:
-                    return
-
-                # Compute constraint Jacobian (cross product between x axis on base and y axis on follower)
-                jac_q_base, jac_q_follower = _eval_passive_universal_jacobian_blocks(
-                    X_T, wp.transpose(joints_X_Fj[jt_id_tot]), q_base, q_follower, base_id_tot >= 0
-                )
-
-                # Write out Jacobian
-                for i in range(4):
-                    rot_ct_id_red = rot_ct_ids_red[2]
-                    if base_id_tot >= 0:
-                        constraints_jacobian[wd_id, rot_ct_id_red, base_offset + 3 + i] = jac_q_base[i]
-                    constraints_jacobian[wd_id, rot_ct_id_red, follower_offset + 3 + i] = jac_q_follower[i]
+            for i in range(4):
+                rot_ct_id_red = rot_ct_ids_red[2]
+                if base_id_tot >= 0:
+                    constraints_jacobian[wd_id, rot_ct_id_red, base_offset + 3 + i] = jac_q_base[i]
+                constraints_jacobian[wd_id, rot_ct_id_red, follower_offset + 3 + i] = jac_q_follower[i]
 
     return _eval_joint_constraints_jacobian
 
@@ -1389,89 +1391,90 @@ def create_eval_joint_constraints_sparse_jacobian_kernel(has_universal_joints: b
 
         # Retrieve the thread indices (= world index, joint index)
         wd_id, jt_id_loc = wp.tid()
+        if not world_mask[wd_id] or jt_id_loc >= num_joints[wd_id]:
+            return
 
-        if wd_id < num_joints.shape[0] and world_mask[wd_id] and jt_id_loc < num_joints[wd_id]:
-            # Get overall joint id
-            jt_id_tot = first_joint_id[wd_id] + jt_id_loc
+        # Get overall joint id
+        jt_id_tot = first_joint_id[wd_id] + jt_id_loc
 
-            # Get nzb ids (-1 meaning constraint is not used)
-            start = 6 * jt_id_tot
-            end = start + 6
-            nzb_ids_base = ct_nzb_id_base[start:end]
-            nzb_ids_follower = ct_nzb_id_follower[start:end]
+        # Get nzb ids (-1 meaning constraint is not used)
+        start = 6 * jt_id_tot
+        end = start + 6
+        nzb_ids_base = ct_nzb_id_base[start:end]
+        nzb_ids_follower = ct_nzb_id_follower[start:end]
 
-            # Get joint local positions and orientation
-            x_follower = joints_F_r_F[jt_id_tot]
-            X_T = wp.transpose(joints_X_Bj[jt_id_tot])
+        # Get joint local positions and orientation
+        x_follower = joints_F_r_F[jt_id_tot]
+        X_T = wp.transpose(joints_X_Bj[jt_id_tot])
 
-            # Get base and follower transformations
-            base_id = joints_bid_B[jt_id_tot]
-            follower_id = joints_bid_F[jt_id_tot]
-            c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id, follower_id, bodies_q)
+        # Get base and follower transformations
+        base_id = joints_bid_B[jt_id_tot]
+        follower_id = joints_bid_F[jt_id_tot]
+        c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id, follower_id, bodies_q)
 
-            # Get target relative transformation (rotation part only, as translation part doesn't affect the Jacobian)
-            q_rel_body = wp.transform_get_rotation(target_rel_transforms[jt_id_tot])
+        # Get target relative transformation (rotation part only, as translation part doesn't affect the Jacobian)
+        q_rel_body = wp.transform_get_rotation(target_rel_transforms[jt_id_tot])
 
-            # Translation constraints
-            jac_trans_c_base, jac_trans_q_base, jac_trans_c_follower, jac_trans_q_follower = (
-                _eval_translation_jacobian_blocks(X_T, q_base, q_follower, x_follower, c_base, c_follower, base_id >= 0)
+        # Translation constraints
+        jac_trans_c_base, jac_trans_q_base, jac_trans_c_follower, jac_trans_q_follower = (
+            _eval_translation_jacobian_blocks(X_T, q_base, q_follower, x_follower, c_base, c_follower, base_id >= 0)
+        )
+        # Rotation constraints
+        jac_rot_q_base, jac_rot_q_follower = _eval_rotation_jacobian_blocks(
+            X_T, q_base, q_follower, q_rel_body, base_id >= 0
+        )
+        # Note: we need X^T * R_base^T both for translation and rotation constraints, but to get the correct
+        # derivatives for non-unit quaternions (which may be encountered before convergence) we end up needing
+        # to use a separate formula to evaluate R_base in either case
+
+        # Write out Jacobian
+        if base_id >= 0:
+            for i in range(3):
+                nzb_id = nzb_ids_base[i]
+                if nzb_id >= 0:
+                    for j in range(3):
+                        jacobian_nzb[nzb_id][j] = jac_trans_c_base[i, j]
+                    for j in range(4):
+                        jacobian_nzb[nzb_id][3 + j] = jac_trans_q_base[i, j]
+            for i in range(3):
+                nzb_id = nzb_ids_base[i + 3]
+                if nzb_id >= 0:
+                    for j in range(4):
+                        jacobian_nzb[nzb_id][3 + j] = jac_rot_q_base[i, j]
+        for i in range(3):
+            nzb_id = nzb_ids_follower[i]
+            if nzb_id >= 0:
+                for j in range(3):
+                    jacobian_nzb[nzb_id][j] = jac_trans_c_follower[i, j]
+                for j in range(4):
+                    jacobian_nzb[nzb_id][3 + j] = jac_trans_q_follower[i, j]
+        for i in range(3):
+            nzb_id = nzb_ids_follower[i + 3]
+            if nzb_id >= 0:
+                for j in range(4):
+                    jacobian_nzb[nzb_id][3 + j] = jac_rot_q_follower[i, j]
+
+        # Correct Jacobian for passive universal joints
+        if wp.static(has_universal_joints):
+            # Check for a passive universal joint
+            dof_type_j = joints_dof_type[jt_id_tot]
+            act_type_j = joints_act_type[jt_id_tot]
+            if dof_type_j != FKJointDoFType.UNIVERSAL or act_type_j != JointActuationType.PASSIVE:
+                return
+
+            # Compute constraint Jacobian (cross product between x axis on base and y axis on follower)
+            jac_q_base, jac_q_follower = _eval_passive_universal_jacobian_blocks(
+                X_T, wp.transpose(joints_X_Fj[jt_id_tot]), q_base, q_follower, base_id >= 0
             )
-            # Rotation constraints
-            jac_rot_q_base, jac_rot_q_follower = _eval_rotation_jacobian_blocks(
-                X_T, q_base, q_follower, q_rel_body, base_id >= 0
-            )
-            # Note: we need X^T * R_base^T both for translation and rotation constraints, but to get the correct
-            # derivatives for non-unit quaternions (which may be encountered before convergence) we end up needing
-            # to use a separate formula to evaluate R_base in either case
 
             # Write out Jacobian
             if base_id >= 0:
-                for i in range(3):
-                    nzb_id = nzb_ids_base[i]
-                    if nzb_id >= 0:
-                        for j in range(3):
-                            jacobian_nzb[nzb_id][j] = jac_trans_c_base[i, j]
-                        for j in range(4):
-                            jacobian_nzb[nzb_id][3 + j] = jac_trans_q_base[i, j]
-                for i in range(3):
-                    nzb_id = nzb_ids_base[i + 3]
-                    if nzb_id >= 0:
-                        for j in range(4):
-                            jacobian_nzb[nzb_id][3 + j] = jac_rot_q_base[i, j]
-            for i in range(3):
-                nzb_id = nzb_ids_follower[i]
-                if nzb_id >= 0:
-                    for j in range(3):
-                        jacobian_nzb[nzb_id][j] = jac_trans_c_follower[i, j]
-                    for j in range(4):
-                        jacobian_nzb[nzb_id][3 + j] = jac_trans_q_follower[i, j]
-            for i in range(3):
-                nzb_id = nzb_ids_follower[i + 3]
-                if nzb_id >= 0:
-                    for j in range(4):
-                        jacobian_nzb[nzb_id][3 + j] = jac_rot_q_follower[i, j]
-
-            # Correct Jacobian for passive universal joints
-            if wp.static(has_universal_joints):
-                # Check for a passive universal joint
-                dof_type_j = joints_dof_type[jt_id_tot]
-                act_type_j = joints_act_type[jt_id_tot]
-                if dof_type_j != FKJointDoFType.UNIVERSAL or act_type_j != JointActuationType.PASSIVE:
-                    return
-
-                # Compute constraint Jacobian (cross product between x axis on base and y axis on follower)
-                jac_q_base, jac_q_follower = _eval_passive_universal_jacobian_blocks(
-                    X_T, wp.transpose(joints_X_Fj[jt_id_tot]), q_base, q_follower, base_id >= 0
-                )
-
-                # Write out Jacobian
-                if base_id >= 0:
-                    nzb_id = nzb_ids_base[5]
-                    for j in range(4):
-                        jacobian_nzb[nzb_id][3 + j] = jac_q_base[j]
-                nzb_id = nzb_ids_follower[5]
+                nzb_id = nzb_ids_base[5]
                 for j in range(4):
-                    jacobian_nzb[nzb_id][3 + j] = jac_q_follower[j]
+                    jacobian_nzb[nzb_id][3 + j] = jac_q_base[j]
+            nzb_id = nzb_ids_follower[5]
+            for j in range(4):
+                jacobian_nzb[nzb_id][3 + j] = jac_q_follower[j]
 
     return _eval_joint_constraints_sparse_jacobian
 
@@ -1518,35 +1521,30 @@ def create_2d_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int3
         """
         wd_id, i, j = wp.tid()  # Thread indices (= world index, output tile indices)
 
-        if (
-            wd_id < pattern_T_pattern.shape[0]
-            and i * TILE_SIZE_VRS < pattern_T_pattern.shape[1]
-            and j * TILE_SIZE_VRS < pattern_T_pattern.shape[2]
-        ):
-            tile_out = wp.tile_zeros(shape=(TILE_SIZE_VRS, TILE_SIZE_VRS), dtype=wp.float32)
+        tile_out = wp.tile_zeros(shape=(TILE_SIZE_VRS, TILE_SIZE_VRS), dtype=wp.float32)
 
-            num_cts = sparsity_pattern.shape[1]
-            num_tiles_K = (num_cts + TILE_SIZE_CTS - 1) // TILE_SIZE_CTS  # Equivalent to ceil(num_cts / TILE_SIZE_CTS)
+        num_cts = sparsity_pattern.shape[1]
+        num_tiles_K = (num_cts + TILE_SIZE_CTS - 1) // TILE_SIZE_CTS  # Equivalent to ceil(num_cts / TILE_SIZE_CTS)
 
-            for k in range(num_tiles_K):
-                tile_i_3d = wp.tile_load(
-                    sparsity_pattern,
-                    shape=(1, TILE_SIZE_CTS, TILE_SIZE_VRS),
-                    offset=(wd_id, k * TILE_SIZE_CTS, i * TILE_SIZE_VRS),
-                )
-                tile_i = wp.tile_reshape(tile_i_3d, (TILE_SIZE_CTS, TILE_SIZE_VRS))
-                tile_i_T = wp.tile_transpose(tile_i)
-                tile_j_3d = wp.tile_load(
-                    sparsity_pattern,
-                    shape=(1, TILE_SIZE_CTS, TILE_SIZE_VRS),
-                    offset=(wd_id, k * TILE_SIZE_CTS, j * TILE_SIZE_VRS),
-                )
-                tile_j = wp.tile_reshape(tile_j_3d, (TILE_SIZE_CTS, TILE_SIZE_VRS))
-                wp.tile_matmul(tile_i_T, tile_j, tile_out)
+        for k in range(num_tiles_K):
+            tile_i_3d = wp.tile_load(
+                sparsity_pattern,
+                shape=(1, TILE_SIZE_CTS, TILE_SIZE_VRS),
+                offset=(wd_id, k * TILE_SIZE_CTS, i * TILE_SIZE_VRS),
+            )
+            tile_i = wp.tile_reshape(tile_i_3d, (TILE_SIZE_CTS, TILE_SIZE_VRS))
+            tile_i_T = wp.tile_transpose(tile_i)
+            tile_j_3d = wp.tile_load(
+                sparsity_pattern,
+                shape=(1, TILE_SIZE_CTS, TILE_SIZE_VRS),
+                offset=(wd_id, k * TILE_SIZE_CTS, j * TILE_SIZE_VRS),
+            )
+            tile_j = wp.tile_reshape(tile_j_3d, (TILE_SIZE_CTS, TILE_SIZE_VRS))
+            wp.tile_matmul(tile_i_T, tile_j, tile_out)
 
-            tile_out_3d = wp.tile_reshape(tile_out, (1, TILE_SIZE_VRS, TILE_SIZE_VRS))
-            tile_out_3d_clipped = wp.tile_map(clip_to_one, tile_out_3d)
-            wp.tile_store(pattern_T_pattern, tile_out_3d_clipped, offset=(wd_id, i * TILE_SIZE_VRS, j * TILE_SIZE_VRS))
+        tile_out_3d = wp.tile_reshape(tile_out, (1, TILE_SIZE_VRS, TILE_SIZE_VRS))
+        tile_out_3d_clipped = wp.tile_map(clip_to_one, tile_out_3d)
+        wp.tile_store(pattern_T_pattern, tile_out_3d_clipped, offset=(wd_id, i * TILE_SIZE_VRS, j * TILE_SIZE_VRS))
 
     @wp.kernel(module=module)
     def _eval_jacobian_T_jacobian(
@@ -1568,38 +1566,34 @@ def create_2d_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int3
             jacobian_T_jacobian: Jacobian^T * Jacobian per world
         """
         wd_id, i, j = wp.tid()  # Thread indices (= world index, output tile indices)
+        if not world_mask[wd_id]:
+            return
 
-        if (
-            wd_id < jacobian_T_jacobian.shape[0]
-            and world_mask[wd_id]
-            and i * TILE_SIZE_VRS < jacobian_T_jacobian.shape[1]
-            and j * TILE_SIZE_VRS < jacobian_T_jacobian.shape[2]
-        ):
-            tile_out = wp.tile_zeros(shape=(TILE_SIZE_VRS, TILE_SIZE_VRS), dtype=wp.float32)
+        tile_out = wp.tile_zeros(shape=(TILE_SIZE_VRS, TILE_SIZE_VRS), dtype=wp.float32)
 
-            num_cts = constraints_jacobian.shape[1]
-            num_tiles_K = (num_cts + TILE_SIZE_CTS - 1) // TILE_SIZE_CTS  # Equivalent to ceil(num_cts / TILE_SIZE_CTS)
+        num_cts = constraints_jacobian.shape[1]
+        num_tiles_K = (num_cts + TILE_SIZE_CTS - 1) // TILE_SIZE_CTS  # Equivalent to ceil(num_cts / TILE_SIZE_CTS)
 
-            for k in range(num_tiles_K):
-                if tile_sparsity_pattern[wd_id, k, i] == 0 or tile_sparsity_pattern[wd_id, k, j] == 0:
-                    continue
-                tile_i_3d = wp.tile_load(
-                    constraints_jacobian,
-                    shape=(1, TILE_SIZE_CTS, TILE_SIZE_VRS),
-                    offset=(wd_id, k * TILE_SIZE_CTS, i * TILE_SIZE_VRS),
-                )
-                tile_i = wp.tile_reshape(tile_i_3d, (TILE_SIZE_CTS, TILE_SIZE_VRS))
-                tile_i_T = wp.tile_transpose(tile_i)
-                tile_j_3d = wp.tile_load(
-                    constraints_jacobian,
-                    shape=(1, TILE_SIZE_CTS, TILE_SIZE_VRS),
-                    offset=(wd_id, k * TILE_SIZE_CTS, j * TILE_SIZE_VRS),
-                )
-                tile_j = wp.tile_reshape(tile_j_3d, (TILE_SIZE_CTS, TILE_SIZE_VRS))
-                wp.tile_matmul(tile_i_T, tile_j, tile_out)
+        for k in range(num_tiles_K):
+            if tile_sparsity_pattern[wd_id, k, i] == 0 or tile_sparsity_pattern[wd_id, k, j] == 0:
+                continue
+            tile_i_3d = wp.tile_load(
+                constraints_jacobian,
+                shape=(1, TILE_SIZE_CTS, TILE_SIZE_VRS),
+                offset=(wd_id, k * TILE_SIZE_CTS, i * TILE_SIZE_VRS),
+            )
+            tile_i = wp.tile_reshape(tile_i_3d, (TILE_SIZE_CTS, TILE_SIZE_VRS))
+            tile_i_T = wp.tile_transpose(tile_i)
+            tile_j_3d = wp.tile_load(
+                constraints_jacobian,
+                shape=(1, TILE_SIZE_CTS, TILE_SIZE_VRS),
+                offset=(wd_id, k * TILE_SIZE_CTS, j * TILE_SIZE_VRS),
+            )
+            tile_j = wp.tile_reshape(tile_j_3d, (TILE_SIZE_CTS, TILE_SIZE_VRS))
+            wp.tile_matmul(tile_i_T, tile_j, tile_out)
 
-            tile_out_3d = wp.tile_reshape(tile_out, (1, TILE_SIZE_VRS, TILE_SIZE_VRS))
-            wp.tile_store(jacobian_T_jacobian, tile_out_3d, offset=(wd_id, i * TILE_SIZE_VRS, j * TILE_SIZE_VRS))
+        tile_out_3d = wp.tile_reshape(tile_out, (1, TILE_SIZE_VRS, TILE_SIZE_VRS))
+        wp.tile_store(jacobian_T_jacobian, tile_out_3d, offset=(wd_id, i * TILE_SIZE_VRS, j * TILE_SIZE_VRS))
 
     @wp.kernel(module=module)
     def _eval_jacobian_T_constraints(
@@ -1625,52 +1619,34 @@ def create_2d_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int3
             jacobian_T_constraints: Jacobian^T * Constraints, with shape (num_worlds, num_states_max, batch_size)
         """
         wd_id, i, batch_id = wp.tid()  # Thread indices (= world index, output tile index, batch index)
+        if not world_mask[wd_id]:
+            return
 
-        if (
-            wd_id < jacobian_T_constraints.shape[0]
-            and world_mask[wd_id]
-            and i * TILE_SIZE_VRS < jacobian_T_constraints.shape[1]
-        ):
-            segment_out = wp.tile_zeros(shape=(TILE_SIZE_VRS, 1), dtype=wp.float32)
+        segment_out = wp.tile_zeros(shape=(TILE_SIZE_VRS, 1), dtype=wp.float32)
 
-            num_cts = constraints_jacobian.shape[1]
-            num_tiles_K = (num_cts + TILE_SIZE_CTS - 1) // TILE_SIZE_CTS  # Equivalent to ceil(num_cts / TILE_SIZE_CTS)
+        num_cts = constraints_jacobian.shape[1]
+        num_tiles_K = (num_cts + TILE_SIZE_CTS - 1) // TILE_SIZE_CTS  # Equivalent to ceil(num_cts / TILE_SIZE_CTS)
 
-            for k in range(num_tiles_K):
-                if tile_sparsity_pattern[wd_id, k, i] == 0:
-                    continue
-                tile_i_3d = wp.tile_load(
-                    constraints_jacobian,
-                    shape=(1, TILE_SIZE_CTS, TILE_SIZE_VRS),
-                    offset=(wd_id, k * TILE_SIZE_CTS, i * TILE_SIZE_VRS),
-                )
-                tile_i = wp.tile_reshape(tile_i_3d, (TILE_SIZE_CTS, TILE_SIZE_VRS))
-                tile_i_T = wp.tile_transpose(tile_i)
-                segment_k_3d = wp.tile_load(
-                    constraints,
-                    shape=(1, TILE_SIZE_CTS, 1),
-                    offset=(wd_id, k * TILE_SIZE_CTS, batch_id),
-                )
-                segment_k = wp.tile_reshape(segment_k_3d, (TILE_SIZE_CTS, 1))
-                wp.tile_matmul(tile_i_T, segment_k, segment_out)
-
-            segment_out_3d = wp.tile_reshape(
-                segment_out,
-                (
-                    1,
-                    TILE_SIZE_VRS,
-                    1,
-                ),
+        for k in range(num_tiles_K):
+            if tile_sparsity_pattern[wd_id, k, i] == 0:
+                continue
+            tile_i_3d = wp.tile_load(
+                constraints_jacobian,
+                shape=(1, TILE_SIZE_CTS, TILE_SIZE_VRS),
+                offset=(wd_id, k * TILE_SIZE_CTS, i * TILE_SIZE_VRS),
             )
-            wp.tile_store(
-                jacobian_T_constraints,
-                segment_out_3d,
-                offset=(
-                    wd_id,
-                    i * TILE_SIZE_VRS,
-                    batch_id,
-                ),
+            tile_i = wp.tile_reshape(tile_i_3d, (TILE_SIZE_CTS, TILE_SIZE_VRS))
+            tile_i_T = wp.tile_transpose(tile_i)
+            segment_k_3d = wp.tile_load(
+                constraints,
+                shape=(1, TILE_SIZE_CTS, 1),
+                offset=(wd_id, k * TILE_SIZE_CTS, batch_id),
             )
+            segment_k = wp.tile_reshape(segment_k_3d, (TILE_SIZE_CTS, 1))
+            wp.tile_matmul(tile_i_T, segment_k, segment_out)
+
+        segment_out_3d = wp.tile_reshape(segment_out, (1, TILE_SIZE_VRS, 1))
+        wp.tile_store(jacobian_T_constraints, segment_out_3d, offset=(wd_id, i * TILE_SIZE_VRS, batch_id))
 
     return _eval_pattern_T_pattern, _eval_jacobian_T_jacobian, _eval_jacobian_T_constraints
 
@@ -1714,25 +1690,24 @@ def create_1d_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int3
         """
         wd_id, i, tid = wp.tid()  # Thread indices (= world index, input tile index, thread index in block)
 
-        if wd_id < residual.shape[0] and i * TILE_SIZE < residual.shape[1]:
-            segment = wp.tile_load(residual, shape=(1, TILE_SIZE), offset=(wd_id, i * TILE_SIZE))
-            segment_max = wp.tile_max(wp.tile_map(wp.abs, segment))[0]
-            segment_has_nan = wp.tile_max(wp.tile_map(_isnan, segment))[0]
+        segment = wp.tile_load(residual, shape=(1, TILE_SIZE), offset=(wd_id, i * TILE_SIZE))
+        segment_max = wp.tile_max(wp.tile_map(wp.abs, segment))[0]
+        segment_has_nan = wp.tile_max(wp.tile_map(_isnan, segment))[0]
 
-            if tid == 0:
-                if segment_has_nan:
-                    # Write NaN in max (non-atomically, as this will overwrite any non-NaN value)
-                    max_residual[wd_id] = wp.nan
-                else:
-                    # Atomically update the max, only if it is not yet NaN (in CUDA, the max() operation only
-                    # considers non-NaN values, so the NaN value would get overwritten by a non-NaN otherwise)
-                    while True:
-                        curr_val = max_residual[wd_id]
-                        if wp.isnan(curr_val):
-                            break
-                        check_val = wp.atomic_cas(max_residual, wd_id, curr_val, wp.max(curr_val, segment_max))
-                        if check_val == curr_val:
-                            break
+        if tid == 0:
+            if segment_has_nan:
+                # Write NaN in max (non-atomically, as this will overwrite any non-NaN value)
+                max_residual[wd_id] = wp.nan
+            else:
+                # Atomically update the max, only if it is not yet NaN (in CUDA, the max() operation only
+                # considers non-NaN values, so the NaN value would get overwritten by a non-NaN otherwise)
+                while True:
+                    curr_val = max_residual[wd_id]
+                    if wp.isnan(curr_val):
+                        break
+                    check_val = wp.atomic_cas(max_residual, wd_id, curr_val, wp.max(curr_val, segment_max))
+                    if check_val == curr_val:
+                        break
 
     @wp.kernel(module=module)
     def _eval_merit_function(
@@ -1752,12 +1727,11 @@ def create_1d_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int3
         """
         wd_id, i, tid = wp.tid()  # Thread indices (= world index, input tile index, thread index in block)
 
-        if wd_id < constraints.shape[0] and i * TILE_SIZE_CTS < constraints.shape[1]:
-            segment = wp.tile_load(constraints, shape=(1, TILE_SIZE_CTS), offset=(wd_id, i * TILE_SIZE_CTS))
-            segment_error = 0.5 * wp.tile_sum(wp.tile_map(wp.mul, segment, segment))[0]
+        segment = wp.tile_load(constraints, shape=(1, TILE_SIZE_CTS), offset=(wd_id, i * TILE_SIZE_CTS))
+        segment_error = 0.5 * wp.tile_sum(wp.tile_map(wp.mul, segment, segment))[0]
 
-            if tid == 0:
-                wp.atomic_add(merit_function_val, wd_id, segment_error)
+        if tid == 0:
+            wp.atomic_add(merit_function_val, wd_id, segment_error)
 
     @wp.kernel(module=module)
     def _eval_regularizer(
@@ -1821,13 +1795,12 @@ def create_1d_tile_based_kernels(TILE_SIZE_CTS: wp.int32, TILE_SIZE_VRS: wp.int3
         """
         wd_id, i, tid = wp.tid()  # Thread indices (= world index, input tile index, thread index in block)
 
-        if wd_id < step.shape[0] and i * TILE_SIZE_VRS < step.shape[1]:
-            step_segment = wp.tile_load(step, shape=(1, TILE_SIZE_VRS), offset=(wd_id, i * TILE_SIZE_VRS))
-            grad_segment = wp.tile_load(grad, shape=(1, TILE_SIZE_VRS), offset=(wd_id, i * TILE_SIZE_VRS))
-            tile_dot_prod = wp.tile_sum(wp.tile_map(wp.mul, step_segment, grad_segment))[0]
+        step_segment = wp.tile_load(step, shape=(1, TILE_SIZE_VRS), offset=(wd_id, i * TILE_SIZE_VRS))
+        grad_segment = wp.tile_load(grad, shape=(1, TILE_SIZE_VRS), offset=(wd_id, i * TILE_SIZE_VRS))
+        tile_dot_prod = wp.tile_sum(wp.tile_map(wp.mul, step_segment, grad_segment))[0]
 
-            if tid == 0:
-                wp.atomic_add(merit_function_grad, wd_id, tile_dot_prod)
+        if tid == 0:
+            wp.atomic_add(merit_function_grad, wd_id, tile_dot_prod)
 
     return _eval_max_residual, _eval_merit_function, _eval_regularizer, _eval_merit_function_gradient
 
@@ -1848,8 +1821,7 @@ def _eval_rhs(
         rhs: Gauss-Newton right-hand side per world
     """
     wd_id, state_id_loc = wp.tid()  # Thread indices (= world index, state index)
-    if wd_id < grad.shape[0] and state_id_loc < grad.shape[1]:
-        rhs[wd_id, state_id_loc] = -grad[wd_id, state_id_loc]
+    rhs[wd_id, state_id_loc] = -grad[wd_id, state_id_loc]
 
 
 @wp.kernel
@@ -1872,8 +1844,9 @@ def _add_regularizer_to_diagonal(
         A: Stack of system matrices (one per world) to regularize.
     """
     wd_id, row_id = wp.tid()  # Thread indices (= world index, row index)
-    if world_mask[wd_id] and row_id < active_size[wd_id]:
-        A[wd_id, row_id, row_id] = A[wd_id, row_id, row_id] + reg_weight
+    if not world_mask[wd_id] or row_id >= active_size[wd_id]:
+        return
+    A[wd_id, row_id, row_id] = A[wd_id, row_id, row_id] + reg_weight
 
 
 @wp.kernel
@@ -1938,8 +1911,9 @@ def _eval_linear_combination(
         z: Output stack of vectors
     """
     wd_id, row_id = wp.tid()  # Thread indices (= world index, row index)
-    if wd_id < num_rows.shape[0] and world_mask[wd_id] and row_id < num_rows[wd_id]:
-        z[wd_id, row_id] = alpha * x[wd_id, row_id] + beta * y[wd_id, row_id]
+    if not world_mask[wd_id] or row_id >= num_rows[wd_id]:
+        return
+    z[wd_id, row_id] = alpha * x[wd_id, row_id] + beta * y[wd_id, row_id]
 
 
 @wp.kernel
@@ -1969,9 +1943,10 @@ def _eval_stepped_state(
     """
     wd_id, state_id_loc = wp.tid()  # Thread indices (= world index, state index)
     rb_id_loc = state_id_loc // 7
-    if wd_id < num_bodies.shape[0] and world_mask[wd_id] and rb_id_loc < num_bodies[wd_id]:
-        state_id_tot = 7 * first_body_id[wd_id] + state_id_loc
-        bodies_q_alpha_flat[state_id_tot] = bodies_q_0_flat[state_id_tot] + alpha[wd_id] * step[wd_id, state_id_loc]
+    if not world_mask[wd_id] or rb_id_loc >= num_bodies[wd_id]:
+        return
+    state_id_tot = 7 * first_body_id[wd_id] + state_id_loc
+    bodies_q_alpha_flat[state_id_tot] = bodies_q_0_flat[state_id_tot] + alpha[wd_id] * step[wd_id, state_id_loc]
 
 
 @wp.kernel
@@ -1998,9 +1973,10 @@ def _apply_line_search_step(
         bodies_q: Output state (rigid body poses)
     """
     wd_id, rb_id_loc = wp.tid()  # Thread indices (= world index, body index)
-    if wd_id < num_bodies.shape[0] and line_search_success[wd_id] and rb_id_loc < num_bodies[wd_id]:
-        rb_id_tot = first_body_id[wd_id] + rb_id_loc
-        bodies_q[rb_id_tot] = bodies_q_alpha[rb_id_tot]
+    if not line_search_success[wd_id] or rb_id_loc >= num_bodies[wd_id]:
+        return
+    rb_id_tot = first_body_id[wd_id] + rb_id_loc
+    bodies_q[rb_id_tot] = bodies_q_alpha[rb_id_tot]
 
 
 @wp.kernel
@@ -2034,17 +2010,16 @@ def _line_search_check(
         line_search_loop_condition: Loop condition; must be zero-initialized (size 1 array)
     """
     wd_id = wp.tid()  # Thread index (= world index)
-    if wd_id < val_0.shape[0] and line_search_mask[wd_id]:
-        iteration[wd_id] += 1
-        success = (
-            wp.isfinite(val_alpha[wd_id]) and val_alpha[wd_id] <= val_0[wd_id] + 1e-4 * alpha[wd_id] * grad_0[wd_id]
-        )
-        line_search_success[wd_id] = success
-        continue_loop_world = iteration[wd_id] < max_iterations[0] and not success
-        line_search_mask[wd_id] = continue_loop_world
-        if continue_loop_world:
-            alpha[wd_id] *= 0.5
-        wp.atomic_max(line_search_loop_condition, 0, wp.int32(continue_loop_world))
+    if not line_search_mask[wd_id]:
+        return
+    iteration[wd_id] += 1
+    success = wp.isfinite(val_alpha[wd_id]) and val_alpha[wd_id] <= val_0[wd_id] + 1e-4 * alpha[wd_id] * grad_0[wd_id]
+    line_search_success[wd_id] = success
+    continue_loop_world = iteration[wd_id] < max_iterations[0] and not success
+    line_search_mask[wd_id] = continue_loop_world
+    if continue_loop_world:
+        alpha[wd_id] *= 0.5
+    wp.atomic_max(line_search_loop_condition, 0, wp.int32(continue_loop_world))
 
 
 @wp.kernel
@@ -2085,28 +2060,29 @@ def _newton_check(
         jacobian_late_update_mask: Optional mask, set to True in worlds needing a late Jacobian update
     """
     wd_id = wp.tid()  # Thread index (= world index)
-    if wd_id < max_residual.shape[0] and newton_mask[wd_id]:
-        iteration_prev = iteration[wd_id]  # Index of the iteration that just ran
-        iteration_next = iteration_prev + 1  # Index of the iteration that is about to run
-        min_iterations_wd = min_iterations[wd_id]
-        iteration[wd_id] = iteration_next
-        reached_min_it = iteration_prev >= min_iterations_wd
-        max_residual_wd = max_residual[wd_id]
-        is_finite = wp.isfinite(max_residual_wd)
-        success = is_finite and reached_min_it and max_residual_wd <= tolerance[0]
-        newton_success[wd_id] = success
-        newton_continue_world = (
-            iteration_next < max_iterations[0]
-            and not success
-            and is_finite  # Abort when encountering NaN / Inf values
-            and line_search_success[wd_id]  # Abort in case of line search failure
-        )
-        newton_mask[wd_id] = newton_continue_world
-        if jacobian_early_update_mask.shape[0] > 0:
-            jacobian_early_update_mask[wd_id] = newton_continue_world and iteration_next >= min_iterations_wd
-        if jacobian_late_update_mask.shape[0] > 0:
-            jacobian_late_update_mask[wd_id] = newton_continue_world and iteration_next <= min_iterations_wd
-        wp.atomic_max(newton_loop_condition, 0, wp.int32(newton_continue_world))
+    if not newton_mask[wd_id]:
+        return
+    iteration_prev = iteration[wd_id]  # Index of the iteration that just ran
+    iteration_next = iteration_prev + 1  # Index of the iteration that is about to run
+    min_iterations_wd = min_iterations[wd_id]
+    iteration[wd_id] = iteration_next
+    reached_min_it = iteration_prev >= min_iterations_wd
+    max_residual_wd = max_residual[wd_id]
+    is_finite = wp.isfinite(max_residual_wd)
+    success = is_finite and reached_min_it and max_residual_wd <= tolerance[0]
+    newton_success[wd_id] = success
+    newton_continue_world = (
+        iteration_next < max_iterations[0]
+        and not success
+        and is_finite  # Abort when encountering NaN / Inf values
+        and line_search_success[wd_id]  # Abort in case of line search failure
+    )
+    newton_mask[wd_id] = newton_continue_world
+    if jacobian_early_update_mask.shape[0] > 0:
+        jacobian_early_update_mask[wd_id] = newton_continue_world and iteration_next >= min_iterations_wd
+    if jacobian_late_update_mask.shape[0] > 0:
+        jacobian_late_update_mask[wd_id] = newton_continue_world and iteration_next <= min_iterations_wd
+    wp.atomic_max(newton_loop_condition, 0, wp.int32(newton_continue_world))
 
 
 @wp.kernel
@@ -2146,7 +2122,7 @@ def _eval_target_constraint_velocities(
     """
     # Retrieve the thread indices (= batch index, world index, joint index)
     batch_id, wd_id, jt_id_loc = wp.tid()
-    if wd_id >= world_mask.shape[0] or not world_mask[wd_id] or jt_id_loc >= num_joints[wd_id]:
+    if not world_mask[wd_id] or jt_id_loc >= num_joints[wd_id]:
         return
 
     # Retrieve the joint model data
@@ -2241,7 +2217,7 @@ def _correct_universal_constraint_velocities(
     """
     # Retrieve the thread indices (= batch index, world index, joint index)
     batch_id, wd_id, jt_id_loc = wp.tid()
-    if wd_id >= world_mask.shape[0] or not world_mask[wd_id] or jt_id_loc >= num_joints[wd_id]:
+    if not world_mask[wd_id] or jt_id_loc >= num_joints[wd_id]:
         return
 
     # Early return if this is not a universal actuator
@@ -2351,7 +2327,7 @@ def _update_cg_tolerance_kernel(
     Note: needs to be refined, until then we are still using a fixed tolerance
     """
     wd_id = wp.tid()
-    if wd_id >= world_mask.shape[0] or not world_mask[wd_id]:
+    if not world_mask[wd_id]:
         return
     tol = wp.max(1e-8, wp.min(1e-5, 1e-3 * max_residual[wd_id]))
     atol[wd_id] = tol

@@ -698,7 +698,7 @@ class SolverKaminoImpl(SolverBase):
         if success_mask is not None:
             # Currently, only the position-level (iterative) FK solve can fail
             if actuator_q is not None:
-                wp.copy(success_mask, self._solver_fk.newton_success)
+                wp.copy(success_mask, self._solver_fk._data.gauss_newton.success)
             elif world_mask is not None:
                 wp.copy(success_mask, world_mask)
             else:

@@ -346,7 +346,7 @@ def set_model_to_random_pose(
         body_q=data.bodies.q_i,
         body_u=data.bodies.u_i,
     )
-    test_case.assertTrue(fk_solver.newton_success.numpy().sum() == model.size.num_worlds)
+    test_case.assertTrue(fk_solver._data.gauss_newton.success.numpy().sum() == model.size.num_worlds)
 
     # Evaluate joint state and check constraint residuals
     compute_joints_data(model=model, data=data, q_j_p=model.joints.q_j_0, correction=JointCorrectionMode.CONTINUOUS)

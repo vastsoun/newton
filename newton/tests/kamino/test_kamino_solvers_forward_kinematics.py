@@ -23,6 +23,7 @@ from newton._src.solvers.kamino._src.models.builders.basics import build_boxes_f
 from newton._src.solvers.kamino._src.models.builders.testing import build_all_joints_test_model
 from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino._src.solvers.fk import ForwardKinematicsSolver
+from newton._src.solvers.kamino._src.solvers.fk.types import FKData
 from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
 from newton.tests.kamino import setup_tests, test_context
 from newton.tests.kamino.utils.diff_check import diff_check
@@ -267,8 +268,8 @@ class SparseJacobianSingleJointCheckForwardKinematics(unittest.TestCase):
 
             jac_dense_np = solver.eval_kinematic_constraints_jacobian(body_q, transforms).numpy()
             solver.assemble_sparse_jacobian(body_q, transforms)
-            jac_sparse_np = solver.sparse_jacobian.numpy()
-            rows, cols = solver.sparse_jacobian.dims.numpy()[0]
+            jac_sparse_np = solver._data.problem.sparse_jacobian.numpy()
+            rows, cols = solver._data.problem.sparse_jacobian.dims.numpy()[0]
             return np.allclose(jac_dense_np[0, :rows, :cols], jac_sparse_np[0], atol=1e-6, rtol=0.0)
 
         success = run_test_single_joint_examples(test_function, test_name, device=self.default_device)
@@ -295,25 +296,30 @@ class WorldMaskInitializationForwardKinematics(unittest.TestCase):
             use_incremental_solve=False,
             use_regularization=False,
         )
+        solver._data = FKData()
+        dims = solver._data.dimensions
+        gn = solver._data.gauss_newton
+        ls = solver._data.line_search
+        problem = solver._data.problem
 
         with wp.ScopedDevice(self.default_device):
-            solver.all_worlds_mask = wp.full(shape=(num_worlds,), value=True, dtype=wp.bool)
-            solver.newton_iteration = wp.empty(shape=(num_worlds,), dtype=wp.int32)
-            solver.newton_success = wp.empty(shape=(num_worlds,), dtype=wp.bool)
-            solver.newton_mask = wp.empty(shape=(num_worlds,), dtype=wp.bool)
-            solver.min_newton_iterations = wp.empty(shape=(num_worlds,), dtype=wp.int32)
-            solver.max_newton_iterations = wp.array([solver.config.max_newton_iterations], dtype=wp.int32)
-            solver.newton_loop_condition = wp.empty(shape=(1,), dtype=wp.int32)
-            solver.line_search_success = wp.empty(shape=(num_worlds,), dtype=wp.bool)
-            solver.tolerance = wp.array([solver.config.tolerance], dtype=wp.float32)
-            solver.jacobian_early_update_mask = None
-            solver.jacobian_late_update_mask = None
-            solver.base_q_default = wp.empty(shape=(num_worlds,), dtype=wp.transformf)
-            solver.actuator_q_next = wp.empty(shape=0, dtype=wp.float32)
-            solver.target_rel_transforms = wp.empty(shape=0, dtype=wp.transformf)
-            solver.constraints = wp.empty(shape=(num_worlds, 0), dtype=wp.float32)
-            solver.grad = wp.empty(shape=(num_worlds, 0), dtype=wp.float32)
-            solver.max_residual = wp.zeros(shape=(num_worlds,), dtype=wp.float32)
+            dims.all_worlds_mask = wp.full(shape=(num_worlds,), value=True, dtype=wp.bool)
+            gn.iteration = wp.empty(shape=(num_worlds,), dtype=wp.int32)
+            gn.success = wp.empty(shape=(num_worlds,), dtype=wp.bool)
+            gn.mask = wp.empty(shape=(num_worlds,), dtype=wp.bool)
+            gn.min_iterations = wp.empty(shape=(num_worlds,), dtype=wp.int32)
+            gn.max_iterations = wp.array([solver.config.max_newton_iterations], dtype=wp.int32)
+            gn.loop_condition = wp.empty(shape=(1,), dtype=wp.int32)
+            ls.success = wp.empty(shape=(num_worlds,), dtype=wp.bool)
+            gn.tolerance = wp.array([solver.config.tolerance], dtype=wp.float32)
+            gn.jacobian_early_update_mask = None
+            gn.jacobian_late_update_mask = None
+            problem.base_q_default = wp.empty(shape=(num_worlds,), dtype=wp.transformf)
+            problem.actuator_q_next = wp.empty(shape=0, dtype=wp.float32)
+            problem.target_rel_transforms = wp.empty(shape=0, dtype=wp.transformf)
+            problem.constraints = wp.empty(shape=(num_worlds, 0), dtype=wp.float32)
+            gn.grad = wp.empty(shape=(num_worlds, 0), dtype=wp.float32)
+            gn.max_residual = wp.zeros(shape=(num_worlds,), dtype=wp.float32)
             actuator_q = wp.empty(shape=0, dtype=wp.float32)
             body_q = wp.empty(shape=0, dtype=wp.transformf)
             world_mask = wp.array([True, False, True], dtype=wp.bool)
@@ -326,7 +332,7 @@ class WorldMaskInitializationForwardKinematics(unittest.TestCase):
 
         solver.run_fk_solve(actuator_q, body_q, world_mask=world_mask)
 
-        np.testing.assert_array_equal(solver.line_search_success.numpy(), np.array([1, 0, 1], dtype=np.int32))
+        np.testing.assert_array_equal(ls.success.numpy(), np.array([1, 0, 1], dtype=np.int32))
 
 
 def compute_actuated_coords_and_dofs_data(model: ModelKamino):
@@ -671,8 +677,8 @@ class FourBarTieRodRandomPosesCheckForwardKinematics(unittest.TestCase):
         model = create_four_bar_tie_rod().finalize(device=self.default_device, requires_grad=False)
         config = ForwardKinematicsSolver.Config(add_axis_joints=True)
         solver = ForwardKinematicsSolver(model, config)
-        axis_body = int(solver.fk_axis_body.numpy()[0])
-        source_joint = int(solver.fk_axis_source_joint_0.numpy()[0])
+        axis_body = int(solver._data.joints.axis_body.numpy()[0])
+        source_joint = int(solver._data.joints.axis_source_joint_0.numpy()[0])
 
         body_q = model.bodies.q_i_0.numpy()
         body_q[axis_body] = np.array(
@@ -693,16 +699,16 @@ class FourBarTieRodRandomPosesCheckForwardKinematics(unittest.TestCase):
 
         solver.notify_model_changed(newton.ModelFlags.JOINT_PROPERTIES | newton.ModelFlags.BODY_PROPERTIES)
         reference = ForwardKinematicsSolver(model, ForwardKinematicsSolver.Config(add_axis_joints=True))
-        axis_joints = solver.fk_axis_joint.numpy()
+        axis_joints = solver._data.joints.axis_joint.numpy()
 
         np.testing.assert_allclose(
-            solver.joint_X_Bj.numpy()[axis_joints],
-            reference.joint_X_Bj.numpy()[axis_joints],
+            solver._data.joints.X_Bj.numpy()[axis_joints],
+            reference._data.joints.X_Bj.numpy()[axis_joints],
             atol=1e-6,
         )
         np.testing.assert_allclose(
-            solver.joint_X_Fj.numpy()[axis_joints],
-            reference.joint_X_Fj.numpy()[axis_joints],
+            solver._data.joints.X_Fj.numpy()[axis_joints],
+            reference._data.joints.X_Fj.numpy()[axis_joints],
             atol=1e-6,
         )
 
@@ -944,7 +950,7 @@ class HeterogenousModelSparseJacobianAssemblyCheck(unittest.TestCase):
             body_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
             base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)
             actuator_q = wp.array(shape=(actuator_q_np.shape[1]), dtype=wp.float32)
-        dims = solver.sparse_jacobian.dims.numpy()
+        dims = solver._data.problem.sparse_jacobian.dims.numpy()
 
         for pose_id in range(num_poses):
             body_q.assign(body_q_np[pose_id])
@@ -954,7 +960,7 @@ class HeterogenousModelSparseJacobianAssemblyCheck(unittest.TestCase):
 
             jac_dense_np = solver.eval_kinematic_constraints_jacobian(body_q, transforms).numpy()
             solver.assemble_sparse_jacobian(body_q, transforms)
-            jac_sparse_np = solver.sparse_jacobian.numpy()
+            jac_sparse_np = solver._data.problem.sparse_jacobian.numpy()
 
             for wd_id in range(model.size.num_worlds):
                 rows, cols = int(dims[wd_id][0]), int(dims[wd_id][1])
@@ -1148,7 +1154,7 @@ class MultiRhsVelocityForwardKinematics(unittest.TestCase):
         # Poison the coordinate scratch buffer with a different gimbal pose. The
         # batched solve must refresh it from body_q so its velocity axes do not
         # depend on state left behind by an earlier operation.
-        solver.actuator_q_next.assign([1.1, 0.7, -0.8])
+        solver._data.problem.actuator_q_next.assign([1.1, 0.7, -0.8])
         rhs_size = actuator_u_np.shape[0]
         solver.request_velocity_solve_batch_size(rhs_size)
         actual = wp.zeros(

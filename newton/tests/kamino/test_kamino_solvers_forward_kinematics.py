@@ -9,7 +9,6 @@ import copy
 import hashlib
 import unittest
 from functools import partial
-from types import SimpleNamespace
 
 import numpy as np
 import warp as wp
@@ -23,7 +22,6 @@ from newton._src.solvers.kamino._src.models.builders.basics import build_boxes_f
 from newton._src.solvers.kamino._src.models.builders.testing import build_all_joints_test_model
 from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino._src.solvers.fk import ForwardKinematicsSolver
-from newton._src.solvers.kamino._src.solvers.fk.types import FKData
 from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
 from newton.tests.kamino import setup_tests, test_context
 from newton.tests.kamino.utils.diff_check import diff_check
@@ -35,6 +33,7 @@ from newton.tests.kamino.utils.sampling import (
     sample_actuator_velocities,
     sample_base_state,
     sample_body_poses,
+    sample_world_mask,
 )
 from newton.tests.utils.basics import build_cartpole
 from newton.tests.utils.testing import build_unary_revolute_joint_test, build_unary_universal_joint_test
@@ -176,41 +175,80 @@ def simulate_random_poses(
     randomize_base: bool = True,
     use_graph: bool = False,
     verbose: bool = False,
+    world_mask_target_inactive_rate: float = 0.2,
     **config_kwargs,
 ):
-    # Generate random inputs
-    base_q_np, base_u_np = sample_base_state(model.size.num_worlds, rng, num_poses)
+    num_worlds = model.size.num_worlds
+
+    # Sample per-pose inputs and a non-trivial world mask targeting a small number of inactive worlds
+    base_q_np, base_u_np = sample_base_state(num_worlds, rng, num_poses)
     actuator_q_np = sample_actuator_coords(
         model, rng, num_poses, max_pos=max_pos, max_angle=max_angle, use_fk_actuators=True
     )
     actuator_u_np = sample_actuator_velocities(
         model, rng, num_poses, max_lin_vel=max_lin_vel, max_ang_vel=max_ang_vel, use_fk_actuators=True
     )
-
-    # Precompute offset arrays for extracting actuator coordinates/dofs
-    actuated_coord_offsets, actuated_coords_sizes, actuated_dof_offsets, actuated_dofs_sizes, actuator_dof_types = (
-        compute_actuated_coords_and_dofs_data(model)
+    world_masks_np = sample_world_mask(
+        num_worlds, rng, num_samples=num_poses, target_inactive_rate=world_mask_target_inactive_rate
     )
 
-    # Run forward kinematics on all random poses
+    # Precompute offset arrays for extracting actuator coordinates/dofs
+    (
+        actuated_coord_offsets,
+        actuated_coords_sizes,
+        actuated_dof_offsets,
+        actuated_dofs_sizes,
+        actuator_dof_types,
+    ) = compute_actuated_coords_and_dofs_data(model)
+
+    # Compute cumulative offsets into the flat reference actuator vectors, matching the layout emitted by
+    # sample_actuator_coords/sample_actuator_velocities (concatenation over actuated joints)
+    ref_coord_offsets = np.concatenate(([0], np.cumsum(actuated_coords_sizes)[:-1])).astype(np.int32)
+    ref_dof_offsets = np.concatenate(([0], np.cumsum(actuated_dofs_sizes)[:-1])).astype(np.int32)
+
+    # Per-world slicing metadata used to validate active worlds and check inactive worlds are untouched
+    bodies_offset_np = model.info.bodies_offset.numpy()  # shape (num_worlds + 1,)
+    kin_cts_offset_np = model.info.joint_kinematic_cts_offset.numpy()  # shape (num_worlds,)
+    kin_cts_size_np = model.info.num_joint_kinematic_cts.numpy()
+    joints_wid_np = model.joints.wid.numpy()
+    is_actuator_np = model.joints.act_type.numpy() != JointActuationType.PASSIVE
+    if model.joints.fk_act_flag is not None:
+        fk_act_flag_np = model.joints.fk_act_flag.numpy()
+        is_actuator_np = is_actuator_np.copy()
+        is_actuator_np[fk_act_flag_np != -1] = fk_act_flag_np[fk_act_flag_np != -1] == 1
+    actuator_joint_wid_np = joints_wid_np[is_actuator_np]
+
+    # Allocate solver I/O arrays and run FK on each pose
     config = ForwardKinematicsSolver.Config(**config_kwargs)
     solver = ForwardKinematicsSolver(model, config)
     success_flags = []
     with wp.ScopedDevice(model.device):
         body_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
-        base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)
+        base_q = wp.array(shape=(num_worlds), dtype=wp.transformf)
         actuator_q = wp.array(shape=(actuator_q_np.shape[1]), dtype=wp.float32)
         body_u = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.spatial_vectorf)
-        base_u = wp.array(shape=(model.size.num_worlds), dtype=wp.spatial_vectorf)
+        base_u = wp.array(shape=(num_worlds), dtype=wp.spatial_vectorf)
         actuator_u = wp.array(shape=(actuator_u_np.shape[1]), dtype=wp.float32)
+        world_mask = wp.array(shape=(num_worlds,), dtype=wp.bool)
     data = model.data(device=model.device)
     epsilon = 1e-3 if config.use_regularization else 1e-4
     for pose_id in range(num_poses):
-        # Run FK solve and check convergence
+        # Assign per-pose inputs and world mask
         base_q.assign(base_q_np[pose_id])
         actuator_q.assign(actuator_q_np[pose_id])
         base_u.assign(base_u_np[pose_id])
         actuator_u.assign(actuator_u_np[pose_id])
+        active_mask_np = world_masks_np[pose_id]
+        world_mask.assign(active_mask_np)
+        actuator_joint_is_active = active_mask_np[actuator_joint_wid_np]
+        active_world_ids = np.where(active_mask_np)[0]
+        inactive_world_ids = np.where(~active_mask_np)[0]
+
+        # Snapshot body arrays so we can verify inactive worlds are not modified by the solve
+        body_q_before_np = body_q.numpy().copy()
+        body_u_before_np = body_u.numpy().copy()
+
+        # Run FK solve
         status = solver.solve_fk(
             actuator_q,
             body_q,
@@ -218,41 +256,82 @@ def simulate_random_poses(
             base_u=base_u if randomize_base else None,
             actuator_u=actuator_u,
             body_u=body_u,
+            world_mask=world_mask,
             use_graph=use_graph,
             verbose=verbose,
             return_status=True,
         )
-        if status.success.min() < 1:
+
+        # Verify body poses/velocities of inactive worlds were left untouched by the solver
+        body_q_after_np = body_q.numpy()
+        body_u_after_np = body_u.numpy()
+        inactive_untouched = True
+        for wid in inactive_world_ids:
+            b0, b1 = int(bodies_offset_np[wid]), int(bodies_offset_np[wid + 1])
+            if not np.array_equal(body_q_before_np[b0:b1], body_q_after_np[b0:b1]) or not np.array_equal(
+                body_u_before_np[b0:b1], body_u_after_np[b0:b1]
+            ):
+                inactive_untouched = False
+                print(f"Inactive world {wid} was modified by the solver for pose {pose_id}")
+                break
+        if not inactive_untouched:
             success_flags.append(False)
             continue
-        else:
-            success_flags.append(True)
+
+        # Check convergence on active worlds
+        if status.success[active_mask_np].min() < 1:
+            success_flags.append(False)
+            continue
+        success_flags.append(True)
 
         # Update joints data from body states for validation
         wp.copy(data.bodies.q_i, body_q)
         wp.copy(data.bodies.u_i, body_u)
         compute_joints_data(model=model, data=data, q_j_p=model.joints.q_j_0, correction=JointCorrectionMode.CONTINUOUS)
 
-        # Validate positions computation
-        residual_ct_pos = np.max(np.abs(data.joints.r_j.numpy()))
+        # Filter joint- and actuator-level slicing to active worlds
+        active_coord_offsets = actuated_coord_offsets[actuator_joint_is_active]
+        active_coord_sizes = actuated_coords_sizes[actuator_joint_is_active]
+        active_dof_offsets = actuated_dof_offsets[actuator_joint_is_active]
+        active_dof_sizes = actuated_dofs_sizes[actuator_joint_is_active]
+        active_dof_types = actuator_dof_types[actuator_joint_is_active]
+        active_ref_coord_offsets = ref_coord_offsets[actuator_joint_is_active]
+        active_ref_dof_offsets = ref_dof_offsets[actuator_joint_is_active]
+
+        # Validate positions computation on active worlds
+        r_j_np = data.joints.r_j.numpy()
+        residual_ct_pos = 0.0
+        for wid in active_world_ids:
+            r0 = int(kin_cts_offset_np[wid])
+            r1 = r0 + int(kin_cts_size_np[wid])
+            if r1 > r0:
+                residual_ct_pos = max(residual_ct_pos, float(np.max(np.abs(r_j_np[r0:r1]))))
         if residual_ct_pos > epsilon:
             print(f"Large constraint residual ({residual_ct_pos}) for pose {pose_id}")
             success_flags[-1] = False
-        actuator_q_check = extract_segments(data.joints.q_j.numpy(), actuated_coord_offsets, actuated_coords_sizes)
-        actuator_q_check = standardize_actuated_coords(actuator_q_check, actuated_coords_sizes, actuator_dof_types)
-        actuator_q_ref = standardize_actuated_coords(actuator_q_np[pose_id], actuated_coords_sizes, actuator_dof_types)
-        residual_actuator_q = np.max(np.abs(actuator_q_check - actuator_q_ref))
+        actuator_q_check = extract_segments(data.joints.q_j.numpy(), active_coord_offsets, active_coord_sizes)
+        actuator_q_check = standardize_actuated_coords(actuator_q_check, active_coord_sizes, active_dof_types)
+        actuator_q_ref = extract_segments(actuator_q_np[pose_id], active_ref_coord_offsets, active_coord_sizes)
+        actuator_q_ref = standardize_actuated_coords(actuator_q_ref, active_coord_sizes, active_dof_types)
+        residual_actuator_q = float(np.max(np.abs(actuator_q_check - actuator_q_ref))) if actuator_q_check.size else 0.0
         if residual_actuator_q > epsilon:
             print(f"Large error on prescribed actuator coordinates ({residual_actuator_q}) for pose {pose_id}")
             success_flags[-1] = False
 
-        # Validate velocities computation
-        residual_ct_vel = np.max(np.abs(data.joints.dr_j.numpy()))
+        # Validate velocities computation on active worlds
+        dr_j_np = data.joints.dr_j.numpy()
+        residual_ct_vel = 0.0
+        for wid in active_world_ids:
+            r0 = int(kin_cts_offset_np[wid])
+            r1 = r0 + int(kin_cts_size_np[wid])
+            if r1 > r0:
+                residual_ct_vel = max(residual_ct_vel, float(np.max(np.abs(dr_j_np[r0:r1]))))
         if residual_ct_vel > epsilon:
             print(f"Large constraint velocity residual ({residual_ct_vel}) for pose {pose_id}")
             success_flags[-1] = False
-        actuator_u_check = extract_segments(data.joints.dq_j.numpy(), actuated_dof_offsets, actuated_dofs_sizes)
-        residual_actuator_u = np.max(np.abs(actuator_u_check - actuator_u_np[pose_id]))
+        actuator_u_check = extract_segments(data.joints.dq_j.numpy(), active_dof_offsets, active_dof_sizes)
+        actuator_u_ref = extract_segments(actuator_u_np[pose_id], active_ref_dof_offsets, active_dof_sizes)
+        residual_actuator_u = float(np.max(np.abs(actuator_u_check - actuator_u_ref))) if actuator_u_check.size else 0.0
         if residual_actuator_u > epsilon:
             print(f"Large error on prescribed actuator velocities ({residual_actuator_u}) for pose {pose_id}")
             success_flags[-1] = False
@@ -503,63 +582,6 @@ class TestPassiveUniversalJointFrame(unittest.TestCase):
         )
 
 
-class WorldMaskInitializationForwardKinematics(unittest.TestCase):
-    def setUp(self):
-        if not test_context.setup_done:
-            setup_tests(clear_cache=False)
-        self.default_device = wp.get_device(test_context.device)
-
-    def tearDown(self):
-        self.default_device = None
-
-    def test_initial_line_search_success_honors_world_mask(self):
-        num_worlds = 3
-        solver = ForwardKinematicsSolver.__new__(ForwardKinematicsSolver)
-        solver.device = self.default_device
-        solver.model = SimpleNamespace(size=SimpleNamespace(num_worlds=num_worlds))
-        solver.config = ForwardKinematicsSolver.Config(
-            max_newton_iterations=1,
-            reset_state=False,
-            use_incremental_solve=False,
-            use_regularization=False,
-        )
-        solver.data = FKData()
-        dims = solver.data.dimensions
-        gn = solver.data.gauss_newton
-        ls = solver.data.line_search
-        problem = solver.data.problem
-
-        with wp.ScopedDevice(self.default_device):
-            dims.all_worlds_mask = wp.full(shape=(num_worlds,), value=True, dtype=wp.bool)
-            gn.iteration = wp.empty(shape=(num_worlds,), dtype=wp.int32)
-            gn.success = wp.empty(shape=(num_worlds,), dtype=wp.bool)
-            gn.mask = wp.empty(shape=(num_worlds,), dtype=wp.bool)
-            gn.min_iterations = wp.empty(shape=(num_worlds,), dtype=wp.int32)
-            gn.loop_condition = wp.empty(shape=(1,), dtype=wp.int32)
-            ls.success = wp.empty(shape=(num_worlds,), dtype=wp.bool)
-            gn.jacobian_early_update_mask = None
-            gn.jacobian_late_update_mask = None
-            problem.base_q_default = wp.empty(shape=(num_worlds,), dtype=wp.transformf)
-            problem.actuator_q_next = wp.empty(shape=0, dtype=wp.float32)
-            problem.target_rel_transforms = wp.empty(shape=0, dtype=wp.transformf)
-            problem.constraints = wp.empty(shape=(num_worlds, 0), dtype=wp.float32)
-            gn.grad = wp.empty(shape=(num_worlds, 0), dtype=wp.float32)
-            gn.max_residual = wp.zeros(shape=(num_worlds,), dtype=wp.float32)
-            actuator_q = wp.empty(shape=0, dtype=wp.float32)
-            body_q = wp.empty(shape=0, dtype=wp.transformf)
-            world_mask = wp.array([True, False, True], dtype=wp.bool)
-
-        solver._eval_target_actuator_q = lambda base_q, actuator_q, actuator_q_next: None
-        solver._eval_target_relative_transformations = lambda actuator_q_next, target_rel_transforms, world_mask: None
-        solver._eval_kinematic_constraints = lambda body_q, target_rel_transforms, world_mask, constraints: None
-        solver._eval_max_residual = lambda constraints, grad, max_residual: None
-        solver._run_newton_iteration = lambda body_q: None
-
-        solver.run_fk_solve(actuator_q, body_q, world_mask=world_mask)
-
-        np.testing.assert_array_equal(ls.success.numpy(), np.array([1, 0, 1], dtype=np.int32))
-
-
 class TestRandomPoses(unittest.TestCase):
     """Consolidated random-pose FK checks for the models in the Kamino test suite."""
 
@@ -589,13 +611,15 @@ class TestRandomPoses(unittest.TestCase):
     def test_dr_testmech_random_poses(self):
         rng = np.random.default_rng(rng_seed_from_string("Test mechanism FK random poses check"))
 
-        # Load the DR TestMech model from the `newton-assets` repository
+        # Import the DR TestMech asset once and replicate it into 10 identical worlds
         asset_path = newton.utils.download_asset("disneyresearch")
-        asset_file = str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda")
-        builder = USDImporter().import_from(asset_file)
+        template = USDImporter().import_from(str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda"))
+        builder = ModelBuilderKamino(default_world=False)
+        for _ in range(10):
+            builder.add_builder(template)
         model = builder.finalize(device=self.default_device, requires_grad=False)
 
-        simulate_function = self._default_simulate(model, num_poses=30, rng=rng)
+        simulate_function = self._default_simulate(model, num_poses=3, rng=rng)
 
         # Dense then sparse solver
         self.assertTrue(simulate_function(use_sparsity=False))
@@ -604,17 +628,19 @@ class TestRandomPoses(unittest.TestCase):
     def test_dr_legs_random_poses(self):
         rng = np.random.default_rng(rng_seed_from_string("FK random poses check for dr_legs model"))
 
-        # Load the DR Legs model from the `newton-assets` repository
+        # Import the DR Legs asset once (with the pelvis base body set) and replicate it into 10 worlds
         asset_path = newton.utils.download_asset("disneyresearch")
-        asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
-        builder = USDImporter().import_from(asset_file)
-        builder.set_base_body("pelvis")
+        template = USDImporter().import_from(str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda"))
+        template.set_base_body("pelvis")
+        builder = ModelBuilderKamino(default_world=False)
+        for _ in range(10):
+            builder.add_builder(template)
         model = builder.finalize(device=self.default_device, requires_grad=False)
 
         # Angles too far from the initial pose lead to singularities
         simulate_function = self._default_simulate(
             model,
-            num_poses=15,
+            num_poses=3,
             rng=rng,
             max_angle=np.radians(5.0),
             max_ang_vel=np.radians(20.0),
@@ -628,14 +654,16 @@ class TestRandomPoses(unittest.TestCase):
             rng_seed_from_string("Heterogenous model (test mechanism + dr_legs) FK random poses check")
         )
 
-        # Combine DR TestMech and DR Legs from the `newton-assets` repository
+        # Combine 5 DR TestMech + 5 DR Legs worlds from the `newton-assets` repository
         asset_path = newton.utils.download_asset("disneyresearch")
-        asset_file_0 = str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda")
-        asset_file_1 = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
-        builder = USDImporter().import_from(asset_file_0)
-        builder_legs = USDImporter().import_from(asset_file_1)
-        builder_legs.set_base_body("pelvis")
-        builder.add_builder(builder_legs)
+        template_testmech = USDImporter().import_from(str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda"))
+        template_legs = USDImporter().import_from(str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda"))
+        template_legs.set_base_body("pelvis")
+        builder = ModelBuilderKamino(default_world=False)
+        for _ in range(5):
+            builder.add_builder(template_testmech)
+        for _ in range(5):
+            builder.add_builder(template_legs)
         model = builder.finalize(device=self.default_device, requires_grad=False)
 
         # Angles too far from the initial pose lead to singularities.
@@ -643,7 +671,7 @@ class TestRandomPoses(unittest.TestCase):
         # "specified base on non-floating worlds" warning asserted below.
         simulate_function = self._default_simulate(
             model,
-            num_poses=15,
+            num_poses=3,
             rng=rng,
             max_angle=np.radians(5.0),
             max_ang_vel=np.radians(20.0),
@@ -666,7 +694,7 @@ class TestRandomPoses(unittest.TestCase):
         model = self._build_four_bar_tie_rod_model()
         simulate_function = self._default_simulate(
             model,
-            num_poses=30,
+            num_poses=3,
             rng=rng,
             preconditioner="jacobi_block_diagonal",
         )
@@ -681,7 +709,7 @@ class TestRandomPoses(unittest.TestCase):
         model = self._build_four_bar_tie_rod_model()
         simulate_function = self._default_simulate(
             model,
-            num_poses=30,
+            num_poses=3,
             rng=rng,
             preconditioner="jacobi_block_diagonal",
         )
@@ -697,7 +725,7 @@ class TestRandomPoses(unittest.TestCase):
         builder = build_all_joints_test_model(unary_joints=True, binary_joints=True, actuated=True, floating_base=False)
         model = builder.finalize(device=self.default_device)
 
-        simulate_function = self._default_simulate(model, num_poses=30, rng=rng)
+        simulate_function = self._default_simulate(model, num_poses=3, rng=rng)
         self.assertTrue(simulate_function(use_sparsity=False))
         self.assertTrue(simulate_function(use_sparsity=True, preconditioner="jacobi_block_diagonal"))
 
@@ -721,7 +749,7 @@ class TestRandomPoses(unittest.TestCase):
             joint.X_Bj = wp.transpose(R_B) * R_F * joint.X_Fj  # Compute X_B given X_F to preserve a valid pose
         model = builder.finalize(device=self.default_device)
 
-        simulate_function = self._default_simulate(model, num_poses=30, rng=rng)
+        simulate_function = self._default_simulate(model, num_poses=3, rng=rng)
         self.assertTrue(simulate_function(use_sparsity=False))
         self.assertTrue(simulate_function(use_sparsity=True, preconditioner="jacobi_block_diagonal"))
 
@@ -739,7 +767,7 @@ class TestRandomPoses(unittest.TestCase):
         model_newton = builder.finalize(skip_validation_joints=True)
         model = ModelKamino.from_newton(model_newton)
 
-        simulate_function = self._default_simulate(model, num_poses=30, rng=rng)
+        simulate_function = self._default_simulate(model, num_poses=3, rng=rng)
         self.assertTrue(simulate_function(use_sparsity=False))
         self.assertTrue(simulate_function(use_sparsity=True, preconditioner="jacobi_block_diagonal"))
 

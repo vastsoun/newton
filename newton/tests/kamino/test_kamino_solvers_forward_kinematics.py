@@ -47,8 +47,13 @@ wp.set_module_options({"enable_backward": False})
 
 
 ###
-# Tests
+# Helpers
 ###
+
+
+def rng_seed_from_string(name: str) -> int:
+    """Hash a test name to a deterministic seed for ``np.random.default_rng``."""
+    return int(hashlib.sha256(name.encode("utf8")).hexdigest(), 16)
 
 
 def create_four_bar_tie_rod() -> ModelBuilderKamino:
@@ -89,6 +94,181 @@ def create_four_bar_tie_rod() -> ModelBuilderKamino:
     return builder_spherical
 
 
+def compute_actuated_coords_and_dofs_data(model: ModelKamino):
+    """
+    Compute offsets/sizes needed to extract actuated joint coordinates and DoFs from all joint
+    coordinates/DoFs, along with the corresponding DoF types.
+
+    Returns ``(actuated_coords_offsets, actuated_coords_sizes, actuated_dofs_offsets,
+    actuated_dofs_sizes, actuator_dof_types)``.
+    """
+    # Retrieve data for all joints (offset arrays include a trailing total)
+    coord_offsets = model.joints.coords_offset.numpy()[:-1]
+    joint_num_coords = model.joints.num_coords.numpy()
+    dof_offsets = model.joints.dofs_offset.numpy()[:-1]
+    joint_num_dofs = model.joints.num_dofs.numpy()
+    joint_dof_types = model.joints.dof_type.numpy()
+
+    # Filter for actuators only
+    joint_is_actuator = model.joints.act_type.numpy() != JointActuationType.PASSIVE
+    if model.joints.fk_act_flag is not None:
+        fk_act_flag_np = model.joints.fk_act_flag.numpy()
+        joint_is_actuator_fk = fk_act_flag_np == 1
+        overwrite_mask = fk_act_flag_np != -1
+        joint_is_actuator[overwrite_mask] = joint_is_actuator_fk[overwrite_mask]
+    actuated_coord_offsets = coord_offsets[joint_is_actuator]
+    actuated_coords_sizes = joint_num_coords[joint_is_actuator]
+    actuated_dof_offsets = dof_offsets[joint_is_actuator]
+    actuated_dofs_sizes = joint_num_dofs[joint_is_actuator]
+    actuator_dof_types = joint_dof_types[joint_is_actuator]
+
+    return actuated_coord_offsets, actuated_coords_sizes, actuated_dof_offsets, actuated_dofs_sizes, actuator_dof_types
+
+
+def standardize_actuated_coords(
+    actuator_q: np.ndarray, actuated_coords_sizes: np.ndarray, actuator_dof_types: np.ndarray
+) -> np.ndarray:
+    """
+    Convert actuator coordinates to their canonical, comparable form: angles are mapped to the
+    ``[0, 2 * pi)`` range and unit quaternions to their representation with a positive real part.
+    """
+
+    def standardize_angle(angle):
+        return np.mod(angle, 2.0 * np.pi)
+
+    def standardize_quat(quat):
+        return -quat if quat[3] < 0.0 else quat
+
+    res = actuator_q.copy()
+    coord_id = 0
+    for i, dof_type in enumerate(actuator_dof_types):
+        if dof_type == JointDoFType.CYLINDRICAL:
+            res[coord_id + 1] = standardize_angle(res[coord_id + 1])
+        elif dof_type == JointDoFType.FREE:
+            res[coord_id + 3 : coord_id + 7] = standardize_quat(res[coord_id + 3 : coord_id + 7])
+        if dof_type == JointDoFType.REVOLUTE:
+            res[coord_id] = standardize_angle(res[coord_id])
+        elif dof_type == JointDoFType.SPHERICAL:
+            res[coord_id : coord_id + 4] = standardize_quat(res[coord_id : coord_id + 4])
+        if dof_type == JointDoFType.UNIVERSAL:
+            res[coord_id] = standardize_angle(res[coord_id])
+            res[coord_id + 1] = standardize_angle(res[coord_id + 1])
+        coord_id += actuated_coords_sizes[i]
+    return res
+
+
+def extract_segments(array, offsets, sizes):
+    """Extract from a flat array the segments with given offsets and sizes, and concatenate them."""
+    res = []
+    for i in range(len(offsets)):
+        res.extend(array[offsets[i] : offsets[i] + sizes[i]])
+    return np.array(res)
+
+
+def simulate_random_poses(
+    model: ModelKamino,
+    num_poses: int,
+    rng: np.random.Generator,
+    max_pos: float = 0.1,
+    max_angle: float = np.radians(20.0),
+    max_lin_vel: float = 0.5,
+    max_ang_vel: float = np.radians(90.0),
+    randomize_base: bool = True,
+    use_graph: bool = False,
+    verbose: bool = False,
+    **config_kwargs,
+):
+    # Generate random inputs
+    base_q_np, base_u_np = sample_base_state(model.size.num_worlds, rng, num_poses)
+    actuator_q_np = sample_actuator_coords(
+        model, rng, num_poses, max_pos=max_pos, max_angle=max_angle, use_fk_actuators=True
+    )
+    actuator_u_np = sample_actuator_velocities(
+        model, rng, num_poses, max_lin_vel=max_lin_vel, max_ang_vel=max_ang_vel, use_fk_actuators=True
+    )
+
+    # Precompute offset arrays for extracting actuator coordinates/dofs
+    actuated_coord_offsets, actuated_coords_sizes, actuated_dof_offsets, actuated_dofs_sizes, actuator_dof_types = (
+        compute_actuated_coords_and_dofs_data(model)
+    )
+
+    # Run forward kinematics on all random poses
+    config = ForwardKinematicsSolver.Config(**config_kwargs)
+    solver = ForwardKinematicsSolver(model, config)
+    success_flags = []
+    with wp.ScopedDevice(model.device):
+        body_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
+        base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)
+        actuator_q = wp.array(shape=(actuator_q_np.shape[1]), dtype=wp.float32)
+        body_u = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.spatial_vectorf)
+        base_u = wp.array(shape=(model.size.num_worlds), dtype=wp.spatial_vectorf)
+        actuator_u = wp.array(shape=(actuator_u_np.shape[1]), dtype=wp.float32)
+    data = model.data(device=model.device)
+    epsilon = 1e-3 if config.use_regularization else 1e-4
+    for pose_id in range(num_poses):
+        # Run FK solve and check convergence
+        base_q.assign(base_q_np[pose_id])
+        actuator_q.assign(actuator_q_np[pose_id])
+        base_u.assign(base_u_np[pose_id])
+        actuator_u.assign(actuator_u_np[pose_id])
+        status = solver.solve_fk(
+            actuator_q,
+            body_q,
+            base_q=base_q if randomize_base else None,
+            base_u=base_u if randomize_base else None,
+            actuator_u=actuator_u,
+            body_u=body_u,
+            use_graph=use_graph,
+            verbose=verbose,
+            return_status=True,
+        )
+        if status.success.min() < 1:
+            success_flags.append(False)
+            continue
+        else:
+            success_flags.append(True)
+
+        # Update joints data from body states for validation
+        wp.copy(data.bodies.q_i, body_q)
+        wp.copy(data.bodies.u_i, body_u)
+        compute_joints_data(model=model, data=data, q_j_p=model.joints.q_j_0, correction=JointCorrectionMode.CONTINUOUS)
+
+        # Validate positions computation
+        residual_ct_pos = np.max(np.abs(data.joints.r_j.numpy()))
+        if residual_ct_pos > epsilon:
+            print(f"Large constraint residual ({residual_ct_pos}) for pose {pose_id}")
+            success_flags[-1] = False
+        actuator_q_check = extract_segments(data.joints.q_j.numpy(), actuated_coord_offsets, actuated_coords_sizes)
+        actuator_q_check = standardize_actuated_coords(actuator_q_check, actuated_coords_sizes, actuator_dof_types)
+        actuator_q_ref = standardize_actuated_coords(actuator_q_np[pose_id], actuated_coords_sizes, actuator_dof_types)
+        residual_actuator_q = np.max(np.abs(actuator_q_check - actuator_q_ref))
+        if residual_actuator_q > epsilon:
+            print(f"Large error on prescribed actuator coordinates ({residual_actuator_q}) for pose {pose_id}")
+            success_flags[-1] = False
+
+        # Validate velocities computation
+        residual_ct_vel = np.max(np.abs(data.joints.dr_j.numpy()))
+        if residual_ct_vel > epsilon:
+            print(f"Large constraint velocity residual ({residual_ct_vel}) for pose {pose_id}")
+            success_flags[-1] = False
+        actuator_u_check = extract_segments(data.joints.dq_j.numpy(), actuated_dof_offsets, actuated_dofs_sizes)
+        residual_actuator_u = np.max(np.abs(actuator_u_check - actuator_u_np[pose_id]))
+        if residual_actuator_u > epsilon:
+            print(f"Large error on prescribed actuator velocities ({residual_actuator_u}) for pose {pose_id}")
+            success_flags[-1] = False
+
+    success = np.sum(success_flags) == num_poses
+    if not success:
+        print(f"Random poses simulation & validation failed, {np.sum(success_flags)}/{num_poses} poses successful")
+
+    return success
+
+
+###
+# Tests
+###
+
+
 class JacobianCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
         if not test_context.setup_done:
@@ -102,8 +282,7 @@ class JacobianCheckForwardKinematics(unittest.TestCase):
     def test_Jacobian_check(self):
         # Initialize RNG
         test_name = "Forward Kinematics Jacobian check"
-        seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(rng_seed_from_string(test_name))
 
         def test_function(model: ModelKamino):
             assert model.size.num_worlds == 1  # For simplicity we assume a single world
@@ -333,179 +512,6 @@ class WorldMaskInitializationForwardKinematics(unittest.TestCase):
         np.testing.assert_array_equal(ls.success.numpy(), np.array([1, 0, 1], dtype=np.int32))
 
 
-def compute_actuated_coords_and_dofs_data(model: ModelKamino):
-    """
-    Helper function computing the offsets and sizes needed to extract actuated joint coordinates
-    and dofs from all joint coordinates/dofs, as well as the corresponding dof types.
-    Returns actuated_coords_offsets, actuated_coords_sizes, actuated_dofs_offsets, actuated_dofs_sizes,
-            actuator_dof_types
-    """
-    # Retrieve data for all joints (offset arrays include a trailing total)
-    coord_offsets = model.joints.coords_offset.numpy()[:-1]
-    joint_num_coords = model.joints.num_coords.numpy()
-    dof_offsets = model.joints.dofs_offset.numpy()[:-1]
-    joint_num_dofs = model.joints.num_dofs.numpy()
-    joint_dof_types = model.joints.dof_type.numpy()
-
-    # Filter for actuators only
-    joint_is_actuator = model.joints.act_type.numpy() != JointActuationType.PASSIVE
-    if model.joints.fk_act_flag is not None:
-        fk_act_flag_np = model.joints.fk_act_flag.numpy()
-        joint_is_actuator_fk = fk_act_flag_np == 1
-        overwrite_mask = fk_act_flag_np != -1
-        joint_is_actuator[overwrite_mask] = joint_is_actuator_fk[overwrite_mask]
-    actuated_coord_offsets = coord_offsets[joint_is_actuator]
-    actuated_coords_sizes = joint_num_coords[joint_is_actuator]
-    actuated_dof_offsets = dof_offsets[joint_is_actuator]
-    actuated_dofs_sizes = joint_num_dofs[joint_is_actuator]
-    actuator_dof_types = joint_dof_types[joint_is_actuator]
-
-    return actuated_coord_offsets, actuated_coords_sizes, actuated_dof_offsets, actuated_dofs_sizes, actuator_dof_types
-
-
-def standardize_actuated_coords(
-    actuator_q: np.ndarray, actuated_coords_sizes: np.ndarray, actuator_dof_types: np.ndarray
-) -> np.ndarray:
-    """
-    Helper function converting actuator coordinates to their canonical, comparable form.
-    More specifically, angles are mapped to the [0, 2 * pi) range, and unit quaternions to their
-    representation with a positive real part.
-    """
-
-    def standardize_angle(angle):
-        return np.mod(angle, 2.0 * np.pi)
-
-    def standardize_quat(quat):
-        return -quat if quat[3] < 0.0 else quat
-
-    res = actuator_q.copy()
-    coord_id = 0
-    for i, dof_type in enumerate(actuator_dof_types):
-        if dof_type == JointDoFType.CYLINDRICAL:
-            res[coord_id + 1] = standardize_angle(res[coord_id + 1])
-        elif dof_type == JointDoFType.FREE:
-            res[coord_id + 3 : coord_id + 7] = standardize_quat(res[coord_id + 3 : coord_id + 7])
-        if dof_type == JointDoFType.REVOLUTE:
-            res[coord_id] = standardize_angle(res[coord_id])
-        elif dof_type == JointDoFType.SPHERICAL:
-            res[coord_id : coord_id + 4] = standardize_quat(res[coord_id : coord_id + 4])
-        if dof_type == JointDoFType.UNIVERSAL:
-            res[coord_id] = standardize_angle(res[coord_id])
-            res[coord_id + 1] = standardize_angle(res[coord_id + 1])
-        coord_id += actuated_coords_sizes[i]
-    return res
-
-
-def extract_segments(array, offsets, sizes):
-    """
-    Helper function extracting from a flat array the segments with given offsets and sizes
-    and returning their concatenation
-    """
-    res = []
-    for i in range(len(offsets)):
-        res.extend(array[offsets[i] : offsets[i] + sizes[i]])
-    return np.array(res)
-
-
-def simulate_random_poses(
-    model: ModelKamino,
-    num_poses: int,
-    rng: np.random.Generator,
-    max_pos: float = 0.1,
-    max_angle: float = np.radians(20.0),
-    max_lin_vel: float = 0.5,
-    max_ang_vel: float = np.radians(90.0),
-    randomize_base: bool = True,
-    use_graph: bool = False,
-    verbose: bool = False,
-    **config_kwargs,
-):
-    # Generate random inputs
-    base_q_np, base_u_np = sample_base_state(model.size.num_worlds, rng, num_poses)
-    actuator_q_np = sample_actuator_coords(
-        model, rng, num_poses, max_pos=max_pos, max_angle=max_angle, use_fk_actuators=True
-    )
-    actuator_u_np = sample_actuator_velocities(
-        model, rng, num_poses, max_lin_vel=max_lin_vel, max_ang_vel=max_ang_vel, use_fk_actuators=True
-    )
-
-    # Precompute offset arrays for extracting actuator coordinates/dofs
-    actuated_coord_offsets, actuated_coords_sizes, actuated_dof_offsets, actuated_dofs_sizes, actuator_dof_types = (
-        compute_actuated_coords_and_dofs_data(model)
-    )
-
-    # Run forward kinematics on all random poses
-    config = ForwardKinematicsSolver.Config(**config_kwargs)
-    solver = ForwardKinematicsSolver(model, config)
-    success_flags = []
-    with wp.ScopedDevice(model.device):
-        body_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
-        base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)
-        actuator_q = wp.array(shape=(actuator_q_np.shape[1]), dtype=wp.float32)
-        body_u = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.spatial_vectorf)
-        base_u = wp.array(shape=(model.size.num_worlds), dtype=wp.spatial_vectorf)
-        actuator_u = wp.array(shape=(actuator_u_np.shape[1]), dtype=wp.float32)
-    data = model.data(device=model.device)
-    epsilon = 1e-3 if config.use_regularization else 1e-4
-    for pose_id in range(num_poses):
-        # Run FK solve and check convergence
-        base_q.assign(base_q_np[pose_id])
-        actuator_q.assign(actuator_q_np[pose_id])
-        base_u.assign(base_u_np[pose_id])
-        actuator_u.assign(actuator_u_np[pose_id])
-        status = solver.solve_fk(
-            actuator_q,
-            body_q,
-            base_q=base_q if randomize_base else None,
-            base_u=base_u if randomize_base else None,
-            actuator_u=actuator_u,
-            body_u=body_u,
-            use_graph=use_graph,
-            verbose=verbose,
-            return_status=True,
-        )
-        if status.success.min() < 1:
-            success_flags.append(False)
-            continue
-        else:
-            success_flags.append(True)
-
-        # Update joints data from body states for validation
-        wp.copy(data.bodies.q_i, body_q)
-        wp.copy(data.bodies.u_i, body_u)
-        compute_joints_data(model=model, data=data, q_j_p=model.joints.q_j_0, correction=JointCorrectionMode.CONTINUOUS)
-
-        # Validate positions computation
-        residual_ct_pos = np.max(np.abs(data.joints.r_j.numpy()))
-        if residual_ct_pos > epsilon:
-            print(f"Large constraint residual ({residual_ct_pos}) for pose {pose_id}")
-            success_flags[-1] = False
-        actuator_q_check = extract_segments(data.joints.q_j.numpy(), actuated_coord_offsets, actuated_coords_sizes)
-        actuator_q_check = standardize_actuated_coords(actuator_q_check, actuated_coords_sizes, actuator_dof_types)
-        actuator_q_ref = standardize_actuated_coords(actuator_q_np[pose_id], actuated_coords_sizes, actuator_dof_types)
-        residual_actuator_q = np.max(np.abs(actuator_q_check - actuator_q_ref))
-        if residual_actuator_q > epsilon:
-            print(f"Large error on prescribed actuator coordinates ({residual_actuator_q}) for pose {pose_id}")
-            success_flags[-1] = False
-
-        # Validate velocities computation
-        residual_ct_vel = np.max(np.abs(data.joints.dr_j.numpy()))
-        if residual_ct_vel > epsilon:
-            print(f"Large constraint velocity residual ({residual_ct_vel}) for pose {pose_id}")
-            success_flags[-1] = False
-        actuator_u_check = extract_segments(data.joints.dq_j.numpy(), actuated_dof_offsets, actuated_dofs_sizes)
-        residual_actuator_u = np.max(np.abs(actuator_u_check - actuator_u_np[pose_id]))
-        if residual_actuator_u > epsilon:
-            print(f"Large error on prescribed actuator velocities ({residual_actuator_u}) for pose {pose_id}")
-            success_flags[-1] = False
-
-    success = np.sum(success_flags) == num_poses
-    if not success:
-        print(f"Random poses simulation & validation failed, {np.sum(success_flags)}/{num_poses} poses successful")
-
-    return success
-
-
 class DRTestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
     def setUp(self):
         if not test_context.setup_done:
@@ -520,8 +526,7 @@ class DRTestMechanismRandomPosesCheckForwardKinematics(unittest.TestCase):
     def test_mechanism_FK_random_poses(self):
         # Initialize RNG
         test_name = "Test mechanism FK random poses check"
-        seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(rng_seed_from_string(test_name))
 
         # Load the DR TestMech model from the `newton-assets` repository
         asset_path = newton.utils.download_asset("disneyresearch")
@@ -569,8 +574,7 @@ class DRLegsRandomPosesCheckForwardKinematics(unittest.TestCase):
     def test_dr_legs_FK_random_poses(self):
         # Initialize RNG
         test_name = "FK random poses check for dr_legs model"
-        seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(rng_seed_from_string(test_name))
 
         # Load the DR Legs model from the `newton-assets` repository
         asset_path = newton.utils.download_asset("disneyresearch")
@@ -617,8 +621,7 @@ class HeterogenousModelRandomPosesCheckForwardKinematics(unittest.TestCase):
     def test_heterogenous_model_FK_random_poses(self):
         # Initialize RNG
         test_name = "Heterogenous model (test mechanism + dr_legs) FK random poses check"
-        seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(rng_seed_from_string(test_name))
 
         # Load the DR TestMech and DR Legs models from the `newton-assets` repository
         asset_path = newton.utils.download_asset("disneyresearch")
@@ -713,8 +716,7 @@ class FourBarTieRodRandomPosesCheckForwardKinematics(unittest.TestCase):
     def test_four_bar_tie_rod_model_FK_random_poses(self):
         # Initialize RNG
         test_name = "Four-bar with tie rod FK random poses check"
-        seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(rng_seed_from_string(test_name))
 
         # Create a builder with 10 worlds, each with a four-bar with a tie rod
         builder = make_homogeneous_builder(num_worlds=10, build_fn=create_four_bar_tie_rod)
@@ -766,8 +768,7 @@ class AllJointsExampleRandomPosesCheckForwardKinematics(unittest.TestCase):
     def test_all_joints_example_FK_random_poses(self):
         # Initialize RNG
         test_name = "All-joints example FK random poses check"
-        seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(rng_seed_from_string(test_name))
 
         # Build model with all joint types, unary and binary (actuated so the FK problem is well-posed)
         builder = build_all_joints_test_model(unary_joints=True, binary_joints=True, actuated=True, floating_base=False)
@@ -799,8 +800,7 @@ class AllJointsExampleRandomPosesCheckForwardKinematics(unittest.TestCase):
     def test_all_joints_example_asymmetric_frames_FK_random_poses(self):
         # Initialize RNG
         test_name = "All-joints example FK random poses check with asymmetric frames"
-        seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(rng_seed_from_string(test_name))
 
         # Build model with all joint types, unary and binary (actuated so the FK problem is well-posed)
         builder = build_all_joints_test_model(unary_joints=True, binary_joints=True, actuated=True, floating_base=False)
@@ -857,8 +857,7 @@ class CartpoleRandomPosesCheckForwardKinematics(unittest.TestCase):
     def test_cartpole_FK_random_poses(self):
         # Initialize RNG
         test_name = "Cartpole FK random poses check"
-        seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(rng_seed_from_string(test_name))
 
         # Get builder for the cartpole model
         robot_builder = newton.ModelBuilder(up_axis=newton.Axis.Z)
@@ -912,8 +911,7 @@ class HeterogenousModelSparseJacobianAssemblyCheck(unittest.TestCase):
     def test_heterogenous_model_FK_random_poses(self):
         # Initialize RNG
         test_name = "Heterogenous model (test mechanism + dr_legs) sparse Jacobian assembly check"
-        seed = int(hashlib.sha256(test_name.encode("utf8")).hexdigest(), 16)
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(rng_seed_from_string(test_name))
 
         # Load the DR TestMech and DR Legs models from the `newton-assets` repository
         asset_path = newton.utils.download_asset("disneyresearch")

@@ -588,12 +588,16 @@ class ForwardKinematicsSolver:
             self.data.dimensions.num_states = to_warp_int32_array(num_states)
             self.data.dimensions.num_constraints = to_warp_int32_array(num_constraints)
             self.data.dimensions.constraint_full_to_red_map = to_warp_int32_array(constraint_full_to_red_map)
+            self.data.dimensions.num_axis_joints = len(axis_joint_d)
+            self.data.dimensions.all_worlds_mask = wp.full(
+                shape=(self.model.size.num_worlds,), value=True, dtype=wp.bool
+            )
 
-            # Helper data for model updates validation
+            # Joints — helper data for model updates validation
             self.data.joints._built_actuated = to_warp_int32_array(built_fk_actuated)
             self.data.joints._actuation_violations = wp.empty(2, dtype=wp.int32)
 
-            # Modified joints
+            # Joints — FK joints model
             self.data.joints.dof_type = to_warp_int32_array(joint_dof_type)
             self.data.joints.act_type = to_warp_int32_array(joint_act_type)
             self.data.joints.bid_B = to_warp_int32_array(joint_bid_B)
@@ -608,63 +612,66 @@ class ForwardKinematicsSolver:
             self.data.joints.axis_body_id = to_warp_int32_array(axis_body_id)
             self.data.joints.axis_source_joint_0 = to_warp_int32_array(axis_source_joint_0)
             self.data.joints.axis_source_joint_1 = to_warp_int32_array(axis_source_joint_1)
-            self.data.dimensions.num_axis_joints = len(axis_joint_d)
             self.data.joints.base_joint_id = to_warp_int32_array(base_joint_ids)
 
-            # Default base state
+            # Problem data
+            self.data.problem.actuator_q_next = wp.array(
+                dtype=wp.float32, shape=(self.data.dimensions.num_actuated_coords,)
+            )
+            if self.config.use_incremental_solve:
+                self.data.problem.actuator_q_prev = wp.array(
+                    dtype=wp.float32, shape=(self.data.dimensions.num_actuated_coords,)
+                )
+                self.data.problem.actuator_q_curr = wp.array(
+                    dtype=wp.float32, shape=(self.data.dimensions.num_actuated_coords,)
+                )
+            self.data.problem.target_rel_transforms = wp.array(
+                dtype=wp.transformf, shape=(self.data.dimensions.num_joints_tot,)
+            )
+            if self.config.use_regularization:
+                self.data.problem.body_q_ref = wp.array(dtype=wp.transformf, shape=(self.model.size.sum_of_num_bodies,))
             self.data.problem.base_q_default = wp.zeros(shape=self.model.size.num_worlds, dtype=wp.transformf)
             self.data.problem.base_u_default = wp.zeros(shape=(self.model.size.num_worlds,), dtype=wp.spatial_vectorf)
+            self.data.problem.constraints = wp.zeros(
+                dtype=wp.float32,
+                shape=(
+                    self.model.size.num_worlds,
+                    self.data.dimensions.num_constraints_max,
+                ),
+            )
+            self.data.problem.jacobian = wp.zeros(
+                dtype=wp.float32,
+                shape=(
+                    self.model.size.num_worlds,
+                    self.data.dimensions.num_constraints_max,
+                    self.data.dimensions.num_states_max,
+                ),
+            )
 
             # Line search
-            self.data.line_search.max_iterations = wp.array(dtype=wp.int32, shape=(1,))  # Max iterations
+            self.data.line_search.max_iterations = wp.array(dtype=wp.int32, shape=(1,))
             self.data.line_search.max_iterations.fill_(self.config.max_line_search_iterations)
-            self.data.line_search.iteration = wp.array(
-                dtype=wp.int32, shape=(self.model.size.num_worlds,)
-            )  # Iteration count
-            self.data.line_search.loop_condition = wp.array(dtype=wp.int32, shape=(1,))  # Loop condition
-            self.data.dimensions.all_worlds_mask = wp.full(
-                shape=(self.model.size.num_worlds,), value=True, dtype=wp.bool
-            )
-            self.data.line_search.success = wp.array(
-                dtype=wp.bool, shape=(self.model.size.num_worlds,)
-            )  # Convergence, per world
-            self.data.line_search.mask = wp.array(
-                dtype=wp.bool, shape=(self.model.size.num_worlds,)
-            )  # Flag to keep iterating per world
-            self.data.line_search.val_0 = wp.array(
-                dtype=wp.float32, shape=(self.model.size.num_worlds,)
-            )  # Merit function value at 0, per world
-            self.data.line_search.grad_0 = wp.array(
-                dtype=wp.float32, shape=(self.model.size.num_worlds,)
-            )  # Merit function gradient at 0, per world
-            self.data.line_search.alpha = wp.array(
-                dtype=wp.float32, shape=(self.model.size.num_worlds,)
-            )  # Step size, per world
+            self.data.line_search.iteration = wp.array(dtype=wp.int32, shape=(self.model.size.num_worlds,))
+            self.data.line_search.loop_condition = wp.array(dtype=wp.int32, shape=(1,))
+            self.data.line_search.success = wp.array(dtype=wp.bool, shape=(self.model.size.num_worlds,))
+            self.data.line_search.mask = wp.array(dtype=wp.bool, shape=(self.model.size.num_worlds,))
+            self.data.line_search.val_0 = wp.array(dtype=wp.float32, shape=(self.model.size.num_worlds,))
+            self.data.line_search.grad_0 = wp.array(dtype=wp.float32, shape=(self.model.size.num_worlds,))
+            self.data.line_search.alpha = wp.array(dtype=wp.float32, shape=(self.model.size.num_worlds,))
             self.data.line_search.body_q_alpha = wp.array(
                 dtype=wp.transformf, shape=(self.model.size.sum_of_num_bodies,)
-            )  # New state
-            self.data.line_search.val_alpha = wp.array(
-                dtype=wp.float32, shape=(self.model.size.num_worlds,)
-            )  # New merit function value, per world
+            )
+            self.data.line_search.val_alpha = wp.array(dtype=wp.float32, shape=(self.model.size.num_worlds,))
 
             # Gauss-Newton
-            self.data.gauss_newton.max_iterations = wp.array(dtype=wp.int32, shape=(1,))  # Max iterations
+            self.data.gauss_newton.max_iterations = wp.array(dtype=wp.int32, shape=(1,))
             self.data.gauss_newton.max_iterations.fill_(self.config.max_newton_iterations)
-            self.data.gauss_newton.min_iterations = wp.zeros(
-                dtype=wp.int32, shape=(self.model.size.num_worlds,)
-            )  # Min iterations
-            self.data.gauss_newton.iteration = wp.array(
-                dtype=wp.int32, shape=(self.model.size.num_worlds,)
-            )  # Iteration count
-            self.data.gauss_newton.loop_condition = wp.array(dtype=wp.int32, shape=(1,))  # Loop condition
-            self.data.gauss_newton.success = wp.array(
-                dtype=wp.bool, shape=(self.model.size.num_worlds,)
-            )  # Convergence per world
-            self.data.gauss_newton.mask = wp.array(
-                dtype=wp.bool, shape=(self.model.size.num_worlds,)
-            )  # Flag to keep iterating per world
+            self.data.gauss_newton.min_iterations = wp.zeros(dtype=wp.int32, shape=(self.model.size.num_worlds,))
+            self.data.gauss_newton.iteration = wp.array(dtype=wp.int32, shape=(self.model.size.num_worlds,))
+            self.data.gauss_newton.loop_condition = wp.array(dtype=wp.int32, shape=(1,))
+            self.data.gauss_newton.success = wp.array(dtype=wp.bool, shape=(self.model.size.num_worlds,))
+            self.data.gauss_newton.mask = wp.array(dtype=wp.bool, shape=(self.model.size.num_worlds,))
             if self.config.use_regularization and self.config.use_incremental_solve:
-                # Flags to keep track of in what worlds Jacobians should be updated before/after controls
                 self.data.gauss_newton.jacobian_early_update_mask = wp.array(
                     dtype=wp.bool, shape=(self.model.size.num_worlds,)
                 )
@@ -674,43 +681,19 @@ class ForwardKinematicsSolver:
             else:
                 self.data.gauss_newton.jacobian_early_update_mask = None
                 self.data.gauss_newton.jacobian_late_update_mask = None
-            self.data.gauss_newton.tolerance = wp.array(dtype=wp.float32, shape=(1,))  # Tolerance on max constraint
+            self.data.gauss_newton.tolerance = wp.array(dtype=wp.float32, shape=(1,))
             self.data.gauss_newton.tolerance.fill_(self.config.tolerance)
-            self.data.problem.actuator_q_next = wp.array(
-                dtype=wp.float32, shape=(self.data.dimensions.num_actuated_coords,)
-            )  # Actuated coordinates (target)
             if self.config.use_incremental_solve:
-                self.data.problem.actuator_q_prev = wp.array(
-                    dtype=wp.float32, shape=(self.data.dimensions.num_actuated_coords,)
-                )  # Actuated coordinates (previous)
-                self.data.problem.actuator_q_curr = wp.array(
-                    dtype=wp.float32, shape=(self.data.dimensions.num_actuated_coords,)
-                )  # Actuated coordinates (incremental target)
-                self.data.gauss_newton.delta_q_max = wp.from_numpy(
-                    delta_q_max, dtype=wp.float32
-                )  # Maximal step in actuated coordinates
-            self.data.problem.target_rel_transforms = wp.array(
-                dtype=wp.transformf, shape=(self.data.dimensions.num_joints_tot,)
-            )  # Position-control transformations at joints
-            if self.config.use_regularization:
-                self.data.problem.body_q_ref = wp.array(
-                    dtype=wp.transformf, shape=(self.model.size.sum_of_num_bodies,)
-                )  # Reference for regularizer
-            self.data.problem.constraints = wp.zeros(
-                dtype=wp.float32,
-                shape=(
-                    self.model.size.num_worlds,
-                    self.data.dimensions.num_constraints_max,
-                ),
-            )  # Constraints vector per world
-            self.data.problem.jacobian = wp.zeros(
-                dtype=wp.float32,
-                shape=(
-                    self.model.size.num_worlds,
-                    self.data.dimensions.num_constraints_max,
-                    self.data.dimensions.num_states_max,
-                ),
-            )  # Constraints Jacobian per world
+                self.data.gauss_newton.delta_q_max = wp.from_numpy(delta_q_max, dtype=wp.float32)
+            self.data.gauss_newton.grad = wp.zeros(
+                dtype=wp.float32, shape=(self.model.size.num_worlds, self.data.dimensions.num_states_max)
+            )
+            self.data.gauss_newton.step = wp.zeros(
+                dtype=wp.float32, shape=(self.model.size.num_worlds, self.data.dimensions.num_states_max)
+            )
+            self.data.gauss_newton.max_residual = wp.array(dtype=wp.float32, shape=(self.model.size.num_worlds,))
+
+            # Linear system
             if not self.config.use_sparsity:
                 self.data.linear_system.lhs = wp.zeros(
                     dtype=wp.float32,
@@ -719,27 +702,18 @@ class ForwardKinematicsSolver:
                         self.data.dimensions.num_states_max,
                         self.data.dimensions.num_states_max,
                     ),
-                )  # Gauss-Newton left-hand side per world
-            self.data.gauss_newton.grad = wp.zeros(
-                dtype=wp.float32, shape=(self.model.size.num_worlds, self.data.dimensions.num_states_max)
-            )  # Merit function gradient w.r.t. state per world
-            self.data.gauss_newton.max_residual = wp.array(
-                dtype=wp.float32, shape=(self.model.size.num_worlds,)
-            )  # Maximal constraint or gradient per world
+                )
             self.data.linear_system.rhs = wp.zeros(
                 dtype=wp.float32, shape=(self.model.size.num_worlds, self.data.dimensions.num_states_max)
-            )  # Gauss-Newton right-hand side per world (=-grad)
-            self.data.gauss_newton.step = wp.zeros(
-                dtype=wp.float32, shape=(self.model.size.num_worlds, self.data.dimensions.num_states_max)
-            )  # Step in state variables per world
+            )
             self.data.linear_system.jacobian_times_vector = wp.zeros(
                 dtype=wp.float32, shape=(self.model.size.num_worlds, self.data.dimensions.num_constraints_max)
-            )  # Intermediary vector when computing J^T * (J * x)
+            )
             self.data.linear_system.lhs_times_vector = wp.zeros(
                 dtype=wp.float32, shape=(self.model.size.num_worlds, self.data.dimensions.num_states_max)
-            )  # Intermediary vector when computing J^T * (J * x)
+            )
 
-            # Velocity solver — preallocate batch_size 1; the RHS and body time derivative arrays
+            # Velocity solve — preallocate batch_size 1; the RHS and body time derivative arrays
             # alias the Gauss-Newton RHS/step to reuse memory.
             self.data.velocity_solve[1] = FKVelocitySolveData(
                 fk_actuator_u=wp.zeros(dtype=wp.float32, shape=(1, self.data.dimensions.num_actuated_dofs)),

@@ -39,13 +39,6 @@ from newton.tests.utils.basics import build_cartpole
 from newton.tests.utils.testing import build_unary_revolute_joint_test, build_unary_universal_joint_test
 
 ###
-# Module configs
-###
-
-wp.set_module_options({"enable_backward": False})
-
-
-###
 # Helpers
 ###
 
@@ -164,7 +157,7 @@ def extract_segments(array, offsets, sizes):
     return np.array(res)
 
 
-def simulate_random_poses(
+def solve_and_check_fk_random_poses(
     model: ModelKamino,
     num_poses: int,
     rng: np.random.Generator,
@@ -175,12 +168,15 @@ def simulate_random_poses(
     randomize_base: bool = True,
     use_graph: bool = False,
     verbose: bool = False,
-    world_mask_target_inactive_rate: float = 0.2,
     **config_kwargs,
 ):
+    """Sample random actuator/base coords and twists for a given model, run position- and
+    velocity-level FK on these inputs, and validate the result
+    """
+
     num_worlds = model.size.num_worlds
 
-    # Sample per-pose inputs and a non-trivial world mask targeting a small number of inactive worlds
+    # Sample per-pose inputs and a non-trivial world mask
     base_q_np, base_u_np = sample_base_state(num_worlds, rng, num_poses)
     actuator_q_np = sample_actuator_coords(
         model, rng, num_poses, max_pos=max_pos, max_angle=max_angle, use_fk_actuators=True
@@ -188,9 +184,7 @@ def simulate_random_poses(
     actuator_u_np = sample_actuator_velocities(
         model, rng, num_poses, max_lin_vel=max_lin_vel, max_ang_vel=max_ang_vel, use_fk_actuators=True
     )
-    world_masks_np = sample_world_mask(
-        num_worlds, rng, num_samples=num_poses, target_inactive_rate=world_mask_target_inactive_rate
-    )
+    world_masks_np = sample_world_mask(num_worlds, rng, num_samples=num_poses, target_inactive_rate=0.2)
 
     # Precompute offset arrays for extracting actuator coordinates/dofs
     (
@@ -201,8 +195,7 @@ def simulate_random_poses(
         actuator_dof_types,
     ) = compute_actuated_coords_and_dofs_data(model)
 
-    # Compute cumulative offsets into the flat reference actuator vectors, matching the layout emitted by
-    # sample_actuator_coords/sample_actuator_velocities (concatenation over actuated joints)
+    # Precompute cumulative offsets into the flat reference actuator vectors
     ref_coord_offsets = np.concatenate(([0], np.cumsum(actuated_coords_sizes)[:-1])).astype(np.int32)
     ref_dof_offsets = np.concatenate(([0], np.cumsum(actuated_dofs_sizes)[:-1])).astype(np.int32)
 
@@ -349,8 +342,6 @@ def simulate_random_poses(
 
 
 class TestJacobianAssembly(unittest.TestCase):
-    """Consolidated Jacobian assembly checks: finite differences and sparse-vs-dense."""
-
     def setUp(self):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
@@ -583,7 +574,7 @@ class TestPassiveUniversalJointFrame(unittest.TestCase):
 
 
 class TestRandomPoses(unittest.TestCase):
-    """Consolidated random-pose FK checks for the models in the Kamino test suite."""
+    """Validate FK solves on random poses for multiple models."""
 
     def setUp(self):
         if not test_context.setup_done:
@@ -595,8 +586,8 @@ class TestRandomPoses(unittest.TestCase):
     def tearDown(self):
         self.default_device = None
 
-    def _default_simulate(self, model, num_poses, rng, **overrides):
-        """Return a ``simulate_random_poses`` partial with the common defaults for random-pose tests."""
+    def _make_solve_and_check(self, model, num_poses, rng, **overrides):
+        """Return a ``solve_and_check_fk_random_poses`` partial with the common defaults for random-pose tests."""
         kwargs = {
             "randomize_base": False,
             "use_graph": self.has_cuda and not wp.config.verify_cuda,
@@ -604,11 +595,13 @@ class TestRandomPoses(unittest.TestCase):
             "reset_state": True,
             "use_incremental_solve": True,
             "tolerance": 1e-6,
+            "preconditioner": "jacobi_block_diagonal",
         }
         kwargs.update(overrides)
-        return partial(simulate_random_poses, model, num_poses, rng, **kwargs)
+        return partial(solve_and_check_fk_random_poses, model, num_poses, rng, **kwargs)
 
     def test_dr_testmech_random_poses(self):
+        """Validate FK on random poses for the DR Test mechanism"""
         rng = np.random.default_rng(rng_seed_from_string("Test mechanism FK random poses check"))
 
         # Import the DR TestMech asset once and replicate it into 10 identical worlds
@@ -619,13 +612,13 @@ class TestRandomPoses(unittest.TestCase):
             builder.add_builder(template)
         model = builder.finalize(device=self.default_device, requires_grad=False)
 
-        simulate_function = self._default_simulate(model, num_poses=3, rng=rng)
-
-        # Dense then sparse solver
-        self.assertTrue(simulate_function(use_sparsity=False))
-        self.assertTrue(simulate_function(use_sparsity=True, preconditioner="jacobi_block_diagonal"))
+        # Solve and check FK on random poses, on both dense and sparse paths
+        solve_and_check_fn = self._make_solve_and_check(model, num_poses=3, rng=rng)
+        self.assertTrue(solve_and_check_fn(use_sparsity=False))
+        self.assertTrue(solve_and_check_fn(use_sparsity=True))
 
     def test_dr_legs_random_poses(self):
+        """Validate FK on random poses for DR Legs"""
         rng = np.random.default_rng(rng_seed_from_string("FK random poses check for dr_legs model"))
 
         # Import the DR Legs asset once (with the pelvis base body set) and replicate it into 10 worlds
@@ -637,19 +630,20 @@ class TestRandomPoses(unittest.TestCase):
             builder.add_builder(template)
         model = builder.finalize(device=self.default_device, requires_grad=False)
 
-        # Angles too far from the initial pose lead to singularities
-        simulate_function = self._default_simulate(
+        # Solve and check FK on random poses, on both dense and sparse paths
+        # Note: Angles too far from the initial pose lead to singularities
+        solve_and_check_fn = self._make_solve_and_check(
             model,
             num_poses=3,
             rng=rng,
             max_angle=np.radians(5.0),
             max_ang_vel=np.radians(20.0),
         )
-
-        self.assertTrue(simulate_function(use_sparsity=False))
-        self.assertTrue(simulate_function(use_sparsity=True, preconditioner="jacobi_block_diagonal"))
+        self.assertTrue(solve_and_check_fn(use_sparsity=False))
+        self.assertTrue(solve_and_check_fn(use_sparsity=True))
 
     def test_heterogenous_dr_testmech_and_legs_random_poses(self):
+        """Validate FK on random poses for a heterogenous model (DR TestMechanism + DR Legs)"""
         rng = np.random.default_rng(
             rng_seed_from_string("Heterogenous model (test mechanism + dr_legs) FK random poses check")
         )
@@ -666,10 +660,10 @@ class TestRandomPoses(unittest.TestCase):
             builder.add_builder(template_legs)
         model = builder.finalize(device=self.default_device, requires_grad=False)
 
-        # Angles too far from the initial pose lead to singularities.
-        # Keep ``randomize_base=True`` (default) so the heterogenous model triggers the
-        # "specified base on non-floating worlds" warning asserted below.
-        simulate_function = self._default_simulate(
+        # Solve and check FK on random poses, on both dense and sparse paths
+        # Note 1: Angles too far from the initial pose lead to singularities.
+        # Note 2: Expect a warning due to a specified base for DR TestMech worlds (fixed-base)
+        solve_and_check_fn = self._make_solve_and_check(
             model,
             num_poses=3,
             rng=rng,
@@ -677,59 +671,60 @@ class TestRandomPoses(unittest.TestCase):
             max_ang_vel=np.radians(20.0),
             randomize_base=True,
         )
-
-        # Expect a warning due to a specified base on non-floating worlds
         with self.assertLogs(level="WARNING"):
-            self.assertTrue(simulate_function(use_sparsity=False))
+            self.assertTrue(solve_and_check_fn(use_sparsity=False))
         with self.assertLogs(level="WARNING"):
-            self.assertTrue(simulate_function(use_sparsity=True, preconditioner="jacobi_block_diagonal"))
-
-    def _build_four_bar_tie_rod_model(self):
-        builder = make_homogeneous_builder(num_worlds=10, build_fn=create_four_bar_tie_rod)
-        return builder.finalize(device=self.default_device, requires_grad=False)
+            self.assertTrue(solve_and_check_fn(use_sparsity=True))
 
     def test_four_bar_tie_rod_axis_joints_random_poses(self):
-        """Four-bar with tie rod using axis joints (dense + sparse solver)."""
+        """Validate FK on random poses for a four-bar with a tie rod, using axis joints"""
         rng = np.random.default_rng(rng_seed_from_string("Four-bar with tie rod FK random poses check (axis joints)"))
-        model = self._build_four_bar_tie_rod_model()
-        simulate_function = self._default_simulate(
+        builder = make_homogeneous_builder(num_worlds=10, build_fn=create_four_bar_tie_rod)
+        model = builder.finalize(device=self.default_device, requires_grad=False)
+
+        # Solve and check FK on random poses, on both dense and sparse paths
+        solve_and_check_fn = self._make_solve_and_check(
             model,
             num_poses=3,
             rng=rng,
-            preconditioner="jacobi_block_diagonal",
+            add_axis_joints=True,
         )
-        self.assertTrue(simulate_function(add_axis_joints=True, tolerance=1e-6, use_sparsity=False))
-        self.assertTrue(simulate_function(add_axis_joints=True, tolerance=1e-6, use_sparsity=True))
+        self.assertTrue(solve_and_check_fn(use_sparsity=False))
+        self.assertTrue(solve_and_check_fn(use_sparsity=True))
 
     def test_four_bar_tie_rod_regularized_random_poses(self):
-        """Four-bar with tie rod using regularization instead of axis joints (dense + sparse solver)."""
+        """Validate FK on random poses for a four-bar with a tie rod, using regularization"""
         rng = np.random.default_rng(
             rng_seed_from_string("Four-bar with tie rod FK random poses check (regularization)")
         )
-        model = self._build_four_bar_tie_rod_model()
-        simulate_function = self._default_simulate(
+        builder = make_homogeneous_builder(num_worlds=10, build_fn=create_four_bar_tie_rod)
+        model = builder.finalize(device=self.default_device, requires_grad=False)
+
+        # Solve and check FK on random poses, on both dense and sparse paths
+        solve_and_check_fn = self._make_solve_and_check(
             model,
             num_poses=3,
             rng=rng,
-            preconditioner="jacobi_block_diagonal",
+            add_axis_joints=False,
+            use_regularization=True,
+            tolerance=1e-5,
         )
-        self.assertTrue(
-            simulate_function(add_axis_joints=False, use_regularization=True, tolerance=1e-5, use_sparsity=False)
-        )
-        self.assertTrue(
-            simulate_function(add_axis_joints=False, use_regularization=True, tolerance=1e-5, use_sparsity=True)
-        )
+        self.assertTrue(solve_and_check_fn(use_sparsity=False))
+        self.assertTrue(solve_and_check_fn(use_sparsity=True))
 
     def test_all_joints_random_poses(self):
+        """Validate FK on random poses for a model with all joint types"""
         rng = np.random.default_rng(rng_seed_from_string("All-joints example FK random poses check"))
         builder = build_all_joints_test_model(unary_joints=True, binary_joints=True, actuated=True, floating_base=False)
         model = builder.finalize(device=self.default_device)
 
-        simulate_function = self._default_simulate(model, num_poses=3, rng=rng)
-        self.assertTrue(simulate_function(use_sparsity=False))
-        self.assertTrue(simulate_function(use_sparsity=True, preconditioner="jacobi_block_diagonal"))
+        # Solve and check FK on random poses, on both dense and sparse paths
+        solve_and_check_fn = self._make_solve_and_check(model, num_poses=3, rng=rng)
+        self.assertTrue(solve_and_check_fn(use_sparsity=False))
+        self.assertTrue(solve_and_check_fn(use_sparsity=True))
 
     def test_all_joints_asymmetric_frames_random_poses(self):
+        """Validate FK on random poses for a model with all joint types and asymmetric joint frames"""
         rng = np.random.default_rng(
             rng_seed_from_string("All-joints example FK random poses check with asymmetric frames")
         )
@@ -749,11 +744,13 @@ class TestRandomPoses(unittest.TestCase):
             joint.X_Bj = wp.transpose(R_B) * R_F * joint.X_Fj  # Compute X_B given X_F to preserve a valid pose
         model = builder.finalize(device=self.default_device)
 
-        simulate_function = self._default_simulate(model, num_poses=3, rng=rng)
-        self.assertTrue(simulate_function(use_sparsity=False))
-        self.assertTrue(simulate_function(use_sparsity=True, preconditioner="jacobi_block_diagonal"))
+        # Solve and check FK on random poses, on both dense and sparse paths
+        solve_and_check_fn = self._make_solve_and_check(model, num_poses=3, rng=rng)
+        self.assertTrue(solve_and_check_fn(use_sparsity=False))
+        self.assertTrue(solve_and_check_fn(use_sparsity=True))
 
     def test_cartpole_random_poses(self):
+        """Validate FK on random poses for the Cartpole model"""
         rng = np.random.default_rng(rng_seed_from_string("Cartpole FK random poses check"))
 
         # Build a 10-world cartpole model with the revolute joint marked as FK-actuated
@@ -767,9 +764,10 @@ class TestRandomPoses(unittest.TestCase):
         model_newton = builder.finalize(skip_validation_joints=True)
         model = ModelKamino.from_newton(model_newton)
 
-        simulate_function = self._default_simulate(model, num_poses=3, rng=rng)
-        self.assertTrue(simulate_function(use_sparsity=False))
-        self.assertTrue(simulate_function(use_sparsity=True, preconditioner="jacobi_block_diagonal"))
+        # Solve and check FK on random poses, on both dense and sparse paths
+        solve_and_check_fn = self._make_solve_and_check(model, num_poses=3, rng=rng)
+        self.assertTrue(solve_and_check_fn(use_sparsity=False))
+        self.assertTrue(solve_and_check_fn(use_sparsity=True))
 
 
 class TestFourBarTieRodAxisFrames(unittest.TestCase):

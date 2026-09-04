@@ -640,8 +640,9 @@ def _correct_actuator_coords(
     if num_coords == 0:
         return
 
-    # Apply per-type correction (in-place, no limit wrapping); Axis joints have 0 coords and
-    # already early-returned above, so unknown FK-specific types never reach the dispatch.
+    # Apply per-type correction in-place
+    # Note: FK-specific types (axis) are early-returned above, so the case distinction in the
+    # function below is only made over joint types that coincide with FK joint types.
     correct_joint_coords_in_place(joint_dof_type[joint_id], actuator_q, actuator_q_ref, coord_id)
 
 

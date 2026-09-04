@@ -69,8 +69,8 @@ def make_compute_and_write_joint_coords(dof_type: JointDoFType):
         for i in range(num_coords):
             joint_q[coords_offset + i] = coords[i]
 
-        # Apply ±2π / quaternion-sign correction against the reference, in place.
-        # ``dof_type_int`` is a Python literal captured from the factory, so the runtime dispatch
+        # Apply correction up to +/- 2pi and quaternion sign against the reference, in place.
+        # Note: ``dof_type_int`` is a Python literal captured from the factory, so the runtime dispatch
         # inside ``correct_joint_coords_in_place`` is compile-time-constant per specialization.
         correct_joint_coords_in_place(dof_type_int, joint_q, joint_q_ref, coords_offset)
 

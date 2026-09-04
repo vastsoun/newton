@@ -181,6 +181,58 @@ def get_joint_coord_correction_function(dof_type: JointDoFType):
 
 
 @wp.func
+def _correct_rotational_coord_in_place(coords: wp.array[wp.float32], coords_ref: wp.array[wp.float32], slot: wp.int32):
+    """Correct one angular coordinate stored at ``slot`` against its reference (in-place, ±2π)."""
+    coords[slot] = correct_rotational_coord(coords[slot], coords_ref[slot])
+
+
+@wp.func
+def _correct_quat_coord_in_place(coords: wp.array[wp.float32], coords_ref: wp.array[wp.float32], slot: wp.int32):
+    """Correct a quaternion stored at ``slot..slot+3`` against its reference (in-place, up to sign)."""
+    quat = wp.vec4f(coords[slot], coords[slot + 1], coords[slot + 2], coords[slot + 3])
+    quat_ref = wp.vec4f(coords_ref[slot], coords_ref[slot + 1], coords_ref[slot + 2], coords_ref[slot + 3])
+    quat = correct_quat_vector_coord(quat, quat_ref)
+    for i in range(4):
+        coords[slot + i] = quat[i]
+
+
+@wp.func
+def correct_joint_coords_in_place(
+    dof_type: wp.int32,
+    coords: wp.array[wp.float32],
+    coords_ref: wp.array[wp.float32],
+    offset: wp.int32,
+):
+    """
+    Correct the joint coordinates stored at ``coords[offset : offset + num_coords]`` against a
+    reference block in ``coords_ref``, in place, using ±2π wrapping for angles and sign correction
+    for quaternions. No limit wrapping is applied; use :func:`get_joint_coord_correction_function`
+    if bounded wrapping is needed.
+
+    The runtime ``dof_type`` dispatches to the appropriate per-type correction, matching the
+    joint DoF layouts defined in :class:`JointDoFType`. Types with no correction (Cartesian,
+    Fixed, Prismatic) are no-ops, and unrecognized values are also silently skipped to accommodate
+    solver-specific extensions with disjoint coord slots (e.g. FK's Axis type).
+    """
+    if dof_type == JointDoFType.CARTESIAN or dof_type == JointDoFType.FIXED or dof_type == JointDoFType.PRISMATIC:
+        return
+    elif dof_type == JointDoFType.CYLINDRICAL:
+        _correct_rotational_coord_in_place(coords, coords_ref, offset + 1)
+    elif dof_type == JointDoFType.FREE:
+        _correct_quat_coord_in_place(coords, coords_ref, offset + 3)
+    elif dof_type == JointDoFType.REVOLUTE:
+        _correct_rotational_coord_in_place(coords, coords_ref, offset)
+    elif dof_type == JointDoFType.SPHERICAL:
+        _correct_quat_coord_in_place(coords, coords_ref, offset)
+    elif dof_type == JointDoFType.UNIVERSAL:
+        _correct_rotational_coord_in_place(coords, coords_ref, offset)
+        _correct_rotational_coord_in_place(coords, coords_ref, offset + 1)
+    elif dof_type == JointDoFType.GIMBAL or dof_type == JointDoFType.GIMBAL_LEFT_HANDED:
+        for i in range(3):
+            _correct_rotational_coord_in_place(coords, coords_ref, offset + i)
+
+
+@wp.func
 def select_gimbal_coords(j_q_j: wp.quatf, reference: wp.vec3f, third_axis_sign: wp.float32) -> wp.vec3f:
     """Select the authored intrinsic-XYZ chart nearest to a reference triple."""
     principal = wp.quat_to_euler(j_q_j, 2, 1, 0)

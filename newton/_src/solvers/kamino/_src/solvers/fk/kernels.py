@@ -23,8 +23,7 @@ from ...core.math import (
 from ...core.types import mat34f
 from ...kinematics.joints import (
     compute_joint_pose_and_relative_pose,
-    correct_quat_vector_coord,
-    correct_rotational_coord,
+    correct_joint_coords_in_place,
     get_joint_coords_mapping_function,
     gimbal_transported_axes,
     universal_intermediary_axes,
@@ -212,31 +211,6 @@ def _eval_passive_universal_jacobian_blocks(
     a_x_base = unit_quat_apply(q_base, a_x)
     jac_q_follower = -a_x_base * unit_quat_apply_jacobian(q_follower, a_y)
     return jac_q_base, jac_q_follower
-
-
-@wp.func
-def _correct_rotational_actuator_coord(
-    actuator_q: wp.array[wp.float32], actuator_q_ref: wp.array[wp.float32], coord_id: wp.int32
-):
-    """Correct an angular actuator coordinate against its reference."""
-    actuator_q[coord_id] = correct_rotational_coord(actuator_q[coord_id], actuator_q_ref[coord_id])
-
-
-@wp.func
-def _correct_quat_actuator_coords(
-    actuator_q: wp.array[wp.float32], actuator_q_ref: wp.array[wp.float32], coord_id: wp.int32
-):
-    """Correct four quaternion actuator coordinates against their reference."""
-    quat = wp.vec4f(actuator_q[coord_id], actuator_q[coord_id + 1], actuator_q[coord_id + 2], actuator_q[coord_id + 3])
-    quat_ref = wp.vec4f(
-        actuator_q_ref[coord_id],
-        actuator_q_ref[coord_id + 1],
-        actuator_q_ref[coord_id + 2],
-        actuator_q_ref[coord_id + 3],
-    )
-    quat_corrected = correct_quat_vector_coord(quat, quat_ref)
-    for i in range(4):
-        actuator_q[coord_id + i] = quat_corrected[i]
 
 
 ###
@@ -667,29 +641,9 @@ def _correct_actuator_coords(
     if num_coords == 0:
         return
 
-    # Apply correction based on DoFs
-    dof_type = joint_dof_type[joint_id]
-    if (
-        dof_type == FKJointDoFType.CARTESIAN or dof_type == FKJointDoFType.FIXED or dof_type == FKJointDoFType.PRISMATIC
-    ):  # No correction needed
-        return
-    elif dof_type == FKJointDoFType.CYLINDRICAL:  # Correct angle up to +/- 2 pi
-        _correct_rotational_actuator_coord(actuator_q, actuator_q_ref, coord_id + 1)
-    elif dof_type == FKJointDoFType.FREE:  # Correct quaternion up to sign
-        _correct_quat_actuator_coords(actuator_q, actuator_q_ref, coord_id + 3)
-    elif dof_type == FKJointDoFType.REVOLUTE:  # Correct angle up to +/- 2 pi
-        _correct_rotational_actuator_coord(actuator_q, actuator_q_ref, coord_id)
-    elif dof_type == FKJointDoFType.SPHERICAL:  # Correct quaternion up to sign
-        _correct_quat_actuator_coords(actuator_q, actuator_q_ref, coord_id)
-    elif dof_type == FKJointDoFType.UNIVERSAL:  # Correct angles up to +/- 2 pi
-        _correct_rotational_actuator_coord(actuator_q, actuator_q_ref, coord_id)
-        _correct_rotational_actuator_coord(actuator_q, actuator_q_ref, coord_id + 1)
-    elif dof_type == FKJointDoFType.GIMBAL or dof_type == FKJointDoFType.GIMBAL_LEFT_HANDED:
-        # Correct angles up to +/- 2 pi
-        for i in range(3):
-            _correct_rotational_actuator_coord(actuator_q, actuator_q_ref, coord_id + i)
-    else:
-        assert False, "Unexpected actuator dof type"  # noqa: B011
+    # Apply per-type correction (in-place, no limit wrapping); Axis joints have 0 coords and
+    # already early-returned above, so unknown FK-specific types never reach the dispatch.
+    correct_joint_coords_in_place(joint_dof_type[joint_id], actuator_q, actuator_q_ref, coord_id)
 
 
 @wp.kernel

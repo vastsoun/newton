@@ -269,18 +269,21 @@ def simulate_random_poses(
 ###
 
 
-class JacobianCheckForwardKinematics(unittest.TestCase):
+class TestJacobianAssembly(unittest.TestCase):
+    """Consolidated Jacobian assembly checks: finite differences and sparse-vs-dense."""
+
     def setUp(self):
         if not test_context.setup_done:
             setup_tests(clear_cache=False)
         self.default_device = wp.get_device(test_context.device)
         self.has_cuda = self.default_device.is_cuda
+        self.verbose = test_context.verbose
 
     def tearDown(self):
         self.default_device = None
 
-    def test_Jacobian_check(self):
-        # Initialize RNG
+    def test_finite_differences_single_joint(self):
+        """Match analytic and finite-difference Jacobians on every single-joint fixture."""
         test_name = "Forward Kinematics Jacobian check"
         rng = np.random.default_rng(rng_seed_from_string(test_name))
 
@@ -318,6 +321,85 @@ class JacobianCheckForwardKinematics(unittest.TestCase):
 
         success = run_test_single_joint_examples(test_function, test_name, device=self.default_device)
         self.assertTrue(success)
+
+    def test_sparse_matches_dense_single_joint(self):
+        """Match dense and sparse Jacobians for every single-joint fixture."""
+        test_name = "Single-joint sparse Jacobian assembly check"
+        rng = np.random.default_rng(42)
+
+        def test_function(model: ModelKamino):
+            """Compare the dense and sparse Jacobians for a random body state."""
+            body_q_np = rng.uniform(-1.0, 1.0, 7 * model.size.sum_of_num_bodies).astype("float32")
+            body_q = wp.from_numpy(body_q_np, dtype=wp.transformf, device=model.device)
+            actuator_q = wp.zeros(
+                shape=model.size.sum_of_num_actuated_joint_coords, dtype=wp.float32, device=model.device
+            )
+            solver = ForwardKinematicsSolver(model, config=ForwardKinematicsSolver.Config(use_sparsity=True))
+            transforms = solver.eval_target_relative_transforms(actuator_q, None)
+
+            jac_dense_np = solver.eval_kinematic_constraints_jacobian(body_q, transforms).numpy()
+            solver.assemble_sparse_jacobian(body_q, transforms)
+            jac_sparse_np = solver.data.problem.sparse_jacobian.numpy()
+            rows, cols = solver.data.problem.sparse_jacobian.dims.numpy()[0]
+            return np.allclose(jac_dense_np[0, :rows, :cols], jac_sparse_np[0], atol=1e-6, rtol=0.0)
+
+        success = run_test_single_joint_examples(test_function, test_name, device=self.default_device)
+        self.assertTrue(success)
+
+    def test_sparse_matches_dense_heterogenous(self):
+        """Match dense and sparse Jacobians on a heterogenous (TestMech + DR Legs) model."""
+        test_name = "Heterogenous model (test mechanism + dr_legs) sparse Jacobian assembly check"
+        rng = np.random.default_rng(rng_seed_from_string(test_name))
+
+        # Load the DR TestMech and DR Legs models from the `newton-assets` repository
+        asset_path = newton.utils.download_asset("disneyresearch")
+        asset_file_0 = str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda")
+        asset_file_1 = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
+        builder = USDImporter().import_from(asset_file_0)
+        builder1 = USDImporter().import_from(asset_file_1)
+        builder1.set_base_body("pelvis")
+        builder.add_builder(builder1)
+        model = builder.finalize(device=self.default_device, requires_grad=False)
+
+        # Generate random poses
+        num_poses = 30
+        body_q_np = sample_body_poses(
+            model.size.sum_of_num_bodies,
+            rng,
+            num_poses,
+            max_pos=0.05,
+            max_angle=np.radians(20.0),
+            unit_quaternions=False,
+        )
+        base_q_np, _ = sample_base_state(
+            model.size.num_worlds,
+            rng,
+            num_poses,
+        )
+        actuator_q_np = sample_actuator_coords(model, rng, num_poses)
+
+        # Assemble and compare dense and sparse Jacobian for each pose
+        solver = ForwardKinematicsSolver(model, config=ForwardKinematicsSolver.Config(use_sparsity=True))
+        with wp.ScopedDevice(model.device):
+            body_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
+            base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)
+            actuator_q = wp.array(shape=(actuator_q_np.shape[1]), dtype=wp.float32)
+        dims = solver.data.problem.sparse_jacobian.dims.numpy()
+
+        for pose_id in range(num_poses):
+            body_q.assign(body_q_np[pose_id])
+            base_q.assign(base_q_np[pose_id])
+            actuator_q.assign(actuator_q_np[pose_id])
+            transforms = solver.eval_target_relative_transforms(actuator_q, base_q)
+
+            jac_dense_np = solver.eval_kinematic_constraints_jacobian(body_q, transforms).numpy()
+            solver.assemble_sparse_jacobian(body_q, transforms)
+            jac_sparse_np = solver.data.problem.sparse_jacobian.numpy()
+
+            for wd_id in range(model.size.num_worlds):
+                rows, cols = int(dims[wd_id][0]), int(dims[wd_id][1])
+                residual = jac_dense_np[wd_id, :rows, :cols] - jac_sparse_np[wd_id]
+                self.assertLess(np.max(np.abs(residual)), 3e-6)
 
 
 class TestPerDofActuation(unittest.TestCase):
@@ -419,40 +501,6 @@ class TestPassiveUniversalJointFrame(unittest.TestCase):
                 tolerance_rel=5.0e-3,
             )
         )
-
-
-class SparseJacobianSingleJointCheckForwardKinematics(unittest.TestCase):
-    def setUp(self):
-        if not test_context.setup_done:
-            setup_tests(clear_cache=False)
-        self.default_device = wp.get_device(test_context.device)
-
-    def tearDown(self):
-        self.default_device = None
-
-    def test_sparse_jacobian_matches_dense_for_single_joint_examples(self):
-        """Match dense and sparse Jacobians for every single-joint fixture."""
-        test_name = "Single-joint sparse Jacobian assembly check"
-        rng = np.random.default_rng(42)
-
-        def test_function(model: ModelKamino):
-            """Compare the dense and sparse Jacobians for a random body state."""
-            body_q_np = rng.uniform(-1.0, 1.0, 7 * model.size.sum_of_num_bodies).astype("float32")
-            body_q = wp.from_numpy(body_q_np, dtype=wp.transformf, device=model.device)
-            actuator_q = wp.zeros(
-                shape=model.size.sum_of_num_actuated_joint_coords, dtype=wp.float32, device=model.device
-            )
-            solver = ForwardKinematicsSolver(model, config=ForwardKinematicsSolver.Config(use_sparsity=True))
-            transforms = solver.eval_target_relative_transforms(actuator_q, None)
-
-            jac_dense_np = solver.eval_kinematic_constraints_jacobian(body_q, transforms).numpy()
-            solver.assemble_sparse_jacobian(body_q, transforms)
-            jac_sparse_np = solver.data.problem.sparse_jacobian.numpy()
-            rows, cols = solver.data.problem.sparse_jacobian.dims.numpy()[0]
-            return np.allclose(jac_dense_np[0, :rows, :cols], jac_sparse_np[0], atol=1e-6, rtol=0.0)
-
-        success = run_test_single_joint_examples(test_function, test_name, device=self.default_device)
-        self.assertTrue(success)
 
 
 class WorldMaskInitializationForwardKinematics(unittest.TestCase):
@@ -746,73 +794,6 @@ class TestFourBarTieRodAxisFrames(unittest.TestCase):
             reference.data.joints.X_Fj.numpy()[axis_joints],
             atol=1e-6,
         )
-
-
-class HeterogenousModelSparseJacobianAssemblyCheck(unittest.TestCase):
-    def setUp(self):
-        if not test_context.setup_done:
-            setup_tests(clear_cache=False)
-        self.default_device = wp.get_device(test_context.device)
-        self.has_cuda = self.default_device.is_cuda
-        self.verbose = test_context.verbose
-
-    def tearDown(self):
-        self.default_device = None
-
-    def test_heterogenous_model_FK_random_poses(self):
-        # Initialize RNG
-        test_name = "Heterogenous model (test mechanism + dr_legs) sparse Jacobian assembly check"
-        rng = np.random.default_rng(rng_seed_from_string(test_name))
-
-        # Load the DR TestMech and DR Legs models from the `newton-assets` repository
-        asset_path = newton.utils.download_asset("disneyresearch")
-        asset_file_0 = str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda")
-        asset_file_1 = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
-        builder = USDImporter().import_from(asset_file_0)
-        builder1 = USDImporter().import_from(asset_file_1)
-        builder1.set_base_body("pelvis")
-        builder.add_builder(builder1)
-        model = builder.finalize(device=self.default_device, requires_grad=False)
-
-        # Generate random poses
-        num_poses = 30
-        body_q_np = sample_body_poses(
-            model.size.sum_of_num_bodies,
-            rng,
-            num_poses,
-            max_pos=0.05,
-            max_angle=np.radians(20.0),
-            unit_quaternions=False,
-        )
-        base_q_np, _ = sample_base_state(
-            model.size.num_worlds,
-            rng,
-            num_poses,
-        )
-        actuator_q_np = sample_actuator_coords(model, rng, num_poses)
-
-        # Assemble and compare dense and sparse Jacobian for each pose
-        solver = ForwardKinematicsSolver(model, config=ForwardKinematicsSolver.Config(use_sparsity=True))
-        with wp.ScopedDevice(model.device):
-            body_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
-            base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)
-            actuator_q = wp.array(shape=(actuator_q_np.shape[1]), dtype=wp.float32)
-        dims = solver.data.problem.sparse_jacobian.dims.numpy()
-
-        for pose_id in range(num_poses):
-            body_q.assign(body_q_np[pose_id])
-            base_q.assign(base_q_np[pose_id])
-            actuator_q.assign(actuator_q_np[pose_id])
-            transforms = solver.eval_target_relative_transforms(actuator_q, base_q)
-
-            jac_dense_np = solver.eval_kinematic_constraints_jacobian(body_q, transforms).numpy()
-            solver.assemble_sparse_jacobian(body_q, transforms)
-            jac_sparse_np = solver.data.problem.sparse_jacobian.numpy()
-
-            for wd_id in range(model.size.num_worlds):
-                rows, cols = int(dims[wd_id][0]), int(dims[wd_id][1])
-                residual = jac_dense_np[wd_id, :rows, :cols] - jac_sparse_np[wd_id]
-                self.assertLess(np.max(np.abs(residual)), 3e-6)
 
 
 class TestWarnings(unittest.TestCase):

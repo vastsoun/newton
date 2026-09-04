@@ -189,16 +189,13 @@ class ForwardKinematicsSolver:
         # Retrieve / compute dimensions - Bodies
         num_bodies = self.model.info.num_bodies.numpy()  # Number of bodies per world
         bodies_offset = self.model.info.bodies_offset.numpy()  # Index of first body per world
-        self.data.dimensions.num_bodies_max = self.model.size.max_of_num_bodies  # Max number of bodies across worlds
 
         # Retrieve / compute dimensions - States (i.e., body poses)
         num_states = 7 * num_bodies  # Number of state dimensions per world
         self.data.dimensions.num_states_tot = (
             7 * self.model.size.sum_of_num_bodies
         )  # State dimensions for the whole model
-        self.data.dimensions.num_states_max = (
-            7 * self.data.dimensions.num_bodies_max
-        )  # Max state dimension across worlds
+        self.data.dimensions.num_states_max = 7 * self.model.size.max_of_num_bodies  # Max state dimension across worlds
 
         # Retrieve / compute dimensions - Joints (main model)
         num_joints_prev = self.model.info.num_joints.numpy().copy()  # Number of joints per world
@@ -948,12 +945,12 @@ class ForwardKinematicsSolver:
             ):
                 self.data.linear_system.inv_blocks_3 = wp.array(
                     dtype=wp.mat33f,
-                    shape=(self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
+                    shape=(self.model.size.num_worlds, self.model.size.max_of_num_bodies),
                     device=self.device,
                 )
                 self.data.linear_system.inv_blocks_4 = wp.array(
                     dtype=wp.mat44f,
-                    shape=(self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
+                    shape=(self.model.size.num_worlds, self.model.size.max_of_num_bodies),
                     device=self.device,
                 )
                 blockwise_gemv_2d = get_blockwise_diag_3_4_gemv_2d(
@@ -1169,7 +1166,7 @@ class ForwardKinematicsSolver:
         """
         wp.launch(
             _reset_state_base_q,
-            dim=(self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
+            dim=(self.model.size.num_worlds, self.model.size.max_of_num_bodies),
             inputs=[
                 self.data.joints.base_joint_id,
                 base_q,
@@ -1355,7 +1352,7 @@ class ForwardKinematicsSolver:
         # Evaluate unit norm quaternion constraints
         wp.launch(
             _eval_unit_quaternion_constraints,
-            dim=(self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
+            dim=(self.model.size.num_worlds, self.model.size.max_of_num_bodies),
             inputs=[self.model.info.num_bodies, self.model.info.bodies_offset, body_q, world_mask, constraints],
             device=self.device,
         )
@@ -1429,7 +1426,7 @@ class ForwardKinematicsSolver:
         # Evaluate unit norm quaternion constraints Jacobian
         wp.launch(
             _eval_unit_quaternion_constraints_jacobian,
-            dim=(self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
+            dim=(self.model.size.num_worlds, self.model.size.max_of_num_bodies),
             inputs=[
                 self.model.info.num_bodies,
                 self.model.info.bodies_offset,
@@ -1481,7 +1478,7 @@ class ForwardKinematicsSolver:
         # Evaluate unit norm quaternion constraints Jacobian
         wp.launch(
             _eval_unit_quaternion_constraints_sparse_jacobian,
-            dim=(self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
+            dim=(self.model.size.num_worlds, self.model.size.max_of_num_bodies),
             inputs=[
                 self.model.info.num_bodies,
                 self.model.info.bodies_offset,
@@ -1929,7 +1926,7 @@ class ForwardKinematicsSolver:
         # Apply line search step and update max constraint
         wp.launch(
             _apply_line_search_step,
-            dim=(self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
+            dim=(self.model.size.num_worlds, self.model.size.max_of_num_bodies),
             inputs=[
                 self.model.info.num_bodies,
                 self.model.info.bodies_offset,
@@ -2115,7 +2112,7 @@ class ForwardKinematicsSolver:
             self.linear_solver_llt.solve(rhs, body_q_dot, world_mask)
         wp.launch(
             _eval_body_velocities,
-            dim=(batch_size, self.model.size.num_worlds, self.data.dimensions.num_bodies_max),
+            dim=(batch_size, self.model.size.num_worlds, self.model.size.max_of_num_bodies),
             inputs=[self.model.info.num_bodies, self.model.info.bodies_offset, body_q, body_q_dot, world_mask, body_u],
             device=self.device,
         )

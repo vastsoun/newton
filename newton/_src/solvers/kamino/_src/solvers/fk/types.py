@@ -141,20 +141,17 @@ class FKDimensions:
     # Scalar counts
     ###
 
-    num_bodies_max: int = 0
-    """Max number of bodies across worlds."""
-
     num_states_tot: int = 0
-    """State dims (7 * num bodies) for the whole model."""
+    """FK state dims (7 * num bodies) for the whole model."""
 
     num_states_max: int = 0
-    """Max state dim across worlds."""
+    """Max FK state dim across worlds."""
 
     num_joints_tot: int = 0
     """Total joints (FK model, including axis joints)."""
 
     num_joints_max: int = 0
-    """Max joints across worlds."""
+    """Max number of FK joints across worlds."""
 
     num_axis_joints: int = 0
     """Number of FK-specific axis joints across worlds."""
@@ -200,10 +197,10 @@ class FKDimensions:
     """Tile count for 2d tile-based kernels, along the states axis."""
 
     tile_size_coords: int = 0
-    """Tile size 1d tile-based kernels, along the actuated coords axis."""
+    """Tile size for 1d tile-based kernels, along the actuated coords axis."""
 
     num_tiles_coords: int = 0
-    """Tile count 1d tile-based kernels, along the actuated coords axis."""
+    """Tile count for 1d tile-based kernels, along the actuated coords axis."""
 
     ###
     # Per-world counts and offsets
@@ -211,25 +208,25 @@ class FKDimensions:
 
     num_joints: wp.array[wp.int32] | None = None
     """
-    Number of joints per world.
+    Number of FK joints per world.
     Shape of ``(num_worlds,)``.
     """
 
     joints_offset: wp.array[wp.int32] | None = None
     """
-    Joint offset per world.
+    FK joint index offset per world, w.r.t. FK joints of all worlds.
     Shape of ``(num_worlds + 1,)``.
     """
 
     num_states: wp.array[wp.int32] | None = None
     """
-    Number of states per world.
+    Number of FK state dimensions per world.
     Shape of ``(num_worlds,)``.
     """
 
     num_constraints: wp.array[wp.int32] | None = None
     """
-    Constraints per world.
+    Number of FK constraint dimensions per world.
     Shape of ``(num_worlds,)``.
     """
 
@@ -265,7 +262,7 @@ class FKDimensions:
 
     constraint_full_to_red_map: wp.array[wp.int32] | None = None
     """
-    Full to reduced constraint index map.
+    Full to reduced constraint index map, from 6 maximal constraints per joint to actual constraints.
     Shape of ``(6 * num_joints_tot,)``.
     """
 
@@ -275,25 +272,25 @@ class FKDimensions:
 
     tile_sparsity_pattern: wp.array3d[wp.int32] | None = None
     """
-    Nonzero tile indicators per world.
+    0-1 flag per Jacobian tile, with 0 for tiles that are structurally fully zero.
     Shape of ``(num_worlds, num_tiles_cts_2d, num_tiles_vrs_2d)``.
     """
 
     rb_nzb_id: wp.array[wp.int32] | None = None
     """
-    Rigid body row nzb id per body.
+    Non-zero block id for the quaternion norm constraint row associated to a rigid body.
     Shape of ``(num_bodies_tot,)``.
     """
 
     ct_nzb_id_base: wp.array[wp.int32] | None = None
     """
-    Constraint nzb id (base side).
+    Map from full constraint id to non-zero block id, for the base body constraint block.
     Shape of ``(6 * num_joints_tot,)``.
     """
 
     ct_nzb_id_follower: wp.array[wp.int32] | None = None
     """
-    Constraint nzb id (follower side).
+    Map from full constraint id to non-zero block id, for the follower body constraint block.
     Shape of ``(6 * num_joints_tot,)``.
     """
 
@@ -382,25 +379,25 @@ class FKJointsModel:
 
     axis_joint_id: wp.array[wp.int32] | None = None
     """
-    FK axis joint ids across worlds.
+    Indices of FK joints that are axis joints, across worlds.
     Shape of ``(num_axis_joints,)``.
     """
 
     axis_body_id: wp.array[wp.int32] | None = None
     """
-    Body id targeted by each axis joint.
+    Body id targeted by each axis joint (i.e. tie rod body).
     Shape of ``(num_axis_joints,)``.
     """
 
     axis_source_joint_0: wp.array[wp.int32] | None = None
     """
-    First source joint id per axis joint.
+    First source joint id per axis joint (i.e. first spherical joint).
     Shape of ``(num_axis_joints,)``.
     """
 
     axis_source_joint_1: wp.array[wp.int32] | None = None
     """
-    Second source joint id per axis joint.
+    Second source joint id per axis joint (i.e. second spherical joint).
     Shape of ``(num_axis_joints,)``.
     """
 

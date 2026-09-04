@@ -135,7 +135,11 @@ class ForwardKinematicsSolver:
         """Device for data allocations"""
 
         self.config: ForwardKinematicsSolver.Config = ForwardKinematicsSolver.Config()
-        """Solver config"""
+        """Solver config
+
+        Unless documented explicitly for individual settings, configuration changes must occur
+        before ``finalize()`` is called (else they will have no effect or lead to undefined behavior).
+        """
 
         self.data: FKData | None = None
         """ Internal solver data, allocated by finalize() """
@@ -646,8 +650,6 @@ class ForwardKinematicsSolver:
             )
 
             # Line search
-            self.data.line_search.max_iterations = wp.array(dtype=wp.int32, shape=(1,))
-            self.data.line_search.max_iterations.fill_(self.config.max_line_search_iterations)
             self.data.line_search.iteration = wp.array(dtype=wp.int32, shape=(self.model.size.num_worlds,))
             self.data.line_search.loop_condition = wp.array(dtype=wp.int32, shape=(1,))
             self.data.line_search.success = wp.array(dtype=wp.bool, shape=(self.model.size.num_worlds,))
@@ -661,8 +663,6 @@ class ForwardKinematicsSolver:
             self.data.line_search.val_alpha = wp.array(dtype=wp.float32, shape=(self.model.size.num_worlds,))
 
             # Gauss-Newton
-            self.data.gauss_newton.max_iterations = wp.array(dtype=wp.int32, shape=(1,))
-            self.data.gauss_newton.max_iterations.fill_(self.config.max_newton_iterations)
             self.data.gauss_newton.min_iterations = wp.zeros(dtype=wp.int32, shape=(self.model.size.num_worlds,))
             self.data.gauss_newton.iteration = wp.array(dtype=wp.int32, shape=(self.model.size.num_worlds,))
             self.data.gauss_newton.loop_condition = wp.array(dtype=wp.int32, shape=(1,))
@@ -678,8 +678,6 @@ class ForwardKinematicsSolver:
             else:
                 self.data.gauss_newton.jacobian_early_update_mask = None
                 self.data.gauss_newton.jacobian_late_update_mask = None
-            self.data.gauss_newton.tolerance = wp.array(dtype=wp.float32, shape=(1,))
-            self.data.gauss_newton.tolerance.fill_(self.config.tolerance)
             if self.config.use_incremental_solve:
                 self.data.gauss_newton.delta_q_max = wp.from_numpy(delta_q_max, dtype=wp.float32)
             self.data.gauss_newton.grad = wp.zeros(
@@ -1796,7 +1794,7 @@ class ForwardKinematicsSolver:
                 self.data.line_search.alpha,
                 self.data.line_search.val_alpha,
                 self.data.line_search.iteration,
-                self.data.line_search.max_iterations,
+                self.config.max_line_search_iterations,
                 self.data.line_search.success,
                 self.data.line_search.mask,
                 self.data.line_search.loop_condition,
@@ -1955,10 +1953,10 @@ class ForwardKinematicsSolver:
             dim=(self.model.size.num_worlds,),
             inputs=[
                 self.data.gauss_newton.max_residual,
-                self.data.gauss_newton.tolerance,
+                self.config.tolerance,
                 self.data.gauss_newton.iteration,
                 self.data.gauss_newton.min_iterations,
-                self.data.gauss_newton.max_iterations,
+                self.config.max_newton_iterations,
                 self.data.line_search.success,
                 self.data.gauss_newton.success,
                 self.data.gauss_newton.mask,
@@ -2309,8 +2307,6 @@ class ForwardKinematicsSolver:
         Processes ``batch_size`` velocity vectors in parallel. For ``batch_size > 1``,
         :meth:`request_velocity_solve_batch_size()` must be called beforehand.
 
-        Optional arrays must be either always or never provided across calls in a captured graph.
-
         Args:
             actuator_u: Actuated joint velocities, with shape ``(batch_size, num_fk_actuated_dofs)``,
                 or a 1D array if batch_size = 1.
@@ -2391,8 +2387,6 @@ class ForwardKinematicsSolver:
         given actuated joint coordinates and base pose. Optionally also solves for rigid body velocities
         given actuator and base body velocities.
 
-        Optional arrays must be either always or never provided across calls in a captured graph.
-
         Args:
             actuator_q: Actuated joint coordinates, shape ``(num_fk_actuated_coords,)``.
             body_q: Body poses, shape ``(num_bodies,)``. Written out by the solver, and used as an initial
@@ -2471,10 +2465,10 @@ class ForwardKinematicsSolver:
             dim=(self.model.size.num_worlds,),
             inputs=[
                 self.data.gauss_newton.max_residual,
-                self.data.gauss_newton.tolerance,
+                self.config.tolerance,
                 self.data.gauss_newton.iteration,
                 self.data.gauss_newton.min_iterations,
-                self.data.gauss_newton.max_iterations,
+                self.config.max_newton_iterations,
                 self.data.line_search.success,
                 self.data.gauss_newton.success,
                 self.data.gauss_newton.mask,
@@ -2537,7 +2531,8 @@ class ForwardKinematicsSolver:
             verbose: Whether to write a status message at the end.
             return_status: Whether to return the detailed solver status.
             use_graph: Whether to use graph capture internally to accelerate repeated calls (turn off to
-                profile individual kernels).
+                profile individual kernels). If enabled, optional arrays must be either always or never
+                provided across calls.
 
         Returns:
             The detailed solver status (success flag, iterations, residual per world) if

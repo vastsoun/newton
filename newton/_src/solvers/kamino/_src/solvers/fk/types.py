@@ -518,22 +518,10 @@ class FKGaussNewtonData:
     Shape of ``(num_worlds,)``.
     """
 
-    tolerance: wp.array[wp.float32] | None = None
-    """
-    Tolerance on max residual for all worlds.
-    Shape of ``(1,)``.
-    """
-
     iteration: wp.array[wp.int32] | None = None
     """
     Iteration count per world.
     Shape of ``(num_worlds,)``.
-    """
-
-    max_iterations: wp.array[wp.int32] | None = None
-    """
-    Max iterations for all worlds.
-    Shape of ``(1,)``.
     """
 
     success: wp.array[wp.bool] | None = None
@@ -611,12 +599,6 @@ class FKLineSearchData:
     """
     Iteration count per world.
     Shape of ``(num_worlds,)``.
-    """
-
-    max_iterations: wp.array[wp.int32] | None = None
-    """
-    Max iterations for all worlds.
-    Shape of ``(1,)``.
     """
 
     success: wp.array[wp.bool] | None = None

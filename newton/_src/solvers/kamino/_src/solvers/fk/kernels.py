@@ -1985,7 +1985,7 @@ def _line_search_check(
     alpha: wp.array[wp.float32],
     val_alpha: wp.array[wp.float32],
     iteration: wp.array[wp.int32],
-    max_iterations: wp.array[wp.int32],
+    max_iterations: wp.int32,
     # Outputs
     line_search_success: wp.array[wp.bool],
     line_search_mask: wp.array[wp.bool],
@@ -2001,7 +2001,7 @@ def _line_search_check(
         alpha: Step size per world (in/out)
         val_alpha: Merit function value at alpha, per world
         iteration: Iteration count, per world
-        max_iterations: Max iterations (size 1 array)
+        max_iterations: Max iterations
     Outputs:
         line_search_success: Convergence per world
         line_search_mask: Per-world flag to continue line search (True = continue, False = skip)
@@ -2013,7 +2013,7 @@ def _line_search_check(
     iteration[wd_id] += 1
     success = wp.isfinite(val_alpha[wd_id]) and val_alpha[wd_id] <= val_0[wd_id] + 1e-4 * alpha[wd_id] * grad_0[wd_id]
     line_search_success[wd_id] = success
-    continue_loop_world = iteration[wd_id] < max_iterations[0] and not success
+    continue_loop_world = iteration[wd_id] < max_iterations and not success
     line_search_mask[wd_id] = continue_loop_world
     if continue_loop_world:
         alpha[wd_id] *= 0.5
@@ -2024,10 +2024,10 @@ def _line_search_check(
 def _newton_check(
     # Inputs
     max_residual: wp.array[wp.float32],
-    tolerance: wp.array[wp.float32],
+    tolerance: wp.float32,
     iteration: wp.array[wp.int32],
     min_iterations: wp.array[wp.int32],
-    max_iterations: wp.array[wp.int32],
+    max_iterations: wp.int32,
     line_search_success: wp.array[wp.bool],
     # Outputs
     newton_success: wp.array[wp.bool],
@@ -2045,10 +2045,10 @@ def _newton_check(
 
     Inputs
         max_residual: Max absolute residual per world
-        tolerance: Tolerance on max residual (size 1 array)
+        tolerance: Tolerance on max residual
         iteration: Iteration count, per world
         min_iterations: Min iterations per world (may be > 0 if incremental solve is enabled)
-        max_iterations: Max iterations (size 1 array)
+        max_iterations: Max iterations
         line_search_success: Per-world line search success flag
     Outputs
         newton_success: Convergence per world
@@ -2067,10 +2067,10 @@ def _newton_check(
     reached_min_it = iteration_prev >= min_iterations_wd
     max_residual_wd = max_residual[wd_id]
     is_finite = wp.isfinite(max_residual_wd)
-    success = is_finite and reached_min_it and max_residual_wd <= tolerance[0]
+    success = is_finite and reached_min_it and max_residual_wd <= tolerance
     newton_success[wd_id] = success
     newton_continue_world = (
-        iteration_next < max_iterations[0]
+        iteration_next < max_iterations
         and not success
         and is_finite  # Abort when encountering NaN / Inf values
         and line_search_success[wd_id]  # Abort in case of line search failure

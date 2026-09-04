@@ -308,10 +308,8 @@ class WorldMaskInitializationForwardKinematics(unittest.TestCase):
             gn.success = wp.empty(shape=(num_worlds,), dtype=wp.bool)
             gn.mask = wp.empty(shape=(num_worlds,), dtype=wp.bool)
             gn.min_iterations = wp.empty(shape=(num_worlds,), dtype=wp.int32)
-            gn.max_iterations = wp.array([solver.config.max_newton_iterations], dtype=wp.int32)
             gn.loop_condition = wp.empty(shape=(1,), dtype=wp.int32)
             ls.success = wp.empty(shape=(num_worlds,), dtype=wp.bool)
-            gn.tolerance = wp.array([solver.config.tolerance], dtype=wp.float32)
             gn.jacobian_early_update_mask = None
             gn.jacobian_late_update_mask = None
             problem.base_q_default = wp.empty(shape=(num_worlds,), dtype=wp.transformf)

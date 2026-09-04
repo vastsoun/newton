@@ -741,75 +741,139 @@ def make_write_joint_data(correction: JointCorrectionMode = JointCorrectionMode.
 
 
 @wp.func
-def compute_joint_pose_and_relative_motion(
-    T_B_j: wp.transformf,
-    T_F_j: wp.transformf,
-    u_B_j: wp.spatial_vectorf,
-    u_F_j: wp.spatial_vectorf,
-    B_r_Bj: wp.vec3f,
-    F_r_Fj: wp.vec3f,
-    X_Bj: wp.mat33f,
-    X_Fj: wp.mat33f,
-) -> tuple[wp.transformf, wp.vec3f, wp.quatf, wp.spatial_vectorf]:
+def compute_joint_pose_and_relative_pose(
+    pose_base: wp.transformf,
+    pose_follower: wp.transformf,
+    joint_pos_base: wp.vec3f,
+    joint_pos_follower: wp.vec3f,
+    joint_frame_base: wp.mat33f,
+    joint_frame_follower: wp.mat33f,
+) -> tuple[wp.transformf, wp.vec3f, wp.quatf]:
     """
-    Computes the relative motion of a joint given the states of its Base and Follower bodies.
+    Compute the joint pose in world coordinates and the relative pose between the joint frames on
+    the Base and Follower bodies, given their world poses and the joint local anchors/frames.
 
     Args:
-        T_B_j: The absolute pose of the Base body, in world coordinates.
-        T_F_j: The absolute pose of the Follower body, in world coordinates.
-        u_B_j: The absolute twist of the Base body, in world coordinates.
-        u_F_j: The absolute twist of the Follower body, in world coordinates.
-        B_r_Bj: The position of the joint on the Base body, in local coordinates.
-        F_r_Fj: The position of the joint on the Follower body, in local coordinates.
-        X_Bj: The joint frame on the Base body, in local coordinates.
-        X_Fj: The joint frame on the Follower body, in local coordinates.
+        pose_base: World pose of the Base body.
+        pose_follower: World pose of the Follower body.
+        joint_pos_base: Joint anchor position on the Base body, in Base-local coordinates.
+        joint_pos_follower: Joint anchor position on the Follower body, in Follower-local coordinates.
+        joint_frame_base: Joint frame orientation on the Base body, in Base-local coordinates.
+        joint_frame_follower: Joint frame orientation on the Follower body, in Follower-local coordinates.
 
     Returns:
-        The absolute pose of the joint frame in world coordinates,
-        and two 6D vectors encoding the relative motion of the bodies in the frame of the joint.
+        The world pose of the joint frame (from the Base body's viewpoint), and the relative pose
+        of the Follower-side joint frame w.r.t. the Base-side joint frame, decomposed into a
+        translation ``rel_pos_joint`` and a rotation ``rel_ori_joint`` both expressed in the
+        Base-side joint frame.
     """
+    # Extract Base and Follower positions and orientations
+    pos_base = wp.transform_get_translation(pose_base)
+    ori_base = wp.transform_get_rotation(pose_base)
+    pos_follower = wp.transform_get_translation(pose_follower)
+    ori_follower = wp.transform_get_rotation(pose_follower)
 
-    # Joint frames as quaternions, on the parent and follower sides
-    q_X_Bj = wp.quat_from_matrix(X_Bj)
-    q_X_Fj = wp.quat_from_matrix(X_Fj)
+    # Joint frame orientation quaternions on the Base and Follower sides
+    ori_frame_base = wp.quat_from_matrix(joint_frame_base)
+    ori_frame_follower = wp.quat_from_matrix(joint_frame_follower)
 
-    # Extract the decomposed state of the Base body
-    r_B_j = wp.transform_get_translation(T_B_j)
-    q_B_j = wp.transform_get_rotation(T_B_j)
-    v_B_j = wp.spatial_top(u_B_j)
-    omega_B_j = wp.spatial_bottom(u_B_j)
+    # Joint anchor positions and frame orientations in world (Base and Follower sides)
+    pos_joint_base = pos_base + wp.quat_rotate(ori_base, joint_pos_base)
+    pos_joint_follower = pos_follower + wp.quat_rotate(ori_follower, joint_pos_follower)
+    ori_joint_base = ori_base * ori_frame_base
+    ori_joint_follower = ori_follower * ori_frame_follower
 
-    # Extract the decomposed state of the Follower body
-    r_F_j = wp.transform_get_translation(T_F_j)
-    q_F_j = wp.transform_get_rotation(T_F_j)
-    v_F_j = wp.spatial_top(u_F_j)
-    omega_F_j = wp.spatial_bottom(u_F_j)
+    # Joint pose in world (from the Base body's viewpoint)
+    pose_joint_world = wp.transformation(pos_joint_base, ori_joint_base, dtype=wp.float32)
 
-    # Local joint frame quantities
-    r_Bj = wp.quat_rotate(q_B_j, B_r_Bj)
-    q_Bj = q_B_j * q_X_Bj
-    r_Fj = wp.quat_rotate(q_F_j, F_r_Fj)
-    q_Fj = q_F_j * q_X_Fj
+    # Relative pose in the Base-side joint frame
+    rel_pos_joint = wp.quat_rotate_inv(ori_joint_base, pos_joint_follower - pos_joint_base)
+    rel_ori_joint = wp.quat_inverse(ori_joint_base) * ori_joint_follower
 
-    # Compute the pose of the joint frame via the Base body
-    r_j_B = r_B_j + r_Bj
-    r_j_F = r_F_j + r_Fj
-    p_j = wp.transformation(r_j_B, q_Bj, dtype=wp.float32)
-    r_j = r_j_F - r_j_B
+    return pose_joint_world, rel_pos_joint, rel_ori_joint
 
-    # Compute the relative pose between the representations of joint frame w.r.t. the two bodies
-    # NOTE: The pose is decomposed into a translation vector `j_r_j` and a rotation quaternion `j_q_j`
-    j_r_j = wp.quat_rotate_inv(q_Bj, r_j)
-    j_q_j = wp.quat_inverse(q_Bj) * q_Fj
 
-    # Compute the 6D relative twist vector between the representations of joint frame w.r.t. the two bodies
-    # TODO: How can we simplify this expression and make it more efficient?
-    j_v_j = wp.quat_rotate_inv(q_Bj, v_F_j - v_B_j + wp.cross(omega_F_j, r_Fj) - wp.cross(omega_B_j, r_Bj + r_j))
-    j_omega_j = wp.quat_rotate_inv(q_Bj, omega_F_j - omega_B_j)
-    j_u_j = wp.spatial_vectorf(*j_v_j, *j_omega_j)
+@wp.func
+def compute_joint_pose_and_relative_motion(
+    pose_base: wp.transformf,
+    pose_follower: wp.transformf,
+    twist_base: wp.spatial_vectorf,
+    twist_follower: wp.spatial_vectorf,
+    joint_pos_base: wp.vec3f,
+    joint_pos_follower: wp.vec3f,
+    joint_frame_base: wp.mat33f,
+    joint_frame_follower: wp.mat33f,
+) -> tuple[wp.transformf, wp.vec3f, wp.quatf, wp.spatial_vectorf]:
+    """
+    Compute the joint pose in world coordinates plus the relative pose and twist between the joint
+    frames on the Base and Follower bodies, given their world poses/twists and the joint local
+    anchors/frames.
 
-    # Return the computed joint frame pose and relative motion vectors
-    return p_j, j_r_j, j_q_j, j_u_j
+    Kept independent from :func:`compute_joint_pose_and_relative_pose` because the twist
+    computation requires world-frame intermediates that would otherwise leak through the pose
+    variant's return signature; both helpers stay side by side and share notation.
+
+    Args:
+        pose_base: World pose of the Base body.
+        pose_follower: World pose of the Follower body.
+        twist_base: World twist of the Base body.
+        twist_follower: World twist of the Follower body.
+        joint_pos_base: Joint anchor position on the Base body, in Base-local coordinates.
+        joint_pos_follower: Joint anchor position on the Follower body, in Follower-local coordinates.
+        joint_frame_base: Joint frame orientation on the Base body, in Base-local coordinates.
+        joint_frame_follower: Joint frame orientation on the Follower body, in Follower-local coordinates.
+
+    Returns:
+        The world pose of the joint frame (from the Base body's viewpoint), the relative pose of
+        the Follower-side joint frame w.r.t. the Base-side joint frame (as translation
+        ``rel_pos_joint`` and rotation ``rel_ori_joint``), and the corresponding relative 6D twist
+        ``rel_twist_joint``, all expressed in the Base-side joint frame.
+    """
+    # Extract Base and Follower positions, orientations, linear and angular velocities
+    pos_base = wp.transform_get_translation(pose_base)
+    ori_base = wp.transform_get_rotation(pose_base)
+    vel_base = wp.spatial_top(twist_base)
+    omega_base = wp.spatial_bottom(twist_base)
+    pos_follower = wp.transform_get_translation(pose_follower)
+    ori_follower = wp.transform_get_rotation(pose_follower)
+    vel_follower = wp.spatial_top(twist_follower)
+    omega_follower = wp.spatial_bottom(twist_follower)
+
+    # Joint frame orientation quaternions on the Base and Follower sides
+    ori_frame_base = wp.quat_from_matrix(joint_frame_base)
+    ori_frame_follower = wp.quat_from_matrix(joint_frame_follower)
+
+    # Joint anchor arms (body origin -> anchor, in world) on both sides
+    arm_base = wp.quat_rotate(ori_base, joint_pos_base)
+    arm_follower = wp.quat_rotate(ori_follower, joint_pos_follower)
+
+    # Joint anchor positions and frame orientations in world (Base and Follower sides)
+    pos_joint_base = pos_base + arm_base
+    pos_joint_follower = pos_follower + arm_follower
+    ori_joint_base = ori_base * ori_frame_base
+    ori_joint_follower = ori_follower * ori_frame_follower
+
+    # Joint pose in world (from the Base body's viewpoint) and vector between the two anchors
+    pose_joint_world = wp.transformation(pos_joint_base, ori_joint_base, dtype=wp.float32)
+    inter_anchor_vec = pos_joint_follower - pos_joint_base
+
+    # Relative pose in the Base-side joint frame
+    rel_pos_joint = wp.quat_rotate_inv(ori_joint_base, inter_anchor_vec)
+    rel_ori_joint = wp.quat_inverse(ori_joint_base) * ori_joint_follower
+
+    # Relative 6D twist expressed in the Base-side joint frame
+    # TODO: this expression should be simplified/factorized.
+    rel_vel_joint = wp.quat_rotate_inv(
+        ori_joint_base,
+        vel_follower
+        - vel_base
+        + wp.cross(omega_follower, arm_follower)
+        - wp.cross(omega_base, arm_base + inter_anchor_vec),
+    )
+    rel_omega_joint = wp.quat_rotate_inv(ori_joint_base, omega_follower - omega_base)
+    rel_twist_joint = wp.spatial_vectorf(*rel_vel_joint, *rel_omega_joint)
+
+    return pose_joint_world, rel_pos_joint, rel_ori_joint, rel_twist_joint
 
 
 @wp.func

@@ -27,6 +27,7 @@ from ...kinematics.joints import (
     correct_rotational_coord,
     get_joint_coords_mapping_function,
     gimbal_transported_axes,
+    universal_intermediary_axes,
 )
 from ...linalg.sparse_matrix import BlockDType
 from .types import FKJointDoFType
@@ -2241,17 +2242,8 @@ def _correct_universal_constraint_velocities(
     q_X_F = wp.quat_from_matrix(joint_X_Fj[jt_id_tot])
     q_rel = wp.quat_inverse(q_B * q_X_B) * q_F * q_X_F
 
-    # Compute intermediary body axes, in the joint frame on the base body
-    e_x = wp.vec3f(1.0, 0.0, 0.0)
-    e_y = wp.vec3f(0.0, 1.0, 0.0)
-    a_x = e_x  # x axis on base
-    a_y_raw = wp.quat_rotate(q_rel, e_y)  # y axis on follower (constrained to be orthogonal to a_x)
-    a_y = a_y_raw - wp.dot(a_y_raw, a_x) * a_x  # orthogonalize (in case of constraint violations)
-    a_y = wp.normalize(a_y)
-    a_z = wp.cross(a_x, a_y)
-
-    # Convert target angular velocity back to joint frame on the base body
-    omega = omega_curr[0] * a_x + omega_curr[1] * a_y + omega_curr[2] * a_z
+    # Project target angular velocity from intermediary body frame back to Base-side joint frame
+    omega = universal_intermediary_axes(q_rel) @ omega_curr
     for i in range(3):
         target_cts_u[wd_id, offset_cts_j + 3 + i, batch_id] = omega[i]
 

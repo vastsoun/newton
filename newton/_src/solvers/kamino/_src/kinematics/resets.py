@@ -14,12 +14,12 @@ from ..core.model import ModelKamino
 from ..core.state import StateKamino
 from ..kinematics.joints import (
     compute_joint_pose_and_relative_motion,
-    convert_angular_vel_to_universal_joint_intermediary_frame,
     correct_quat_vector_coord,
     correct_rotational_coord,
     get_joint_coords_mapping_function,
     map_gimbal_angular_velocity_to_rates,
     select_gimbal_coords,
+    universal_intermediary_axes,
 )
 
 ###
@@ -142,7 +142,9 @@ def make_compute_and_write_joint_vel(dof_type: JointDoFType):
     ):
         # Convert angular velocity to intermediary body frame for universal joint
         if wp.static(dof_type == JointDoFType.UNIVERSAL):
-            u_j = convert_angular_vel_to_universal_joint_intermediary_frame(q_j, u_j)
+            axes = universal_intermediary_axes(q_j)
+            omega_intermediary = wp.transpose(axes) @ wp.spatial_bottom(u_j)
+            u_j = wp.spatial_vectorf(*wp.spatial_top(u_j), *omega_intermediary)
 
         if wp.static(dof_type == JointDoFType.GIMBAL or dof_type == JointDoFType.GIMBAL_LEFT_HANDED):
             rates = map_gimbal_angular_velocity_to_rates(

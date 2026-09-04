@@ -423,27 +423,23 @@ def get_joint_constraint_angular_residual_function(dof_type: JointDoFType):
 
 
 @wp.func
-def convert_angular_vel_to_universal_joint_intermediary_frame(
-    j_q_j: wp.quatf, j_u_j: wp.spatial_vectorf
-) -> wp.spatial_vectorf:
+def universal_intermediary_axes(rel_ori_joint: wp.quatf) -> wp.mat33f:
     """
-    Converts the angular part of a relative body velocity at a universal joint, from the
-    joint frame on the base body to the intermediary frame.
+    Compute the columns of the universal-joint intermediary body frame, expressed as a rotation
+    matrix in the Base-side joint frame. Column 1 is the x-axis on the Base; column 2 is the y-axis
+    on the Follower (orthogonalized against the Base x-axis in case constraints are violated);
+    column 3 is their cross product.
+
+    Args:
+        rel_ori_joint: Relative orientation of the Follower joint frame w.r.t. the Base joint frame.
     """
-    # Compute intermediary body axes, in the joint frame on the base body
     e_x = wp.vec3f(1.0, 0.0, 0.0)
     e_y = wp.vec3f(0.0, 1.0, 0.0)
-    a_x = e_x  # x axis on base
-    a_y_raw = wp.quat_rotate(j_q_j, e_y)  #  y axis on follower (constrained to be orthogonal to a_x)
-    a_y = a_y_raw - wp.dot(a_y_raw, a_x) * a_x  # orthogonalize (in case of constraint violations)
-    a_y = wp.normalize(a_y)
+    a_x = e_x
+    a_y = wp.quat_rotate(rel_ori_joint, e_y)
+    a_y = wp.normalize(a_y - wp.dot(a_y, a_x) * a_x)
     a_z = wp.cross(a_x, a_y)
-
-    # Project angular velocity into intermediary body frame
-    omega = wp.spatial_bottom(j_u_j)
-    return wp.spatial_vectorf(
-        *wp.spatial_top(j_u_j), *wp.vec3f(wp.dot(omega, a_x), wp.dot(omega, a_y), wp.dot(omega, a_z))
-    )
+    return wp.matrix_from_cols(a_x, a_y, a_z)
 
 
 ###
@@ -492,7 +488,9 @@ def make_typed_write_joint_data(dof_type: JointDoFType, correction: JointCorrect
     ):
         # Convert angular velocity to intermediary body frame for universal joint
         if wp.static(dof_type == JointDoFType.UNIVERSAL):
-            j_u_j = convert_angular_vel_to_universal_joint_intermediary_frame(j_q_j, j_u_j)
+            axes = universal_intermediary_axes(j_q_j)
+            omega_intermediary = wp.transpose(axes) @ wp.spatial_bottom(j_u_j)
+            j_u_j = wp.spatial_vectorf(*wp.spatial_top(j_u_j), *omega_intermediary)
 
         # Only write the constraint residual and velocity if the joint defines constraints
         # NOTE: This will be disabled for free joints

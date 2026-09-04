@@ -22,7 +22,6 @@ from ...core.math import (
 )
 from ...core.types import mat34f
 from ...kinematics.joints import (
-    compute_joint_pose_and_relative_pose,
     correct_joint_coords_in_place,
     get_joint_coords_mapping_function,
     gimbal_transported_axes,
@@ -587,28 +586,28 @@ def _eval_actuator_coords(
     if num_coords == 0:
         return
 
-    # Get joint dof type and joint local anchors/frames
+    # Get joint dof type, local positions and local orientation
     dof_type = joint_dof_type[jt_id]
     x_base = joint_B_r_B[jt_id]
     x_follower = joint_F_r_F[jt_id]
-    frame_base = joint_X_Bj[jt_id]
-    frame_follower = joint_X_Fj[jt_id]
+    q_X_B = wp.quat_from_matrix(joint_X_Bj[jt_id])
+    q_X_F = wp.quat_from_matrix(joint_X_Fj[jt_id])
 
-    # Load Base and Follower body poses (identity pose for a world-fixed Base)
+    # Get base and follower transformations
     base_id = joint_bid_B[jt_id]
     follower_id = joint_bid_F[jt_id]
-    pose_base = wp.transform_identity(dtype=wp.float32)
-    if base_id >= 0:
-        pose_base = body_q[base_id]
-    pose_follower = body_q[follower_id]
+    c_base, q_base, c_follower, q_follower = _load_joint_poses(base_id, follower_id, body_q)
 
-    # Compute relative pose of Follower w.r.t. Base, in the Base-side joint frame
-    _, rel_pos_joint, rel_ori_joint = compute_joint_pose_and_relative_pose(
-        pose_base, pose_follower, x_base, x_follower, frame_base, frame_follower
-    )
+    # Compute relative pose of follower body in joint frame of base body
+    pos_base = c_base + wp.quat_rotate(q_base, x_base)
+    pos_follower = c_follower + wp.quat_rotate(q_follower, x_follower)
+    ori_base_T = wp.quat_inverse(q_base * q_X_B)
+    ori_follower = q_follower * q_X_F
+    pos_rel = wp.quat_rotate(ori_base_T, pos_follower - pos_base)
+    q_rel = ori_base_T * ori_follower
 
     # Extract joint coordinates from relative pose
-    _joint_transform_to_coords(dof_type, rel_pos_joint, rel_ori_joint, coord_id, actuator_q)
+    _joint_transform_to_coords(dof_type, pos_rel, q_rel, coord_id, actuator_q)
 
 
 @wp.kernel

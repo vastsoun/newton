@@ -188,7 +188,7 @@ class ForwardKinematicsSolver:
 
         # Retrieve / compute dimensions - Bodies
         num_bodies = self.model.info.num_bodies.numpy()  # Number of bodies per world
-        body_offset = self.model.info.bodies_offset.numpy()  # Index of first body per world
+        bodies_offset = self.model.info.bodies_offset.numpy()  # Index of first body per world
         self.data.dimensions.num_bodies_max = self.model.size.max_of_num_bodies  # Max number of bodies across worlds
 
         # Retrieve / compute dimensions - States (i.e., body poses)
@@ -202,7 +202,7 @@ class ForwardKinematicsSolver:
 
         # Retrieve / compute dimensions - Joints (main model)
         num_joints_prev = self.model.info.num_joints.numpy().copy()  # Number of joints per world
-        joint_offset_prev = np.concatenate(([0], num_joints_prev.cumsum()))  # Index of first joint per world
+        joints_offset_prev = np.concatenate(([0], num_joints_prev.cumsum()))  # Index of first joint per world
 
         # Resolve custom actuation types
         if self.model.joints.fk_act_flag is not None:
@@ -247,16 +247,16 @@ class ForwardKinematicsSolver:
 
         # Retrieve / compute dimensions - Actuated coordinates/dofs (main model)
         if self.model.joints.fk_act_flag is None:
-            actuated_coord_offset_prev = self.model.joints.actuated_coords_offset.numpy().copy()
-            actuated_dof_offset_prev = self.model.joints.actuated_dofs_offset.numpy().copy()
+            actuated_coords_offset_prev = self.model.joints.actuated_coords_offset.numpy().copy()
+            actuated_dofs_offset_prev = self.model.joints.actuated_dofs_offset.numpy().copy()
         else:
             num_act_coords = self.model.joints.num_coords.numpy()
             num_act_dofs = self.model.joints.num_dofs.numpy()
             passive_mask = joint_act_type_prev == JointActuationType.PASSIVE
             num_act_coords[passive_mask] = 0
             num_act_dofs[passive_mask] = 0
-            actuated_coord_offset_prev = np.concatenate(([0], num_act_coords.cumsum()))
-            actuated_dof_offset_prev = np.concatenate(([0], num_act_dofs.cumsum()))
+            actuated_coords_offset_prev = np.concatenate(([0], num_act_coords.cumsum()))
+            actuated_dofs_offset_prev = np.concatenate(([0], num_act_dofs.cumsum()))
 
         # Determine which worlds are equivalent for FK (at least discrete data)
         classes = compute_fk_equivalence_classes(self.model)
@@ -300,7 +300,7 @@ class ForwardKinematicsSolver:
 
             # Copy data for all kept joints
             world_joint_ids = [
-                i for i in range(joint_offset_prev[wd_id], joint_offset_prev[wd_id + 1]) if i != base_joint_id
+                i for i in range(joints_offset_prev[wd_id], joints_offset_prev[wd_id + 1]) if i != base_joint_id
             ]
             for jt_id_prev in world_joint_ids:
                 # Note: we use the fact that integer values of the FK vs Kamino dof type enums
@@ -314,12 +314,12 @@ class ForwardKinematicsSolver:
                 if joint_act_type[-1] != JointActuationType.PASSIVE:
                     num_coords_jt = joints_num_coords_prev[jt_id_prev]
                     joints_num_actuated_coords.append(num_coords_jt)
-                    coord_offset = actuated_coord_offset_prev[jt_id_prev]
+                    coord_offset = actuated_coords_offset_prev[jt_id_prev]
                     actuated_coords_map.extend(range(coord_offset, coord_offset + num_coords_jt))
 
                     num_dofs_jt = joints_num_dofs_prev[jt_id_prev]
                     joints_num_actuated_dofs.append(num_dofs_jt)
-                    dof_offset = actuated_dof_offset_prev[jt_id_prev]
+                    dof_offset = actuated_dofs_offset_prev[jt_id_prev]
                     actuated_dofs_map.extend(range(dof_offset, dof_offset + num_dofs_jt))
                 else:
                     joints_num_actuated_coords.append(0)
@@ -334,11 +334,11 @@ class ForwardKinematicsSolver:
                     is_rotation = JointDoFType(joint_dof_type_prev[jt_id_prev]).is_pure_three_dof_rotation
                     bid_B = joint_bid_B_prev[jt_id_prev]
                     if bid_B >= 0:
-                        bid_B -= body_offset[wd_id]
+                        bid_B -= bodies_offset[wd_id]
                         num_joints_per_body[bid_B] += 1
                         if is_rotation:
                             rotation_joints_per_body[bid_B].append(jt_id_prev)
-                    bid_F = joint_bid_F_prev[jt_id_prev] - body_offset[wd_id]
+                    bid_F = joint_bid_F_prev[jt_id_prev] - bodies_offset[wd_id]
                     num_joints_per_body[bid_F] += 1
                     if is_rotation:
                         rotation_joints_per_body[bid_F].append(jt_id_prev)
@@ -347,7 +347,7 @@ class ForwardKinematicsSolver:
                 for rb_id in range(num_bodies[wd_id]):
                     if num_joints_per_body[rb_id] != 2 or len(rotation_joints_per_body[rb_id]) != 2:
                         continue
-                    rb_id_tot = body_offset[wd_id] + rb_id
+                    rb_id_tot = bodies_offset[wd_id] + rb_id
                     joint_dof_type.append(FKJointDoFType.AXIS)
                     joint_act_type.append(JointActuationType.PASSIVE)
                     joint_bid_B.append(-1)
@@ -398,30 +398,30 @@ class ForwardKinematicsSolver:
             num_joints[wd_id] = num_joints_world
 
         # Retrieve / compute dimensions - Joints (FK model)
-        joint_offset = np.concatenate(([0], num_joints.cumsum()))  # Index of first joint per world
+        joints_offset = np.concatenate(([0], num_joints.cumsum()))  # Index of first joint per world
         self.data.dimensions.num_joints_max = max(num_joints)  # Max number of joints across worlds
 
         # Retrieve / compute dimensions - Actuated coordinates (FK model)
         joints_num_actuated_coords = np.array(joints_num_actuated_coords)  # Number of actuated coordinates per joint
-        actuated_coord_offset = np.concatenate(
+        actuated_coords_offset = np.concatenate(
             ([0], joints_num_actuated_coords.cumsum())
         )  # First actuated coordinate offset per joint, among all actuated coordinates
-        self.data.dimensions.num_actuated_coords = actuated_coord_offset[-1]
+        self.data.dimensions.num_actuated_coords = actuated_coords_offset[-1]
         world_num_actuated_coords = np.array(
             [
-                joints_num_actuated_coords[joint_offset[wd_id] : joint_offset[wd_id + 1]].sum()
+                joints_num_actuated_coords[joints_offset[wd_id] : joints_offset[wd_id + 1]].sum()
                 for wd_id in range(self.model.size.num_worlds)
             ]
         )
-        world_actuated_coord_offset = np.concatenate(([0], world_num_actuated_coords.cumsum()))
+        world_actuated_coords_offset = np.concatenate(([0], world_num_actuated_coords.cumsum()))
         self.data.dimensions.num_actuated_coords_max = np.max(world_num_actuated_coords)
 
         # Retrieve / compute dimensions - Actuated dofs (FK model)
         joints_num_actuated_dofs = np.array(joints_num_actuated_dofs)  # Number of actuated dofs per joint
-        actuated_dof_offset = np.concatenate(
+        actuated_dofs_offset = np.concatenate(
             ([0], joints_num_actuated_dofs.cumsum())
         )  # First actuated dof offset per joint, among all actuated dofs
-        self.data.dimensions.num_actuated_dofs = actuated_dof_offset[-1]
+        self.data.dimensions.num_actuated_dofs = actuated_dofs_offset[-1]
 
         # Retrieve / compute dimensions - Constraints
         num_constraints = num_bodies.copy()  # Number of kinematic constraints per world (unit quat. + joints)
@@ -432,7 +432,7 @@ class ForwardKinematicsSolver:
             # Count constraints for first world in equivalence class
             wd_id = eq_class[0]
             ct_count = num_constraints[wd_id]
-            for jt_id in range(joint_offset[wd_id], joint_offset[wd_id + 1]):
+            for jt_id in range(joints_offset[wd_id], joints_offset[wd_id + 1]):
                 act_type = joint_act_type[jt_id]
                 dof_type = joint_dof_type[jt_id]
                 if act_type != JointActuationType.PASSIVE:  # Actuator: select all six constraints
@@ -493,8 +493,8 @@ class ForwardKinematicsSolver:
 
             # Copy constraints counts/map data for other worlds in equivalence class
             for wd_id_1 in eq_class[1:]:
-                constraint_full_to_red_map[6 * joint_offset[wd_id_1] : 6 * joint_offset[wd_id_1 + 1]] = (
-                    constraint_full_to_red_map[6 * joint_offset[wd_id] : 6 * joint_offset[wd_id + 1]]
+                constraint_full_to_red_map[6 * joints_offset[wd_id_1] : 6 * joints_offset[wd_id_1 + 1]] = (
+                    constraint_full_to_red_map[6 * joints_offset[wd_id] : 6 * joints_offset[wd_id + 1]]
                 )
                 num_constraints[wd_id_1] = num_constraints[wd_id]
         self.data.dimensions.num_constraints_max = np.max(num_constraints)
@@ -509,11 +509,11 @@ class ForwardKinematicsSolver:
             for eq_class in classes:
                 # Initialize delta_q_max for first world in equivalence class
                 wd_id = eq_class[0]
-                for jt_id in range(joint_offset[wd_id], joint_offset[wd_id + 1]):
+                for jt_id in range(joints_offset[wd_id], joints_offset[wd_id + 1]):
                     if joints_num_actuated_coords[jt_id] == 0:
                         continue
                     dof_type = joint_dof_type[jt_id]
-                    coord_id = actuated_coord_offset[jt_id]
+                    coord_id = actuated_coords_offset[jt_id]
                     if dof_type == FKJointDoFType.CARTESIAN:
                         for i in range(3):
                             delta_q_max[coord_id + i] = max_step_linear
@@ -545,8 +545,8 @@ class ForwardKinematicsSolver:
 
                 # Copy delta_q_max for other worlds in equivalence class
                 for wd_id_1 in eq_class[1:]:
-                    delta_q_max[world_actuated_coord_offset[wd_id_1] : world_actuated_coord_offset[wd_id_1 + 1]] = (
-                        delta_q_max[world_actuated_coord_offset[wd_id] : world_actuated_coord_offset[wd_id + 1]]
+                    delta_q_max[world_actuated_coords_offset[wd_id_1] : world_actuated_coords_offset[wd_id_1 + 1]] = (
+                        delta_q_max[world_actuated_coords_offset[wd_id] : world_actuated_coords_offset[wd_id + 1]]
                     )
 
         # Retrieve / compute dimensions - Number of tiles (for kernels using Tile API)
@@ -579,11 +579,11 @@ class ForwardKinematicsSolver:
         with wp.ScopedDevice(self.device):
             # Dimensions
             self.data.dimensions.num_joints = to_warp_int32_array(num_joints)
-            self.data.dimensions.joint_offset = to_warp_int32_array(joint_offset)
-            self.data.dimensions.actuated_coord_offset = to_warp_int32_array(actuated_coord_offset)
+            self.data.dimensions.joints_offset = to_warp_int32_array(joints_offset)
+            self.data.dimensions.actuated_coords_offset = to_warp_int32_array(actuated_coords_offset)
             self.data.dimensions.actuated_coords_map = to_warp_int32_array(np.array(actuated_coords_map))
-            self.data.dimensions.world_actuated_coord_offset = to_warp_int32_array(world_actuated_coord_offset)
-            self.data.dimensions.actuated_dof_offset = to_warp_int32_array(actuated_dof_offset)
+            self.data.dimensions.world_actuated_coords_offset = to_warp_int32_array(world_actuated_coords_offset)
+            self.data.dimensions.actuated_dofs_offset = to_warp_int32_array(actuated_dofs_offset)
             self.data.dimensions.actuated_dofs_map = to_warp_int32_array(np.array(actuated_dofs_map))
             self.data.dimensions.num_states = to_warp_int32_array(num_states)
             self.data.dimensions.num_constraints = to_warp_int32_array(num_constraints)
@@ -764,12 +764,12 @@ class ForwardKinematicsSolver:
                 for rb_id_loc in range(num_bodies[wd_id]):
                     sparsity_pattern[class_id, rb_id_loc, 7 * rb_id_loc + 3 : 7 * rb_id_loc + 7] = 1
                 for jt_id_loc in range(num_joints[wd_id]):
-                    jt_id_tot = joint_offset[wd_id] + jt_id_loc
+                    jt_id_tot = joints_offset[wd_id] + jt_id_loc
                     base_id_tot = joint_bid_B[jt_id_tot]
                     follower_id_tot = joint_bid_F[jt_id_tot]
                     rb_ids_tot = [base_id_tot, follower_id_tot] if base_id_tot >= 0 else [follower_id_tot]
                     for rb_id_tot in rb_ids_tot:
-                        rb_id_loc = rb_id_tot - body_offset[wd_id]
+                        rb_id_loc = rb_id_tot - bodies_offset[wd_id]
                         state_offset = 7 * rb_id_loc
                         for i in range(3):
                             ct_offset = constraint_full_to_red_map[6 * jt_id_tot + i]  # ith translation constraint
@@ -852,7 +852,7 @@ class ForwardKinematicsSolver:
                 [1 if joint_bid_B[i] < 0 else 2 for i in range(self.data.dimensions.num_joints_tot)]
             )
             for wd_id in range(self.model.size.num_worlds):  # nzb due to joint constraints
-                start = joint_offset[wd_id]
+                start = joints_offset[wd_id]
                 end = start + num_joints[wd_id]
                 num_nzb[wd_id] += (jt_num_constraints[start:end] * jt_num_bodies[start:end]).sum()
             first_nzb = np.concatenate(([0], num_nzb.cumsum()))
@@ -868,7 +868,7 @@ class ForwardKinematicsSolver:
                 start_nzb = first_nzb[wd_id]
 
                 # Compute index, row and column of rigid body nzb
-                start_rb = body_offset[wd_id]
+                start_rb = bodies_offset[wd_id]
                 size_rb = num_bodies[wd_id]
                 rb_ids = np.arange(size_rb)
                 rb_nzb_id[start_rb : start_rb + size_rb] = start_nzb + rb_ids
@@ -878,7 +878,7 @@ class ForwardKinematicsSolver:
                 # Compute index, row and column of constraint nzb
                 start_nzb += size_rb
                 for jt_id_loc in range(num_joints[wd_id]):
-                    jt_id_tot = jt_id_loc + joint_offset[wd_id]
+                    jt_id_tot = jt_id_loc + joints_offset[wd_id]
                     has_base = joint_bid_B[jt_id_tot] >= 0
                     row_ids_full = constraint_full_to_red_map[6 * jt_id_tot : 6 * jt_id_tot + 6]
                     row_ids_red = [i for i in row_ids_full if i >= 0]
@@ -887,13 +887,13 @@ class ForwardKinematicsSolver:
                         nzb_id_base = ct_nzb_id_base[6 * jt_id_tot : 6 * jt_id_tot + 6]
                         nzb_id_base[row_ids_full >= 0] = np.arange(start_nzb, start_nzb + num_cts)
                         nzb_row[start_nzb : start_nzb + num_cts] = row_ids_red
-                        base_id_loc = joint_bid_B[jt_id_tot] - body_offset[wd_id]
+                        base_id_loc = joint_bid_B[jt_id_tot] - bodies_offset[wd_id]
                         nzb_col[start_nzb : start_nzb + num_cts] = 7 * base_id_loc
                         start_nzb += num_cts
                     nzb_id_follower = ct_nzb_id_follower[6 * jt_id_tot : 6 * jt_id_tot + 6]
                     nzb_id_follower[row_ids_full >= 0] = np.arange(start_nzb, start_nzb + num_cts)
                     nzb_row[start_nzb : start_nzb + num_cts] = row_ids_red
-                    follower_id_loc = joint_bid_F[jt_id_tot] - body_offset[wd_id]
+                    follower_id_loc = joint_bid_F[jt_id_tot] - bodies_offset[wd_id]
                     nzb_col[start_nzb : start_nzb + num_cts] = 7 * follower_id_loc
                     start_nzb += num_cts
 
@@ -1203,7 +1203,7 @@ class ForwardKinematicsSolver:
             dim=(self.model.size.num_worlds, self.data.dimensions.num_joints_max),
             inputs=[
                 self.data.dimensions.num_joints,
-                self.data.dimensions.joint_offset,
+                self.data.dimensions.joints_offset,
                 self.data.joints.dof_type,
                 self.data.joints.bid_B,
                 self.data.joints.bid_F,
@@ -1212,7 +1212,7 @@ class ForwardKinematicsSolver:
                 self.data.joints.B_r_Bj,
                 self.data.joints.F_r_Fj,
                 body_q,
-                self.data.dimensions.actuated_coord_offset,
+                self.data.dimensions.actuated_coords_offset,
                 actuator_q,
             ],
             device=self.device,
@@ -1223,7 +1223,7 @@ class ForwardKinematicsSolver:
                 _correct_actuator_coords,
                 dim=(self.data.dimensions.num_joints_tot,),
                 inputs=[
-                    self.data.dimensions.actuated_coord_offset,
+                    self.data.dimensions.actuated_coords_offset,
                     self.data.joints.dof_type,
                     actuator_q_ref,
                     actuator_q,
@@ -1245,7 +1245,7 @@ class ForwardKinematicsSolver:
             dim=(self.model.size.num_worlds, self.data.dimensions.num_tiles_coords),
             block_dim=get_block_dim(self.data.dimensions.tile_size_coords),
             inputs=[
-                self.data.dimensions.world_actuated_coord_offset,
+                self.data.dimensions.world_actuated_coords_offset,
                 self.data.problem.actuator_q_prev,
                 self.data.problem.actuator_q_next,
                 self.data.gauss_newton.delta_q_max,
@@ -1303,7 +1303,7 @@ class ForwardKinematicsSolver:
             _eval_incremental_target_actuator_coords,
             dim=(self.model.size.num_worlds, self.data.dimensions.num_actuated_coords_max),
             inputs=[
-                self.data.dimensions.world_actuated_coord_offset,
+                self.data.dimensions.world_actuated_coords_offset,
                 self.data.problem.actuator_q_prev,
                 self.data.problem.actuator_q_next,
                 self.data.gauss_newton.delta_q_max,
@@ -1329,7 +1329,7 @@ class ForwardKinematicsSolver:
             inputs=[
                 self.data.joints.dof_type,
                 self.data.joints.act_type,
-                self.data.dimensions.actuated_coord_offset,
+                self.data.dimensions.actuated_coords_offset,
                 self.data.joints.X_Bj,
                 self.data.joints.X_Fj,
                 actuator_q,
@@ -1365,7 +1365,7 @@ class ForwardKinematicsSolver:
             dim=(self.model.size.num_worlds, self.data.dimensions.num_joints_max),
             inputs=[
                 self.data.dimensions.num_joints,
-                self.data.dimensions.joint_offset,
+                self.data.dimensions.joints_offset,
                 self.data.joints.dof_type,
                 self.data.joints.act_type,
                 self.data.joints.bid_B,
@@ -1446,7 +1446,7 @@ class ForwardKinematicsSolver:
             dim=(self.model.size.num_worlds, self.data.dimensions.num_joints_max),
             inputs=[
                 self.data.dimensions.num_joints,
-                self.data.dimensions.joint_offset,
+                self.data.dimensions.joints_offset,
                 self.model.info.bodies_offset,
                 self.data.joints.dof_type,
                 self.data.joints.act_type,
@@ -1499,7 +1499,7 @@ class ForwardKinematicsSolver:
             dim=(self.model.size.num_worlds, self.data.dimensions.num_joints_max),
             inputs=[
                 self.data.dimensions.num_joints,
-                self.data.dimensions.joint_offset,
+                self.data.dimensions.joints_offset,
                 self.model.info.bodies_offset,
                 self.data.joints.dof_type,
                 self.data.joints.act_type,
@@ -2021,11 +2021,11 @@ class ForwardKinematicsSolver:
             dim=(batch_size, self.model.size.num_worlds, self.data.dimensions.num_joints_max),
             inputs=[
                 self.data.dimensions.num_joints,
-                self.data.dimensions.joint_offset,
+                self.data.dimensions.joints_offset,
                 self.data.joints.dof_type,
                 self.data.joints.act_type,
-                self.data.dimensions.actuated_coord_offset,
-                self.data.dimensions.actuated_dof_offset,
+                self.data.dimensions.actuated_coords_offset,
+                self.data.dimensions.actuated_dofs_offset,
                 self.data.dimensions.constraint_full_to_red_map,
                 self.data.problem.actuator_q_next,
                 fk_actuator_u,
@@ -2040,7 +2040,7 @@ class ForwardKinematicsSolver:
                 dim=(batch_size, self.model.size.num_worlds, self.data.dimensions.num_joints_max),
                 inputs=[
                     self.data.dimensions.num_joints,
-                    self.data.dimensions.joint_offset,
+                    self.data.dimensions.joints_offset,
                     self.data.joints.dof_type,
                     self.data.joints.act_type,
                     self.data.joints.bid_B,

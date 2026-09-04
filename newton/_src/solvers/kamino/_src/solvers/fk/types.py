@@ -215,7 +215,7 @@ class FKDimensions:
     Shape of ``(num_worlds,)``.
     """
 
-    joint_offset: wp.array[wp.int32] | None = None
+    joints_offset: wp.array[wp.int32] | None = None
     """
     Joint offset per world.
     Shape of ``(num_worlds + 1,)``.
@@ -233,13 +233,13 @@ class FKDimensions:
     Shape of ``(num_worlds,)``.
     """
 
-    actuated_coord_offset: wp.array[wp.int32] | None = None
+    actuated_coords_offset: wp.array[wp.int32] | None = None
     """
     Per-joint actuated coord offset.
     Shape of ``(num_joints_tot + 1,)``.
     """
 
-    world_actuated_coord_offset: wp.array[wp.int32] | None = None
+    world_actuated_coords_offset: wp.array[wp.int32] | None = None
     """
     Per-world actuated coord offset.
     Shape of ``(num_worlds + 1,)``.
@@ -251,7 +251,7 @@ class FKDimensions:
     Shape of ``(num_actuated_coords,)``.
     """
 
-    actuated_dof_offset: wp.array[wp.int32] | None = None
+    actuated_dofs_offset: wp.array[wp.int32] | None = None
     """
     Per-joint actuated dof offset.
     Shape of ``(num_joints_tot + 1,)``.

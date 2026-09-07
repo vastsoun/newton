@@ -5,7 +5,6 @@
 Unit tests for the ForwardKinematicsSolver class of Kamino, in `solvers/fk.py`.
 """
 
-import copy
 import hashlib
 import unittest
 from functools import partial
@@ -14,15 +13,10 @@ import numpy as np
 import warp as wp
 
 import newton
-from newton._src.solvers.kamino._src.core.builder import ModelBuilderKamino
 from newton._src.solvers.kamino._src.core.joints import JointActuationType, JointCorrectionMode, JointDoFType
 from newton._src.solvers.kamino._src.core.model import ModelKamino
 from newton._src.solvers.kamino._src.kinematics.joints import compute_joints_data
-from newton._src.solvers.kamino._src.models.builders.basics import build_boxes_fourbar
-from newton._src.solvers.kamino._src.models.builders.testing import build_all_joints_test_model
-from newton._src.solvers.kamino._src.models.builders.utils import make_homogeneous_builder
 from newton._src.solvers.kamino._src.solvers.fk import ForwardKinematicsSolver
-from newton._src.solvers.kamino._src.utils.io.usd import USDImporter
 from newton.tests.kamino import setup_tests, test_context
 from newton.tests.kamino.utils.diff_check import diff_check
 from newton.tests.kamino.utils.joints import (
@@ -35,8 +29,12 @@ from newton.tests.kamino.utils.sampling import (
     sample_body_poses,
     sample_world_mask,
 )
-from newton.tests.utils.basics import build_cartpole
-from newton.tests.utils.testing import build_unary_revolute_joint_test, build_unary_universal_joint_test
+from newton.tests.utils.basics import build_boxes_fourbar, build_cartpole
+from newton.tests.utils.testing import (
+    build_all_joints_test,
+    build_unary_revolute_joint_test,
+    build_unary_universal_joint_test,
+)
 
 ###
 # Helpers
@@ -48,12 +46,12 @@ def rng_seed_from_string(name: str) -> int:
     return int(hashlib.sha256(name.encode("utf8")).hexdigest(), 16)
 
 
-def create_four_bar_tie_rod() -> ModelBuilderKamino:
+def create_four_bar_tie_rod() -> newton.ModelBuilder:
     """
     Creates a four-bar linkage, but with two revolute joints replaced with
     spherical joints so as to create a tie rod (to test axis joints).
     """
-    builder_revolute = build_boxes_fourbar(
+    return build_boxes_fourbar(
         fixedbase=False,
         floatingbase=True,
         limits=False,
@@ -62,28 +60,8 @@ def create_four_bar_tie_rod() -> ModelBuilderKamino:
         dynamic_joints=False,
         implicit_pd=False,
         actuator_ids=[1],
+        spherical_joints=[2, 3],
     )
-    builder_spherical = ModelBuilderKamino(default_world=True)
-    for body in builder_revolute.bodies[0]:
-        builder_spherical.add_rigid_body_descriptor(copy.deepcopy(body))
-    for joint in builder_revolute.joints[0]:
-        joint_copy = copy.deepcopy(joint)
-        if joint.name == "link2_to_link3" or joint.name == "link3_to_link4":
-            joint_copy.dof_type = JointDoFType.SPHERICAL
-            joint_copy.dof_act_types = [joint_copy.act_type] * joint_copy.dof_type.num_dofs
-            for attribute in ("q_j_min", "q_j_max", "dq_j_max", "tau_j_max", "a_j", "b_j", "k_p_j", "k_d_j", "f_j"):
-                setattr(
-                    joint_copy,
-                    attribute,
-                    [getattr(joint_copy, attribute)[0]] * joint_copy.dof_type.num_dofs,
-                )
-            joint_copy.__post_init__()
-        builder_spherical.add_joint_descriptor(joint_copy)
-    for geom in builder_revolute.geoms[0]:
-        geom_copy = copy.deepcopy(geom)
-        geom_copy.shape = builder_revolute.shapes[geom.uid]
-        builder_spherical.add_geometry_descriptor(geom_copy)
-    return builder_spherical
 
 
 def compute_actuated_coords_and_dofs_data(model: ModelKamino):
@@ -168,6 +146,7 @@ def solve_and_check_fk_random_poses(
     randomize_base: bool = True,
     use_graph: bool = False,
     verbose: bool = False,
+    epsilon: float | None = None,
     **config_kwargs,
 ):
     """Sample random actuator/base coords and twists for a given model, run position- and
@@ -216,15 +195,16 @@ def solve_and_check_fk_random_poses(
     solver = ForwardKinematicsSolver(model, config)
     success_flags = []
     with wp.ScopedDevice(model.device):
-        body_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
-        base_q = wp.array(shape=(num_worlds), dtype=wp.transformf)
-        actuator_q = wp.array(shape=(actuator_q_np.shape[1]), dtype=wp.float32)
-        body_u = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.spatial_vectorf)
-        base_u = wp.array(shape=(num_worlds), dtype=wp.spatial_vectorf)
-        actuator_u = wp.array(shape=(actuator_u_np.shape[1]), dtype=wp.float32)
-        world_mask = wp.array(shape=(num_worlds,), dtype=wp.bool)
+        body_q = wp.zeros(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
+        base_q = wp.zeros(shape=(num_worlds), dtype=wp.transformf)
+        actuator_q = wp.zeros(shape=(actuator_q_np.shape[1]), dtype=wp.float32)
+        body_u = wp.zeros(shape=(model.size.sum_of_num_bodies), dtype=wp.spatial_vectorf)
+        base_u = wp.zeros(shape=(num_worlds), dtype=wp.spatial_vectorf)
+        actuator_u = wp.zeros(shape=(actuator_u_np.shape[1]), dtype=wp.float32)
+        world_mask = wp.zeros(shape=(num_worlds,), dtype=wp.bool)
     data = model.data(device=model.device)
-    epsilon = 1e-3 if config.use_regularization else 1e-4
+    if epsilon is None:
+        epsilon = 1e-3 if config.use_regularization else 1e-4
     for pose_id in range(num_poses):
         # Assign per-pose inputs and world mask
         base_q.assign(base_q_np[pose_id])
@@ -425,11 +405,14 @@ class TestJacobianAssembly(unittest.TestCase):
         asset_path = newton.utils.download_asset("disneyresearch")
         asset_file_0 = str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda")
         asset_file_1 = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
-        builder = USDImporter().import_from(asset_file_0)
-        builder1 = USDImporter().import_from(asset_file_1)
-        builder1.set_base_body("pelvis")
-        builder.add_builder(builder1)
-        model = builder.finalize(device=self.default_device, requires_grad=False)
+        builder = newton.ModelBuilder()
+        builder.begin_world()
+        builder.add_usd(source=asset_file_0)
+        builder.end_world()
+        builder.begin_world()
+        builder.add_usd(source=asset_file_1)
+        builder.end_world()
+        model = ModelKamino.from_newton(builder.finalize(device=self.default_device))
 
         # Generate random poses
         num_poses = 30
@@ -451,9 +434,9 @@ class TestJacobianAssembly(unittest.TestCase):
         # Assemble and compare dense and sparse Jacobian for each pose
         solver = ForwardKinematicsSolver(model, config=ForwardKinematicsSolver.Config(use_sparsity=True))
         with wp.ScopedDevice(model.device):
-            body_q = wp.array(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
-            base_q = wp.array(shape=(model.size.num_worlds), dtype=wp.transformf)
-            actuator_q = wp.array(shape=(actuator_q_np.shape[1]), dtype=wp.float32)
+            body_q = wp.zeros(shape=(model.size.sum_of_num_bodies), dtype=wp.transformf)
+            base_q = wp.zeros(shape=(model.size.num_worlds), dtype=wp.transformf)
+            actuator_q = wp.zeros(shape=(actuator_q_np.shape[1]), dtype=wp.float32)
         dims = solver.data.problem.sparse_jacobian.dims.numpy()
 
         for pose_id in range(num_poses):
@@ -606,11 +589,14 @@ class TestRandomPoses(unittest.TestCase):
 
         # Import the DR TestMech asset once and replicate it into 10 identical worlds
         asset_path = newton.utils.download_asset("disneyresearch")
-        template = USDImporter().import_from(str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda"))
-        builder = ModelBuilderKamino(default_world=False)
-        for _ in range(10):
-            builder.add_builder(template)
-        model = builder.finalize(device=self.default_device, requires_grad=False)
+        asset_file = str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda")
+        builder_single = newton.ModelBuilder()
+        builder_single.begin_world()
+        builder_single.add_usd(source=asset_file)
+        builder_single.end_world()
+        builder = newton.ModelBuilder()
+        builder.replicate(builder=builder_single, world_count=10)
+        model = ModelKamino.from_newton(builder.finalize(device=self.default_device))
 
         # Solve and check FK on random poses, on both dense and sparse paths
         solve_and_check_fn = self._make_solve_and_check(model, num_poses=3, rng=rng)
@@ -623,12 +609,14 @@ class TestRandomPoses(unittest.TestCase):
 
         # Import the DR Legs asset once (with the pelvis base body set) and replicate it into 10 worlds
         asset_path = newton.utils.download_asset("disneyresearch")
-        template = USDImporter().import_from(str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda"))
-        template.set_base_body("pelvis")
-        builder = ModelBuilderKamino(default_world=False)
-        for _ in range(10):
-            builder.add_builder(template)
-        model = builder.finalize(device=self.default_device, requires_grad=False)
+        asset_file = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
+        builder_single = newton.ModelBuilder()
+        builder_single.begin_world()
+        builder_single.add_usd(source=asset_file)
+        builder_single.end_world()
+        builder = newton.ModelBuilder()
+        builder.replicate(builder=builder_single, world_count=10)
+        model = ModelKamino.from_newton(builder.finalize(device=self.default_device))
 
         # Solve and check FK on random poses, on both dense and sparse paths
         # Note: Angles too far from the initial pose lead to singularities
@@ -650,15 +638,26 @@ class TestRandomPoses(unittest.TestCase):
 
         # Combine 5 DR TestMech + 5 DR Legs worlds from the `newton-assets` repository
         asset_path = newton.utils.download_asset("disneyresearch")
-        template_testmech = USDImporter().import_from(str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda"))
-        template_legs = USDImporter().import_from(str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda"))
-        template_legs.set_base_body("pelvis")
-        builder = ModelBuilderKamino(default_world=False)
+        asset_file_0 = str(asset_path / "dr_testmech" / "usd" / "dr_testmech.usda")
+        asset_file_1 = str(asset_path / "dr_legs" / "usd" / "dr_legs_with_boxes.usda")
+        builder_0 = newton.ModelBuilder()
+        builder_0.begin_world()
+        builder_0.add_usd(source=asset_file_0)
+        builder_0.end_world()
+        builder_1 = newton.ModelBuilder()
+        builder_1.begin_world()
+        builder_1.add_usd(source=asset_file_1)
+        builder_1.end_world()
+        builder = newton.ModelBuilder()
         for _ in range(5):
-            builder.add_builder(template_testmech)
+            builder.begin_world()
+            builder.add_builder(builder_0)
+            builder.end_world()
         for _ in range(5):
-            builder.add_builder(template_legs)
-        model = builder.finalize(device=self.default_device, requires_grad=False)
+            builder.begin_world()
+            builder.add_builder(builder_1)
+            builder.end_world()
+        model = ModelKamino.from_newton(builder.finalize(device=self.default_device))
 
         # Solve and check FK on random poses, on both dense and sparse paths
         # Note 1: Angles too far from the initial pose lead to singularities.
@@ -679,8 +678,9 @@ class TestRandomPoses(unittest.TestCase):
     def test_four_bar_tie_rod_axis_joints_random_poses(self):
         """Validate FK on random poses for a four-bar with a tie rod, using axis joints"""
         rng = np.random.default_rng(rng_seed_from_string("Four-bar with tie rod FK random poses check (axis joints)"))
-        builder = make_homogeneous_builder(num_worlds=10, build_fn=create_four_bar_tie_rod)
-        model = builder.finalize(device=self.default_device, requires_grad=False)
+        builder = newton.ModelBuilder()
+        builder.replicate(builder=create_four_bar_tie_rod(), world_count=10)
+        model = ModelKamino.from_newton(builder.finalize(device=self.default_device, requires_grad=False))
 
         # Solve and check FK on random poses, on both dense and sparse paths
         solve_and_check_fn = self._make_solve_and_check(
@@ -697,8 +697,9 @@ class TestRandomPoses(unittest.TestCase):
         rng = np.random.default_rng(
             rng_seed_from_string("Four-bar with tie rod FK random poses check (regularization)")
         )
-        builder = make_homogeneous_builder(num_worlds=10, build_fn=create_four_bar_tie_rod)
-        model = builder.finalize(device=self.default_device, requires_grad=False)
+        builder = newton.ModelBuilder()
+        builder.replicate(builder=create_four_bar_tie_rod(), world_count=10)
+        model = ModelKamino.from_newton(builder.finalize(device=self.default_device, requires_grad=False))
 
         # Solve and check FK on random poses, on both dense and sparse paths
         solve_and_check_fn = self._make_solve_and_check(
@@ -715,8 +716,8 @@ class TestRandomPoses(unittest.TestCase):
     def test_all_joints_random_poses(self):
         """Validate FK on random poses for a model with all joint types"""
         rng = np.random.default_rng(rng_seed_from_string("All-joints example FK random poses check"))
-        builder = build_all_joints_test_model(unary_joints=True, binary_joints=True, actuated=True, floating_base=False)
-        model = builder.finalize(device=self.default_device)
+        builder = build_all_joints_test(unary_joints=True, binary_joints=True, actuated=True, floating_base=False)
+        model = ModelKamino.from_newton(builder.finalize(device=self.default_device))
 
         # Solve and check FK on random poses, on both dense and sparse paths
         solve_and_check_fn = self._make_solve_and_check(model, num_poses=3, rng=rng)
@@ -728,21 +729,26 @@ class TestRandomPoses(unittest.TestCase):
         rng = np.random.default_rng(
             rng_seed_from_string("All-joints example FK random poses check with asymmetric frames")
         )
-        builder = build_all_joints_test_model(unary_joints=True, binary_joints=True, actuated=True, floating_base=False)
+        builder = build_all_joints_test(unary_joints=True, binary_joints=True, actuated=True, floating_base=False)
 
         # Set asymmetric joint frames (X_B != X_F) into joints while preserving the initial pose
-        num_joints = builder.num_joints
+        num_joints = builder.joint_count
         random_quats = np.resize(rng.uniform(-1.0, 1.0, 4 * num_joints), (num_joints, 4))
         random_quats /= np.linalg.norm(random_quats, axis=1)[:, None]
-        for jid, joint in enumerate(builder.all_joints):
-            wid = joint.wid
-            q_B = wp.transform_identity() if joint.bid_B < 0 else builder.bodies[wid][joint.bid_B].q_i_0
-            q_F = builder.bodies[wid][joint.bid_F].q_i_0
-            R_B = wp.quat_to_matrix(wp.transform_get_rotation(q_B))
-            R_F = wp.quat_to_matrix(wp.transform_get_rotation(q_F))
-            joint.X_Fj = wp.quat_to_matrix(wp.quatf(random_quats[jid]))
-            joint.X_Bj = wp.transpose(R_B) * R_F * joint.X_Fj  # Compute X_B given X_F to preserve a valid pose
-        model = builder.finalize(device=self.default_device)
+        for jid in range(num_joints):
+            parent = builder.joint_parent[jid]
+            child = builder.joint_child[jid]
+            q_B = (
+                wp.quat_identity(dtype=wp.float32) if parent < 0 else wp.transform_get_rotation(builder.body_q[parent])
+            )
+            q_F = wp.transform_get_rotation(builder.body_q[child])
+            r_Bj = wp.transform_get_translation(builder.joint_X_p[jid])
+            r_Fj = wp.transform_get_translation(builder.joint_X_c[jid])
+            q_Fj = wp.quatf(random_quats[jid])
+            q_Bj = wp.quat_inverse(q_B) * q_F * q_Fj  # Compute X_B given X_F to preserve a valid pose
+            builder.joint_X_c[jid] = wp.transform(r_Fj, q_Fj)
+            builder.joint_X_p[jid] = wp.transform(r_Bj, q_Bj)
+        model = ModelKamino.from_newton(builder.finalize(device=self.default_device))
 
         # Solve and check FK on random poses, on both dense and sparse paths
         solve_and_check_fn = self._make_solve_and_check(model, num_poses=3, rng=rng)
@@ -783,7 +789,9 @@ class TestFourBarTieRodAxisFrames(unittest.TestCase):
 
     def test_axis_joint_frames_update_after_notify(self):
         """Synthetic axis frames match a fresh solver after model changes."""
-        model = create_four_bar_tie_rod().finalize(device=self.default_device, requires_grad=False)
+        model = ModelKamino.from_newton(
+            create_four_bar_tie_rod().finalize(device=self.default_device, requires_grad=False)
+        )
         config = ForwardKinematicsSolver.Config(add_axis_joints=True)
         solver = ForwardKinematicsSolver(model, config)
         axis_body_id = int(solver.data.joints.axis_body_id.numpy()[0])
@@ -883,7 +891,7 @@ class TestMultiRhsVelocity(unittest.TestCase):
             implicit_pd=False,
             actuator_ids=[1],
         )
-        model = builder.finalize(device=self.default_device)
+        model = ModelKamino.from_newton(builder.finalize(device=self.default_device))
         solver = ForwardKinematicsSolver(model=model)
         body_q = wp.clone(model.bodies.q_i_0)
 
@@ -937,7 +945,7 @@ class TestMultiRhsVelocity(unittest.TestCase):
             implicit_pd=False,
             actuator_ids=[1],
         )
-        model = builder.finalize(device=self.default_device)
+        model = ModelKamino.from_newton(builder.finalize(device=self.default_device))
         solver = ForwardKinematicsSolver(model=model)
         body_q = wp.clone(model.bodies.q_i_0)
 
@@ -962,24 +970,24 @@ class TestMultiRhsVelocity(unittest.TestCase):
 
     def test_multi_rhs_refreshes_gimbal_coords_with_explicit_transforms(self):
         """Evaluate gimbal velocity axes from the current body pose."""
-        builder = ModelBuilderKamino(default_world=True)
-        body_id = builder.add_rigid_body(
-            name="gimbal_body",
-            m_i=1.0,
-            i_I_i=wp.mat33f(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
-            q_i_0=wp.transformf(wp.vec3f(0.0), wp.quatf(0.0, 0.0, 0.0, 1.0)),
+        builder = newton.ModelBuilder()
+        body_id = builder.add_link(
+            label="gimbal_body",
+            mass=1.0,
+            inertia=wp.mat33f(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
         )
-        builder.add_joint(
-            act_type=JointActuationType.POSITION,
-            dof_type=JointDoFType.GIMBAL,
-            bid_B=-1,
-            bid_F=body_id,
-            B_r_Bj=wp.vec3f(0.0),
-            F_r_Fj=wp.vec3f(0.0),
-            X_Bj=wp.mat33f(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
-            k_p_j=1.0,
+        d6 = builder.add_joint_d6(
+            parent=-1,
+            child=body_id,
+            angular_axes=[
+                newton.ModelBuilder.JointDofConfig(
+                    axis=axis, actuator_mode=newton.JointTargetMode.POSITION, target_ke=1.0
+                )
+                for axis in (newton.Axis.X, newton.Axis.Y, newton.Axis.Z)
+            ],
         )
-        model = builder.finalize(device=self.default_device)
+        builder.add_articulation([d6])
+        model = ModelKamino.from_newton(builder.finalize(device=self.default_device))
         solver = ForwardKinematicsSolver(model=model)
         actuator_q = wp.array([0.4, -0.3, 0.2], dtype=wp.float32, device=self.default_device)
         body_q = wp.clone(model.bodies.q_i_0)
